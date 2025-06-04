@@ -1,0 +1,91 @@
+{
+  "id": "llama-3.1-8b",
+  "name": "Llama 3.1 8B",
+  "description": "Meta's Llama 3.1 8B parameter model",
+  "modules": {
+    "LlamaModel": {
+      "count": 1,
+      "type": "block"
+    },
+    "embed_tokens": {
+      "count": 1,
+      "parent": "LlamaModel",
+      "type": "layer"
+    },
+    "layers": {
+      "count": 32,
+      "parent": "LlamaModel",
+      "type": "block"
+    },
+    "LlamaDecoderLayer": {
+      "count": 32,
+      "parent": "layers",
+      "type": "block"
+    },
+    "self_attn": {
+      "count": 32,
+      "parent": "LlamaDecoderLayer",
+      "type": "block"
+    },
+    "qkv_proj": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer",
+      "definition": "gemm_n_6144_k_4096"
+    },
+    "o_proj": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer",
+      "definition": "gemm_n_4096_k_4096"
+    },
+    "rotary_emb": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer"
+    },
+    "attn_kernel": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer",
+      "definition": "gqa_paged_decode_h32_kv8_d128_ps1"
+    },
+    "mlp": {
+      "count": 32,
+      "parent": "LlamaDecoderLayer",
+      "type": "block"
+    },
+    "gate_up_proj": {
+      "count": 32,
+      "parent": "mlp",
+      "type": "layer",
+      "definition": "gemm_n_28672_k_4096"
+    },
+    "down_proj": {
+      "count": 32,
+      "parent": "mlp",
+      "type": "layer",
+      "definition": "gemm_n_4096_k_14336"
+    },
+    "act_fn": {
+      "count": 32,
+      "parent": "mlp",
+      "type": "layer"
+    },
+    "input_layernorm": {
+      "count": 32,
+      "parent": "LlamaDecoderLayer",
+      "type": "layer"
+    },
+    "post_attention_layernorm": {
+      "count": 32,
+      "parent": "LlamaDecoderLayer",
+      "type": "layer"
+    },
+    "norm": {
+      "count": 1,
+      "parent": "LlamaModel",
+      "type": "layer"
+    }
+  }
+}
