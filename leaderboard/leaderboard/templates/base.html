@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}flashinfer-bench{% endblock %}</title>
+    
+    <!-- Emoji Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-white">
+    <!-- Header -->
+    <header class="header-base">
+        <div class="header-container">
+            <div class="header-layout">
+                <div class="header-row">
+                    <a href="{{ url_for('index') }}" class="header-brand-item">
+                        <span class="header-brand-icon">⚡</span>
+                        <span>flashinfer-bench</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Error Toast Messages Container (Top Center) -->
+    <div id="toast-container-error" class="toast-container-error">
+        {# Error toasts will be dynamically added here by JavaScript #}
+    </div>
+
+    <!-- Default Toast Messages Container (Bottom Center) -->
+    <div id="toast-container-default" class="toast-container-default">
+        {# Default toasts will be dynamically added here by JavaScript #}
+    </div>
+
+    <!-- Hidden Template for Error Flash Messages -->
+    <div hidden>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {# Process only 'error' category for toasts here #}
+                    {% if category == 'error' %}
+                        <div class="toast-template-error"
+                             data-message="{{ message }}">
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Hidden Template for Default Flash Messages -->
+    <div hidden>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    {# Process only default 'message' category for toasts here #}
+                    {% if category == 'message' or category is none %}
+                        <div class="toast-template-default"
+                             data-message="{{ message }}">
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <!-- <footer class="footer-base">
+    </footer> -->
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/flash.js') }}"></script> {# Ensure flash script is linked #}
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

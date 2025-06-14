@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Leaderboards &ndash; flashinfer-bench{% endblock %}
+
+{% block content %}
+<div class="content-stack">
+    <h1>Leaderboards</h1>
+    
+    <div class="leaderboard-grid">
+        {% for leaderboard in leaderboards %}
+            <a href="{{ url_for('leaderboard', id=leaderboard['id']) }}" class="leaderboard-tile-link">
+                <div class="leaderboard-tile">
+                    <div class="leaderboard-tile-name">
+                        {% set color = leaderboard['name']|to_color %}
+                        <div class="{{ color }}-square""></div>
+                        {{ leaderboard['name'] }}
+                    </div>
+
+                    <div class="leaderboard-content">
+                        {{ leaderboard['deadline']|to_time_left }}
+                    </div>
+
+                    <div class="leaderboard-content text-sm">
+                        {{ leaderboard['gpu_types']|join(', ') }}
+                    </div>
+
+                    {% if leaderboard.top_users %}
+                        <div class="leaderboard-content mt-4">
+                            <div class="score-box">
+                                <div class="text-center mb-2">
+                                    <span class="chip px-2 py-0.5 text-sm bg-gray-100 text-gray-700">
+                                        {{ leaderboard.priority_gpu_type }}
+                                    </span>
+                                </div>
+                                {% for user_info in leaderboard.top_users %}
+                                    <div class="score-row">
+                                        <span>{{ user_info['user_name'] or "&nbsp;"|safe }}
+                                            {% if user_info['rank'] == 1 %}
+                                                🥇
+                                            {% elif user_info['rank'] == 2 %}
+                                                🥈
+                                            {% elif user_info['rank'] == 3 %}
+                                                🥉
+                                            {% endif %}
+                                        </span>
+
+                                        <span class="score">{{ user_info['score']|format_score or "&nbsp;"|safe }}</span>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+
+    {% if not leaderboards %}
+        <p>No active leaderboards found.</p>
+    {% endif %}
+</div>
+{% endblock %} 
