@@ -4,7 +4,7 @@ from flask import Flask
 from flask_login import LoginManager
 from flask_session import Session
 from flask_talisman import Talisman
-from . import color, error, index, leaderboard, score, time
+from . import color, error, index, leaderboard, score, time, model
 from .redis_connection import create_redis_connection
 
 def create_app(test_config=None):
@@ -69,6 +69,10 @@ def create_app(test_config=None):
 
     app.register_blueprint(leaderboard.blueprint)
     app.add_url_rule('/leaderboard/<int:id>', endpoint='leaderboard')
+    
+    app.register_blueprint(model.blueprint)
+    app.add_url_rule('/model', endpoint='model_index')
+    app.add_url_rule('/model/<model_name>/', endpoint='model_detail')
 
     app.errorhandler(401)(error.unauthorized)
     app.errorhandler(404)(error.page_not_found)

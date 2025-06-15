@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ model_name }} Kernels{% endblock %}
+
+{% block content %}
+<div class="content-stack">
+    <h1 class="text-2xl font-bold mb-6">{{ model_name }} Kernels</h1>
+
+    <div class="leaderboard-grid">
+        {% for kernel in kernels %}
+            <a href="{{ url_for('leaderboard.leaderboard', leaderboard_id=kernel.leaderboard_id) }}" class="leaderboard-tile-link">
+                <div class="leaderboard-tile">
+                    <div class="leaderboard-tile-name">
+                        {% set color = model_name|to_color %}
+                        <div class="{{ color }}-square"></div>
+                        {{ kernel.kernel_name }}
+                    </div>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+
+    {% if not kernels %}
+        <p>No kernels found for this model.</p>
+    {% endif %}
+</div>
+{% endblock %}

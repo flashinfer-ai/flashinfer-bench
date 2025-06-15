@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 INPUT_ROOT = Path("/ssd1/yiyanz/llm-kernel-agent-results/jsonl_format")
-OUTPUT_DIR = Path("/ssd1/yiyanz/CodeGen/flashinfer-bench/kernelboard/public/data")
+OUTPUT_DIR = Path("/ssd1/yiyanz/CodeGen/flashinfer-bench/leaderboard/public/data")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def extract_runtime_and_hw(tool_output: str) -> tuple[float | None, str | None]:

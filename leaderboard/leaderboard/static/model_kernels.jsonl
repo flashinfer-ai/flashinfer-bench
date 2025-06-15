@@ -1,0 +1,28 @@
+{
+    "ResNet50": [
+        {
+        "kernel_name": "Kernel A",
+        "leaderboard_id": 1
+        },
+        {
+        "kernel_name": "Kernel B",
+        "leaderboard_id": 2
+        }
+    ],
+    "Conv2D": [
+        {
+        "kernel_name": "Conv Layer 1",
+        "leaderboard_id": 3
+        }
+    ],
+    "Model 3": [
+        {
+        "kernel_name": "Kernel A",
+        "leaderboard_id": 2
+        },
+        {
+        "kernel_name": "Kernel B",
+        "leaderboard_id": 2
+        }
+    ]
+}

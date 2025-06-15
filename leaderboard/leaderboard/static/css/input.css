@@ -1,5 +1,5 @@
 /*
-Generate main.css by running the following command from src/leaderboard/:
+Generate main.css by running the following command from leaderboard/:
 
   npx tailwindcss -i ./leaderboard/static/css/input.css -o \
     ./leaderboard/static/css/main.css --verbose

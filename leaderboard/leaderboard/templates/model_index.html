@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Models & Frameworks &ndash; flashinfer-bench{% endblock %}
+
+{% block content %}
+<div class="content-stack">
+    <h1>Models & Frameworks</h1>
+    
+    <div class="leaderboard-grid">
+        {% for model_name, kernels in models.items() %}
+            <a href="{{ url_for('model.model_detail', model_name=model_name) }}" class="leaderboard-tile-link">
+                <div class="leaderboard-tile">
+                    <div class="leaderboard-tile-name">
+                        {% set color = model_name|to_color %}
+                        <div class="{{ color }}-square"></div>
+                        {{ model_name }}
+                    </div>
+
+                    <div class="leaderboard-content text-sm text-gray-500">
+                        {{ kernels | length }} kernel{{ 's' if kernels|length != 1 }}
+                    </div>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+
+    {% if not models %}
+        <p>No models found.</p>
+    {% endif %}
+</div>
+{% endblock %}

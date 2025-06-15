@@ -1,8 +1,8 @@
 /*
-Generate main.css by running the following command from src/leaderboard/:
+Generate main.css by running the following command from src/kernelboard/:
 
-  npx tailwindcss -i ./leaderboard/static/css/input.css -o \
-    ./leaderboard/static/css/main.css --verbose
+  npx tailwindcss -i ./kernelboard/static/css/input.css -o \
+    ./kernelboard/static/css/main.css --verbose
 
 Appending --watch will watch for changes and update main.css automatically.
 */
