@@ -1,0 +1,53 @@
+{
+  "summary": {
+    "total_problems": 5,
+    "successful": 5,
+    "failed": 0,
+    "total_time": 1209.7525691986084,
+    "max_iterations_used": 5,
+    "skipped": 95,
+    "total_wall_time": 1225.791732788086
+  },
+  "results": [
+    {
+      "problem_name": "59_conv_standard_3D__asymmetric_input__square_kernel",
+      "success": true,
+      "solution_file": "kernel_agent_solutions/59_conv_standard_3D__asymmetric_input__square_kernel_solution.py",
+      "log_file": "kernel_agent_solutions/logs/59_conv_standard_3D__asymmetric_input__square_kernel_logs.jsonl",
+      "generation_time": 319.6599991321564,
+      "kernel_length": 6085
+    },
+    {
+      "problem_name": "41_Max_Pooling_1D",
+      "success": true,
+      "solution_file": "kernel_agent_solutions/41_Max_Pooling_1D_solution.py",
+      "log_file": "kernel_agent_solutions/logs/41_Max_Pooling_1D_logs.jsonl",
+      "generation_time": 258.0219421386719,
+      "kernel_length": 4405
+    },
+    {
+      "problem_name": "56_conv_standard_2D__asymmetric_input__asymmetric_kernel",
+      "success": true,
+      "solution_file": "kernel_agent_solutions/56_conv_standard_2D__asymmetric_input__asymmetric_kernel_solution.py",
+      "log_file": "kernel_agent_solutions/logs/56_conv_standard_2D__asymmetric_input__asymmetric_kernel_logs.jsonl",
+      "generation_time": 219.36579155921936,
+      "kernel_length": 8030
+    },
+    {
+      "problem_name": "5_Matrix_scalar_multiplication",
+      "success": true,
+      "solution_file": "kernel_agent_solutions/5_Matrix_scalar_multiplication_solution.py",
+      "log_file": "kernel_agent_solutions/logs/5_Matrix_scalar_multiplication_logs.jsonl",
+      "generation_time": 184.57019138336182,
+      "kernel_length": 2278
+    },
+    {
+      "problem_name": "49_Max_reduction_over_a_dimension",
+      "success": true,
+      "solution_file": "kernel_agent_solutions/49_Max_reduction_over_a_dimension_solution.py",
+      "log_file": "kernel_agent_solutions/logs/49_Max_reduction_over_a_dimension_logs.jsonl",
+      "generation_time": 228.13464498519897,
+      "kernel_length": 3336
+    }
+  ]
+}
