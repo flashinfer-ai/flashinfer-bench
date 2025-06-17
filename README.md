@@ -65,7 +65,7 @@ python benchmark/benchmark.py kernel_description.py kernel_generator.py \
     --iter 10 \
     --report-n 16 \
     --max-diff-limit 1e-5 \
-    --output my_results.json
+    --output benchmarking_results.json
 ```
 ## ⚠️ Notes
 
