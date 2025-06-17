@@ -4,6 +4,7 @@ import os
 import tempfile
 import json
 import re
+import pickle
 
 mcp = FastMCP("NCU Profiler Server")
 
@@ -63,7 +64,7 @@ def calculate_derived_metrics(csv_data: list) -> dict:
         
         duration_ns = float(data.get('gpu__time_duration.avg', 0))
         if duration_ns > 0:
-            flops_per_second = total_flops / (duration_ns * 1e-9
+            flops_per_second = total_flops / (duration_ns * 1e-9)
             derived['total_flops'] = total_flops
             derived['flops_per_second'] = flops_per_second
             derived['gflops_per_second'] = flops_per_second / 1e9
@@ -94,17 +95,17 @@ def calculate_derived_metrics(csv_data: list) -> dict:
     return derived
 
 @mcp.tool()
-def ncu_profiler(code: str) -> dict:
+def ncu_profiler(code: str, inputs: list = None, init_inputs: list = None) -> dict:
     """
     Profiles CUDA kernels using NVIDIA Nsight Compute (ncu).
     
     The input code should contain:
     - A nn.Module with a forward method
-    - A get_inputs() function that returns input tensors
-    - A get_init_inputs() function that returns initialization inputs
     
     Args:
         code (str): Python code string containing the custom CUDA kernel
+        inputs (list): List of input tensors for the forward method
+        init_inputs (list): List of initialization inputs for the model constructor
     Returns:
         dict: Dictionary containing parsed profiling metrics and raw output
     """
@@ -112,11 +113,24 @@ def ncu_profiler(code: str) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         script_path = os.path.join(tmpdir, "profile_kernel.py")
         
+        # Serialize inputs to pass them to the script
+        inputs_path = os.path.join(tmpdir, "inputs.pkl")
+        init_inputs_path = os.path.join(tmpdir, "init_inputs.pkl")
+        
+        if inputs is not None:
+            with open(inputs_path, 'wb') as f:
+                pickle.dump(inputs, f)
+        
+        if init_inputs is not None:
+            with open(init_inputs_path, 'wb') as f:
+                pickle.dump(init_inputs, f)
+        
         script_content = f"""
 import torch
 import torch.nn as nn
 import os
 import sys
+import pickle
 
 os.environ["TORCH_USE_CUDA_DSA"] = "1"
 
@@ -125,7 +139,18 @@ exec('''
 ''')
 
 def main():
-    init_inputs = get_init_inputs()
+    # Load inputs from pickle files
+    init_inputs = None
+    inputs = None
+    
+    if os.path.exists("{init_inputs_path}"):
+        with open("{init_inputs_path}", 'rb') as f:
+            init_inputs = pickle.load(f)
+    
+    if os.path.exists("{inputs_path}"):
+        with open("{inputs_path}", 'rb') as f:
+            inputs = pickle.load(f)
+    
     if init_inputs:
         init_inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in init_inputs]
         model = ModelNew(*init_inputs)
@@ -135,8 +160,10 @@ def main():
     model = model.cuda()
     model.eval()
     
-    inputs = get_inputs()
-    inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
+    if inputs:
+        inputs = [x.cuda() if isinstance(x, torch.Tensor) else x for x in inputs]
+    else:
+        inputs = []
     
     with torch.no_grad():
         for _ in range(3):
