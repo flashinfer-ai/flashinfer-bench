@@ -14,7 +14,7 @@
 
 ---
 
-## How to run
+## How to run the leaderboard
 
 1️⃣ Install dependencies:
 
@@ -49,6 +49,24 @@ http://127.0.0.1:5000/
 
 ---
 
+## How to run benchmarks
+
+**Basic usage:**
+
+```bash
+python benchmark/benchmark.py <kernel_description.py> <kernel_generator.py>
+```
+
+**With advanced arguments:**
+
+```bash
+python benchmark/benchmark.py kernel_description.py kernel_generator.py \
+    --warmup 5 \
+    --iter 10 \
+    --report-n 16 \
+    --max-diff-limit 1e-5 \
+    --output my_results.json
+```
 ## ⚠️ Notes
 
 * The site relies on precomputed `leaderboard_[id].json` and model/kernel JSONL data in `leaderboard/leaderboard/static/`. Ensure these files exist and are updated by your data processing scripts under `leaderboard/scripts/`. The traces data should be in `leaderboard/public/data`.
