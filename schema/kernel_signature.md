@@ -13,13 +13,13 @@ Note the kernel signature does not contain the kernel's exact input data. That w
 
 ### Top-Level Object Structure
 
-| Field    | Type   | Required | Description                             |
-|----------|--------|----------|-----------------------------------------|
-| `name`   | string | Yes      | A unique name indicating the kernel.    |
-| `axes`   | object | Yes      | Key-value pairs of axis definitions     |
+| Field     | Type   | Required | Description                             |
+|-----------|--------|----------|-----------------------------------------|
+| `name`    | string | Yes      | A unique name indicating the kernel.    |
+| `axes`    | object | Yes      | Key-value pairs of axis definitions     |
 | `inputs`  | object | Yes      | Named input tensors (e.g. `"A"`, `"B"`) |
 | `outputs` | object | Yes      | Named output tensors (e.g. `"C"`)       |
-| `code`   | string | Yes      | The PyTorch code of the kernel.         |
+| `code`    | string | Yes      | The PyTorch code of the kernel.         |
 
 Q: "name" or "id"?
 
@@ -71,7 +71,7 @@ Input and output describes the input and the output tensors of the kernel. They 
 |-------------|--------|----------|---------------------------------------|---------------|
 | `shape`     | array  | Yes      | List of axis names (strings)          | —             |
 | `dim_order` | array  | No       | Permutation indices of the shape axes | `[0, 1, ...]` |
-| `dtype`     | string | No       | Data type of the tensor               | `"float16"`      |
+| `dtype`     | string | No       | Data type of the tensor               | `"float16"`   |
 
 #### `dtype` Field: Enum of Data Type
 
