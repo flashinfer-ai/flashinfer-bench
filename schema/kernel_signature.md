@@ -173,29 +173,29 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
   "inputs": {
     "A": {
       "shape": ["M", "K"],
-      "dtype": "float16"
+      "dtype": "float8_e4m3"
     },
     "B": {
       "shape": ["N", "K"],
       "dim_order": [0, 1],
-      "dtype": "float16"
+      "dtype": "float8_e4m3"
     },
     "A_scale": {
       "shape": ["M", "K_group"],
       "dim_order": [0, 1],
-      "dtype": "float8_e4m3"
+      "dtype": "float32"
     },
     "B_scale": {
       "shape": ["N_group", "K_group"],
       "dim_order": [0, 1],
-      "dtype": "float8_e4m3"
+      "dtype": "float32"
     },
   },
   "outputs": {
     "C": {
       "shape": ["M", "N"],
       "dim_order": [0, 1],
-      "dtype": "float16"
+      "dtype": "bfloat16"
     }
   },
   "code": "..."
@@ -306,7 +306,7 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
 }
 ```
 
-### Example 6: Attention
+### Example 6: Attention (GQA-4)
 
 ```json
 {
@@ -356,3 +356,5 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
   "code": "..."
 }
 ```
+
+### Example 7: PageAttention
