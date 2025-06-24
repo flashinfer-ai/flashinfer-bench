@@ -2,3 +2,6 @@ __pycache__/
 correctness_results/
 kernel_agent_solutions/
 speedup_results/
+node_modules/
+build/
+package-lock.json
