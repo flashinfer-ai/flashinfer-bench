@@ -16,6 +16,7 @@ Note the kernel signature does not contain the kernel's exact input data. That w
 | Field    | Type     | Required | Description                                              |
 |----------|----------|----------|---------------------------------------------------------|
 | `op`     | string   | Yes      | Operation type. Currently supported: `"gemm"`, `"grouped_gemm"` |
+| `name`   | string   | Yes       | A unique name indicating the kernel. |
 | `axes`   | object   | Yes      | Key-value pairs of axis definitions                     |
 | `input`  | object   | Yes      | Named input tensors (e.g. `"A"`, `"B"`)                 |
 | `output` | object   | Yes      | Named output tensors (e.g. `"C"`)                       |
@@ -152,22 +153,28 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 },
-    "N_group": { "type": "const", "value": "4096 / 32" }
+    "N_group": { "type": "const", "value": 128 },
+    "K_group": { "type": "const", "value": 128 },
   },
   "input": {
     "A": {
       "shape": ["M", "K"],
       "dtype": "float16"
     },
-    "B_quantized": {
+    "B": {
       "shape": ["N", "K"],
       "dim_order": [0, 1],
-      "dtype": "int4"
+      "dtype": "float16"
+    },
+    "A_scale": {
+      "shape": ["M", "K_group"],
+      "dim_order": [0, 1],
+      "dtype": "fp8"
     },
     "B_scale": {
-      "shape": ["N_group", "K"],
+      "shape": ["N_group", "K_group"],
       "dim_order": [0, 1],
-      "dtype": "fp32"
+      "dtype": "fp8"
     },
   },
   "output": {
@@ -214,3 +221,38 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
   "code": "..."
 }
 ```
+
+### Example 4: Quantized Grouped GEMM
+
+```json
+{
+  "op": "grouped_gemm",
+  "axes": {
+    "G": { "type": "var" },
+    "M": { "type": "var", "parent": "G" },
+    "N": { "type": "const", "value": 4096 },
+    "K": { "type": "const", "value": 4096 }
+  },
+  "input": {
+    "A": {
+      "shape": ["G", "M", "K"],
+      "dim_order": [0, 1, 2],
+      "dtype": "fp16"
+    },
+    "B": {
+      "shape": ["G", "K", "N"],
+      "dim_order": [0, 1, 2],
+      "dtype": "fp16"
+    }
+  },
+  "output": {
+    "C": {
+      "shape": ["G", "M", "N"],
+      "dim_order": [0, 1, 2],
+      "dtype": "fp16"
+    }
+  },
+  "code": "..."
+}
+```
+
