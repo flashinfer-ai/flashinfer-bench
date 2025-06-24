@@ -1,0 +1,416 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/99_TripletMarginLoss.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.03850240111351013,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr0 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp7 = tl.load(in_ptr1 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp12 = tl.load(in_ptr0 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp13 = tl.load(in_ptr1 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp18 = tl.load(in_ptr0 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp19 = tl.load(in_ptr1 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp27 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp31 = tl.load(in_ptr2 + (1 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp36 = tl.load(in_ptr2 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp41 = tl.load(in_ptr2 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp8 = tmp6 - tmp7\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp14 = tmp12 - tmp13\n    tmp15 = triton_helpers.maximum(tmp14, tmp3)\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp11 + tmp16\n    tmp20 = tmp18 - tmp19\n    tmp21 = triton_helpers.maximum(tmp20, tmp3)\n    tmp22 = tmp21 * tmp21\n    tmp23 = tmp17 + tmp22\n    tmp24 = libdevice.sqrt(tmp23)\n    tmp25 = 1.0\n    tmp26 = tmp24 + tmp25\n    tmp28 = tmp0 - tmp27\n    tmp29 = triton_helpers.maximum(tmp28, tmp3)\n    tmp30 = tmp29 * tmp29\n    tmp32 = tmp6 - tmp31\n    tmp33 = triton_helpers.maximum(tmp32, tmp3)\n    tmp34 = tmp33 * tmp33\n    tmp35 = tmp30 + tmp34\n    tmp37 = tmp12 - tmp36\n    tmp38 = triton_helpers.maximum(tmp37, tmp3)\n    tmp39 = tmp38 * tmp38\n    tmp40 = tmp35 + tmp39\n    tmp42 = tmp18 - tmp41\n    tmp43 = triton_helpers.maximum(tmp42, tmp3)\n    tmp44 = tmp43 * tmp43\n    tmp45 = tmp40 + tmp44\n    tmp46 = libdevice.sqrt(tmp45)\n    tmp47 = tmp26 - tmp46\n    tmp48 = 0.0\n    tmp49 = triton_helpers.maximum(tmp47, tmp48)\n    tmp50 = tl.broadcast_to(tmp49, [XBLOCK, RBLOCK])\n    tmp52 = tl.sum(tmp50, 1)[:, None]\n    tmp53 = 128.0\n    tmp54 = tmp52 / tmp53\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp54, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((), (), torch.float32)\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf2, arg2_1,\n            arg1_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 47:12:\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp14 = tmp12 - tmp13\n    tmp15 = triton_helpers.maximum(tmp14, tmp3)\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp11 + tmp16\n    tmp20 = tmp18 - tmp19\n    tmp21 = triton_helpers.maximum(tmp20, tmp3)\n    tmp22 = tmp21 * tmp21\n    tmp23 = tmp17 + tmp22\n    tmp24 = libdevice.sqrt(tmp23)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 0.03206741809844971,
+      "avg_diff": 0.03206741809844971,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr0 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp7 = tl.load(in_ptr1 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp12 = tl.load(in_ptr0 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp13 = tl.load(in_ptr1 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp18 = tl.load(in_ptr0 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp19 = tl.load(in_ptr1 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp27 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp31 = tl.load(in_ptr2 + (1 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp36 = tl.load(in_ptr2 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp41 = tl.load(in_ptr2 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp8 = tmp6 - tmp7\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp14 = tmp12 - tmp13\n    tmp15 = triton_helpers.maximum(tmp14, tmp3)\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp11 + tmp16\n    tmp20 = tmp18 - tmp19\n    tmp21 = triton_helpers.maximum(tmp20, tmp3)\n    tmp22 = tmp21 * tmp21\n    tmp23 = tmp17 + tmp22\n    tmp24 = libdevice.sqrt(tmp23)\n    tmp25 = 1.0\n    tmp26 = tmp24 + tmp25\n    tmp28 = tmp0 - tmp27\n    tmp29 = triton_helpers.maximum(tmp28, tmp3)\n    tmp30 = tmp29 * tmp29\n    tmp32 = tmp6 - tmp31\n    tmp33 = triton_helpers.maximum(tmp32, tmp3)\n    tmp34 = tmp33 * tmp33\n    tmp35 = tmp30 + tmp34\n    tmp37 = tmp12 - tmp36\n    tmp38 = triton_helpers.maximum(tmp37, tmp3)\n    tmp39 = tmp38 * tmp38\n    tmp40 = tmp35 + tmp39\n    tmp42 = tmp18 - tmp41\n    tmp43 = triton_helpers.maximum(tmp42, tmp3)\n    tmp44 = tmp43 * tmp43\n    tmp45 = tmp40 + tmp44\n    tmp46 = libdevice.sqrt(tmp45)\n    tmp47 = tmp26 - tmp46\n    tmp48 = 0.0\n    tmp49 = triton_helpers.maximum(tmp47, tmp48)\n    tmp50 = tl.broadcast_to(tmp49, [XBLOCK, RBLOCK])\n    tmp52 = tl.sum(tmp50, 1)[:, None]\n    tmp53 = 128.0\n    tmp54 = tmp52 / tmp53\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp54, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((), (), torch.float32)\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf2, arg1_1,\n            arg0_1, arg2_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.032067"
+        ],
+        "avg_differences": [
+          "0.032067"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 0.03206741809844971,
+            "avg_diff": 0.03206741809844971
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 0.03206741809844971,
+        "overall_avg_diff": 0.03206741809844971
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n    tmp12 = tl.broadcast_to(tmp11, [XBLOCK, RBLOCK])\n    tmp14 = tl.sum(tmp12, 1)[:, None]\n    tmp15 = 128.0\n    tmp16 = tmp14 / tmp15\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp16, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1, arg1_1,\n            arg2_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:12:\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = tmp2 * tmp2\n    tmp4 = 1e-16\n    tmp5 = tmp3 + tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = tmp7 * tmp7\n    tmp9 = tmp8 + tmp4\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n    tmp12 = 1.0\n    tmp13 = tmp11 - tmp12\n    tmp14 = tl.broadcast_to(tmp13, [XBLOCK, RBLOCK])\n    tmp16 = tl.sum(tmp14, 1)[:, None]\n    tmp17 = 128.0\n    tmp18 = tmp16 / tmp17\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp18, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1,\n            arg2_1, arg1_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:12:\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = tmp2 * tmp2\n    tmp4 = 1e-16\n    tmp5 = tmp3 + tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = tmp7 * tmp7\n    tmp9 = tmp8 + tmp4\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp0 - tmp6\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n    tmp12 = tl.broadcast_to(tmp11, [XBLOCK, RBLOCK])\n    tmp14 = tl.sum(tmp12, 1)[:, None]\n    tmp15 = 128.0\n    tmp16 = tmp14 / tmp15\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp16, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1,\n            arg2_1, arg1_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1\n            )\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:12:\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp0 - tmp6\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = tmp2 + tmp3\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp0 - tmp6\n    tmp8 = tmp7 + tmp3\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n    tmp12 = 1.0\n    tmp13 = tmp11 + tmp12\n    tmp14 = 0.0\n    tmp15 = triton_helpers.maximum(tmp13, tmp14)\n    tmp16 = tl.broadcast_to(tmp15, [XBLOCK, RBLOCK])\n    tmp18 = tl.sum(tmp16, 1)[:, None]\n    tmp19 = 128.0\n    tmp20 = tmp18 / tmp19\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp20, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1, arg1_1,\n            arg0_1, arg2_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:12:\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = tmp2 + tmp3\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp0 - tmp6\n    tmp8 = tmp7 + tmp3\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n    tmp12 = tl.broadcast_to(tmp11, [XBLOCK, RBLOCK])\n    tmp14 = tl.sum(tmp12, 1)[:, None]\n    tmp15 = 128.0\n    tmp16 = tmp14 / tmp15\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp16, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1, arg1_1,\n            arg0_1, arg2_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:12:\n    tmp0 = tl.load(in_ptr0 + r0, None)\n    tmp1 = tl.load(in_ptr1 + r0, None)\n    tmp6 = tl.load(in_ptr2 + r0, None)\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp6 - tmp1\n    tmp8 = triton_helpers.maximum(tmp7, tmp3)\n    tmp9 = tmp8 * tmp8\n    tmp10 = tmp5 + tmp9\n    tmp11 = libdevice.sqrt(tmp10)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr0 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp7 = tl.load(in_ptr1 + (1 + 4096 * r0), None, eviction_policy='evict_last'\n        )\n    tmp12 = tl.load(in_ptr0 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp13 = tl.load(in_ptr1 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp18 = tl.load(in_ptr0 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp19 = tl.load(in_ptr1 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp27 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp31 = tl.load(in_ptr2 + (1 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp36 = tl.load(in_ptr2 + (2 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp41 = tl.load(in_ptr2 + (3 + 4096 * r0), None, eviction_policy=\n        'evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp8 = tmp6 - tmp7\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp14 = tmp12 - tmp13\n    tmp15 = triton_helpers.maximum(tmp14, tmp3)\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp11 + tmp16\n    tmp20 = tmp18 - tmp19\n    tmp21 = triton_helpers.maximum(tmp20, tmp3)\n    tmp22 = tmp21 * tmp21\n    tmp23 = tmp17 + tmp22\n    tmp24 = libdevice.sqrt(tmp23)\n    tmp25 = 1.0\n    tmp26 = tmp24 + tmp25\n    tmp28 = tmp0 - tmp27\n    tmp29 = triton_helpers.maximum(tmp28, tmp3)\n    tmp30 = tmp29 * tmp29\n    tmp32 = tmp6 - tmp31\n    tmp33 = triton_helpers.maximum(tmp32, tmp3)\n    tmp34 = tmp33 * tmp33\n    tmp35 = tmp30 + tmp34\n    tmp37 = tmp12 - tmp36\n    tmp38 = triton_helpers.maximum(tmp37, tmp3)\n    tmp39 = tmp38 * tmp38\n    tmp40 = tmp35 + tmp39\n    tmp42 = tmp18 - tmp41\n    tmp43 = triton_helpers.maximum(tmp42, tmp3)\n    tmp44 = tmp43 * tmp43\n    tmp45 = tmp40 + tmp44\n    tmp46 = libdevice.sqrt(tmp45)\n    tmp47 = tmp26 - tmp46\n    tmp48 = 0.0\n    tmp49 = triton_helpers.maximum(tmp47, tmp48)\n    tmp50 = tl.broadcast_to(tmp49, [XBLOCK, RBLOCK])\n    tmp52 = tl.sum(tmp50, 1)[:, None]\n    tmp53 = 128.0\n    tmp54 = tmp52 / tmp53\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp54, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((), (), torch.float32)\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf2, arg2_1,\n            arg1_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 47:12:\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp14 = tmp12 - tmp13\n    tmp15 = triton_helpers.maximum(tmp14, tmp3)\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp11 + tmp16\n    tmp20 = tmp18 - tmp19\n    tmp21 = triton_helpers.maximum(tmp20, tmp3)\n    tmp22 = tmp21 * tmp21\n    tmp23 = tmp17 + tmp22\n    tmp24 = libdevice.sqrt(tmp23)\n            ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp5 * tmp6\n    tmp8 = libdevice.sqrt(tmp7)\n    tmp9 = tl.broadcast_to(tmp8, [XBLOCK, RBLOCK])\n    tmp11 = tl.sum(tmp9, 1)[:, None]\n    tmp12 = 128.0\n    tmp13 = tmp11 / tmp12\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp13, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1,\n            arg1_1, arg0_1, arg2_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1\n            )\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 18:11:\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr2 + 4096 * r0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp7 = tmp5 * tmp6\n    tmp8 = libdevice.sqrt(tmp7)\n           ^\nNameError('libdevice is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 1.0720614194869995,
+      "avg_diff": 1.0720614194869995,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_add_clamp_min_mean_norm_sub_0(in_out_ptr0, in_ptr0,\n    in_ptr1, in_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr):\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r0 = rindex\n    tmp0 = tl.load(in_ptr0 + 2 * r0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr1 + 2 * r0, None, eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr0 + (1 + 2 * r0), None, eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr1 + (1 + 2 * r0), None, eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr2 + 2 * r0, None, eviction_policy='evict_last')\n    tmp16 = tl.load(in_ptr2 + (1 + 2 * r0), None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp3 = 1e-06\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = tmp4 * tmp4\n    tmp8 = tmp6 - tmp7\n    tmp9 = triton_helpers.maximum(tmp8, tmp3)\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp5 + tmp10\n    tmp13 = tmp0 - tmp12\n    tmp14 = triton_helpers.maximum(tmp13, tmp3)\n    tmp15 = tmp14 * tmp14\n    tmp17 = tmp6 - tmp16\n    tmp18 = triton_helpers.maximum(tmp17, tmp3)\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp15 + tmp19\n    tmp21 = tmp11 - tmp20\n    tmp22 = 0.25\n    tmp23 = tmp21 * tmp22\n    tmp24 = tl.broadcast_to(tmp23, [XBLOCK, RBLOCK])\n    tmp26 = tl.sum(tmp24, 1)[:, None]\n    tmp27 = 128.0\n    tmp28 = tmp26 / tmp27\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp28, None)\n\n\ndef call(args):\n    arg0_1, arg1_1, arg2_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg1_1, (128, 4096), (4096, 1))\n    assert_size_stride(arg2_1, (128, 4096), (4096, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.float32)\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_per_fused_add_clamp_min_mean_norm_sub_0[grid(1)](buf1,\n            arg2_1, arg1_1, arg0_1, 1, 128, XBLOCK=1, num_warps=2, num_stages=1\n            )\n        del arg0_1\n        del arg1_1\n        del arg2_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that computes Triplet Margin Loss for metric learning tasks.\n\n    Parameters:\n        margin (float): The margin between the positive and negative samples.\n    \"\"\"\n    def __init__(self, margin=1.0):\n        super(ModelNew, self).__init__()\n        self.loss_fn = torch.nn.TripletMarginLoss(margin=margin)\n\n    def forward(self, input_0, input_1, input_2):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        arg2_1 = input_2\n        output = call([arg0_1, arg1_1, arg2_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "1.072061"
+        ],
+        "avg_differences": [
+          "1.072061"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 1.0720614194869995,
+            "avg_diff": 1.0720614194869995
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 1.0720614194869995,
+        "overall_avg_diff": 1.0720614194869995
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

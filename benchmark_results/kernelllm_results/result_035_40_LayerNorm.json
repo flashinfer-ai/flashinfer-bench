@@ -1,0 +1,404 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/40_LayerNorm.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 5.603532791137695,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_2, (256,), (1,))\n    assert_size_stride(primals_3, (256,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((1, 256, 256, 256), (2097152, 8192, 256, 1\n            ), torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_1, buf3,\n            256, 8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n        del primals_3\n    return reinterpret_tensor(buf3, (16, 64, 256, 256), (2097152, 32768, \n        256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_2 = self.ln.weight\n        primals_3 = self.ln.bias\n        primals_1 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_2, (256,), (1,))\n    assert_size_stride(primals_3, (256,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((64, 256, 256), (65536, 256, 1), torch.\n            float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_1, buf3,\n            256, 8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n        del primals_3\n    return reinterpret_tensor(buf3, (16, 64, 256, 256), (2097152, 32768, 256,\n        1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_2 = self.ln.weight\n        primals_3 = self.ln.bias\n        primals_1 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 64\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_2, (256,), (1,))\n    assert_size_stride(primals_3, (256,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((1, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(64)](primals_1, buf3,\n            primals_2, primals_3, 64, 8192, XBLOCK=1, RBLOCK=2048,\n            num_warps=16, num_stages=1)\n        del primals_2\n        del primals_3\n    return reinterpret_tensor(buf3, (16, 64, 256, 256), (2097152, 32768, \n        256, 1), 0), primals_1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_2 = self.ln.weight\n        primals_3 = self.ln.bias\n        primals_1 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr0, out_ptr1,\n    out_ptr2, xnumel, rnumel, XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 64\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, xmask)\n    tl.store(out_ptr1 + x0, tmp3, xmask)\n    tmp5 = 8192.0\n    tmp6 = tmp3 / tmp5\n    tmp7 = 1e-05\n    tmp8 = tmp6 + tmp7\n    tmp9 = libdevice.rsqrt(tmp8)\n    tl.store(out_ptr2 + x0, tmp9, xmask)\n\n\n@triton.jit\ndef triton_poi_fused_native_layer_norm_1(in_ptr0, in_ptr1, in_ptr2, in_ptr3,\n    in_ptr4, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x2 = xindex\n    x1 = xindex // 8192\n    tmp0 = tl.load(in_ptr0 + x2, None)\n    tmp1 = tl.load(in_ptr1 + x1, None, eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr2 + x1, None, eviction_policy='evict_last')\n    tmp10 = tl.load(in_ptr3 + x1, None, eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr4 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp4 = 8192.0\n    tmp5 = tmp3 / tmp4\n    tmp6 = 1e-05\n    tmp7 = tmp5 + tmp6\n    tmp8 = libdevice.rsqrt(tmp7)\n    tmp9 = tmp2 * tmp8\n    tmp11 = tmp9 * tmp10\n    tmp13 = tmp11 + tmp12\n    tl.store(out_ptr0 + x2, tmp13, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64,), (1,))\n    assert_size_stride(primals_2, (64,), (1,))\n    assert_size_stride(primals_3, (16, 64, 256, 256), (524288, 8192, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((1, 1024, 1, 1), (1024, 1, 1024, 1024),\n            torch.float32)\n        buf1 = empty_strided_cuda((1, 1024, 1, 1), (1024, 1, 1024, 1024),\n            torch.float32)\n        buf4 = empty_strided_cuda((1, 1024, 1, 1), (1024, 1, 1024, 1024),\n            torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(64)](primals_3, buf0, buf1,\n            buf4, 64, 8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        buf3 = empty_strided_cuda((16, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        triton_poi_fused_native_layer_norm_1[grid(8388608)](primals_3, buf0,\n            buf1, primals_1, primals_2, buf3, 8388608, XBLOCK=1024,\n            num_warps=4, num_stages=1)\n        del buf1\n        del primals_1\n        del primals_2\n    return buf3, primals_3, reinterpret_tensor(buf0, (1, 1024, 1, 1), (\n        1024, 1, 1, 1), 0), reinterpret_tensor(buf4, (1, 1024, 1, 1), (\n        1024, 1, 1, 1), 0)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, in_ptr1, in_ptr2,\n    out_ptr0, out_ptr2, out_ptr3, xnumel, rnumel, XBLOCK: tl.constexpr,\n    RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, xmask)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp13 = tl.load(in_ptr1 + r1, rmask, eviction_policy='evict_last',\n            other=0.0)\n        tmp15 = tl.load(in_ptr2 + r1, rmask, eviction_policy='evict_last',\n            other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tmp14 = tmp12 * tmp13\n        tmp16 = tmp14 + tmp15\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp16, rmask & xmask)\n    tmp17 = 8192.0\n    tmp18 = tmp3 / tmp17\n    tmp19 = 1e-05\n    tmp20 = tmp18 + tmp19\n    tmp21 = libdevice.rsqrt(tmp20)\n    tl.store(out_ptr3 + x0, tmp21, xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_2, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_3, (64, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((64, 256, 1), (256, 1, 1), torch.float32)\n        buf3 = empty_strided_cuda((64, 256, 256), (65536, 256, 1), torch.\n            float32)\n        buf4 = empty_strided_cuda((64, 256, 1), (256, 1, 1), torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_1, primals_2,\n            primals_3, buf0, buf3, buf4, 256, 8192, XBLOCK=1, RBLOCK=2048,\n            num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n        del primals_3\n    return reinterpret_tensor(buf3, (64, 256, 256), (65536, 1, 256), 0\n        ), reinterpret_tensor(buf0, (64, 256, 1), (256, 1, 1), 0\n        ), reinterpret_tensor(buf4, (64, 256, 1), (256, 1, 1), 0)\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_out_ptr0, in_ptr0, out_ptr0,\n    xnumel, rnumel, XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 64\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, xmask)\n    tmp5 = 8192.0\n    tmp6 = tmp3 / tmp5\n    tmp7 = 1e-05\n    tmp8 = tmp6 + tmp7\n    tmp9 = libdevice.rsqrt(tmp8)\n    tl.debug_barrier()\n    tl.store(in_out_ptr0 + x0, tmp9, xmask)\n\n\n@triton.jit\ndef triton_poi_fused_native_layer_norm_1(in_ptr0, in_ptr1, in_ptr2, in_ptr3,\n    in_ptr4, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x2 = xindex\n    x1 = xindex // 8192\n    x0 = xindex % 8192\n    tmp0 = tl.load(in_ptr0 + x2, None)\n    tmp1 = tl.load(in_ptr1 + x1, None, eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr2 + x1, None, eviction_policy='evict_last')\n    tmp5 = tl.load(in_ptr3 + x0, None, eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr4 + x0, None, eviction_policy='evict_last')\n    tmp2 = tmp0 - tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 + tmp7\n    tl.store(out_ptr0 + x2, tmp8, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64,), (1,))\n    assert_size_stride(primals_2, (64,), (1,))\n    assert_size_stride(primals_3, (16, 64, 256, 256), (524288, 8192, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((1, 64, 1, 1), (64, 1, 1, 1), torch.float32)\n        buf1 = empty_strided_cuda((1, 64, 1, 1), (64, 1, 64, 64), torch.float32\n            )\n        buf3 = reinterpret_tensor(buf1, (1, 64, 1, 1), (64, 1, 1, 1), 0)\n        del buf1\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(64)](buf3, primals_3, buf0,\n            64, 8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        buf4 = empty_strided_cuda((16, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        triton_poi_fused_native_layer_norm_1[grid(8388608)](primals_3, buf0,\n            buf3, primals_1, primals_2, buf4, 8388608, XBLOCK=1024,\n            num_warps=4, num_stages=1)\n        del primals_1\n        del primals_2\n    return buf4, primals_3, buf0, buf3\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64,), (1,))\n    assert_size_stride(primals_2, (64,), (1,))\n    assert_size_stride(primals_3, (16, 64, 256, 256), (524288, 8192, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((16, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_3, buf3, 256,\n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n    return buf3, primals_3\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 64\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64,), (1,))\n    assert_size_stride(primals_2, (64,), (1,))\n    assert_size_stride(primals_3, (16, 64, 256, 256), (524288, 8192, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((16, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(64)](primals_3, buf3, 64, \n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n    return buf3, primals_3\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64,), (1,))\n    assert_size_stride(primals_2, (64,), (1,))\n    assert_size_stride(primals_3, (16, 64, 256, 256), (524288, 8192, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((16, 64, 256, 256), (524288, 8192, 256, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_3, buf3, 256,\n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        del primals_2\n    return buf3, primals_3\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_native_layer_norm_0(in_ptr0, out_ptr2, xnumel, rnumel,\n    XBLOCK: tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 256\n    rnumel = 8192\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    tmp2_mean = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_m2 = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    tmp2_weight = tl.zeros([XBLOCK, RBLOCK], tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp2_mean_next, tmp2_m2_next, tmp2_weight_next = (triton_helpers.\n            welford_reduce(tmp1, tmp2_mean, tmp2_m2, tmp2_weight, roffset == 0)\n            )\n        tmp2_mean = tl.where(rmask & xmask, tmp2_mean_next, tmp2_mean)\n        tmp2_m2 = tl.where(rmask & xmask, tmp2_m2_next, tmp2_m2)\n        tmp2_weight = tl.where(rmask & xmask, tmp2_weight_next, tmp2_weight)\n    tmp2_tmp, tmp3_tmp, tmp4_tmp = triton_helpers.welford(tmp2_mean,\n        tmp2_m2, tmp2_weight, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tmp3 = tmp3_tmp[:, None]\n    tmp4_tmp[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp5 = tl.load(in_ptr0 + (r1 + 8192 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp6 = tmp5 - tmp2\n        tmp7 = 8192.0\n        tmp8 = tmp3 / tmp7\n        tmp9 = 1e-05\n        tmp10 = tmp8 + tmp9\n        tmp11 = libdevice.rsqrt(tmp10)\n        tmp12 = tmp6 * tmp11\n        tl.store(out_ptr2 + (r1 + 8192 * x0), tmp12, rmask & xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_2, (64, 256, 256), (65536, 256, 1))\n    assert_size_stride(primals_3, (64, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf3 = empty_strided_cuda((64, 256, 256), (65536, 256, 1), torch.\n            float32)\n        get_raw_stream(0)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_1, buf3, 256,\n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_1\n        buf4 = empty_strided_cuda((64, 256, 256), (65536, 256, 1), torch.\n            float32)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_3, buf4, 256,\n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_3\n        buf5 = empty_strided_cuda((64, 256, 256), (65536, 256, 1), torch.\n            float32)\n        triton_red_fused_native_layer_norm_0[grid(256)](primals_2, buf5, 256,\n            8192, XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del primals_2\n    return buf3, buf4, buf5\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Layer Normalization.\n    \"\"\"\n    def __init__(self, normalized_shape: tuple):\n        \"\"\"\n        Initializes the LayerNorm layer.\n\n        Args:\n            normalized_shape (tuple): Shape of the input tensor to be normalized.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.ln = nn.LayerNorm(normalized_shape=normalized_shape)\n\n    def forward(self, input_0):\n        primals_1 = self.ln.weight\n        primals_2 = self.ln.bias\n        primals_3 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "wrong number of dimensions",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

@@ -1,0 +1,814 @@
+{
+  "total_datapoints": 100,
+  "successful_datapoints": 31,
+  "failed_datapoints": 69,
+  "overall_success_rate": 0.31,
+  "avg_compilation_success_rate": 0.857,
+  "avg_correctness_success_rate": 0.175,
+  "avg_success_rate": 0.175,
+  "avg_speedup_across_successful": 0.7172589928765918,
+  "max_speedup_achieved": 4.804496967788981,
+  "num_datapoints_with_speedup": 31,
+  "datapoint_summaries": {
+    "100_HingeLoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.7046373946376818,
+      "max_speedup": 0.9560346494371197,
+      "total_generations": 10
+    },
+    "10_3D_tensor_matrix_multiplication.py": {
+      "compilation_success_rate": 0.4,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "11_4D_tensor_matrix_multiplication.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "12_Matmul_with_diagonal_matrices_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.9,
+      "success_rate": 0.9,
+      "avg_speedup": 0.9237171253957831,
+      "max_speedup": 0.9246180046454104,
+      "total_generations": 10
+    },
+    "13_Matmul_for_symmetric_matrices.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "14_Matmul_for_upper_triangular_matrices.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "15_Matmul_for_lower_triangular_matrices.py": {
+      "compilation_success_rate": 0.2,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "16_Matmul_with_transposed_A.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "17_Matmul_with_transposed_B.py": {
+      "compilation_success_rate": 0.1,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "18_Matmul_with_transposed_both.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "19_ReLU.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.24577050984452375,
+      "max_speedup": 0.35606059172021226,
+      "total_generations": 10
+    },
+    "1_Square_matrix_multiplication_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "20_LeakyReLU.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.26648779363259006,
+      "max_speedup": 0.36946702268372,
+      "total_generations": 10
+    },
+    "21_Sigmoid.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.2113234767172858,
+      "max_speedup": 0.31994181900615815,
+      "total_generations": 10
+    },
+    "22_Tanh.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.23580738750013866,
+      "max_speedup": 0.329896916717009,
+      "total_generations": 10
+    },
+    "23_Softmax.py": {
+      "compilation_success_rate": 0.1,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "24_LogSoftmax.py": {
+      "compilation_success_rate": 0.1,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "25_Swish.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.3825400067033685,
+      "max_speedup": 0.5323523906010035,
+      "total_generations": 10
+    },
+    "26_GELU_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.23731918840592017,
+      "max_speedup": 0.33872768359839767,
+      "total_generations": 10
+    },
+    "27_SELU_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.25264523827615204,
+      "max_speedup": 0.36694784745486564,
+      "total_generations": 10
+    },
+    "28_HardSigmoid.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.2800082329952835,
+      "max_speedup": 0.3860209502150493,
+      "total_generations": 10
+    },
+    "29_Softplus.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.23393189613162785,
+      "max_speedup": 0.33333334055154534,
+      "total_generations": 10
+    },
+    "2_Standard_matrix_multiplication_.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "30_Softsign.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.5632609125178425,
+      "max_speedup": 0.800465860123017,
+      "total_generations": 10
+    },
+    "31_ELU.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.2940939576022732,
+      "max_speedup": 0.38138477231269363,
+      "total_generations": 10
+    },
+    "32_HardTanh.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 0.29770100488502343,
+      "max_speedup": 0.4058666365994359,
+      "total_generations": 10
+    },
+    "33_BatchNorm.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "34_InstanceNorm.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "35_GroupNorm_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "36_RMSNorm_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "37_FrobeniusNorm_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "38_L1Norm_.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "39_L2Norm_.py": {
+      "compilation_success_rate": 0.2,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 0.5455314206824373,
+      "max_speedup": 0.5455314206824373,
+      "total_generations": 10
+    },
+    "3_Batched_matrix_multiplication.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "40_LayerNorm.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "41_Max_Pooling_1D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "42_Max_Pooling_2D.py": {
+      "compilation_success_rate": 0.2,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "43_Max_Pooling_3D.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "44_Average_Pooling_1D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.4,
+      "success_rate": 0.4,
+      "avg_speedup": 0.34195055888523224,
+      "max_speedup": 0.46254184733648396,
+      "total_generations": 10
+    },
+    "45_Average_Pooling_2D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "46_Average_Pooling_3D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "47_Sum_reduction_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "48_Mean_reduction_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 0.6868878678016247,
+      "max_speedup": 0.6868878678016247,
+      "total_generations": 10
+    },
+    "49_Max_reduction_over_a_dimension.py": {
+      "compilation_success_rate": 0.7,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 1.0216346681245447,
+      "max_speedup": 1.0216346681245447,
+      "total_generations": 10
+    },
+    "4_Matrix_vector_multiplication_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "50_Product_reduction_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "51_Argmax_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "52_Argmin_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "53_Min_reduction_over_a_dimension.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "54_conv_standard_3D__square_input__square_kernel.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 0.9960721757483723,
+      "max_speedup": 0.9960721757483723,
+      "total_generations": 10
+    },
+    "55_conv_standard_2D__asymmetric_input__square_kernel.py": {
+      "compilation_success_rate": 0.1,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "56_conv_standard_2D__asymmetric_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.1,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "57_conv_transposed_2D__square_input__square_kernel.py": {
+      "compilation_success_rate": 0.7,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 0.994799014867695,
+      "max_speedup": 0.994799014867695,
+      "total_generations": 10
+    },
+    "58_conv_transposed_3D__asymmetric_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.2,
+      "success_rate": 0.2,
+      "avg_speedup": 1.0033694642715147,
+      "max_speedup": 1.0045405705519739,
+      "total_generations": 10
+    },
+    "59_conv_standard_3D__asymmetric_input__square_kernel.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "5_Matrix_scalar_multiplication.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "60_conv_standard_3D__square_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.5,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "61_conv_transposed_3D__square_input__square_kernel.py": {
+      "compilation_success_rate": 0.2,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "62_conv_standard_2D__square_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.7,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "63_conv_standard_2D__square_input__square_kernel.py": {
+      "compilation_success_rate": 0.7,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 1.0148340485869616,
+      "max_speedup": 1.0148340485869616,
+      "total_generations": 10
+    },
+    "64_conv_transposed_1D.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.2,
+      "success_rate": 0.2,
+      "avg_speedup": 0.6134041143480481,
+      "max_speedup": 0.6621185442701699,
+      "total_generations": 10
+    },
+    "65_conv_transposed_2D__square_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.2,
+      "success_rate": 0.2,
+      "avg_speedup": 0.9993338893626831,
+      "max_speedup": 0.9993441648282174,
+      "total_generations": 10
+    },
+    "66_conv_standard_3D__asymmetric_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.5,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "67_conv_standard_1D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "68_conv_transposed_3D__square_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.7,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "69_conv_transposed_2D__asymmetric_input__asymmetric_kernel.py": {
+      "compilation_success_rate": 0.5,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "6_Matmul_with_large_K_dimension_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "70_conv_transposed_3D__asymmetric_input__square_kernel.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "71_conv_transposed_2D__asymmetric_input__square_kernel.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "72_conv_transposed_3D_asymmetric_input_asymmetric_kernel___strided_padded_grouped_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 1.001630516584459,
+      "max_speedup": 1.001630516584459,
+      "total_generations": 10
+    },
+    "73_conv_transposed_3D_asymmetric_input_square_kernel__strided_padded__grouped.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 0.9947629452863676,
+      "max_speedup": 0.9947629452863676,
+      "total_generations": 10
+    },
+    "74_conv_transposed_1D_dilated.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "75_conv_transposed_2D_asymmetric_input_asymmetric_kernel_strided__grouped____padded____dilated__.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "76_conv_standard_1D_dilated_strided__.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 1.1190944721745624,
+      "max_speedup": 1.1190944721745624,
+      "total_generations": 10
+    },
+    "77_conv_transposed_3D_square_input_square_kernel___padded____dilated____strided__.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.1,
+      "success_rate": 0.1,
+      "avg_speedup": 1.0002984976629568,
+      "max_speedup": 1.0002984976629568,
+      "total_generations": 10
+    },
+    "78_conv_transposed_2D_asymmetric_input_asymmetric_kernel___padded__.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "79_conv_transposed_1D_asymmetric_input_square_kernel___padded____strided____dilated__.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "7_Matmul_with_small_K_dimension_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "80_conv_standard_2D_square_input_asymmetric_kernel___dilated____padded__.py": {
+      "compilation_success_rate": 0.8,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "81_conv_transposed_2D_asymmetric_input_square_kernel___dilated____padded____strided__.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "82_conv_depthwise_2D_square_input_square_kernel.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "83_conv_depthwise_2D_square_input_asymmetric_kernel.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "84_conv_depthwise_2D_asymmetric_input_square_kernel.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "85_conv_depthwise_2D_asymmetric_input_asymmetric_kernel.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "86_conv_depthwise_separable_2D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "87_conv_pointwise_2D.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "88_MinGPTNewGelu.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 1.0,
+      "success_rate": 1.0,
+      "avg_speedup": 3.4414206633331625,
+      "max_speedup": 4.804496967788981,
+      "total_generations": 10
+    },
+    "89_cumsum.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.4,
+      "success_rate": 0.4,
+      "avg_speedup": 0.642475899700099,
+      "max_speedup": 0.9667352409848992,
+      "total_generations": 10
+    },
+    "8_Matmul_with_irregular_shapes_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "90_cumprod.py": {
+      "compilation_success_rate": 0.5,
+      "correctness_success_rate": 0.2,
+      "success_rate": 0.2,
+      "avg_speedup": 0.688284436508132,
+      "max_speedup": 0.8783714446027847,
+      "total_generations": 10
+    },
+    "91_cumsum_reverse.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "92_cumsum_exclusive.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "93_masked_cumsum.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "94_MSELoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "95_CrossEntropyLoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "96_HuberLoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "97_CosineSimilarityLoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "98_KLDivLoss.py": {
+      "compilation_success_rate": 0.9,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "99_TripletMarginLoss.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    },
+    "9_Tall_skinny_matrix_multiplication_.py": {
+      "compilation_success_rate": 1.0,
+      "correctness_success_rate": 0.0,
+      "success_rate": 0.0,
+      "avg_speedup": 0.0,
+      "max_speedup": 0.0,
+      "total_generations": 10
+    }
+  }
+}

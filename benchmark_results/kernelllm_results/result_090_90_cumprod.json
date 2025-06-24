@@ -1,0 +1,334 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/90_cumprod.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.016361600160598753,
+  "success_rate": 0.2,
+  "avg_speedup": 0.688284436508132,
+  "max_speedup": 0.8783714446027847,
+  "compilation_success_rate": 0.5,
+  "correctness_success_rate": 0.2,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 0.45130398869514465,
+      "avg_diff": 3.3207511478394736e-06,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 32\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask, other=1.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_mul)\n    tl.store(out_ptr0 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumprod_0[grid(128)](arg0_1, buf0, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.451304"
+        ],
+        "avg_differences": [
+          "0.000003"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 0.45130398869514465,
+            "avg_diff": 3.3207511478394736e-06
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 0.45130398869514465,
+        "overall_avg_diff": 3.3207511478394736e-06
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + 4000 * x0, rmask & xmask, eviction_policy=\n        'evict_last', other=0.0)\n    tmp2 = tl.load(in_ptr0 + (1 + 4000 * x0), rmask & xmask, eviction_policy\n        ='evict_last', other=0.0)\n    tmp3 = tmp1 * tmp2\n    tmp4 = tl.load(in_ptr0 + (2 + 4000 * x0), rmask & xmask, eviction_policy\n        ='evict_last', other=0.0)\n    tmp5 = tmp3 * tmp4\n    tmp6 = tl.load(in_ptr0 + (3 + 4000 * x0), rmask & xmask, eviction_policy\n        ='evict_last', other=0.0)\n    tmp7 = tmp5 * tmp6\n    tmp8 = tl.load(in_ptr0 + (4 + 4000 * x0), rmask & xmask, eviction_policy\n        ='evict_last', other=0.0)\n    tmp9 = tmp7 * tmp8\n    tmp10 = tl.load(in_ptr0 + (5 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp11 = tmp9 * tmp10\n    tmp12 = tl.load(in_ptr0 + (6 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp13 = tmp11 * tmp12\n    tmp14 = tl.load(in_ptr0 + (7 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp15 = tmp13 * tmp14\n    tmp16 = tl.load(in_ptr0 + (8 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp17 = tmp15 * tmp16\n    tmp18 = tl.load(in_ptr0 + (9 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp19 = tmp17 * tmp18\n    tmp20 = tl.load(in_ptr0 + (10 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp21 = tmp19 * tmp20\n    tmp22 = tl.load(in_ptr0 + (11 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp23 = tmp21 * tmp22\n    tmp24 = tl.load(in_ptr0 + (12 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp25 = tmp23 * tmp24\n    tmp26 = tl.load(in_ptr0 + (13 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp27 = tmp25 * tmp26\n    tmp28 = tl.load(in_ptr0 + (14 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp29 = tmp27 * tmp28\n    tmp30 = tl.load(in_ptr0 + (15 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp31 = tmp29 * tmp30\n    tmp32 = tl.load(in_ptr0 + (16 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp33 = tmp31 * tmp32\n    tmp34 = tl.load(in_ptr0 + (17 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp35 = tmp33 * tmp34\n    tmp36 = tl.load(in_ptr0 + (18 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp37 = tmp35 * tmp36\n    tmp38 = tl.load(in_ptr0 + (19 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp39 = tmp37 * tmp38\n    tmp40 = tl.load(in_ptr0 + (20 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp41 = tmp39 * tmp40\n    tmp42 = tl.load(in_ptr0 + (21 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp43 = tmp41 * tmp42\n    tmp44 = tl.load(in_ptr0 + (22 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp45 = tmp43 * tmp44\n    tmp46 = tl.load(in_ptr0 + (23 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp47 = tmp45 * tmp46\n    tmp48 = tl.load(in_ptr0 + (24 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp49 = tmp47 * tmp48\n    tmp50 = tl.load(in_ptr0 + (25 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp51 = tmp49 * tmp50\n    tmp52 = tl.load(in_ptr0 + (26 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp53 = tmp51 * tmp52\n    tmp54 = tl.load(in_ptr0 + (27 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp55 = tmp53 * tmp54\n    tmp56 = tl.load(in_ptr0 + (28 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp57 = tmp55 * tmp56\n    tmp58 = tl.load(in_ptr0 + (29 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp59 = tmp57 * tmp58\n    tmp60 = tl.load(in_ptr0 + (30 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp61 = tmp59 * tmp60\n    tmp62 = tl.load(in_ptr0 + (31 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp63 = tmp61 * tmp62\n    tmp64 = tl.load(in_ptr0 + (32 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp65 = tmp63 * tmp64\n    tmp66 = tl.load(in_ptr0 + (33 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp67 = tmp65 * tmp66\n    tmp68 = tl.load(in_ptr0 + (34 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last',",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "'(' was never closed (tmpdzq5g_xv.py, line 133)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 9.5367431640625e-07,
+      "avg_diff": 1.9208645091195464e-11,
+      "runtime": 0.0186271995306015,
+      "speedup": 0.8783714446027847,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 32\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask, other=1.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_mul)\n    tl.store(out_ptr0 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumprod_0[grid(128)](arg0_1, buf0, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000001"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 9.5367431640625e-07,
+            "avg_diff": 1.9208645091195464e-11
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 9.5367431640625e-07,
+        "overall_avg_diff": 1.9208645091195464e-11
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xnumel = 25600\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x0 = xindex % 4000\n    x1 = xindex // 4000\n    tmp0 = tl.load(in_ptr0 + (x0 + 4000 * (x1 // 2))\n    tl.store(out_ptr0 + (x0 + 4000 * x1), tmp0, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_cumprod_0[grid(25600)](arg0_1, buf0, 25600, XBLOCK=\n            128, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "'(' was never closed (tmpnk55h5t3.py, line 19)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 10.19146728515625,
+      "avg_diff": 0.00020622021111194044,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask, other=1.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_mul)\n    tl.store(out_ptr0 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumprod_0[grid(128)](arg0_1, buf0, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "10.191467"
+        ],
+        "avg_differences": [
+          "0.000206"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 10.19146728515625,
+            "avg_diff": 0.00020622021111194044
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 10.19146728515625,
+        "overall_avg_diff": 0.00020622021111194044
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xnumel = 51200\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x0 = xindex % 4000\n    x1 = xindex // 4000\n    tmp0 = tl.load(in_ptr0 + (x0 + 4000 * (x1 // 2))\n    tl.store(out_ptr0 + (x0 + 4000 * x1), tmp0, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_cumprod_0[grid(51200)](arg0_1, buf0, 51200, XBLOCK=\n            256, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "'(' was never closed (tmpg7mwtx8y.py, line 19)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (1 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 * tmp1\n    tmp3 = tl.load(in_ptr0 + (2 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp4 = tmp2 * tmp3\n    tmp5 = tl.load(in_ptr0 + (3 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp6 = tmp4 * tmp5\n    tmp7 = tl.load(in_ptr0 + (4 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp8 = tmp6 * tmp7\n    tmp9 = tl.load(in_ptr0 + (5 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp10 = tmp8 * tmp9\n    tmp11 = tl.load(in_ptr0 + (6 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp12 = tmp10 * tmp11\n    tmp13 = tl.load(in_ptr0 + (7 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp14 = tmp12 * tmp13\n    tmp15 = tl.load(in_ptr0 + (8 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp16 = tmp14 * tmp15\n    tmp17 = tl.load(in_ptr0 + (9 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp18 = tmp16 * tmp17\n    tmp19 = tl.load(in_ptr0 + (10 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp20 = tmp18 * tmp19\n    tmp21 = tl.load(in_ptr0 + (11 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp22 = tmp20 * tmp21\n    tmp23 = tl.load(in_ptr0 + (12 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp24 = tmp22 * tmp23\n    tmp25 = tl.load(in_ptr0 + (13 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp26 = tmp24 * tmp25\n    tmp27 = tl.load(in_ptr0 + (14 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp28 = tmp26 * tmp27\n    tmp29 = tl.load(in_ptr0 + (15 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp30 = tmp28 * tmp29\n    tmp31 = tl.load(in_ptr0 + (16 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp32 = tmp30 * tmp31\n    tmp33 = tl.load(in_ptr0 + (17 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp34 = tmp32 * tmp33\n    tmp35 = tl.load(in_ptr0 + (18 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp36 = tmp34 * tmp35\n    tmp37 = tl.load(in_ptr0 + (19 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp38 = tmp36 * tmp37\n    tmp39 = tl.load(in_ptr0 + (20 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp40 = tmp38 * tmp39\n    tmp41 = tl.load(in_ptr0 + (21 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp42 = tmp40 * tmp41\n    tmp43 = tl.load(in_ptr0 + (22 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp44 = tmp42 * tmp43\n    tmp45 = tl.load(in_ptr0 + (23 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp46 = tmp44 * tmp45\n    tmp47 = tl.load(in_ptr0 + (24 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp48 = tmp46 * tmp47\n    tmp49 = tl.load(in_ptr0 + (25 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp50 = tmp48 * tmp49\n    tmp51 = tl.load(in_ptr0 + (26 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp52 = tmp50 * tmp51\n    tmp53 = tl.load(in_ptr0 + (27 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp54 = tmp52 * tmp53\n    tmp55 = tl.load(in_ptr0 + (28 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp56 = tmp54 * tmp55\n    tmp57 = tl.load(in_ptr0 + (29 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp58 = tmp56 * tmp57\n    tmp59 = tl.load(in_ptr0 + (30 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp60 = tmp58 * tmp59\n    tmp61 = tl.load(in_ptr0 + (31 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp62 = tmp60 * tmp61\n    tmp63 = tl.load(in_ptr0 + (32 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp64 = tmp62 * tmp63\n    tmp65 = tl.load(in_ptr0 + (33 + r1 + 4000 * x0), rmask & xmask,\n       ",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "'(' was never closed (tmpu9wzfvsy.py, line 128)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (1 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 * tmp1\n    tmp3 = tl.load(in_ptr0 + (2 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp4 = tmp2 * tmp3\n    tmp5 = tl.load(in_ptr0 + (3 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp6 = tmp4 * tmp5\n    tmp7 = tl.load(in_ptr0 + (4 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp8 = tmp6 * tmp7\n    tmp9 = tl.load(in_ptr0 + (5 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp10 = tmp8 * tmp9\n    tmp11 = tl.load(in_ptr0 + (6 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp12 = tmp10 * tmp11\n    tmp13 = tl.load(in_ptr0 + (7 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp14 = tmp12 * tmp13\n    tmp15 = tl.load(in_ptr0 + (8 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp16 = tmp14 * tmp15\n    tmp17 = tl.load(in_ptr0 + (9 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp18 = tmp16 * tmp17\n    tmp19 = tl.load(in_ptr0 + (10 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp20 = tmp18 * tmp19\n    tmp21 = tl.load(in_ptr0 + (11 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp22 = tmp20 * tmp21\n    tmp23 = tl.load(in_ptr0 + (12 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp24 = tmp22 * tmp23\n    tmp25 = tl.load(in_ptr0 + (13 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp26 = tmp24 * tmp25\n    tmp27 = tl.load(in_ptr0 + (14 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp28 = tmp26 * tmp27\n    tmp29 = tl.load(in_ptr0 + (15 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp30 = tmp28 * tmp29\n    tmp31 = tl.load(in_ptr0 + (16 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp32 = tmp30 * tmp31\n    tmp33 = tl.load(in_ptr0 + (17 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp34 = tmp32 * tmp33\n    tmp35 = tl.load(in_ptr0 + (18 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp36 = tmp34 * tmp35\n    tmp37 = tl.load(in_ptr0 + (19 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp38 = tmp36 * tmp37\n    tmp39 = tl.load(in_ptr0 + (20 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp40 = tmp38 * tmp39\n    tmp41 = tl.load(in_ptr0 + (21 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp42 = tmp40 * tmp41\n    tmp43 = tl.load(in_ptr0 + (22 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp44 = tmp42 * tmp43\n    tmp45 = tl.load(in_ptr0 + (23 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp46 = tmp44 * tmp45\n    tmp47 = tl.load(in_ptr0 + (24 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp48 = tmp46 * tmp47\n    tmp49 = tl.load(in_ptr0 + (25 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp50 = tmp48 * tmp49\n    tmp51 = tl.load(in_ptr0 + (26 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp52 = tmp50 * tmp51\n    tmp53 = tl.load(in_ptr0 + (27 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp54 = tmp52 * tmp53\n    tmp55 = tl.load(in_ptr0 + (28 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp56 = tmp54 * tmp55\n    tmp57 = tl.load(in_ptr0 + (29 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp58 = tmp56 * tmp57\n    tmp59 = tl.load(in_ptr0 + (30 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp60 = tmp58 * tmp59\n    tmp61 = tl.load(in_ptr0 + (31 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp62 = tmp60 * tmp61\n    tmp63 = tl.load(in_ptr0 + (32 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp64 = tmp62 * tmp63\n    tmp65 = tl.load(in_ptr0 + (33 + r1 + 4000 * x0), rmask & xmask,\n       ",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "'(' was never closed (tmp59o5k2s8.py, line 128)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 9.5367431640625e-07,
+      "avg_diff": 1.9208645091195464e-11,
+      "runtime": 0.032841598987579344,
+      "speedup": 0.49819742841347925,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_mul(arg0_0, arg1_0):\n    tmp0 = arg0_0 * arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 32\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask, other=1.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_mul)\n    tl.store(out_ptr0 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumprod_0[grid(128)](arg0_1, buf0, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000001"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 9.5367431640625e-07,
+            "avg_diff": 1.9208645091195464e-11
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 9.5367431640625e-07,
+        "overall_avg_diff": 1.9208645091195464e-11
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 10.875619888305664,
+      "avg_diff": 0.003197986865416169,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumprod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (1 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 * tmp1\n    tmp3 = tl.broadcast_to(tmp2, [XBLOCK, RBLOCK])\n    tmp4, = tl.associative_scan((tmp3,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr0 + (r1 + 4000 * x0), tmp4, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumprod_0[grid(128)](arg0_1, buf0, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a cumulative product operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the cumulative product operation.\n    \"\"\"\n\n    def __init__(self, dim):\n        \"\"\"\n        Initialize the CumulativeProductModel.\n\n        Args:\n            dim (int): The dimension along which to perform the cumulative product.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "10.875620"
+        ],
+        "avg_differences": [
+          "0.003198"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 10.875619888305664,
+            "avg_diff": 0.003197986865416169
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 10.875619888305664,
+        "overall_avg_diff": 0.003197986865416169
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

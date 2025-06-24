@@ -1,0 +1,464 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/28_HardSigmoid.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.006963200122117996,
+  "success_rate": 1.0,
+  "avg_speedup": 0.2800082329952835,
+  "max_speedup": 0.3860209502150493,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 1.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.020479999482631683,
+      "speedup": 0.3400000145519156,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.018038399517536163,
+      "speedup": 0.3860209502150493,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.01916159987449646,
+      "speedup": 0.36339346232700626,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.018313600122928618,
+      "speedup": 0.3802201683654801,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.030953601002693176,
+      "speedup": 0.22495605992699041,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.03266560137271881,
+      "speedup": 0.2131661389810941,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.031062400341033934,
+      "speedup": 0.2241681275648069,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.03027839958667755,
+      "speedup": 0.22997252883807615,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.030953601002693176,
+      "speedup": 0.22495605992699041,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.032655999064445496,
+      "speedup": 0.2132288192554256,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_hardsigmoid_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.\n    constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = 3.0\n    tmp2 = tmp0 + tmp1\n    tmp3 = 0.0\n    tmp4 = triton_helpers.maximum(tmp2, tmp3)\n    tmp5 = 6.0\n    tmp6 = triton_helpers.minimum(tmp4, tmp5)\n    tmp7 = 0.16666666666666666\n    tmp8 = tmp6 * tmp7\n    tl.store(out_ptr0 + x0, tmp8, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_hardsigmoid_0[grid(262144)](arg0_1, buf0, 262144,\n            XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a HardSigmoid activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

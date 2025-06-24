@@ -1,0 +1,384 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/43_Max_Pooling_3D.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.7217152118682861,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 0.9,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_out_ptr0, xnumel, XBLOCK:\n    tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tl.store(in_out_ptr0 + x3, tmp0, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf0 = buf0[0]\n        del buf0\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(134217728)](buf2, \n            134217728, XBLOCK=512, num_warps=8, num_stages=1)\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int'=None, padding: 'int'\n        =0, dilation: 'int'=1, return_indices: 'bool'=False, ceil_mode:\n        'bool'=False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "cannot access local variable 'buf1' where it is not associated with a value",
+            "error_type": "UnboundLocalError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_out_ptr0, xnumel, XBLOCK:\n    tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tl.store(in_out_ptr0 + x3, tmp0, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf0 = buf0[0]\n        del buf0\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(131072)](buf2, \n            131072, XBLOCK=512, num_warps=8, num_stages=1)\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "cannot access local variable 'buf1' where it is not associated with a value",
+            "error_type": "UnboundLocalError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_ptr0 + (2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr0 + (64 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp5 = tl.load(in_ptr0 + (65 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr0 + (4096 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (4097 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp11 = tl.load(in_ptr0 + (4160 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp13 = tl.load(in_ptr0 + (4161 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (8192 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp17 = tl.load(in_ptr0 + (8193 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp19 = tl.load(in_ptr0 + (8256 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp21 = tl.load(in_ptr0 + (8257 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp23 = tl.load(in_ptr0 + (12288 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp25 = tl.load(in_ptr0 + (12289 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp27 = tl.load(in_ptr0 + (12352 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp29 = tl.load(in_ptr0 + (12353 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tmp4 = triton_helpers.maximum(tmp3, tmp2)\n    tmp6 = triton_helpers.maximum(tmp5, tmp4)\n    tmp8 = triton_helpers.maximum(tmp7, tmp6)\n    tmp10 = triton_helpers.maximum(tmp9, tmp8)\n    tmp12 = triton_helpers.maximum(tmp11, tmp10)\n    tmp14 = triton_helpers.maximum(tmp13, tmp12)\n    tmp16 = triton_helpers.maximum(tmp15, tmp14)\n    tmp18 = triton_helpers.maximum(tmp17, tmp16)\n    tmp20 = triton_helpers.maximum(tmp19, tmp18)\n    tmp22 = triton_helpers.maximum(tmp21, tmp20)\n    tmp24 = triton_helpers.maximum(tmp23, tmp22)\n    tmp26 = triton_helpers.maximum(tmp25, tmp24)\n    tmp28 = triton_helpers.maximum(tmp27, tmp26)\n    tmp30 = triton_helpers.maximum(tmp29, tmp28)\n    tl.store(out_ptr0 + x3, tmp30, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf1 = buf0[0]\n        del buf0\n        buf2 = empty_strided_cuda((16, 32, 32, 32, 32), (1048576, 32768, \n            1024, 32, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(16777216)](buf1,\n            buf2, 16777216, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf1\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "name 'empty_strided_cuda' is not defined",
+            "error_type": "NameError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": false,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_out_ptr0, xnumel, XBLOCK:\n    tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tl.store(in_out_ptr0 + x3, tmp0, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf0 = buf0[0]\n        del buf0\n        buf2 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(134217728)](buf2, \n            134217728, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf2\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, x: 'torch.Tensor') ->torch.Tensor:\n        \"\"\"\n        Applies Max Pooling 3D to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, channels, dim1, dim2, dim3).\n\n        Returns:\n            torch.Tensor: Output tensor with Max Pooling 3D applied.\n        \"\"\"\n        return self.maxpool(x)\n\n\ndef get_inputs():\n    return [torch.randn(16, 32, 64, 64, 64)]\n\n\ndef get_init_inputs():\n    return [[3, 2, 1, 3], {}]\n\n```\n\nOptimize the architecture named Model with custom Triton kernels! Name your optimized output architecture ModelNew. Output the new code in codeblocks. Please generate real code, NOT pseudocode, make sure the code compiles and is fully functional. Just output the new model code, no other text, and NO testing code!",
+      "ncu_results": {},
+      "metadata": {
+        "compilation_error_name": "SyntaxError"
+      },
+      "compilation_error": "invalid syntax (tmp88szsnrd.py, line 90)",
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_out_ptr0, xnumel, XBLOCK:\n    tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tl.store(in_out_ptr0 + x3, tmp0, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf0 = buf0[0]\n        del buf0\n        buf2 = buf1\n        del buf1\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(134217728)](buf2, \n            134217728, XBLOCK=512, num_warps=8, num_stages=1)\n    return buf2,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "cannot access local variable 'buf1' where it is not associated with a value",
+            "error_type": "UnboundLocalError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + 2 * x0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 2 * x0), None, eviction_policy='evict_last')\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tmp3 = tl.load(in_ptr0 + (2 + 2 * x0), None, eviction_policy='evict_last')\n    tmp4 = triton_helpers.maximum(tmp3, tmp2)\n    tmp5 = tl.load(in_ptr0 + (32 + 2 * x0), None, eviction_policy='evict_last')\n    tmp6 = triton_helpers.maximum(tmp5, tmp4)\n    tmp7 = tl.load(in_ptr0 + (33 + 2 * x0), None, eviction_policy='evict_last')\n    tmp8 = triton_helpers.maximum(tmp7, tmp6)\n    tmp9 = tl.load(in_ptr0 + (34 + 2 * x0), None, eviction_policy='evict_last')\n    tmp10 = triton_helpers.maximum(tmp9, tmp8)\n    tmp11 = tl.load(in_ptr0 + (64 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp12 = triton_helpers.maximum(tmp11, tmp10)\n    tmp13 = tl.load(in_ptr0 + (65 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp14 = triton_helpers.maximum(tmp13, tmp12)\n    tmp15 = tl.load(in_ptr0 + (66 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp16 = triton_helpers.maximum(tmp15, tmp14)\n    tmp17 = tl.load(in_ptr0 + (96 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp18 = triton_helpers.maximum(tmp17, tmp16)\n    tmp19 = tl.load(in_ptr0 + (97 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp20 = triton_helpers.maximum(tmp19, tmp18)\n    tmp21 = tl.load(in_ptr0 + (98 + 2 * x0), None, eviction_policy='evict_last'\n        )\n    tmp22 = triton_helpers.maximum(tmp21, tmp20)\n    tmp23 = tl.load(in_ptr0 + (128 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp24 = triton_helpers.maximum(tmp23, tmp22)\n    tmp25 = tl.load(in_ptr0 + (129 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp26 = triton_helpers.maximum(tmp25, tmp24)\n    tmp27 = tl.load(in_ptr0 + (130 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp28 = triton_helpers.maximum(tmp27, tmp26)\n    tmp29 = tl.load(in_ptr0 + (131 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp30 = triton_helpers.maximum(tmp29, tmp28)\n    tmp31 = tl.load(in_ptr0 + (192 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp32 = triton_helpers.maximum(tmp31, tmp30)\n    tmp33 = tl.load(in_ptr0 + (193 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp34 = triton_helpers.maximum(tmp33, tmp32)\n    tmp35 = tl.load(in_ptr0 + (194 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp36 = triton_helpers.maximum(tmp35, tmp34)\n    tmp37 = tl.load(in_ptr0 + (195 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp38 = triton_helpers.maximum(tmp37, tmp36)\n    tmp39 = tl.load(in_ptr0 + (196 + 2 * x0), None, eviction_policy=\n        'evict_last')\n    tmp40 = triton_helpers.maximum(tmp39, tmp38)\n    tl.store(out_ptr0 + x0, tmp40, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf1 = buf0[0]\n        del buf0\n        buf3 = empty_strided_cuda((16, 32, 32, 32, 32), (1048576, 32768, \n            1024, 32, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(16777216)](buf1,\n            buf3, 16777216, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf1\n    return buf3,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int'=None, padding: 'int'\n        =0, dilation: 'int'=1, return_indices: 'bool'=False, ceil_mode:\n        'bool'=False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "name 'empty_strided_cuda' is not defined",
+            "error_type": "NameError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + 8 * x0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 8 * x0), None, eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr0 + (2 + 8 * x0), None, eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (3 + 8 * x0), None, eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (4 + 8 * x0), None, eviction_policy='evict_last')\n    tmp23 = tl.load(in_ptr0 + (5 + 8 * x0), None, eviction_policy='evict_last')\n    tmp29 = tl.load(in_ptr0 + (6 + 8 * x0), None, eviction_policy='evict_last')\n    tmp34 = tl.load(in_ptr0 + (7 + 8 * x0), None, eviction_policy='evict_last')\n    tmp2 = tmp1 > tmp0\n    tmp3 = tl.full([1], 1, tl.int8)\n    tmp4 = tl.full([1], 0, tl.int8)\n    tmp5 = tl.where(tmp2, tmp3, tmp4)\n    tmp6 = triton_helpers.maximum(tmp1, tmp0)\n    tmp8 = tmp7 > tmp6\n    tmp9 = tl.full([1], 2, tl.int8)\n    tmp10 = tl.where(tmp8, tmp9, tmp5)\n    tmp11 = triton_helpers.maximum(tmp7, tmp6)\n    tmp13 = tmp12 > tmp11\n    tmp14 = tl.full([1], 3, tl.int8)\n    tmp15 = tl.where(tmp13, tmp14, tmp10)\n    tmp16 = triton_helpers.maximum(tmp12, tmp11)\n    tmp17 = triton_helpers.maximum(tmp16, tmp16)\n    tmp19 = tmp18 > tmp17\n    tmp20 = tl.full([1], 4, tl.int8)\n    tmp21 = tl.where(tmp19, tmp20, tmp15)\n    tmp22 = triton_helpers.maximum(tmp18, tmp17)\n    tmp24 = tmp23 > tmp22\n    tmp25 = tl.full([1], 5, tl.int8)\n    tmp26 = tl.where(tmp24, tmp25, tmp21)\n    tmp27 = triton_helpers.maximum(tmp23, tmp22)\n    tmp28 = triton_helpers.maximum(tmp27, tmp27)\n    tmp30 = tmp29 > tmp28\n    tmp31 = tl.full([1], 6, tl.int8)\n    tmp32 = tl.where(tmp30, tmp31, tmp26)\n    tmp33 = triton_helpers.maximum(tmp29, tmp28)\n    tmp35 = tmp34 > tmp33\n    tmp36 = tl.full([1], 7, tl.int8)\n    tmp37 = tl.where(tmp35, tmp36, tmp32)\n    triton_helpers.maximum(tmp34, tmp33)\n    tl.store(out_ptr0 + x0, tmp37, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2])\n        del arg0_1\n        buf1 = buf0[0]\n        del buf0\n        buf3 = empty_strided_cuda((16, 32, 32, 32, 32), (1048576, 32768, \n            1024, 32, 1), torch.int8)\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(16777216)](buf1,\n            buf3, 16777216, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf1\n    return buf3,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "name 'empty_strided_cuda' is not defined",
+            "error_type": "NameError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_out_ptr0, in_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_ptr0 + (2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr0 + (64 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp5 = tl.load(in_ptr0 + (65 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr0 + (4096 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (4097 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp11 = tl.load(in_ptr0 + (4160 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp13 = tl.load(in_ptr0 + (4161 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (8192 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp17 = tl.load(in_ptr0 + (8193 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp19 = tl.load(in_ptr0 + (8256 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp21 = tl.load(in_ptr0 + (8257 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp23 = tl.load(in_ptr0 + (12288 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp25 = tl.load(in_ptr0 + (12289 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp27 = tl.load(in_ptr0 + (12352 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp29 = tl.load(in_ptr0 + (12353 + 2 * x0 + 128 * x1 + 8192 * x2),\n        None, eviction_policy='evict_last')\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tmp4 = triton_helpers.maximum(tmp3, tmp2)\n    tmp6 = triton_helpers.maximum(tmp5, tmp4)\n    tmp8 = triton_helpers.maximum(tmp7, tmp6)\n    tmp10 = triton_helpers.maximum(tmp9, tmp8)\n    tmp12 = triton_helpers.maximum(tmp11, tmp10)\n    tmp14 = triton_helpers.maximum(tmp13, tmp12)\n    tmp16 = triton_helpers.maximum(tmp15, tmp14)\n    tmp18 = triton_helpers.maximum(tmp17, tmp16)\n    tmp20 = triton_helpers.maximum(tmp19, tmp18)\n    tmp22 = triton_helpers.maximum(tmp21, tmp20)\n    tmp24 = triton_helpers.maximum(tmp23, tmp22)\n    tmp26 = triton_helpers.maximum(tmp25, tmp24)\n    tmp28 = triton_helpers.maximum(tmp27, tmp26)\n    tmp30 = triton_helpers.maximum(tmp29, tmp28)\n    tl.store(in_out_ptr0 + x3, tmp30, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2])\n        del arg0_1\n        buf0 = buf0[0]\n        del buf0\n        buf2 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(2097152)](buf2, \n            2097152, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf2\n    return\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding: 'int'\n        = 0, dilation: 'int' = 1, return_indices: 'bool' = False, ceil_mode:\n        'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "cannot access local variable 'buf0' where it is not associated with a value",
+            "error_type": "UnboundLocalError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 32\n    x1 = xindex // 32 % 32\n    x2 = xindex // 1024\n    x3 = xindex\n    tmp0 = tl.load(in_ptr0 + (2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr0 + (64 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp5 = tl.load(in_ptr0 + (65 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr0 + (4096 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (4097 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp11 = tl.load(in_ptr0 + (4160 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp13 = tl.load(in_ptr0 + (4161 + 2 * x0 + 128 * x1 + 8192 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tmp4 = triton_helpers.maximum(tmp3, tmp2)\n    tmp6 = triton_helpers.maximum(tmp5, tmp4)\n    tmp8 = triton_helpers.maximum(tmp7, tmp6)\n    tmp10 = triton_helpers.maximum(tmp9, tmp8)\n    tmp12 = triton_helpers.maximum(tmp11, tmp10)\n    tmp14 = triton_helpers.maximum(tmp13, tmp12)\n    tl.store(out_ptr0 + x3, tmp14, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2], [1, 1, 1])\n        del arg0_1\n        buf1 = buf0[0]\n        del buf0\n        buf3 = empty_strided_cuda((16, 32, 32, 32, 32), (1048576, 32768, \n            1024, 32, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(16777216)](buf1,\n            buf3, 16777216, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf1\n    return buf3,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int'=None, padding: 'int'\n        =0, dilation: 'int'=1, return_indices: 'bool'=False, ceil_mode:\n        'bool'=False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "name 'empty_strided_cuda' is not defined",
+            "error_type": "NameError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\n\n\n@triton.jit\ndef triton_poi_fused_max_pool3d_with_indices_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + 8 * x0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 8 * x0), None, eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr0 + (2 + 8 * x0), None, eviction_policy='evict_last')\n    tmp5 = tl.load(in_ptr0 + (3 + 8 * x0), None, eviction_policy='evict_last')\n    tmp7 = tl.load(in_ptr0 + (4 + 8 * x0), None, eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (5 + 8 * x0), None, eviction_policy='evict_last')\n    tmp11 = tl.load(in_ptr0 + (6 + 8 * x0), None, eviction_policy='evict_last')\n    tmp13 = tl.load(in_ptr0 + (7 + 8 * x0), None, eviction_policy='evict_last')\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tmp4 = triton_helpers.maximum(tmp3, tmp2)\n    tmp6 = triton_helpers.maximum(tmp5, tmp4)\n    tmp8 = triton_helpers.maximum(tmp7, tmp6)\n    tmp10 = triton_helpers.maximum(tmp9, tmp8)\n    tmp12 = triton_helpers.maximum(tmp11, tmp10)\n    tmp14 = triton_helpers.maximum(tmp13, tmp12)\n    tl.store(out_ptr0 + x0, tmp14, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 32, 64, 64, 64), (8388608, 262144, 4096,\n        64, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = torch.ops.aten.max_pool3d_with_indices.default(arg0_1, [3, 3, \n            3], [2, 2, 2])\n        del arg0_1\n        buf1 = buf0[0]\n        del buf0\n        buf3 = empty_strided_cuda((16, 32, 32, 32, 32), (1048576, 32768, \n            1024, 32, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_max_pool3d_with_indices_0[grid(16777216)](buf1,\n            buf3, 16777216, XBLOCK=512, num_warps=8, num_stages=1)\n        del buf1\n    return buf3,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Max Pooling 3D.\n    \"\"\"\n\n    def __init__(self, kernel_size: 'int', stride: 'int' = None, padding:\n        'int' = 0, dilation: 'int' = 1, return_indices: 'bool' = False,\n        ceil_mode: 'bool' = False):\n        \"\"\"\n        Initializes the Max Pooling 3D layer.\n\n        Args:\n            kernel_size (int): Size of the kernel for the max pooling operation.\n            stride (int, optional): Stride of the pooling operation. Defaults to None, which means stride is equal to kernel_size.\n            padding (int, optional): Padding applied to the input tensor. Defaults to 0.\n            dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n            return_indices (bool, optional): Whether to return indices of the maximum values. Defaults to False.\n            ceil_mode (bool, optional): When True, the output size is ceil(input_size / stride) instead of floor. Defaults to False.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.maxpool = nn.MaxPool3d(kernel_size=kernel_size, stride=stride,\n            padding=padding, dilation=dilation, return_indices=\n            return_indices, ceil_mode=ceil_mode)\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "name 'empty_strided_cuda' is not defined",
+            "error_type": "NameError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

@@ -1,0 +1,404 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/86_conv_depthwise_separable_2D.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.31432960033416746,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\n@triton.jit\ndef triton_poi_fused_convolution_1(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 64\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3121792)](buf1, primals_1, \n            3121792, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (4064256, 64516, 254, 1))\n        buf3 = buf2\n        del buf2\n        triton_poi_fused_convolution_1[grid(65165696)](buf3, primals_4, \n            65165696, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_4\n    return buf3, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=\n            stride, padding=padding, dilation=dilation, groups=in_channels, bias\n            =bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias\n            =bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3128448)](buf1, primals_1, \n            3128448, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (16206016, 254, 254, 1))\n    return buf2, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\n@triton.jit\ndef triton_poi_fused_convolution_1(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 64\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3121792)](buf1, primals_1, \n            3121792, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (4064256, 64516, 254, 1))\n        buf3 = buf2\n        del buf2\n        triton_poi_fused_convolution_1[grid(65128976)](buf3, primals_4, \n            65128976, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_4\n    return buf3, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=\n            stride, padding=padding, dilation=dilation, groups=in_channels, bias\n            =bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias\n            =bias)\n        \n    def forward(self, x: torch.Tensor) -> torch.Tensor:\n        \"\"\"\n        Performs the depthwise-separable 2D convolution.\n\n        Args:\n            x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).\n\n        Returns:\n            torch.Tensor: Output tensor of shape (batch_size, out_channels, height_out, width_out).\n        \"\"\"\n        x = self.depthwise(x)\n        x = self.pointwise(x)\n        return x\n\n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\n@triton.jit\ndef triton_poi_fused_convolution_1(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 64\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195768, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3149792)](buf1, primals_1, \n            3149792, XBLOCK=1024, num_warps=4, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (4129024, 64516, 254, 1))\n        buf3 = buf2\n        del buf2\n        triton_poi_fused_convolution_1[grid(65693184)](buf3, primals_4, \n            65693184, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_4\n    return buf3, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=\n            stride, padding=padding, dilation=dilation, groups=in_channels,\n            bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1,\n            bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 10800\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x3 = xindex\n    x1 = xindex // 225 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, xmask)\n    tmp1 = tl.load(in_ptr0 + x1, xmask, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (60075, 20125, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(10800)](buf1, primals_1, 10800,\n            XBLOCK=128, num_warps=4, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (1620096, 254, 254, 1))\n    return buf2, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 193548==60075 at dim=0; expected size 3==3, stride 64516==20125 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (3, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (3,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3112896)](buf1, primals_4, \n            3112896, XBLOCK=1024, num_warps=4, num_stages=1)\n        del primals_4\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 3, 254, 254), (195048, 64516, 254, 1))\n    return buf2, primals_1, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int,\n        stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size,\n            stride=stride, padding=padding, dilation=dilation, groups=\n            in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1,\n            bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 601400\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x3 = xindex\n    x1 = xindex // 625 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, xmask)\n    tmp1 = tl.load(in_ptr0 + x1, xmask, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (188197, 625, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(601400)](buf1, primals_1, \n            601400, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (1622976, 254, 254, 1))\n    return buf2, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 193548==188197 at dim=0; expected size 3==3, stride 64516==625 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (3, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (3,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3121792)](buf1, primals_4, \n            3121792, XBLOCK=1024, num_warps=4, num_stages=1)\n        del primals_4\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 3, 254, 254), (195048, 64516, 254, 1))\n    return buf2, primals_1, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 64516 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\n@triton.jit\ndef triton_poi_fused_convolution_1(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x1 = xindex // 65536 % 64\n    tmp0 = tl.load(in_out_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + x1, None, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195048, 64516, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(3121792)](buf1, primals_1, \n            3121792, XBLOCK=1024, num_warps=4, num_stages=1)\n        del primals_1\n        buf2 = extern_kernels.convolution(buf1, primals_3, stride=(1, 1),\n            padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=1, bias=None)\n        assert_size_stride(buf2, (16, 64, 254, 254), (4064256, 64516, 254, 1))\n        buf3 = buf2\n        del buf2\n        triton_poi_fused_convolution_1[grid(65021476)](buf3, primals_4, \n            65021476, XBLOCK=512, num_warps=8, num_stages=1)\n        del primals_4\n    return buf3, primals_2, primals_3, buf1\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=\n            stride, padding=padding, dilation=dilation, groups=in_channels,\n            bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias\n            =bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_convolution_0(in_out_ptr0, in_ptr0, xnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 622080\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x3 = xindex\n    x1 = xindex // 3240 % 3\n    tmp0 = tl.load(in_out_ptr0 + x3, xmask)\n    tmp1 = tl.load(in_ptr0 + x1, xmask, eviction_policy='evict_last')\n    tmp2 = tmp0 + tmp1\n    tl.store(in_out_ptr0 + x3, tmp2, xmask)\n\n\ndef call(args):\n    primals_1, primals_2, primals_3, primals_4 = args\n    args.clear()\n    assert_size_stride(primals_1, (3, 1, 3, 3), (9, 9, 3, 1))\n    assert_size_stride(primals_2, (16, 3, 256, 256), (196608, 65536, 256, 1))\n    assert_size_stride(primals_3, (64, 3, 1, 1), (3, 1, 1, 1))\n    assert_size_stride(primals_4, (64,), (1,))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = extern_kernels.convolution(primals_2, primals_1, stride=(1, \n            1), padding=(0, 0), dilation=(1, 1), transposed=False,\n            output_padding=(0, 0), groups=3, bias=None)\n        assert_size_stride(buf0, (16, 3, 254, 254), (195768, 65536, 254, 1))\n        buf1 = buf0\n        del buf0\n        get_raw_stream(0)\n        triton_poi_fused_convolution_0[grid(622080)](buf1, primals_3, \n            622080, XBLOCK=1024, num_warps=4, num_stages=1)\n        del primals_3\n    return buf1, primals_1, primals_2\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Performs a depthwise-separable 2D convolution operation.\n\n    Args:\n        in_channels (int): Number of channels in the input tensor.\n        out_channels (int): Number of channels produced by the convolution.\n        kernel_size (int): Size of the convolution kernel.\n        stride (int, optional): Stride of the convolution. Defaults to 1.\n        padding (int, optional): Padding applied to the input. Defaults to 0.\n        dilation (int, optional): Spacing between kernel elements. Defaults to 1.\n        bias (bool, optional): If `True`, adds a learnable bias to the output. Defaults to `False`.\n    \"\"\"\n    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, dilation: int = 1, bias: bool = False):\n        super(ModelNew, self).__init__()\n        self.depthwise = nn.Conv2d(in_channels, in_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=in_channels, bias=bias)\n        self.pointwise = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias)\n        \n    def forward(self, input_0):\n        primals_1 = self.depthwise.weight\n        primals_3 = self.pointwise.weight\n        primals_2 = input_0\n        output = call([primals_1, primals_2, primals_3])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "not enough values to unpack (expected 4, got 3)",
+            "error_type": "ValueError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

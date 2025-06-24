@@ -1,0 +1,464 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/19_ReLU.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.006166400015354156,
+  "success_rate": 1.0,
+  "avg_speedup": 0.24577050984452375,
+  "max_speedup": 0.35606059172021226,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 1.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.02046079933643341,
+      "speedup": 0.3013763007965182,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.02232320010662079,
+      "speedup": 0.2762327975335972,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.017318400740623473,
+      "speedup": 0.35606059172021226,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.017609600722789765,
+      "speedup": 0.3501726196082234,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.03603520095348358,
+      "speedup": 0.17112156591867264,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.029423999786376952,
+      "speedup": 0.2095704207491581,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.033478400111198424,
+      "speedup": 0.1841904032113982,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.03061760067939758,
+      "speedup": 0.20140049770469093,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.030003198981285097,
+      "speedup": 0.2055247515173476,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": true,
+      "max_diff": 0.0,
+      "avg_diff": 0.0,
+      "runtime": 0.0305184006690979,
+      "speedup": 0.20205514968541863,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_relu_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + x0, None)\n    tmp1 = tl.full([1], 0, tl.int32)\n    tmp2 = triton_helpers.maximum(tmp1, tmp0)\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 16384), (16384, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 16384), (16384, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_relu_0[grid(262144)](arg0_1, buf0, 262144, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a ReLU activation.\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.000000"
+        ],
+        "avg_differences": [
+          "0.000000"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 16384])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 16384])",
+            "custom_output_dtype": "torch.float32",
+            "status": "pass",
+            "max_diff": 0.0,
+            "avg_diff": 0.0
+          }
+        ],
+        "pass_count": 1,
+        "total_trials": 1,
+        "correctness_summary": "(1 / 1)",
+        "overall_max_diff": 0.0,
+        "overall_avg_diff": 0.0
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

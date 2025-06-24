@@ -1,0 +1,404 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/36_RMSNorm_.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 1.4781439781188965,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x1 = xindex // 256 % 64\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n    def __init__(self, num_features: int, eps: float = 1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x1 = xindex // 256 % 64\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp16 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp19 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp22 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp25 = tl.load(in_ptr0 + (1792 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp12 = 4.0\n    tmp13 = tmp11 / tmp12\n    tmp14 = 1e-05\n    tmp15 = tmp13 + tmp14\n    tmp17 = tmp16 * tmp16\n    tmp18 = tmp15 + tmp17\n    tmp20 = tmp19 * tmp19\n    tmp21 = tmp18 + tmp20\n    tmp23 = tmp22 * tmp22\n    tmp24 = tmp21 + tmp23\n    tmp26 = tmp25 * tmp25\n    tmp27 = tmp24 + tmp26\n    tmp28 = tmp27 / tmp12\n    tmp29 = tmp28 + tmp14\n    tmp30 = libdevice.sqrt(tmp29)\n    tmp31 = tmp0 / tmp30\n    tl.store(out_ptr0 + x3, tmp31, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp12 = 4.0\n    tmp13 = tmp11 / tmp12\n    tmp14 = 1e-05\n    tmp15 = tmp13 + tmp14\n    tmp16 = libdevice.sqrt(tmp15)\n    tmp17 = tmp0 / tmp16\n    tl.store(out_ptr0 + x3, tmp17, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (1048576, 16384, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (1048576, 16384, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(16777216)](arg0_1,\n            buf0, 16777216, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n    def __init__(self, num_features: int, eps: float = 1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==1048576 at dim=0; expected size 64==64, stride 65536==16384 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x1 = xindex // 256 % 64\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x1 = xindex // 256 % 64\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x1 + 1048576 * x2), None,\n        eviction_policy='evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x1 + 1048576 * x2), None,\n        eviction_policy='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x1 + 1048576 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x1 + 1048576 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x1 + 1048576 * x2),\n        None, eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x1 + 1048576 * x2),\n        None, eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x1 + 1048576 * x2),\n        None, eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n    def __init__(self, num_features: 'int', eps: 'float'=1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime.triton_helpers import libdevice\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_add_div_mean_pow_sqrt_0(in_ptr0, out_ptr0, xnumel,\n    XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x3 = xindex\n    x0 = xindex % 256\n    x1 = xindex // 256 % 64\n    x2 = xindex // 16384\n    tmp0 = tl.load(in_ptr0 + x3, None)\n    tmp1 = tl.load(in_ptr0 + (x0 + 16384 * x2), None, eviction_policy=\n        'evict_last')\n    tmp3 = tl.load(in_ptr0 + (256 + x0 + 16384 * x2), None, eviction_policy\n        ='evict_last')\n    tmp6 = tl.load(in_ptr0 + (512 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp9 = tl.load(in_ptr0 + (768 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp12 = tl.load(in_ptr0 + (1024 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp15 = tl.load(in_ptr0 + (1280 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp18 = tl.load(in_ptr0 + (1536 + x0 + 16384 * x2), None,\n        eviction_policy='evict_last')\n    tmp2 = tmp1 * tmp1\n    tmp4 = tmp3 * tmp3\n    tmp5 = tmp2 + tmp4\n    tmp7 = tmp6 * tmp6\n    tmp8 = tmp5 + tmp7\n    tmp10 = tmp9 * tmp9\n    tmp11 = tmp8 + tmp10\n    tmp13 = tmp12 * tmp12\n    tmp14 = tmp11 + tmp13\n    tmp16 = tmp15 * tmp15\n    tmp17 = tmp14 + tmp16\n    tmp19 = tmp18 * tmp18\n    tmp20 = tmp17 + tmp19\n    tmp21 = 8.0\n    tmp22 = tmp20 / tmp21\n    tmp23 = 1e-05\n    tmp24 = tmp22 + tmp23\n    tmp25 = libdevice.sqrt(tmp24)\n    tmp26 = tmp0 / tmp25\n    tl.store(out_ptr0 + x3, tmp26, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 64, 256, 256), (2097152, 32768, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 64, 256, 256), (2097152, 32768, 256,\n            1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_add_div_mean_pow_sqrt_0[grid(33554432)](arg0_1,\n            buf0, 33554432, XBLOCK=1024, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs RMS Normalization.\n    \"\"\"\n\n    def __init__(self, num_features: int, eps: float = 1e-05):\n        \"\"\"\n        Initializes the RMSNorm layer.\n\n        Args:\n            num_features (int): Number of features in the input tensor.\n            eps (float, optional): A small value added to the denominator to avoid division by zero. Defaults to 1e-5.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.num_features = num_features\n        self.eps = eps\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "expected size 16==16, stride 4194304==2097152 at dim=0; expected size 64==64, stride 65536==32768 at dim=1",
+            "error_type": "AssertionError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

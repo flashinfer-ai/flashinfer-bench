@@ -1,0 +1,415 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/51_Argmax_over_a_dimension.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.013331200182437896,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex % 256\n    x1 = xindex // 256\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    x3 = xindex\n    _tmp4 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp4_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r2 = rindex\n        tmp0 = tl.load(in_ptr0 + (x0 + 256 * r2 + 65536 * x1), rmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp3 = triton_helpers.maximum(_tmp2, tmp1)\n        _tmp2 = tl.where(rmask, tmp3, _tmp2)\n        _tmp4_next, _tmp4_index_next = triton_helpers.maximum_with_index(_tmp4,\n            _tmp4_index, tmp1, r2)\n        _tmp4 = tl.where(rmask, _tmp4_next, _tmp4)\n        _tmp4_index = tl.where(rmask, _tmp4_index_next, _tmp4_index)\n    _, tmp4_tmp = triton_helpers.max_with_index(_tmp2, _tmp4_index, 1)\n    tmp4 = tmp4_tmp[:, None]\n    tl.store(out_ptr0 + x3, tmp4, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(4096)](arg0_1, buf0, 4096, 256,\n            XBLOCK=1, RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (16, 1, 256), (256, 256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 21:15:\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    x3 = xindex\n    _tmp4 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp4_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r2 = rindex\n        tmp0 = tl.load(in_ptr0 + (x0 + 256 * r2 + 65536 * x1), rmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp3 = triton_helpers.maximum(_tmp2, tmp1)\n               ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask, eviction_policy=\n            'evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(4096)](arg0_1, buf0, 4096, 256,\n            XBLOCK=1, RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (16, 1, 256), (256, 256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 18:39:\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask, eviction_policy=\n            'evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n                                       ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_argmax_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + 256 * x0, None, eviction_policy='evict_last')\n    tmp1 = tl.load(in_ptr0 + (1 + 256 * x0), None, eviction_policy='evict_last')\n    tmp17 = tl.load(in_ptr0 + (2 + 256 * x0), None, eviction_policy='evict_last'\n        )\n    tmp32 = tl.load(in_ptr0 + (3 + 256 * x0), None, eviction_policy='evict_last'\n        )\n    tmp47 = tl.load(in_ptr0 + (4 + 256 * x0), None, eviction_policy='evict_last'\n        )\n    tmp2 = tmp0 > tmp1\n    tmp3 = tmp0 == tmp1\n    tmp4 = tmp0 != tmp0\n    tmp5 = tmp1 != tmp1\n    tmp6 = tmp4 > tmp5\n    tmp7 = tmp2 | tmp6\n    tmp8 = tmp4 & tmp5\n    tmp9 = tmp3 | tmp8\n    tmp10 = tl.full([1], 0, tl.int64)\n    tmp11 = tl.full([1], 1, tl.int64)\n    tmp12 = tmp10 < tmp11\n    tmp13 = tmp9 & tmp12\n    tmp14 = tmp7 | tmp13\n    tmp15 = tl.where(tmp14, tmp0, tmp1)\n    tmp16 = tl.where(tmp14, tmp10, tmp11)\n    tmp18 = tmp15 > tmp17\n    tmp19 = tmp15 == tmp17\n    tmp20 = tmp15 != tmp15\n    tmp21 = tmp17 != tmp17\n    tmp22 = tmp20 > tmp21\n    tmp23 = tmp18 | tmp22\n    tmp24 = tmp20 & tmp21\n    tmp25 = tmp19 | tmp24\n    tmp26 = tl.full([1], 2, tl.int64)\n    tmp27 = tmp16 < tmp26\n    tmp28 = tmp25 & tmp27\n    tmp29 = tmp23 | tmp28\n    tmp30 = tl.where(tmp29, tmp15, tmp17)\n    tmp31 = tl.where(tmp29, tmp16, tmp26)\n    tmp33 = tmp30 > tmp32\n    tmp34 = tmp30 == tmp32\n    tmp35 = tmp30 != tmp30\n    tmp36 = tmp32 != tmp32\n    tmp37 = tmp35 > tmp36\n    tmp38 = tmp33 | tmp37\n    tmp39 = tmp35 & tmp36\n    tmp40 = tmp34 | tmp39\n    tmp41 = tl.full([1], 3, tl.int64)\n    tmp42 = tmp31 < tmp41\n    tmp43 = tmp40 & tmp42\n    tmp44 = tmp38 | tmp43\n    tl.where(tmp44, tmp30, tmp32)\n    tmp46 = tl.where(tmp44, tmp31, tmp41)\n    tl.store(out_ptr0 + x0, tmp46, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_poi_fused_argmax_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=\n            128, num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.int64",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.int64",
+            "correctness_error": "mean(): could not infer output dtype. Input dtype must be either a floating point or complex dtype. Got: Long",
+            "status": "fail",
+            "max_diff": Infinity,
+            "avg_diff": Infinity
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask, eviction_policy=\n            'evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    del tmp2_tmp\n    tl.store(out_ptr0 + x0, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(4096)](arg0_1, buf0, 4096, 256,\n            XBLOCK=64, RBLOCK=4, num_warps=8, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (16, 1, 256), (256, 256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 18:39:\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask, eviction_policy=\n            'evict_last', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n                                       ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r0 = rindex\n        tmp0 = tl.load(in_ptr0 + r0, rmask, eviction_policy='evict_first',\n            other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(1)](arg0_1, buf0, 1, 256, XBLOCK=1,\n            RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (1,), (1,), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 17:39:\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r0 = rindex\n        tmp0 = tl.load(in_ptr0 + r0, rmask, eviction_policy='evict_first',\n            other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n                                       ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r0 = rindex\n        tmp0 = tl.load(in_ptr0 + r0, rmask, eviction_policy='evict_first',\n            other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(1)](arg0_1, buf0, 1, 256, XBLOCK=1,\n            RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 17:39:\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r0 = rindex\n        tmp0 = tl.load(in_ptr0 + r0, rmask, eviction_policy='evict_first',\n            other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n                                       ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex % 256\n    x1 = xindex // 256\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    x3 = xindex\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r2 = rindex\n        tmp0 = tl.load(in_ptr0 + (x0 + 256 * r2 + 65536 * x1), rmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp3 = triton_helpers.maximum(_tmp2, tmp1)\n        _tmp2 = tl.where(rmask, tmp3, _tmp2)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, rbase, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + x3, tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(4096)](arg0_1, buf0, 4096, 256,\n            XBLOCK=1, RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (16, 1, 256), (256, 256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 19:15:\n    x0 = xindex % 256\n    x1 = xindex // 256\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    x3 = xindex\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r2 = rindex\n        tmp0 = tl.load(in_ptr0 + (x0 + 256 * r2 + 65536 * x1), rmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        tmp3 = triton_helpers.maximum(_tmp2, tmp1)\n               ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": Infinity,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xoffset + tl.arange(0, XBLOCK)[:, None]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r0 = rindex\n        tmp0 = tl.load(in_ptr0 + r0, rmask, eviction_policy='evict_first',\n            other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + tl.full([XBLOCK, 1], 0, tl.int32), tmp2, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((), (), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(1)](arg0_1, buf0, 1, 256, XBLOCK=1,\n            RBLOCK=256, num_warps=2, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (1,), (1,), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [],
+        "avg_differences": [],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.int64",
+            "custom_output_shape": "torch.Size([1])",
+            "custom_output_dtype": "torch.int64",
+            "correctness_error": "Output shape mismatch: Expected torch.Size([16, 256]), got torch.Size([1])",
+            "status": "shape_mismatch",
+            "error": "Output shape mismatch: Expected torch.Size([16, 256]), got torch.Size([1])"
+          }
+        ]
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_red_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr, RBLOCK: tl.constexpr):\n    xnumel = 64\n    rnumel = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n            _tmp2_index, tmp1, rindex)\n        _tmp2 = tl.where(rmask & xmask, _tmp2_next, _tmp2)\n        _tmp2_index = tl.where(rmask & xmask, _tmp2_index_next, _tmp2_index)\n    _, tmp2_tmp = triton_helpers.max_with_index(_tmp2, _tmp2_index, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.int64)\n        get_raw_stream(0)\n        triton_red_fused_argmax_0[grid(64)](arg0_1, buf0, 64, 256, XBLOCK=\n            64, RBLOCK=4, num_warps=8, num_stages=1)\n        del arg0_1\n    return reinterpret_tensor(buf0, (16, 1, 256), (256, 256, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 19:39:\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp2 = tl.full([XBLOCK, RBLOCK], float('-inf'), tl.float32)\n    _tmp2_index = tl.full([XBLOCK, RBLOCK], 9223372036854775807, tl.int64)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), rmask & xmask,\n            eviction_policy='evict_first', other=0.0)\n        tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n        _tmp2_next, _tmp2_index_next = triton_helpers.maximum_with_index(_tmp2,\n                                       ^\nNameError('triton_helpers is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_argmax_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl\n    .constexpr):\n    xnumel = 16\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, float('-inf'))\n    tmp4 = tl.broadcast_to(rindex, tmp3.shape)\n    _, tmp2_tmp = triton_helpers.max_with_index(tmp3, tmp4, 1)\n    tmp2 = tmp2_tmp[:, None]\n    tl.store(out_ptr0 + x0, tmp2, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16,), (1,), torch.int64)\n        get_raw_stream(0)\n        triton_per_fused_argmax_0[grid(16)](arg0_1, buf0, 16, 256, XBLOCK=8,\n            num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs Argmax over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: 'int'):\n        \"\"\"\n        Initializes the model with the dimension to perform argmax.\n\n        Args:\n            dim (int): The dimension to perform argmax over.\n        \"\"\"\n        super().__init__()\n        self.dim = dim\n\n    def forward(self, x: 'torch.Tensor') ->torch.Tensor:\n        \"\"\"\n        Applies argmax over the specified dimension to the input tensor.\n\n        Args:\n            x (torch.Tensor): Input tensor.\n\n        Returns:\n            torch.Tensor: Output tensor with argmax applied, with the specified dimension removed.\n        \"\"\"\n        return torch.argmax(x, dim=self.dim)\n\n    def forward_with_input(self, x: 'torch.Tensor'):\n        arg0_1 = x\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.int64",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.int64",
+            "correctness_error": "mean(): could not infer output dtype. Input dtype must be either a floating point or complex dtype. Got: Long",
+            "status": "fail",
+            "max_diff": Infinity,
+            "avg_diff": Infinity
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

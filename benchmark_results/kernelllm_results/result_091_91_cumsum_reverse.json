@@ -1,0 +1,446 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/91_cumsum_reverse.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.024195200204849242,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 9688.9384765625,
+      "avg_diff": 36.84952926635742,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumsum_flip_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4032 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumsum_flip_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "9688.938477"
+        ],
+        "avg_differences": [
+          "36.849529"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 9688.9384765625,
+            "avg_diff": 36.84952926635742
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 9688.9384765625,
+        "overall_avg_diff": 36.84952926635742
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 781.4482421875,
+      "avg_diff": 34.168617248535156,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumsum_flip_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 8\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4032 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (4000 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 + tmp1\n    tmp3 = tl.broadcast_to(tmp2, [XBLOCK, RBLOCK])\n    tmp4, = tl.associative_scan((tmp3,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp4, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumsum_flip_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "781.448242"
+        ],
+        "avg_differences": [
+          "34.168617"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 781.4482421875,
+            "avg_diff": 34.168617248535156
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 781.4482421875,
+        "overall_avg_diff": 34.168617248535156
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 193.2332305908203,
+      "avg_diff": 33.94443130493164,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_flip_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xnumel = 512000\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    xmask = xindex < xnumel\n    x0 = xindex % 4000\n    x1 = xindex // 4000\n    tmp0 = tl.load(in_ptr0 + (3999 + -1 * x0 + 4000 * x1), xmask,\n        eviction_policy='evict_last')\n    tl.store(out_ptr0 + (x0 + 4000 * x1), tmp0, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_flip_0[grid(512000)](arg0_1, buf0, 512000, XBLOCK=\n            512, num_warps=8, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "193.233231"
+        ],
+        "avg_differences": [
+          "33.944431"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 193.2332305908203,
+            "avg_diff": 33.94443130493164
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 193.2332305908203,
+        "overall_avg_diff": 33.94443130493164
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 1537.6787109375,
+      "avg_diff": 34.21049499511719,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumsum_flip_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 32\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4032 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumsum_flip_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "1537.678711"
+        ],
+        "avg_differences": [
+          "34.210495"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 1537.6787109375,
+            "avg_diff": 34.21049499511719
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 1537.6787109375,
+        "overall_avg_diff": 34.21049499511719
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_flip_cumsum_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + 8000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_flip_cumsum_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 17:44:\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + 8000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n                                            ^\nNameError('_triton_helper_fn_add0 is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_flip_cumsum_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + 8000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_flip_cumsum_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 17:44:\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + 8000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n                                            ^\nNameError('_triton_helper_fn_add0 is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 11232.755859375,
+      "avg_diff": 35.70603942871094,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumsum_flip_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4032 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (4000 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 + tmp1\n    tmp3 = tl.broadcast_to(tmp2, [XBLOCK, RBLOCK])\n    tmp4, = tl.associative_scan((tmp3,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp4, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf4 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumsum_flip_0[grid(128)](arg0_1, buf4, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf4,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "11232.755859"
+        ],
+        "avg_differences": [
+          "35.706039"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 11232.755859375,
+            "avg_diff": 35.70603942871094
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 11232.755859375,
+        "overall_avg_diff": 35.70603942871094
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 182.2812042236328,
+      "avg_diff": 31.731069564819336,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_red_fused_flip_cumsum_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr, RBLOCK: tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rbase = tl.arange(0, RBLOCK)[None, :]\n    x0 = xindex\n    _tmp10 = tl.full([XBLOCK, RBLOCK], 0, tl.float32)\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp0 = tl.load(in_ptr0 + (3999 + -1 * r1 + 4000 * x0), rmask &\n            xmask, eviction_policy='evict_last', other=0.0)\n        tmp1 = tmp0.to(tl.float32)\n        tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n        tmp4 = _tmp10 + tmp2\n        _tmp10 = tl.where(rmask & xmask, tmp4, _tmp10)\n    tmp10 = tl.sum(_tmp10, 1)[:, None]\n    for roffset in range(0, rnumel, RBLOCK):\n        rindex = roffset + rbase\n        rmask = rindex < rnumel\n        r1 = rindex\n        tmp11 = tl.load(in_ptr0 + (3999 + -1 * r1 + 4000 * x0), rmask &\n            xmask, eviction_policy='evict_last', other=0.0)\n        tmp12 = tmp11.to(tl.float32)\n        tmp13 = tmp10 - tmp12\n        tl.store(out_ptr1 + (r1 + 4000 * x0), tmp13, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_red_fused_flip_cumsum_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, RBLOCK=2048, num_warps=16, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "182.281204"
+        ],
+        "avg_differences": [
+          "31.731070"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 182.2812042236328,
+            "avg_diff": 31.731069564819336
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 182.2812042236328,
+        "overall_avg_diff": 31.731069564819336
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 11232.755859375,
+      "avg_diff": 35.70603942871094,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef _triton_helper_fn_add0(arg0_0, arg1_0):\n    tmp0 = arg0_0 + arg1_0\n    return tmp0\n\n\n@triton.jit\ndef triton_per_fused_cumsum_flip_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 128\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4032 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tl.load(in_ptr0 + (4000 + r1 + 4000 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp2 = tmp0 + tmp1\n    tmp3 = tl.broadcast_to(tmp2, [XBLOCK, RBLOCK])\n    tmp4, = tl.associative_scan((tmp3,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp4, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_cumsum_flip_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "11232.755859"
+        ],
+        "avg_differences": [
+          "35.706039"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([128, 4000])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([128, 4000])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 11232.755859375,
+            "avg_diff": 35.70603942871094
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 11232.755859375,
+        "overall_avg_diff": 35.70603942871094
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_flip_cumsum_0(in_ptr0, out_ptr1, xnumel, rnumel, XBLOCK:\n    tl.constexpr):\n    xnumel = 128\n    rnumel = 4000\n    RBLOCK: tl.constexpr = 32\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + -1 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n    tl.store(out_ptr1 + (r1 + 4000 * x0), tmp3, rmask & xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (128, 4000), (4000, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf1 = empty_strided_cuda((128, 4000), (4000, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_flip_cumsum_0[grid(128)](arg0_1, buf1, 128, 4000,\n            XBLOCK=1, num_warps=2, num_stages=1)\n        del arg0_1\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    A model that performs a reverse cumulative sum operation along a specified dimension.\n\n    Parameters:\n        dim (int): The dimension along which to perform the reverse cumulative sum.\n    \"\"\"\n\n    def __init__(self, dim):\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "at 17:44:\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    rmask = rindex < rnumel\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (4000 + r1 + -1 * x0), rmask & xmask,\n        eviction_policy='evict_last', other=0.0)\n    tmp1 = tmp0.to(tl.float32)\n    tmp2 = tl.broadcast_to(tmp1, [XBLOCK, RBLOCK])\n    tmp3, = tl.associative_scan((tmp2,), 1, _triton_helper_fn_add0)\n                                            ^\nNameError('_triton_helper_fn_add0 is not defined')",
+            "error_type": "CompilationError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

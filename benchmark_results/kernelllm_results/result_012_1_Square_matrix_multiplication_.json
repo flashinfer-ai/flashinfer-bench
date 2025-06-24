@@ -1,0 +1,428 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/1_Square_matrix_multiplication_.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.3131392002105713,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y0), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.bmm(arg1_1, reinterpret_tensor(arg0_1, (2048, 2048),\n            (1, 2048), 0), out=buf0)\n        del arg0_1\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](buf0, buf1, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del buf0\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "batch1 must be a 3D tensor",
+            "error_type": "RuntimeError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    y1 = yindex % 2048\n    y3 = yindex // 2048\n    tmp0 = tl.load(in_ptr0 + (x2 + 2048 * y0), xmask & ymask)\n    tl.store(out_ptr0 + (y1 + 2048 * x2 + 4194304 * y3), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg0_1, buf1, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg0_1\n        buf2 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        extern_kernels.bmm(buf0, buf1, out=buf2)\n        del buf0\n        del buf1\n    return reinterpret_tensor(buf2, (2048, 2048), (2048, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "CUDA out of memory. Tried to allocate 32.00 GiB. GPU 0 has a total capacity of 23.64 GiB of which 23.07 GiB is free. Including non-PyTorch memory, this process has 576.00 MiB memory in use. Of the allocated memory 168.12 MiB is allocated by PyTorch, and 11.88 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+            "error_type": "OutOfMemoryError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 344.1780700683594,
+      "avg_diff": 51.01220703125,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    y1 = yindex // 2048\n    tmp0 = tl.load(in_ptr0 + (x2 + 2048 * y0), xmask & ymask)\n    tl.store(out_ptr0 + (y0 + 2048 * x2 + 4194304 * y1), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.mm(arg0_1, buf0, out=buf1)\n        del arg0_1\n        del buf0\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "344.178070"
+        ],
+        "avg_differences": [
+          "51.012207"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([2048, 2048])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([2048, 2048])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 344.1780700683594,
+            "avg_diff": 51.01220703125
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 344.1780700683594,
+        "overall_avg_diff": 51.01220703125
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 328.5857238769531,
+      "avg_diff": 51.052921295166016,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y0), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.mm(arg0_1, buf0, out=buf1)\n        del arg0_1\n        del buf0\n    return reinterpret_tensor(buf1, (2048, 2048), (1, 2048), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "328.585724"
+        ],
+        "avg_differences": [
+          "51.052921"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([2048, 2048])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([2048, 2048])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 328.5857238769531,
+            "avg_diff": 51.052921295166016
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 328.5857238769531,
+        "overall_avg_diff": 51.052921295166016
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    y1 = yindex % 2048\n    tmp0 = tl.load(in_ptr0 + (x2 + 2048 * y0), xmask & ymask)\n    tl.store(out_ptr0 + (y1 + 2048 * x2), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.bmm(arg1_1, reinterpret_tensor(arg0_1, (2048, 2048),\n            (1, 2048), 0), out=buf0)\n        del arg0_1\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](buf0, buf1, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del buf0\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "batch1 must be a 3D tensor",
+            "error_type": "RuntimeError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex % 2048\n    y1 = yindex // 2048\n    y3 = yindex\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2 + 4194304 * y1), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y3), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((4194304, 2048), (2048, 1), torch.float32)\n        extern_kernels.mm(reinterpret_tensor(buf0, (4194304, 2048), (2048, 1),\n            0), reinterpret_tensor(arg0_1, (2048, 2048), (1, 2048), 0), out=buf1\n            )\n        del arg0_1\n        del buf0\n    return reinterpret_tensor(buf1, (2048, 2048, 2048), (4194304, 2048, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "CUDA out of memory. Tried to allocate 32.00 GiB. GPU 0 has a total capacity of 23.64 GiB of which 23.02 GiB is free. Including non-PyTorch memory, this process has 636.00 MiB memory in use. Of the allocated memory 168.12 MiB is allocated by PyTorch, and 11.88 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+            "error_type": "OutOfMemoryError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    y1 = yindex // 2048\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2 + 4194304 * y1), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y0), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg0_1, buf1, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg0_1\n        buf2 = empty_strided_cuda((2048, 2048, 2048), (4194304, 2048, 1),\n            torch.float32)\n        extern_kernels.bmm(buf0, buf1, out=buf2)\n        del buf0\n        del buf1\n    return reinterpret_tensor(buf2, (2048, 2048), (2048, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "CUDA out of memory. Tried to allocate 32.00 GiB. GPU 0 has a total capacity of 23.64 GiB of which 23.02 GiB is free. Including non-PyTorch memory, this process has 636.00 MiB memory in use. Of the allocated memory 168.12 MiB is allocated by PyTorch, and 11.88 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)",
+            "error_type": "OutOfMemoryError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 344.1780700683594,
+      "avg_diff": 51.01220703125,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y0), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.mm(arg0_1, buf0, out=buf1)\n        del arg0_1\n        del buf0\n    return buf1,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "344.178070"
+        ],
+        "avg_differences": [
+          "51.012207"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([2048, 2048])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([2048, 2048])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 344.1780700683594,
+            "avg_diff": 51.01220703125
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 344.1780700683594,
+        "overall_avg_diff": 51.01220703125
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    y1 = yindex % 2048\n    y3 = yindex // 2048\n    tmp0 = tl.load(in_ptr0 + (x2 + 2048 * y0), xmask & ymask)\n    tl.store(out_ptr0 + (y1 + 2048 * x2 + 4194304 * y3), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.bmm(arg1_1, arg0_1, out=buf0)\n        del arg0_1\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](buf0, buf1, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del buf0\n    return reinterpret_tensor(buf1, (512, 4, 4), (16, 4, 1), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n\n\nN = 2048\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "batch1 must be a 3D tensor",
+            "error_type": "RuntimeError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 328.5857238769531,
+      "avg_diff": 51.052921295166016,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nfrom torch._inductor.select_algorithm import extern_kernels\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\nreinterpret_tensor = torch._C._dynamo.guards._reinterpret_tensor\n\n\n@triton.jit\ndef triton_poi_fused_clone_0(in_ptr0, out_ptr0, ynumel, xnumel, YBLOCK: tl.\n    constexpr, XBLOCK: tl.constexpr):\n    ynumel = 2048\n    xnumel = 2048\n    yoffset = tl.program_id(1) * YBLOCK\n    yindex = yoffset + tl.arange(0, YBLOCK)[None, :]\n    ymask = yindex < ynumel\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    x2 = xindex\n    y0 = yindex\n    tmp0 = tl.load(in_ptr0 + (y0 + 2048 * x2), xmask & ymask)\n    tl.store(out_ptr0 + (x2 + 2048 * y0), tmp0, xmask & ymask)\n\n\ndef call(args):\n    arg0_1, arg1_1 = args\n    args.clear()\n    assert_size_stride(arg0_1, (2048, 2048), (2048, 1))\n    assert_size_stride(arg1_1, (2048, 2048), (2048, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_clone_0[grid(2048, 2048)](arg1_1, buf0, 2048, 2048,\n            XBLOCK=32, YBLOCK=32, num_warps=4, num_stages=1)\n        del arg1_1\n        buf1 = empty_strided_cuda((2048, 2048), (2048, 1), torch.float32)\n        extern_kernels.mm(arg0_1, buf0, out=buf1)\n        del arg0_1\n        del buf0\n    return reinterpret_tensor(buf1, (2048, 2048), (1, 2048), 0),\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs a single square matrix multiplication (C = A * B)\n    \"\"\"\n    def __init__(self):\n        super(ModelNew, self).__init__()\n    \n    def forward(self, input_0, input_1):\n        arg0_1 = input_0\n        arg1_1 = input_1\n        output = call([arg0_1, arg1_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "328.585724"
+        ],
+        "avg_differences": [
+          "51.052921"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([2048, 2048])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([2048, 2048])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 328.5857238769531,
+            "avg_diff": 51.052921295166016
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 328.5857238769531,
+        "overall_avg_diff": 51.052921295166016
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

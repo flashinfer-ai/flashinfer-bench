@@ -2,6 +2,7 @@
 Uses sglang to host the model"""
 
 #Important Note, for Catalyst 8180, host the model on device 1, the model is SFTed to use device 0 only in codegen, will have memory issues during benchmarking
+#The KernelLLM model was fintuned on previus version pytorch/triton, so use pytorch<=2.6.0 and triton <= 3.2.0 for benchmarking, newer versions will have import error
 
 import openai
 

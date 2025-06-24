@@ -1,0 +1,464 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/47_Sum_reduction_over_a_dimension.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.007046400010585785,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 65.82200622558594,
+      "avg_diff": 13.14499282836914,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "65.822006"
+        ],
+        "avg_differences": [
+          "13.144993"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 65.82200622558594,
+            "avg_diff": 13.14499282836914
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 65.82200622558594,
+        "overall_avg_diff": 13.14499282836914
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 63.495384216308594,
+      "avg_diff": 1.0500366687774658,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nfrom torch._inductor.runtime import triton_helpers\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "63.495384"
+        ],
+        "avg_differences": [
+          "1.050037"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 63.495384216308594,
+            "avg_diff": 1.0500366687774658
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 63.495384216308594,
+        "overall_avg_diff": 1.0500366687774658
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 65.82200622558594,
+      "avg_diff": 13.14499282836914,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "65.822006"
+        ],
+        "avg_differences": [
+          "13.144993"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 65.82200622558594,
+            "avg_diff": 13.14499282836914
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 65.82200622558594,
+        "overall_avg_diff": 13.14499282836914
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 63.495384216308594,
+      "avg_diff": 1.0500366687774658,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "63.495384"
+        ],
+        "avg_differences": [
+          "1.050037"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 63.495384216308594,
+            "avg_diff": 1.0500366687774658
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 63.495384216308594,
+        "overall_avg_diff": 1.0500366687774658
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 65.82200622558594,
+      "avg_diff": 13.14499282836914,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "65.822006"
+        ],
+        "avg_differences": [
+          "13.144993"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 65.82200622558594,
+            "avg_diff": 13.14499282836914
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 65.82200622558594,
+        "overall_avg_diff": 13.14499282836914
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 63.495384216308594,
+      "avg_diff": 1.0500366687774658,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "63.495384"
+        ],
+        "avg_differences": [
+          "1.050037"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 63.495384216308594,
+            "avg_diff": 1.0500366687774658
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 63.495384216308594,
+        "overall_avg_diff": 1.0500366687774658
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 65.82200622558594,
+      "avg_diff": 13.14499282836914,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "65.822006"
+        ],
+        "avg_differences": [
+          "13.144993"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 65.82200622558594,
+            "avg_diff": 13.14499282836914
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 65.82200622558594,
+        "overall_avg_diff": 13.14499282836914
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 63.495384216308594,
+      "avg_diff": 1.0500366687774658,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "63.495384"
+        ],
+        "avg_differences": [
+          "1.050037"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 63.495384216308594,
+            "avg_diff": 1.0500366687774658
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 63.495384216308594,
+        "overall_avg_diff": 1.0500366687774658
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 65.82200622558594,
+      "avg_diff": 13.14499282836914,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "65.822006"
+        ],
+        "avg_differences": [
+          "13.144993"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 65.82200622558594,
+            "avg_diff": 13.14499282836914
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 65.82200622558594,
+        "overall_avg_diff": 13.14499282836914
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 63.495384216308594,
+      "avg_diff": 1.0500366687774658,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_sum_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 0)\n    tmp4 = tl.sum(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 1, 256), (256, 256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_sum_0[grid(256)](arg0_1, buf0, 256, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs sum reduction over a specified dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "63.495384"
+        ],
+        "avg_differences": [
+          "1.050037"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 1, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 1, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 63.495384216308594,
+            "avg_diff": 1.0500366687774658
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 63.495384216308594,
+        "overall_avg_diff": 1.0500366687774658
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}

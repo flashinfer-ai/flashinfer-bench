@@ -647,7 +647,7 @@ def main():
     # Device and backend management
     parser.add_argument("--device", help="CUDA device to use (e.g., 'cuda:0', 0, or 'auto')")
     parser.add_argument("--backend", choices=["cuda", "triton"], default="cuda", help="Backend to use")
-    parser.add_argument("--loader-type", choices=["auto", "kernelbench", "triton", "legacy"], default="auto", 
+    parser.add_argument("--loader-type", choices=["auto", "kernelbench", "triton", "flashinfer"], default="auto", 
                         help="Type of kernel loader to use (auto-detects if not specified)")
     
     # Profiling

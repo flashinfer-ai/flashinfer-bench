@@ -1,0 +1,452 @@
+{
+  "device_info": {
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_id": 0,
+    "device_str": "cuda:0",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "total_memory": 25386352640,
+    "driver_version": "12.4",
+    "backend": "triton"
+  },
+  "kernel_spec": {
+    "description_file": "benchmark/level1/50_Product_reduction_over_a_dimension.py",
+    "generator_file": "generators/kernelllm_generator.py",
+    "warmup": 5,
+    "iterations": 10,
+    "max_diff_limit": 1e-05,
+    "report_n": 10,
+    "correctness_trials": 1,
+    "seed": 42,
+    "backend": "triton",
+    "use_ncu": false
+  },
+  "baseline_time": 0.006860800087451935,
+  "success_rate": 0.0,
+  "avg_speedup": 0.0,
+  "max_speedup": 0.0,
+  "compilation_success_rate": 1.0,
+  "correctness_success_rate": 0.0,
+  "generations": [
+    {
+      "round": 0,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 3.2334063053131104,
+      "avg_diff": 0.001706038834527135,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 65536 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 65536 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 65536 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 65536 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 65536 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 65536 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 65536 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 65536 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 65536 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 65536 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 65536 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 65536 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 65536 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 65536 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 65536 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 65536 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 65536 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 65536 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 65536 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 65536 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 65536 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 65536 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 65536 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 65536 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 65536 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "3.233406"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 3.2334063053131104,
+            "avg_diff": 0.001706038834527135
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 3.2334063053131104,
+        "overall_avg_diff": 0.001706038834527135
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 1,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 0.6406222581863403,
+      "avg_diff": 0.0017055405769497156,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 256 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 256 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 256 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 256 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 256 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 256 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 256 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 256 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 256 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 256 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 256 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 256 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 256 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 256 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 256 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 256 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 256 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 256 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 256 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 256 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 256 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 256 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 256 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 256 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 256 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.640622"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 0.6406222581863403,
+            "avg_diff": 0.0017055405769497156
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 0.6406222581863403,
+        "overall_avg_diff": 0.0017055405769497156
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 2,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 0.6406222581863403,
+      "avg_diff": 0.0017055405769497156,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 256 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 256 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 256 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 256 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 256 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 256 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 256 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 256 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 256 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 256 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 256 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 256 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 256 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 256 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 256 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 256 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 256 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 256 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 256 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 256 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 256 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 256 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 256 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 256 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 256 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.640622"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 0.6406222581863403,
+            "avg_diff": 0.0017055405769497156
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 0.6406222581863403,
+        "overall_avg_diff": 0.0017055405769497156
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 3,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 3.2334063053131104,
+      "avg_diff": 0.001706038834527135,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 65536 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 65536 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 65536 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 65536 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 65536 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 65536 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 65536 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 65536 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 65536 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 65536 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 65536 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 65536 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 65536 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 65536 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 65536 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 65536 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 65536 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 65536 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 65536 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 65536 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 65536 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 65536 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 65536 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 65536 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 65536 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "3.233406"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 3.2334063053131104,
+            "avg_diff": 0.001706038834527135
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 3.2334063053131104,
+        "overall_avg_diff": 0.001706038834527135
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 4,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 4.606934070587158,
+      "avg_diff": 0.017498046159744263,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 4096 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 4096 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 4096 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 4096 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 4096 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 4096 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 4096 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 4096 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 4096 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 4096 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 4096 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 4096 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 4096 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 4096 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 4096 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 4096 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 4096 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tl.store(out_ptr0 + x2, tmp32, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "4.606934"
+        ],
+        "avg_differences": [
+          "0.017498"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 4.606934070587158,
+            "avg_diff": 0.017498046159744263
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 4.606934070587158,
+        "overall_avg_diff": 0.017498046159744263
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 5,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_prod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 256\n    RBLOCK: tl.constexpr = 16\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 256 * r1), xmask, other=0.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 1)\n    tmp4 = tl.prod(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_prod_0[grid(256)](arg0_1, buf0, 256, 16, XBLOCK=8,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "module 'triton.language' has no attribute 'prod'",
+            "error_type": "AttributeError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 6,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 0.6406222581863403,
+      "avg_diff": 0.0017055405769497156,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 256 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 256 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 256 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 256 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 256 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 256 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 256 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 256 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 256 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 256 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 256 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 256 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 256 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 256 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 256 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 256 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 256 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 256 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 256 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 256 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 256 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 256 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 256 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 256 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 256 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "0.640622"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 0.6406222581863403,
+            "avg_diff": 0.0017055405769497156
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 0.6406222581863403,
+        "overall_avg_diff": 0.0017055405769497156
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 7,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": Infinity,
+      "avg_diff": NaN,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_per_fused_prod_0(in_ptr0, out_ptr0, xnumel, rnumel, XBLOCK: tl.\n    constexpr):\n    xnumel = 16\n    RBLOCK: tl.constexpr = 256\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n    xmask = xindex < xnumel\n    rindex = tl.arange(0, RBLOCK)[None, :]\n    tl.full([XBLOCK, RBLOCK], True, tl.int1)\n    r1 = rindex\n    x0 = xindex\n    tmp0 = tl.load(in_ptr0 + (r1 + 256 * x0), xmask, other=1.0)\n    tmp1 = tl.broadcast_to(tmp0, [XBLOCK, RBLOCK])\n    tmp3 = tl.where(xmask, tmp1, 1)\n    tmp4 = tl.prod(tmp3, 1)[:, None]\n    tl.store(out_ptr0 + x0, tmp4, xmask)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16,), (1,), torch.float32)\n        get_raw_stream(0)\n        triton_per_fused_prod_0[grid(16)](arg0_1, buf0, 16, 256, XBLOCK=1,\n            num_warps=2, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "inf"
+        ],
+        "avg_differences": [
+          "inf"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "status": "runtime_error",
+            "error": "module 'triton.language' has no attribute 'prod'",
+            "error_type": "AttributeError"
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": Infinity,
+        "overall_avg_diff": NaN
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 8,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 2.575774908065796,
+      "avg_diff": 0.003043129574507475,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "```\nimport torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 8192 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 8192 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 8192 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 8192 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 8192 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 8192 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 8192 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 8192 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 8192 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 8192 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 8192 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 8192 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 8192 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 8192 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 8192 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 8192 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 8192 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 8192 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 8192 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 8192 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 8192 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 8192 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 8192 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 8192 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 8192 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: 'int'):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "2.575775"
+        ],
+        "avg_differences": [
+          "0.003043"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 2.575774908065796,
+            "avg_diff": 0.003043129574507475
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 2.575774908065796,
+        "overall_avg_diff": 0.003043129574507475
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    },
+    {
+      "round": 9,
+      "compiled": true,
+      "correctness": false,
+      "max_diff": 3.2334063053131104,
+      "avg_diff": 0.001706038834527135,
+      "runtime": null,
+      "speedup": null,
+      "generated_code": "import torch\nimport triton\nimport triton.language as tl\nfrom torch._inductor.runtime.triton_heuristics import grid\nfrom torch._C import _cuda_getCurrentRawStream as get_raw_stream\nimport torch.nn as nn\nassert_size_stride = torch._C._dynamo.guards.assert_size_stride\nempty_strided_cuda = torch._C._dynamo.guards._empty_strided_cuda\n\n\n@triton.jit\ndef triton_poi_fused_prod_0(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr):\n    xoffset = tl.program_id(0) * XBLOCK\n    xindex = xoffset + tl.arange(0, XBLOCK)[:]\n    tl.full([XBLOCK], True, tl.int1)\n    x0 = xindex % 256\n    x1 = xindex // 256\n    x2 = xindex\n    tmp0 = tl.load(in_ptr0 + (x0 + 65536 * x1), None)\n    tmp1 = tl.load(in_ptr0 + (256 + x0 + 65536 * x1), None)\n    tmp3 = tl.load(in_ptr0 + (512 + x0 + 65536 * x1), None)\n    tmp5 = tl.load(in_ptr0 + (768 + x0 + 65536 * x1), None)\n    tmp7 = tl.load(in_ptr0 + (1024 + x0 + 65536 * x1), None)\n    tmp9 = tl.load(in_ptr0 + (1280 + x0 + 65536 * x1), None)\n    tmp11 = tl.load(in_ptr0 + (1536 + x0 + 65536 * x1), None)\n    tmp13 = tl.load(in_ptr0 + (1792 + x0 + 65536 * x1), None)\n    tmp15 = tl.load(in_ptr0 + (2048 + x0 + 65536 * x1), None)\n    tmp17 = tl.load(in_ptr0 + (2304 + x0 + 65536 * x1), None)\n    tmp19 = tl.load(in_ptr0 + (2560 + x0 + 65536 * x1), None)\n    tmp21 = tl.load(in_ptr0 + (2816 + x0 + 65536 * x1), None)\n    tmp23 = tl.load(in_ptr0 + (3072 + x0 + 65536 * x1), None)\n    tmp25 = tl.load(in_ptr0 + (3328 + x0 + 65536 * x1), None)\n    tmp27 = tl.load(in_ptr0 + (3584 + x0 + 65536 * x1), None)\n    tmp29 = tl.load(in_ptr0 + (3840 + x0 + 65536 * x1), None)\n    tmp31 = tl.load(in_ptr0 + (4096 + x0 + 65536 * x1), None)\n    tmp33 = tl.load(in_ptr0 + (4352 + x0 + 65536 * x1), None)\n    tmp35 = tl.load(in_ptr0 + (4608 + x0 + 65536 * x1), None)\n    tmp37 = tl.load(in_ptr0 + (4864 + x0 + 65536 * x1), None)\n    tmp39 = tl.load(in_ptr0 + (5120 + x0 + 65536 * x1), None)\n    tmp41 = tl.load(in_ptr0 + (5376 + x0 + 65536 * x1), None)\n    tmp43 = tl.load(in_ptr0 + (5632 + x0 + 65536 * x1), None)\n    tmp45 = tl.load(in_ptr0 + (5888 + x0 + 65536 * x1), None)\n    tmp47 = tl.load(in_ptr0 + (6144 + x0 + 65536 * x1), None)\n    tmp2 = tmp0 * tmp1\n    tmp4 = tmp2 * tmp3\n    tmp6 = tmp4 * tmp5\n    tmp8 = tmp6 * tmp7\n    tmp10 = tmp8 * tmp9\n    tmp12 = tmp10 * tmp11\n    tmp14 = tmp12 * tmp13\n    tmp16 = tmp14 * tmp15\n    tmp18 = tmp16 * tmp17\n    tmp20 = tmp18 * tmp19\n    tmp22 = tmp20 * tmp21\n    tmp24 = tmp22 * tmp23\n    tmp26 = tmp24 * tmp25\n    tmp28 = tmp26 * tmp27\n    tmp30 = tmp28 * tmp29\n    tmp32 = tmp30 * tmp31\n    tmp34 = tmp32 * tmp33\n    tmp36 = tmp34 * tmp35\n    tmp38 = tmp36 * tmp37\n    tmp40 = tmp38 * tmp39\n    tmp42 = tmp40 * tmp41\n    tmp44 = tmp42 * tmp43\n    tmp46 = tmp44 * tmp45\n    tmp48 = tmp46 * tmp47\n    tl.store(out_ptr0 + x2, tmp48, None)\n\n\ndef call(args):\n    arg0_1, = args\n    args.clear()\n    assert_size_stride(arg0_1, (16, 256, 256), (65536, 256, 1))\n    with torch.cuda._DeviceGuard(0):\n        torch.cuda.set_device(0)\n        buf0 = empty_strided_cuda((16, 256), (256, 1), torch.float32)\n        get_raw_stream(0)\n        triton_poi_fused_prod_0[grid(4096)](arg0_1, buf0, 4096, XBLOCK=128,\n            num_warps=4, num_stages=1)\n        del arg0_1\n    return buf0,\n\n\nclass ModelNew(nn.Module):\n    \"\"\"\n    Simple model that performs product reduction over a dimension.\n    \"\"\"\n    def __init__(self, dim: int):\n        \"\"\"\n        Initializes the model with the dimension to reduce over.\n\n        Args:\n            dim (int): Dimension to reduce over.\n        \"\"\"\n        super(ModelNew, self).__init__()\n        self.dim = dim\n\n    def forward(self, input_0):\n        arg0_1 = input_0\n        output = call([arg0_1])\n        return output[0]\n```",
+      "ncu_results": {},
+      "metadata": {
+        "correctness_trials_attempted": 1,
+        "max_differences": [
+          "3.233406"
+        ],
+        "avg_differences": [
+          "0.001706"
+        ],
+        "trial_results": [
+          {
+            "trial": 0,
+            "seed": 1608637542,
+            "original_output_type": "<class 'torch.Tensor'>",
+            "custom_output_type": "<class 'torch.Tensor'>",
+            "original_output_shape": "torch.Size([16, 256])",
+            "original_output_dtype": "torch.float32",
+            "custom_output_shape": "torch.Size([16, 256])",
+            "custom_output_dtype": "torch.float32",
+            "status": "fail",
+            "max_diff": 3.2334063053131104,
+            "avg_diff": 0.001706038834527135
+          }
+        ],
+        "pass_count": 0,
+        "total_trials": 1,
+        "correctness_summary": "(0 / 1)",
+        "overall_max_diff": 3.2334063053131104,
+        "overall_avg_diff": 0.001706038834527135
+      },
+      "compilation_error": null,
+      "runtime_error": null,
+      "generation_error": null
+    }
+  ]
+}
