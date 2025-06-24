@@ -83,7 +83,6 @@ The following values are allowed for `dtype`:
 - `float8_e4m3`
 - `float8_e5m2`
 - `float4_e2m1`
-- `int4`
 - `int8`
 - `bool`
 
@@ -301,6 +300,53 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
       "shape": ["batch_size", "hidden_size"],
       "dim_order": [0, 1],
       "dtype": "float16"
+    }
+  },
+  "code": "..."
+}
+```
+
+### Example 6: Attention
+
+```json
+{
+  "name": "attention(gqa-4)",
+  "axes": {
+    "B": { "type": "var" },
+    "Q": { "type": "var", "parent": "B" }
+    "KV": { "type": "var", "parent": "B" }
+    "H_kv": { "type": "var" },
+    "H_r": { "type": "const", "value": 4 }
+    "D_qk": { "type": "const", "value": 128 }
+    "D_vo": { "type": "const", "value": 128 }
+  },
+  "inputs": {
+    "q": {
+      "shape": ["B", "Q", "H_r", "D_qk"],
+      "dim_order": [0, 1, 2, 3],
+      "dtype": "float16"
+    },
+    "k": {
+      "shape": ["B", "KV", "H_kv", "D_qk"],
+      "dim_order": [0, 1, 2, 3],
+      "dtype": "float16"
+    },
+    "v": {
+      "shape": ["B", "KV", "H_kv", "D_vo"],
+      "dim_order": [0, 1, 2, 3],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "out": {
+      "shape": ["B", "Q", "H_r", "D_vo"],
+      "dim_order": [0, 1, 2, 3],
+      "dtype": "float16"
+    },
+    "lse": {
+      "shape": ["B", "Q", "H_r"],
+      "dim_order": [0, 1, 2],
+      "dtype": "float32"
     }
   },
   "code": "..."
