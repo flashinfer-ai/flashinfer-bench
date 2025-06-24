@@ -313,11 +313,11 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
   "name": "attention(gqa-4)",
   "axes": {
     "B": { "type": "var" },
-    "Q": { "type": "var", "parent": "B" }
-    "KV": { "type": "var", "parent": "B" }
+    "Q": { "type": "var", "parent": "B" },
+    "KV": { "type": "var", "parent": "B" },
     "H_kv": { "type": "var" },
-    "H_r": { "type": "const", "value": 4 }
-    "D_qk": { "type": "const", "value": 128 }
+    "H_r": { "type": "const", "value": 4 },
+    "D_qk": { "type": "const", "value": 128 },
     "D_vo": { "type": "const", "value": 128 }
   },
   "inputs": {
