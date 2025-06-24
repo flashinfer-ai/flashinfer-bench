@@ -13,21 +13,15 @@ Note the kernel signature does not contain the kernel's exact input data. That w
 
 ### Top-Level Object Structure
 
-| Field    | Type     | Required | Description                                              |
-|----------|----------|----------|---------------------------------------------------------|
-| `op`     | string   | Yes      | Operation type. Currently supported: `"gemm"`, `"grouped_gemm"` |
-| `name`   | string   | Yes       | A unique name indicating the kernel. |
-| `axes`   | object   | Yes      | Key-value pairs of axis definitions                     |
-| `input`  | object   | Yes      | Named input tensors (e.g. `"A"`, `"B"`)                 |
-| `output` | object   | Yes      | Named output tensors (e.g. `"C"`)                       |
-| `code`   | string      | Yes       | The PyTorch code of the kernel. |
+| Field    | Type   | Required | Description                             |
+|----------|--------|----------|-----------------------------------------|
+| `name`   | string | Yes      | A unique name indicating the kernel.    |
+| `axes`   | object | Yes      | Key-value pairs of axis definitions     |
+| `inputs`  | object | Yes      | Named input tensors (e.g. `"A"`, `"B"`) |
+| `outputs` | object | Yes      | Named output tensors (e.g. `"C"`)       |
+| `code`   | string | Yes      | The PyTorch code of the kernel.         |
 
-### `op` Field: Enum of Operation Type
-
-| Value | Meaning |
-|-------|---------|
-| `gemm` | GEMM or Transposed GEMM |
-| `grouped_gemm` | Grouped GEMM where the input tensor can be ragged |
+Q: "name" or "id"?
 
 ### `axes` Field: Axes
 
@@ -41,7 +35,6 @@ Represents a constant axis.
 |---------|---------|----------|--------------------------------|
 | `type`  | string  | Yes      | Must be `"const"`              |
 | `value` | integer | Yes      | Constant value of the axis     |
-
 
 Example:
 
@@ -70,36 +63,58 @@ Example:
 }
 ```
 
-### `input`, `output` Field: Input and Output Tensors
+### `inputs`, `outputs` Field: Input and Output Tensors
 
 Input and output describes the input and the output tensors of the kernel. They can contain any number of keys, where each key is the name of a tensor (e.g., `"A"`, `"B"`, `"C"`). The value is a tensor description:
 
-| Field       | Type    | Required | Description                                          | Default |
-|-------------|---------|----------|------------------------------------------------------|---------|
-| `shape`     | array   | Yes      | List of axis names (strings)                         | —       |
-| `dim_order` | array   | No      | Permutation indices of the shape axes                | `[0, 1, ...]`       |
-| `dtype`     | string  | No      | Data type of the tensor                              | `"fp16"`       |
+| Field       | Type   | Required | Description                           | Default       |
+|-------------|--------|----------|---------------------------------------|---------------|
+| `shape`     | array  | Yes      | List of axis names (strings)          | —             |
+| `dim_order` | array  | No       | Permutation indices of the shape axes | `[0, 1, ...]` |
+| `dtype`     | string | No       | Data type of the tensor               | `"float16"`      |
 
 #### `dtype` Field: Enum of Data Type
 
 The following values are allowed for `dtype`:
 
-- `fp32`
-- `fp16`
-- `bf16`
-- `fp8_e4m3`
-- `fp8_e5m2`
-- `fp4_e2m1`
+- `float32`
+- `float16`
+- `bfloat16`
+- `float8_e4m3`
+- `float8_e5m2`
+- `float4_e2m1`
 - `int4`
 - `int8`
+- `bool`
+
+Q: float8 or fp8, fp16 or float16, etc.
+
+#### Scalar Values
+
+We can define a tensor with a empty shape (`[]`) to represent a scalar value. The scalar input can
+not only accept tensor data (torch tensor with shape `[]`), but also scalar data (python int, float, bool).
+The scalar output will return a python scalar value.
 
 Example:
 
 ```json
-"A": {
-  "shape": ["M", "K"],
-  "dim_order": [1, 0],
-  "dtype": "fp16"
+"inputs": {
+  "A": {
+    "shape": ["M", "K"],
+    "dim_order": [1, 0],
+    "dtype": "float16"
+  },
+  "scalar": {
+    "shape": [],
+    "dtype": "float16"
+  }
+},
+"outputs": {
+  "C": {
+    "shape": ["M", "N"],
+    "dim_order": [0, 1],
+    "dtype": "float16"
+  }
 }
 ```
 
@@ -115,29 +130,29 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
 
 ```json
 {
-  "op": "gemm",
+  "name": "gemm",
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
-  "input": {
+  "inputs": {
     "A": {
       "shape": ["M", "K"],
       "dim_order": [0, 1],
-      "dtype": "fp16"
+      "dtype": "float16"
     },
     "B": {
       "shape": ["N", "K"],
       "dim_order": [0, 1],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
-  "output": {
+  "outputs": {
     "C": {
       "shape": ["M", "N"],
       "dim_order": [0, 1],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
   "code": "..."
@@ -148,7 +163,7 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
 
 ```json
 {
-  "op": "gemm",
+  "name": "quantized_gemm",
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
@@ -156,7 +171,7 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
     "N_group": { "type": "const", "value": 128 },
     "K_group": { "type": "const", "value": 128 },
   },
-  "input": {
+  "inputs": {
     "A": {
       "shape": ["M", "K"],
       "dtype": "float16"
@@ -169,15 +184,15 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
     "A_scale": {
       "shape": ["M", "K_group"],
       "dim_order": [0, 1],
-      "dtype": "fp8"
+      "dtype": "float8_e4m3"
     },
     "B_scale": {
       "shape": ["N_group", "K_group"],
       "dim_order": [0, 1],
-      "dtype": "fp8"
+      "dtype": "float8_e4m3"
     },
   },
-  "output": {
+  "outputs": {
     "C": {
       "shape": ["M", "N"],
       "dim_order": [0, 1],
@@ -192,30 +207,30 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
 
 ```json
 {
-  "op": "grouped_gemm",
+  "name": "grouped_gemm",
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var", "parent": "G" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
-  "input": {
+  "inputs": {
     "A": {
       "shape": ["G", "M", "K"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     },
     "B": {
       "shape": ["G", "K", "N"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
-  "output": {
+  "outputs": {
     "C": {
       "shape": ["G", "M", "N"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
   "code": "..."
@@ -226,33 +241,68 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
 
 ```json
 {
-  "op": "grouped_gemm",
+  "name": "quantized_grouped_gemm",
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var", "parent": "G" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
-  "input": {
+  "inputs": {
     "A": {
       "shape": ["G", "M", "K"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     },
     "B": {
       "shape": ["G", "K", "N"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
-  "output": {
+  "outputs": {
     "C": {
       "shape": ["G", "M", "N"],
       "dim_order": [0, 1, 2],
-      "dtype": "fp16"
+      "dtype": "float16"
     }
   },
   "code": "..."
 }
 ```
 
+### Example 5: RMSNorm
+
+```json
+{
+  "name": "rmsnorm",
+  "axes": {
+    "batch_size": { "type": "var" },
+    "hidden_size": { "type": "const", "value": 4096 }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "hidden_size"],
+      "dim_order": [0, 1],
+      "dtype": "float16"
+    },
+    "weight": {
+      "shape": ["hidden_size"],
+      "dim_order": [0],
+      "dtype": "float16"
+    },
+    "eps": {
+      "shape": [],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dim_order": [0, 1],
+      "dtype": "float16"
+    }
+  },
+  "code": "..."
+}
+```
