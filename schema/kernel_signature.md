@@ -315,14 +315,18 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
     "B": { "type": "var" },
     "Q": { "type": "var", "parent": "B" },
     "KV": { "type": "var", "parent": "B" },
+    "H_qo": { "type": "var" },
     "H_kv": { "type": "var" },
     "H_r": { "type": "const", "value": 4 },
     "D_qk": { "type": "const", "value": 128 },
     "D_vo": { "type": "const", "value": 128 }
   },
+  "assumptions": {
+    "H_qo == H_kv * H_r"
+  },
   "inputs": {
     "q": {
-      "shape": ["B", "Q", "H_r", "D_qk"],
+      "shape": ["B", "Q", "H_qo", "D_qk"],
       "dim_order": [0, 1, 2, 3],
       "dtype": "float16"
     },
@@ -339,12 +343,12 @@ The `code` field is a string that contains the PyTorch code of the kernel. It sh
   },
   "outputs": {
     "out": {
-      "shape": ["B", "Q", "H_r", "D_vo"],
+      "shape": ["B", "Q", "H_qo", "D_vo"],
       "dim_order": [0, 1, 2, 3],
       "dtype": "float16"
     },
     "lse": {
-      "shape": ["B", "Q", "H_r"],
+      "shape": ["B", "Q", "H_qo"],
       "dim_order": [0, 1, 2],
       "dtype": "float32"
     }
