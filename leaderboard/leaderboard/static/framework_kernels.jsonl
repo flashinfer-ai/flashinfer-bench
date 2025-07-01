@@ -1,5 +1,5 @@
-{"model": "ResNet50", "kernel_name": "Kernel A", "leaderboard_id": 1}
-{"model": "ResNet50", "kernel_name": "Kernel B", "leaderboard_id": 2}
-{"model": "Conv2D", "kernel_name": "Conv Layer 1", "leaderboard_id": 3}
-{"model": "Model 3", "kernel_name": "Kernel A", "leaderboard_id": 2}
-{"model": "Model 3", "kernel_name": "Kernel B", "leaderboard_id": 2}
+{"model": "ResNet50", "kernel_name": "gemm", "leaderboard_id": 2}
+{"model": "ResNet50", "kernel_name": "softmax", "leaderboard_id": 1}
+{"model": "Conv2D", "kernel_name": "softmax", "leaderboard_id": 1}
+{"model": "Llama", "kernel_name": "gemm", "leaderboard_id": 2}
+{"model": "Llama", "kernel_name": "layernorm", "leaderboard_id": 3}

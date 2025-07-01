@@ -1,0 +1,1 @@
+{"device":{"name":"NVIDIA RTX 4090"},"kernel_id":"softmax","source":"deepseek-coder","compiled":false,"compile_error":"invalid register usage in line 42"}

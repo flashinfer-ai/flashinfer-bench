@@ -23,21 +23,6 @@
     </h1>
     
     <div class="leaderboard-grid">
-        <!-- <div class="leaderboard-card">
-            <h2>Deadline</h2>
-            <p>
-                {% if time_left != None %}
-                    <span class="font-medium">{{ time_left }}</span> ({{ deadline|format_datetime }})
-                {% else %}
-                    {{ deadline }}
-                {% endif %}
-            </p>
-        </div> -->
-
-        <div class="leaderboard-card">
-            <h2>Language</h2>
-            <p>{{ lang }}</p>
-        </div>
 
         <div class="leaderboard-card">
             <h2>GPU Type{{ 's' if gpu_types|length > 1 or gpu_types|length == 0}}</h2>

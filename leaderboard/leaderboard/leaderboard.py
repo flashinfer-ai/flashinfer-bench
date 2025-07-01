@@ -21,12 +21,12 @@ def leaderboard(leaderboard_id: int):
     rankings_data = data["rankings"]
 
     name = leaderboard_data["name"]
-    deadline = leaderboard_data.get("deadline", "")
-    time_left = to_time_left(deadline) if deadline else None
+    # deadline = leaderboard_data.get("deadline", "")
+    # time_left = to_time_left(deadline) if deadline else None
 
-    lang = leaderboard_data.get("lang", "Unknown")
-    if lang == "py":
-        lang = "Python"
+    # lang = leaderboard_data.get("lang", "Unknown")
+    # if lang == "py":
+    #     lang = "Python"
 
     description = leaderboard_data.get("description", "")
     reference = leaderboard_data.get("reference", "")
@@ -51,9 +51,9 @@ def leaderboard(leaderboard_id: int):
     return render_template(
         "leaderboard.html",
         name=name,
-        deadline=deadline,
-        time_left=time_left,
-        lang=lang,
+        # deadline=deadline,
+        # time_left=time_left,
+        # lang=lang,
         gpu_types=gpu_types,
         description=description,
         reference=reference,

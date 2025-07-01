@@ -1,0 +1,14 @@
+{
+  "model": "Llama",
+  "framework": "MLC-LLM",
+  "kernels": [
+    {
+      "id": "gemm",
+      "count": 10
+    },
+    {
+      "id": "layernorm",
+      "count": 4
+    }
+  ]
+}

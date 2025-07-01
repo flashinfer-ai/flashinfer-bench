@@ -1,0 +1,1 @@
+{"device":{"name":"NVIDIA H100"},"kernel_id":"softmax","source":"gpt-4o","compiled":true,"time":0.141,"speedup":3.1,"max_diff":5e-7}

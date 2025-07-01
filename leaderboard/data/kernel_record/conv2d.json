@@ -1,0 +1,10 @@
+{
+  "model": "Conv2D",
+  "framework": "MLC-LLM",
+  "kernels": [
+    {
+      "id": "softmax",
+      "count": 7
+    }
+  ]
+}

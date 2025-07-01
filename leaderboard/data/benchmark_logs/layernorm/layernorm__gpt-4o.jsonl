@@ -1,0 +1,1 @@
+{"device":{"name":"NVIDIA H100"},"kernel_id":"layernorm","source":"gpt-4o","compiled":false,"compile_error":"undefined symbol 'warp_reduce_sum'"}

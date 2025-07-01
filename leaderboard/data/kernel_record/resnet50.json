@@ -1,0 +1,14 @@
+{
+  "model": "ResNet50",
+  "framework": "MLC-LLM",
+  "kernels": [
+    {
+      "id": "gemm",
+      "count": 5
+    },
+    {
+      "id": "softmax",
+      "count": 3
+    }
+  ]
+}
