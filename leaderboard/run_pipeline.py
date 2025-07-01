@@ -50,10 +50,8 @@ def main():
         "--output", framework_output
     ])
 
-    # Step 4: Run leaderboard module
+    # Step 4: Run leaderboard
     run_module("leaderboard.run")
-
-    print("🎉 All steps completed successfully.")
 
 if __name__ == "__main__":
     main()

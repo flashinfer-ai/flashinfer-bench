@@ -1,10 +1,12 @@
-# flashinfer-bench leaderboard
+# flashinfer-bench
+
+## flashinfer-bench leaderboard
 
 `flashinfer-bench leaderboard` is a web-based leaderboard for benchmarking CUDA kernel generation tasks. It displays models, frameworks, and their associated kernels, linking to performance leaderboards.
 
 ---
 
-## Features
+### Features
 
 ✅ Models & Frameworks overview page
 
@@ -12,11 +14,9 @@
 
 ✅ Leaderboards showing top users and runtimes
 
-✅ Inspector frontend for viewing kernel generation logs
-
 ---
 
-## How to run the leaderboard
+### How to run the leaderboard
 
 1️⃣ Install dependencies:
 
@@ -28,10 +28,10 @@ pip install -r requirements.txt
 npm install
 ```
 
-2️⃣ Start the server:
+2️⃣ Run the pipeline and start the server:
 
 ```bash
-python -m leaderboard.run
+python run_pipeline.py
 ```
 
 You should see:
