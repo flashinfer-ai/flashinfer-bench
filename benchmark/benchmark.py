@@ -14,7 +14,6 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 
-sys.path.append(os.path.dirname(__file__))
 
 try:
     from mcp import ClientSession, StdioServerParameters
@@ -24,7 +23,7 @@ except ImportError:
     print("Warning: MCP not available, falling back to subprocess")
     ClientSession = None
 
-from kernel_loaders import create_kernel_loader
+from loader.kernel_loaders import create_kernel_loader
 
 
 @dataclass
@@ -355,7 +354,8 @@ class BenchmarkRunner:
         # return avg time in ms
         return elapsed_time_ms / iterations
 
-    async def _load_kernel_generator(self) -> Any:
+    async def _load_implementation(self) -> Any:
+        """Note: human implementations can return a string directly for generate_kernel for now"""
         spec = importlib.util.spec_from_file_location("kernel_generator", self.args.kernel_generator)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -513,7 +513,7 @@ class BenchmarkRunner:
         print(f"Baseline time: {baseline_time:.3f}ms")
         
         print("Loading kernel generator...")
-        generate_kernel = await self._load_kernel_generator()
+        generate_kernel = await self._load_implementation()
         
         if self.use_ncu and self.profiler:
             await self.profiler.start_mcp()
@@ -632,7 +632,7 @@ class BenchmarkRunner:
 def main():
     parser = argparse.ArgumentParser(description="Benchmark CUDA kernels using AI generation")
     parser.add_argument("kernel_description", help="Path to kernel description file (.py)")
-    parser.add_argument("kernel_generator", help="Path to kernel generator file (.py)")
+    parser.add_argument("implementation", help="Path to implementation file (.py)")
     
     # Basic benchmarking parameters
     parser.add_argument("--warmup", type=int, default=5, help="Number of warmup iterations")
