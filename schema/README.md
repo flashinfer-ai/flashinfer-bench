@@ -6,25 +6,25 @@ We organize the FlashInfer Bench dataset into the following three core component
 
 This component provides a formal definition for a specific computational workload encountered in a model's forward pass. It specifies the expected input and output formats. We also include a mathematical specification of the workload in the form of PyTorch code. This serves as both a precise description of the computation and a standard reference implementation.
 
-The Definition directly guides the subsequent Implementation and Dataset components.
+The Definition directly guides the subsequent Solution and Trace components.
 
-**Formal Specification:** [Workload Definition](workload_definition.md)
+**Formal Specification:** [Definition](definition.md)
     
 
-# Implementation
+# Solution
 
 
-This component represents a single, high-performance implementation of a given workload, contributed by either human experts or autonomous agent systems. An implementation must strictly adhere to the corresponding Definition, including input/output shapes and constant values. Its computation must be functionally equivalent to the mathematical specification.
+This component represents a single, high-performance solution implementation of a given workload, contributed by either human experts or autonomous agent systems. A solution must strictly adhere to the corresponding Definition, including input/output shapes and constant values. Its computation must be functionally equivalent to the mathematical specification.
 
-The implementation is not restricted to any specific language, framework, or platform, but it must provide an entry-point function with a strictly matching signature. Once submitted, implementations are benchmarked. By applying pre-collected evaluation Dataset to the entry point, we verify its correctness and measure its performance speedup, which is then recorded.
+The implementation is not restricted to any specific language, framework, or platform, but it must provide an entry-point function with a strictly matching signature. Once submitted, solutions are benchmarked to generate a Trace. By applying pre-collected input data to the entry point, we verify its correctness and measure its performance speedup.
 
-**Formal Specification:** [Workload Implementation](workload_implementation.md)
+**Formal Specification:** [Solution](solution.md)
     
 
-# Dataset
+# Trace
 
-This component contains real-world evaluation dataset collected for a specific workload. This data includes the variable dimensions of inputs and outputs and, for cases where latency is correlated with the input distribution, the specific input values themselves.
+This component is an atomic and immutable record of a single benchmark run of a Solution. A Trace serves as a detailed log entry, precisely linking a Solution to a Definition for a specific workload configuration (i.e., concrete shapes and input data), and contains the complete evaluation result.
 
-Dataset is workload-specific, and a single workload should have multiple Data entries. To ensure that benchmark results are relevant to real-world scenarios, we aim to collect this data from production scheduling algorithms and use cases (e.g., SGLang with ShareGPT).
+The collection of Traces is the central artifact of the FlashInfer Bench ecosystem, creating a complete, queryable performance database that enables both high-level analysis and the programmatic discovery of the optimal Solution for any given Definition and environment.
 
-**Formal Specification:** [Workload Dataset](workload_dataset.md)
+**Formal Specification:** [Trace](trace.md)

@@ -1,16 +1,16 @@
-# Workload Definition
+# Definition
 
 ## Overview
 
-This document describes the JSON schema for a **Workload Definition**.
+This document describes the JSON schema for a workload **Definition**.
 
-The `Workload Definition` provides a formal, machine-readable specification for a computational workload found in a model's forward pass. It is designed to be the single source of truth that guides both human and agent-based kernel development. Specifically, this schema defines:
+The `Definition` provides a formal, machine-readable specification for a computational workload found in a model's forward pass. It is designed to be the single source of truth that guides both human and agent-based kernel development. Specifically, this schema defines:
 
 1. **Tensor Formats**: The shape, data type (`dtype`).
 2. **Dimension Semantics**: The distinction between `constant` dimensions (fixed at compile time) and `variable` dimensions (determined at runtime).
 3. **Computational Logic**: A clear, step-by-step **reference implementation** in plain PyTorch, which serves as the official mathematical specification of the workload.
 
-Note that a Workload Definition does not contain specific input *data* for its variable axes. That data is provided by a separate **Workload Evaluation** file, which is used for benchmarking implementations.
+Note that a `Definition` does not contain specific input *data* for its variable axes. That data is provided by the `workload` field of each `Trace`, which is used for benchmarking implementations.
 
 ## JSON Schema Description
 
