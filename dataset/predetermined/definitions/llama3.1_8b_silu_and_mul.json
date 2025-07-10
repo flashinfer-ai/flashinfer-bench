@@ -1,0 +1,22 @@
+{
+  "name": "llama3.1_8b_silu_and_mul",
+  "type": "activation",
+  "description": "A fused SiLU(x[:d]) * x[d:] operator.",
+  "axes": {
+    "B": { "type": "var" },
+    "D": { "type": "const", "value": 28672 }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["B", "D"],
+      "dtype": "bfloat16"
+    }
+  },
+  "outputs": {
+    "out": {
+      "shape": ["B", "D_half"],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\ndef run(x):\n    d = x.shape[-1] // 2\n    return {\"out\": F.silu(x[..., :d]) * x[..., d:]}"
+}

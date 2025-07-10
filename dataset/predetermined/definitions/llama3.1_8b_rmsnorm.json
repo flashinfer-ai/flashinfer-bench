@@ -1,0 +1,34 @@
+{
+  "name": "llama3.1_8b_rmsnorm",
+  "type": "rmsnorm",
+  "description": "RMSNorm with optional residual.",
+  "axes": {
+    "B": { "type": "var" },
+    "H": { "type": "const", "value": 4096 }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["B", "H"],
+      "dtype": "bfloat16"
+    },
+    "weight": {
+      "shape": ["H"],
+      "dtype": "bfloat16"
+    },
+    "eps": {
+      "shape": [],
+      "dtype": "float32"
+    },
+    "residual": {
+      "shape": ["B", "H"],
+      "dtype": "bfloat16"
+    }
+  },
+  "outputs": {
+    "out": {
+      "shape": ["B", "H"],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": "import torch\n\ndef run(x, weight, eps, residual=None):\n    if residual is not None:\n        x = x + residual\n    variance = x.to(torch.float32).pow(2).mean(-1, keepdim=True)\n    rstd = torch.rsqrt(variance + eps)\n    out = (x * rstd) * weight\n    return {\"out\": out}"
+}

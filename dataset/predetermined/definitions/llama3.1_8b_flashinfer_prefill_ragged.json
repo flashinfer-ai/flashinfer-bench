@@ -1,0 +1,43 @@
+{
+  "name": "llama3.1_8b_flashinfer_prefill_attn_ragged",
+  "type": "attention_prefill",
+  "description": "Ragged prefill attention.",
+  "axes": {
+    "B": { "type": "var" },
+    "H_q": { "type": "const", "value": 32 },
+    "H_kv": { "type": "const", "value": 8 },
+    "D": { "type": "const", "value": 128 }
+  },
+  "constraints": [
+    "H_q == H_kv * 4"
+  ],
+  "inputs": {
+    "q": {
+      "shape": ["B", "H_q", "D"],
+      "dtype": "bfloat16"
+    },
+    "k": {
+      "shape": ["B", "H_kv", "D"],
+      "dtype": "bfloat16"
+    },
+    "v": {
+      "shape": ["B", "H_kv", "D"],
+      "dtype": "bfloat16"
+    },
+    "sm_scale": {
+      "shape": [],
+      "dtype": "float32"
+    },
+    "logits_soft_cap": {
+      "shape": [],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "out": {
+      "shape": ["B", "H_q", "D"],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": ""
+}
