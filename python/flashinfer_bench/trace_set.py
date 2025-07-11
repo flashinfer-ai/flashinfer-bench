@@ -6,7 +6,7 @@ from pathlib import Path
 from flashinfer_bench import Definition
 from flashinfer_bench import Solution
 from flashinfer_bench import Trace
-from flashinfer_bench.utils.json_utils import load_jsonl
+from flashinfer_bench.utils.json_utils import load_jsonl, save_jsonl
 
 @dataclass
 class TraceSet:
@@ -80,6 +80,9 @@ class TraceSet:
             "max_latency_ms": max_latency,
             "avg_latency_ms": avg_latency
         }
+
+    def export(self, path: str):
+        save_jsonl(self.traces, path) 
 
 
 T = TypeVar("T")

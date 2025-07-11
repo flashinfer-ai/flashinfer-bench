@@ -1,5 +1,3 @@
-"""Definition data class for FlashInfer Bench."""
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -115,7 +113,7 @@ class Definition:
             if axis["type"] == "var"
         ]
     
-    def get_input_shapes(self, var_values: Dict[str, int] = None) -> Dict[str, List[int]]:
+    def get_input_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
         """Get concrete input shapes given variable axis values."""
         var_values = var_values or {}
         shapes = {}
@@ -133,7 +131,7 @@ class Definition:
         
         return shapes
     
-    def get_output_shapes(self, var_values: Dict[str, int] = None) -> Dict[str, List[int]]:
+    def get_output_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
         """Get concrete output shapes given variable axis values."""
         var_values = var_values or {}
         shapes = {}

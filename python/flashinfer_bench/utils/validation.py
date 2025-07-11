@@ -1,8 +1,4 @@
-"""Schema validation utilities for FlashInfer Bench."""
-
-from typing import Any, Dict, List, Optional, Union
-import jsonschema
-from jsonschema import ValidationError
+from typing import Any, Dict, List
 
 
 ALLOWED_DTYPES = [
@@ -79,11 +75,9 @@ def validate_reference_code(code: str) -> None:
             raise ValueError("'run' must be a callable function")
             
     except SyntaxError as e:
-        print(f"Invalid Python syntax in reference code: {e}")
-        # raise ValueError(f"Invalid Python syntax in reference code: {e}")
+        raise ValueError(f"Invalid Python syntax in reference code: {e}")
     except Exception as e:
-        print(f"Error in reference code: {e}")
-        # raise ValueError(f"Error in reference code: {e}")
+        raise ValueError(f"Error in reference code: {e}")
 
 
 def validate_workload_axes(workload_axes: Dict[str, int], definition_axes: Dict[str, Dict[str, Any]]) -> None:

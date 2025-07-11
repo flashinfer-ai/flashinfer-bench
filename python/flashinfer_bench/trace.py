@@ -1,5 +1,3 @@
-"""Trace data class for FlashInfer Bench."""
-
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from datetime import datetime
