@@ -1,6 +1,7 @@
 """JSON serialization/deserialization utilities for FlashInfer Bench."""
 
 import json
+import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar, Union
 from dataclasses import asdict, is_dataclass
@@ -13,7 +14,7 @@ class FlashInferJSONEncoder(json.JSONEncoder):
     """Custom JSON encoder for FlashInfer Bench data classes."""
     
     def default(self, obj):
-        if is_dataclass(obj):
+        if is_dataclass(obj) and not isinstance(obj, type):
             return asdict(obj)
         if isinstance(obj, Path):
             return str(obj)
@@ -25,7 +26,7 @@ def to_json(obj: Any, indent: int = 2) -> str:
     return json.dumps(obj, cls=FlashInferJSONEncoder, indent=indent)
 
 
-def from_json(json_str: str, cls: Type[T] = None) -> Union[T, Dict[str, Any]]:
+def from_json(json_str: str, cls: Type[T]) -> Union[T, Dict[str, Any]]:
     """Convert JSON string to object.
     
     If cls is provided and is a dataclass, will instantiate that class.
@@ -33,10 +34,7 @@ def from_json(json_str: str, cls: Type[T] = None) -> Union[T, Dict[str, Any]]:
     """
     data = json.loads(json_str)
     
-    if cls is not None and is_dataclass(cls):
-        return cls(**data)
-    
-    return data
+    return cls(**data)
 
 
 def save_json(obj: Any, path: Union[str, Path]) -> None:
@@ -48,7 +46,7 @@ def save_json(obj: Any, path: Union[str, Path]) -> None:
         json.dump(obj, f, cls=FlashInferJSONEncoder, indent=2)
 
 
-def load_json(path: Union[str, Path], cls: Type[T] = None) -> Union[T, Dict[str, Any]]:
+def load_json(path: Union[str, Path], cls: Type[T]) -> Union[T, Dict[str, Any]]:
     """Load object from JSON file.
     
     If cls is provided and is a dataclass, will instantiate that class.
@@ -59,13 +57,10 @@ def load_json(path: Union[str, Path], cls: Type[T] = None) -> Union[T, Dict[str,
     with open(path, 'r') as f:
         data = json.load(f)
     
-    if cls is not None and is_dataclass(cls):
-        return cls(**data)
-    
-    return data
+    return cls(**data)
 
 
-def load_jsonl(path: Union[str, Path], cls: Type[T] = None) -> List[Union[T, Dict[str, Any]]]:
+def load_jsonl(path: Union[str, Path], cls: Type[T]) -> List[Union[T, Dict[str, Any]]]:
     """Load objects from JSONL (JSON Lines) file.
     
     Each line should be a valid JSON object.
@@ -78,10 +73,7 @@ def load_jsonl(path: Union[str, Path], cls: Type[T] = None) -> List[Union[T, Dic
             line = line.strip()
             if line:
                 data = json.loads(line)
-                if cls is not None and is_dataclass(cls):
-                    results.append(cls(**data))
-                else:
-                    results.append(data)
+                results.append(cls(**data))
     
     return results
 

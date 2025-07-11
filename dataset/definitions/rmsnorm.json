@@ -1,0 +1,47 @@
+[
+  {
+    "name": "rmsnorm",
+    "type": "rmsnorm",
+    "description": "RMSNorm op.",
+    "axes": {
+      "batch_size": { "type": "var" },
+      "hidden_size": { "type": "const", "value": 4096 }
+    },
+    "inputs": {
+      "input": { "shape": ["batch_size", "hidden_size"] },
+      "weight": { "shape": ["hidden_size"] },
+      "eps": { "shape": [], "dtype": "float32" }
+    },
+    "outputs": {
+      "output": { "shape": ["batch_size", "hidden_size"] }
+    },
+    "reference": "def run(...): ..."
+  },
+{
+    "name": "gemm",
+    "type": "gemm",
+    "description": "A standard GEMM operation (C = A @ B.T).",
+    "axes": {
+      "M": { "type": "var" },
+      "N": { "type": "const", "value": 4096 },
+      "K": { "type": "const", "value": 4096 }
+    },
+    "inputs": {
+      "A": {
+        "shape": ["M", "K"],
+        "dtype": "float16"
+      },
+      "B": {
+        "shape": ["N", "K"],
+        "dtype": "float16"
+      }
+    },
+    "outputs": {
+      "C": {
+        "shape": ["M", "N"],
+        "dtype": "float16"
+      }
+    },
+    "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return {\"C\": C}"
+  }
+]
