@@ -38,7 +38,7 @@ dev = [
 flashinfer-bench = "flashinfer_bench.cli.main:cli"
 
 [tool.setuptools.packages.find]
-where = ["python"]
+where = ["."]
 include = ["flashinfer_bench*"]
 
 [tool.black]
