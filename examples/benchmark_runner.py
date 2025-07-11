@@ -8,11 +8,11 @@ def main():
 
     print(f"\nCompleted benchmarking. Found {len(db.traces)} traces.")
     
-    # Save all traces to disk
-    output_path = "./dataset/traces_benchmark_test.jsonl"
-    Trace.save_jsonl(output_path, db.traces)
-    print(f"Traces saved to {output_path}")
+    print("\nTraces:")
+    for i, trace in enumerate(db.traces):
+        print(f"\nTrace {i+1}:")
+        print(trace)
 
 if __name__ == "__main__":
-    from flashinfer_bench.specs.trace import Trace
+    from flashinfer_bench import Trace
     main()
