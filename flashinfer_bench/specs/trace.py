@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict, Any
+from flashinfer_bench.utils.jsonl import write_jsonl
 
 @dataclass
 class Correctness:
@@ -50,3 +51,24 @@ class Trace:
             workload=obj["workload"],
             evaluation=evaluation
         )
+
+    def to_dict(self) -> dict:
+        # Convert back to dict form for serialization
+        return {
+            "definition": self.definition,
+            "solution": self.solution,
+            "workload": self.workload,
+            "evaluation": {
+                "status": self.evaluation.status,
+                "log_file": self.evaluation.log_file,
+                "correctness": self.evaluation.correctness.__dict__,
+                "performance": self.evaluation.performance.__dict__,
+                "environment": self.evaluation.environment.__dict__,
+                "timestamp": self.evaluation.timestamp
+            }
+        }
+
+    @staticmethod
+    def save_jsonl(path: str, traces: list["Trace"]):
+        from flashinfer_bench.utils.jsonl import write_jsonl
+        write_jsonl(path, [trace.to_dict() for trace in traces])
