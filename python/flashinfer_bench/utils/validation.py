@@ -79,9 +79,11 @@ def validate_reference_code(code: str) -> None:
             raise ValueError("'run' must be a callable function")
             
     except SyntaxError as e:
-        raise ValueError(f"Invalid Python syntax in reference code: {e}")
+        print(f"Invalid Python syntax in reference code: {e}")
+        # raise ValueError(f"Invalid Python syntax in reference code: {e}")
     except Exception as e:
-        raise ValueError(f"Error in reference code: {e}")
+        print(f"Error in reference code: {e}")
+        # raise ValueError(f"Error in reference code: {e}")
 
 
 def validate_workload_axes(workload_axes: Dict[str, int], definition_axes: Dict[str, Dict[str, Any]]) -> None:

@@ -24,5 +24,4 @@
       }
     },
     "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return {\"C\": C}"
-  }
-  
+}
