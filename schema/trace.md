@@ -24,6 +24,23 @@ This object provides the concrete data required to instantiate a `Definition`. T
 | `axes` | object | Yes | An object mapping `var` axis names from the `Definition` to their concrete integer values. |
 | `inputs` | object | Yes | An object describing the location and format of the required input tensor data files. |
 
+### `inputs` : Input Descriptor Objects
+
+This object maps **input names** (e.g., `"A"`, `"weight"`, `"mask"`) to **input descriptors** that explain **where the data comes from** and (when necessary) **how it should be generated or loaded**.
+
+Each descriptor **must** contain at least the `type` field. Additional fields become **required or optional** depending on the chosen `type`.
+
+| **Field** | **Type** | **Required** | **Description** |
+| --- | --- | --- | --- |
+| `type` | string | **Yes** | Data source type. Could be `random` and `safetensors`. |
+
+Additional fields for `safetensors`:
+
+| **Field** | **Type** | **Required** | **Description** |
+| --- | --- | --- | --- |
+| `path` | string | **Yes** | Relative path or URI of the `.safetensors` file. |
+| `tensor_key` | string | **Yes** | The key inside the safetensors container that holds this tensor. |
+
 ### `evaluation` : Benchmark Statistics Summary
 
 This object represents a single, complete benchmark result.
