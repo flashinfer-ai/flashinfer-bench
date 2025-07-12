@@ -17,8 +17,10 @@ def best(args: argparse.Namespace):
             print(f"Best solution for {definition}:")
             print(f"- Solution: {trace.solution}")
             print(f"- Speedup:  {trace.evaluation['performance']['speedup_factor']:.2f}×")
-            print(f"- Errors:   abs={trace.evaluation['correctness']['max_absolute_error']:.2e}, "
-                f"rel={trace.evaluation['correctness']['max_relative_error']:.2e}")
+            print(
+                f"- Errors:   abs={trace.evaluation['correctness']['max_absolute_error']:.2e}, "
+                f"rel={trace.evaluation['correctness']['max_relative_error']:.2e}"
+            )
             print(f"- Log:      {trace.evaluation['log_file']}")
 
 
@@ -39,19 +41,21 @@ def visualize(args: argparse.Namespace):
     print(f"Received arguments: {args}")
     raise NotImplementedError("Visualization is not implemented yet.")
 
+
 def run(args: argparse.Namespace):
     """Benchmark run. WIP"""
     print(f"Received arguments: {args}")
     raise NotImplementedError("Run is not implemented yet.")
 
+
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
     trace_sets = []
     if not args.local and not args.hub:
         raise ValueError("A data source is required. Please use --local <PATH> or --hub.")
-    
+
     if args.hub:
         raise NotImplementedError("Loading from --hub is not implemented yet.")
-    
+
     if args.local:
         loaded_paths: List[Path] = args.local
         for path in loaded_paths:
@@ -61,32 +65,24 @@ def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
 
 def cli():
     parser = argparse.ArgumentParser(
-        description="FlashInfer Bench CLI",
-        formatter_class=argparse.RawTextHelpFormatter
+        description="FlashInfer Bench CLI", formatter_class=argparse.RawTextHelpFormatter
     )
 
     parser.add_argument(
         "--local",
         type=Path,
-        action='append',  # Allows specifying --local multiple times
-        help="Specifies one or more local paths to load traces from."
+        action="append",  # Allows specifying --local multiple times
+        help="Specifies one or more local paths to load traces from.",
     )
     parser.add_argument(
-        "--hub",
-        action="store_true",
-        help="Load the latest traces from the FlashInfer Hub."
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
 
     command_subparsers = parser.add_subparsers(
-        dest="command",
-        required=True,
-        help="Primary commands"
+        dest="command", required=True, help="Primary commands"
     )
 
-    run_parser = command_subparsers.add_parser(
-        "run",
-        help="Execute a new benchmark run."
-    )
+    run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
     # TODO: Implement flashinfer-bench run
     run_parser.add_argument("--warmup-runs", type=int, default=10)
     run_parser.add_argument("--iterations", type=int, default=50)
@@ -96,42 +92,31 @@ def cli():
     run_parser.set_defaults(func=run)
 
     report_parser = command_subparsers.add_parser(
-        "report",
-        help="Analyze and manage existing traces."
+        "report", help="Analyze and manage existing traces."
     )
     report_subparsers = report_parser.add_subparsers(
-        dest="report_subcommand",
-        required=True,
-        help="Report actions"
+        dest="report_subcommand", required=True, help="Report actions"
     )
 
     summary_parser = report_subparsers.add_parser(
-        "summary",
-        help="Prints a human-readable summary of loaded traces."
+        "summary", help="Prints a human-readable summary of loaded traces."
     )
     summary_parser.set_defaults(func=summary)
 
-    best_parser = report_subparsers.add_parser(
-        "best",
-        help="Find best solution for a definition."
-    )
+    best_parser = report_subparsers.add_parser("best", help="Find best solution for a definition.")
     best_parser.set_defaults(func=best)
 
-    merge_parser = report_subparsers.add_parser(
-        "merge",
-        help="Merges multiple traces."
-    )
+    merge_parser = report_subparsers.add_parser("merge", help="Merges multiple traces.")
     merge_parser.add_argument("--output", type=Path)
     merge_parser.set_defaults(func=merge)
 
     visualize_parser = report_subparsers.add_parser(
-        "visualize",
-        help="Generates a visual representation of benchmark results."
+        "visualize", help="Generates a visual representation of benchmark results."
     )
     visualize_parser.set_defaults(func=visualize)
 
     args = parser.parse_args()
-    if hasattr(args, 'func'):
+    if hasattr(args, "func"):
         args.func(args)
     else:
         parser.print_help()

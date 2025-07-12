@@ -1,12 +1,14 @@
 import glob
 from dataclasses import dataclass
-from typing import Any, Callable, List, Dict, Optional, TypeVar, cast
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
+
+from flashinfer_bench.utils.json_utils import load_jsonl
 
 from .definition import Definition
 from .solution import Solution
 from .trace import Trace
-from flashinfer_bench.utils.json_utils import load_jsonl
+
 
 @dataclass
 class TraceSet:
@@ -22,19 +24,19 @@ class TraceSet:
         definitions = []
         definitions_files = glob.glob(str(base_path / "definitions" / "*.json"), recursive=True)
         for definition_file in definitions_files:
-            with open(definition_file, 'r') as f:
+            with open(definition_file, "r") as f:
                 definition = Definition.from_json(f.read())
             definitions.append(definition)
-        
+
         solutions_files = glob.glob(str(base_path / "solutions" / "*.json"), recursive=True)
         solutions = []
         for solution_file in solutions_files:
-            with open(solution_file, 'r') as f:
+            with open(solution_file, "r") as f:
                 solution = Solution.from_json(f.read())
             solutions.append(solution)
-        
+
         traces = []
-        
+
         trace_files = glob.glob(str(base_path / "traces" / "*.jsonl"), recursive=True)
         for trace_file in trace_files:
             loaded_traces = load_jsonl(trace_file, Trace)
@@ -78,23 +80,29 @@ class TraceSet:
             "failed": failed,
             "min_latency_ms": min_latency,
             "max_latency_ms": max_latency,
-            "avg_latency_ms": avg_latency
+            "avg_latency_ms": avg_latency,
         }
 
 
 T = TypeVar("T")
+
+
 def build_index(items: List[T], key_fn: Callable[[T], str]) -> Dict[str, T]:
     return {key_fn(item): item for item in items}
+
 
 def filter_passed_traces(traces: List[Trace]) -> List[Trace]:
     return [t for t in traces if t.evaluation["status"] == "PASSED"]
 
+
 def filter_by_error(traces: List[Trace], max_abs: float, max_rel: float) -> List[Trace]:
     return [
-        t for t in traces
-        if t.evaluation["correctness"]["max_absolute_error"] <= max_abs and
-           t.evaluation["correctness"]["max_relative_error"] <= max_rel
+        t
+        for t in traces
+        if t.evaluation["correctness"]["max_absolute_error"] <= max_abs
+        and t.evaluation["correctness"]["max_relative_error"] <= max_rel
     ]
+
 
 def get_best_trace(traces: List[Trace]) -> Optional[Trace]:
     return max(traces, key=lambda t: t.evaluation["performance"]["speedup_factor"], default=None)
