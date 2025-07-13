@@ -1,5 +1,5 @@
 import glob
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
@@ -16,6 +16,8 @@ class TraceSet:
     definitions: Dict[str, Definition]
     solutions: Dict[str, Solution]
     traces: List[Trace]
+    
+    _traces_by_definition: Dict[str, List[Trace]] = field(init=False, default_factory=dict)
 
     @classmethod
     def from_path(cls, path: str) -> "TraceSet":
@@ -45,8 +47,18 @@ class TraceSet:
         indexed_definitions = build_index(definitions, lambda d: d.name)
         indexed_solutions = build_index(solutions, lambda s: s.name)
 
-        return cls(definitions=indexed_definitions, solutions=indexed_solutions, traces=traces)
+        instance = cls(
+            definitions=indexed_definitions,
+            solutions=indexed_solutions,
+            traces=traces,
+        )
 
+        for trace in traces:
+            instance._traces_by_definition.setdefault(trace.definition, []).append(trace)
+
+        return instance
+        
+        
     def get_definition(self, name: str) -> Optional[Definition]:
         return self.definitions.get(name)
 
@@ -54,7 +66,7 @@ class TraceSet:
         return self.solutions.get(name)
 
     def get_traces_for_definition(self, name: str) -> List[Trace]:
-        return [t for t in self.traces if t.definition == name]
+        return self._traces_by_definition.get(name, [])
 
     def get_best_op(
         self,
