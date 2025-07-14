@@ -1,6 +1,6 @@
 from flashinfer_bench import TraceSet
 
-trace_set = TraceSet.from_path("./dataset")
+trace_set = TraceSet.from_path("../dataset")
 
 for d in trace_set.definitions.values():
     print(f"\nWorkload: '{d.name}'  —  Type: {d.type}")

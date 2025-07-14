@@ -12,61 +12,99 @@ from .trace import Trace
 
 @dataclass
 class TraceSet:
+    """A collection of definitions, solutions, workloads, and traces."""
 
-    definitions: Dict[str, Definition]
-    solutions: Dict[str, Solution]
-    traces: List[Trace]
-    
-    _traces_by_definition: Dict[str, List[Trace]] = field(init=False, default_factory=dict)
+    definitions: Dict[str, Definition]  
+    solutions: Dict[str, List[Solution]] 
+    workload: Dict[str, List[Trace]] 
+    traces: Dict[str, List[Trace]]  
+    _implementation_callables: Dict[str, Callable] = field(init=False, default_factory=dict)
 
     @classmethod
     def from_path(cls, path: str) -> "TraceSet":
         base_path = Path(path)
 
-        definitions = []
+        # Load definitions with uniqueness check
+        definitions = {}
         definitions_files = glob.glob(str(base_path / "definitions" / "*.json"), recursive=True)
         for definition_file in definitions_files:
             with open(definition_file, "r") as f:
                 definition = Definition.from_json(f.read())
-            definitions.append(definition)
+                if definition.name in definitions:
+                    raise ValueError(f"Duplicate definition name: {definition.name}")
+                definitions[definition.name] = definition
 
+        # Load solutions grouped by definition
+        solutions = {}
         solutions_files = glob.glob(str(base_path / "solutions" / "*.json"), recursive=True)
-        solutions = []
         for solution_file in solutions_files:
             with open(solution_file, "r") as f:
                 solution = Solution.from_json(f.read())
-            solutions.append(solution)
+                if solution.definition not in solutions:
+                    solutions[solution.definition] = []
+                solutions[solution.definition].append(solution)
 
-        traces = []
-
+        # Load workload traces grouped by definition
+        workload = {}
         trace_files = glob.glob(str(base_path / "traces" / "*.jsonl"), recursive=True)
         for trace_file in trace_files:
             loaded_traces = load_jsonl(trace_file, Trace)
-            traces.extend(cast(List[Trace], loaded_traces))
+            for trace in cast(List[Trace], loaded_traces):
+                if trace.is_workload():
+                    if trace.definition not in workload:
+                        workload[trace.definition] = []
+                    workload[trace.definition].append(trace)
 
-        indexed_definitions = build_index(definitions, lambda d: d.name)
-        indexed_solutions = build_index(solutions, lambda s: s.name)
+        # Load regular traces grouped by definition
+        traces = {}
+        for trace_file in trace_files:
+            loaded_traces = load_jsonl(trace_file, Trace)
+            for trace in cast(List[Trace], loaded_traces):
+                if not trace.is_workload():
+                    if trace.definition not in traces:
+                        traces[trace.definition] = []
+                    traces[trace.definition].append(trace)
 
-        instance = cls(
-            definitions=indexed_definitions,
-            solutions=indexed_solutions,
+        return cls(
+            definitions=definitions,
+            solutions=solutions,
+            workload=workload,
             traces=traces,
         )
 
-        for trace in traces:
-            instance._traces_by_definition.setdefault(trace.definition, []).append(trace)
+    def add_definition(self, definition: Definition) -> None:
+        if definition.name in self.definitions:
+            raise ValueError(f"Definition with name '{definition.name}' already exists")
+        self.definitions[definition.name] = definition
 
-        return instance
-        
-        
+    def add_solution(self, solution: Solution) -> None:
+        if solution.definition not in self.solutions:
+            self.solutions[solution.definition] = []
+        self.solutions[solution.definition].append(solution)
+
+    def add_trace(self, trace: Trace) -> None:
+        if trace.is_workload():
+            if trace.definition not in self.workload:
+                self.workload[trace.definition] = []
+            self.workload[trace.definition].append(trace)
+        else:
+            if trace.definition not in self.traces:
+                self.traces[trace.definition] = []
+            self.traces[trace.definition].append(trace)
+
     def get_definition(self, name: str) -> Optional[Definition]:
         return self.definitions.get(name)
 
     def get_solution(self, name: str) -> Optional[Solution]:
-        return self.solutions.get(name)
+        for solutions_list in self.solutions.values():
+            for solution in solutions_list:
+                if solution.name == name:
+                    return solution
+        return None
 
     def get_traces_for_definition(self, name: str) -> List[Trace]:
-        return self._traces_by_definition.get(name, [])
+        return self.traces.get(name, [])
+
 
     def get_best_op(
         self,
@@ -79,10 +117,15 @@ class TraceSet:
         return get_best_trace(candidates)
 
     def summary(self) -> Dict[str, Any]:
-        total = len(self.traces)
-        passed = sum(1 for t in self.traces if t.evaluation["status"] == "PASSED")
+        """Get a summary of all traces."""
+        all_traces = []
+        for traces_list in self.traces.values():
+            all_traces.extend(traces_list)
+        
+        total = len(all_traces)
+        passed = sum(1 for t in all_traces if t.evaluation["status"] == "PASSED")
         failed = total - passed
-        latencies = [t.evaluation["performance"]["latency_ms"] for t in self.traces]
+        latencies = [t.evaluation["performance"]["latency_ms"] for t in all_traces]
         min_latency = min(latencies) if latencies else None
         max_latency = max(latencies) if latencies else None
         avg_latency = sum(latencies) / len(latencies) if latencies else None

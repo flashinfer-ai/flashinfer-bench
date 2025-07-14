@@ -4,7 +4,7 @@ from flashinfer_bench import Benchmark
 
 
 def main():
-    benchmark = Benchmark.from_path("./dataset")
+    benchmark = Benchmark.from_path("../dataset")
     db = benchmark.run()
 
     print(f"\nCompleted benchmarking. Found {len(db.traces)} traces.")

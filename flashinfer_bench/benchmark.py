@@ -659,14 +659,24 @@ class Benchmark:
         # Phase 3: Aggregate - Create and return TraceSet
         self.logger.info(f"Phase 3: Benchmark completed with {len(all_traces)} traces")
 
-        # Create solutions mapping for TraceSet (solution_name -> solution_object)
-        all_solutions = {}
-        for def_name, solution_list in self.solutions.items():
-            for solution in solution_list:
-                all_solutions[solution.name] = solution
+        traces_by_definition = {}
+        workload_by_definition = {}
+        
+        for trace in all_traces:
+            if trace.is_workload():
+                if trace.definition not in workload_by_definition:
+                    workload_by_definition[trace.definition] = []
+                workload_by_definition[trace.definition].append(trace)
+            else:
+                if trace.definition not in traces_by_definition:
+                    traces_by_definition[trace.definition] = []
+                traces_by_definition[trace.definition].append(trace)
 
         trace_set = TraceSet(
-            definitions=self.definitions, solutions=all_solutions, traces=all_traces
+            definitions=self.definitions,
+            solutions=self.solutions,
+            workload=workload_by_definition,
+            traces=traces_by_definition,
         )
 
         self._cleanup_temp_files()
