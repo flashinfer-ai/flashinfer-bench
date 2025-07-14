@@ -14,10 +14,10 @@ from .trace import Trace
 class TraceSet:
     """A collection of definitions, solutions, workloads, and traces."""
 
-    definitions: Dict[str, Definition]  
-    solutions: Dict[str, List[Solution]] 
-    workload: Dict[str, List[Trace]] 
-    traces: Dict[str, List[Trace]]  
+    definitions: Dict[str, Definition]
+    solutions: Dict[str, List[Solution]]
+    workload: Dict[str, List[Trace]]
+    traces: Dict[str, List[Trace]]
     _implementation_callables: Dict[str, Callable] = field(init=False, default_factory=dict)
 
     @classmethod
@@ -105,7 +105,6 @@ class TraceSet:
     def get_traces_for_definition(self, name: str) -> List[Trace]:
         return self.traces.get(name, [])
 
-
     def get_best_op(
         self,
         name: str,
@@ -121,7 +120,7 @@ class TraceSet:
         all_traces = []
         for traces_list in self.traces.values():
             all_traces.extend(traces_list)
-        
+
         total = len(all_traces)
         passed = sum(1 for t in all_traces if t.evaluation["status"] == "PASSED")
         failed = total - passed

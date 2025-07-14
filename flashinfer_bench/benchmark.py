@@ -1,24 +1,21 @@
 import importlib.util
-import json
 import logging
 import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple
 
-import numpy as np
 import torch
 import torch.nn as nn
 
 from .benchmark_config import BenchmarkConfig
-from .builders.base import BaseBuilder, BuilderRegistry, BuildError
+from .builders.base import BuilderRegistry, BuildError
 from .definition import Definition
 from .solution import Solution
 from .trace import Trace
 from .trace_set import TraceSet
 from .utils.benchmark_utils import CorrectnessChecker, DeviceManager, SeedManager
-from .utils.json_utils import load_json, load_jsonl
 from .utils.validation import (
     validate_axis,
     validate_constraints,
@@ -31,18 +28,18 @@ from .utils.validation import (
 class Benchmark:
     """
     The Benchmark class is a stateless runner of benchmarks.
-    It is responsible for loading definitions, solutions, and specific workload
-    configurations, building and validating the code, executing the benchmarks,
-    and finally outputting a series of Trace objects as results.
+    It takes a TraceSet and executes benchmarks on the solutions,
+    updating the TraceSet with new trace results.
     """
 
-    def __init__(self):
-        self.definitions: Dict[str, Definition] = {}
-        self.solutions: Dict[str, List[Solution]] = {}
-        self.workloads: Dict[str, List[Dict]] = {}
+    def __init__(self, trace_set: TraceSet):
+        """Initialize Benchmark with a TraceSet containing definitions, solutions, and workloads"""
+        self.trace_set = trace_set
         self._reference_callables: Dict[str, Callable] = {}
         self._solution_callables: Dict[str, Dict[str, Callable]] = {}
-        self._temp_files: List[Any] = []  # Track temp files for cleanup
+        self._temp_files: List[Any] = (
+            []
+        )  # Track temp files for cleanup (triton building hack for now)
 
         self.builder_registry = BuilderRegistry()
         self.logger = logging.getLogger(__name__)
@@ -51,73 +48,25 @@ class Benchmark:
         """Cleanup temp files when object is destroyed"""
         self._cleanup_temp_files()
 
-    @classmethod
-    def from_path(cls, path: Union[str, List[str]]) -> "Benchmark":
-        """Create Benchmark instance from local path(s)
+    @property
+    def traces(self) -> Dict[str, List[Trace]]:
+        """Get all traces from the associated TraceSet"""
+        return self.trace_set.traces
 
-        Expected directory structure:
-        <path>/
-        ├── definitions/
-        │   └── gemm.json
-        ├── solutions/
-        │   └── gemm_triton_gemma.json
-        └── traces/
-            ├── workloads/
-            │   ├── gemm_b128.jsonl
-            └── gemm.jsonl
-        """
-        benchmark = cls()
+    @property
+    def definitions(self) -> Dict[str, Definition]:
+        """Get definitions from the associated TraceSet"""
+        return self.trace_set.definitions
 
-        if isinstance(path, str):
-            paths = [path]
-        else:
-            paths = path
+    @property
+    def solutions(self) -> Dict[str, List[Solution]]:
+        """Get solutions from the associated TraceSet"""
+        return self.trace_set.solutions
 
-        for p in paths:
-            benchmark._load_from_path(Path(p))
-
-        benchmark._validate()
-        return benchmark
-
-    @classmethod
-    def from_hub(cls) -> "Benchmark":
-        """Create Benchmark instance from FlashInfer Hub"""
-        benchmark = cls()
-        # TODO: Implement hub integration
-        benchmark.logger.warning("Hub integration not implemented yet")
-        return benchmark
-
-    def _load_from_path(self, path: Path) -> None:
-        """Load definitions, solutions, and workloads from directory of given path"""
-        if not path.exists():
-            raise FileNotFoundError(f"Path does not exist: {path}")
-
-        definitions_dir = path / "definitions"
-        if definitions_dir.exists():
-            for json_file in definitions_dir.glob("*.json"):
-                definition = load_json(json_file, Definition)
-                self.definitions[definition.name] = definition
-
-        for dir_name in ["solutions", "implementations"]:
-            solutions_dir = path / dir_name
-            if solutions_dir.exists():
-                for json_file in solutions_dir.glob("*.json"):
-                    solution = load_json(json_file, Solution)
-                    if solution.definition not in self.solutions:
-                        self.solutions[solution.definition] = []
-                    self.solutions[solution.definition].append(solution)
-
-        traces_dir = path / "traces"
-        if traces_dir.exists():
-            # Load workload-only traces from workloads subdirectory
-            workloads_dir = traces_dir / "workloads"
-            if workloads_dir.exists():
-                for jsonl_file in workloads_dir.glob("*.jsonl"):
-                    workload_traces = load_jsonl(jsonl_file, Trace)
-                    for trace in workload_traces:
-                        if trace.definition not in self.workloads:
-                            self.workloads[trace.definition] = []
-                        self.workloads[trace.definition].append(trace.workload)
+    @property
+    def workload(self) -> Dict[str, List[Trace]]:
+        """Get workload traces from the associated TraceSet"""
+        return self.trace_set.workload
 
     def _validate(self) -> None:
         """Validate loaded definitions, solutions, and workloads for consistency"""
@@ -145,14 +94,14 @@ class Benchmark:
                         f"Solution '{solution.name}' has mismatched definition reference"
                     )
 
-        for def_name, workload_list in self.workloads.items():
+        for def_name, workload_list in self.workload.items():
             if def_name not in self.definitions:
                 raise ValueError(f"Workloads reference undefined definition: {def_name}")
 
             definition = self.definitions[def_name]
-            for workload in workload_list:
-                if "axes" in workload:
-                    validate_workload_axes(workload["axes"], definition.axes)
+            for workload_trace in workload_list:
+                if "axes" in workload_trace.workload:
+                    validate_workload_axes(workload_trace.workload["axes"], definition.axes)
 
     def _build_reference_testing(self, definition_name: str) -> Callable:
         """TODO: In development, kernel builder system"""
@@ -223,24 +172,20 @@ class Benchmark:
                 return self._solution_callables[solution.definition][solution.name]
 
         try:
-            # Get the entry point from solution spec
             entry_point = solution.spec.get("entry_point", "run")
             language = solution.spec.get("language", "Python").lower()
 
-            # Get the source code (assuming single source file for now)
             if not solution.sources or len(solution.sources) == 0:
                 raise BuildError(f"No source code found for solution: {solution.name}")
 
             source_content = solution.sources[0]["content"]
 
             if language == "triton":
-                # Use tempfile approach for Triton code
                 callable_obj = self._compile_triton_code(source_content, entry_point)
             else:
                 # Use compile/exec for Python code
                 callable_obj = self._compile_python_code(source_content, entry_point)
 
-            # Cache the callable
             if solution.definition not in self._solution_callables:
                 self._solution_callables[solution.definition] = {}
             self._solution_callables[solution.definition][solution.name] = callable_obj
@@ -269,7 +214,7 @@ class Benchmark:
         Inspired by KernelBench-Triton https://github.com/ScalingIntelligence/KernelBench/pull/35/files#diff-7c33c37dd2ca3f92b111b25d2c1168f5c98f308c1f2d0e2add9e4b8b240e5918
         """
         try:
-            # Create a temporary named file with a .py extension
+            # Create a temporary named file with a .py extension (triton building hack for now)
             with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
                 tmp_file.write(code_string)
                 tempfile_path = tmp_file.name
@@ -545,17 +490,114 @@ class Benchmark:
 
         return is_correct, overall_max_abs_diff, overall_max_rel_diff, metadata
 
-    def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> TraceSet:
-        """Orchestrate the entire end-to-end benchmark process
+    def run_solution(self, solution_name: str, config: BenchmarkConfig = BenchmarkConfig()) -> None:
+        """Run benchmarks for a specific solution
 
-        Returns:
-            TraceSet containing all benchmark traces
+        Args:
+            solution_name: Name of the solution to run
+            config: Benchmark configuration
         """
         logging.basicConfig(level=getattr(logging, config.log_level.upper()))
 
-        all_traces = []
+        target_solution = None
+        target_def_name = None
 
-        # Phase 1: Build - Collect all workloads to evaluate and build callables
+        for def_name, solution_list in self.solutions.items():
+            for solution in solution_list:
+                if solution.name == solution_name:
+                    target_solution = solution
+                    target_def_name = def_name
+                    break
+            if target_solution:
+                break
+
+        if not target_solution:
+            raise ValueError(f"Solution '{solution_name}' not found")
+
+        self.logger.info(f"Running benchmark for solution: {solution_name}")
+
+        try:
+            ref_callable = self._build_reference(target_def_name)
+            self.logger.info(f"Built reference for {target_def_name}")
+        except Exception as e:
+            self.logger.error(f"Failed to build reference for {target_def_name}: {e}")
+            return
+
+        try:
+            impl_callable = self._build_solution(target_solution)
+            self.logger.info(f"Built solution {target_solution.name}")
+        except Exception as e:
+            self.logger.error(f"Failed to build solution {target_solution.name}: {e}")
+            return
+
+        seed_manager = SeedManager()
+        device_manager = DeviceManager(config.device)
+
+        workload_list = [trace.workload for trace in self.workload.get(target_def_name, [])]
+
+        if not workload_list:
+            definition = self.definitions[target_def_name]
+            default_workload = {"axes": {}, "inputs": {}}
+
+            for axis_name, axis_def in definition.axes.items():
+                if axis_def["type"] == "var":
+                    default_workload["axes"][axis_name] = 32
+
+            for input_name in definition.inputs:
+                default_workload["inputs"][input_name] = {"type": "random"}
+
+            workload_list = [default_workload]
+
+        self.logger.info(f"Evaluating {target_solution.name} on {len(workload_list)} workloads")
+
+        for workload in workload_list:
+            try:
+                trace = self._evaluate_single_workload(
+                    target_solution,
+                    workload,
+                    ref_callable,
+                    impl_callable,
+                    config,
+                    seed_manager,
+                    device_manager,
+                )
+                self.trace_set.add_trace(trace)
+            except Exception as e:
+                self.logger.error(f"Failed to evaluate {target_solution.name} on workload: {e}")
+                error_trace = Trace(
+                    definition=target_def_name,
+                    solution=target_solution.name,
+                    workload=workload,
+                    evaluation={
+                        "status": "EVALUATION_ERROR",
+                        "log_file": f"{target_solution.name}_error.log",
+                        "correctness": {
+                            "max_relative_error": float("inf"),
+                            "max_absolute_error": float("inf"),
+                        },
+                        "performance": {
+                            "latency_ms": float("inf"),
+                            "reference_latency_ms": float("inf"),
+                            "speedup_factor": 0.0,
+                        },
+                        "environment": {"error": str(e)},
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
+                self.trace_set.add_trace(error_trace)
+
+    def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
+        """
+        Updates the associated TraceSet with benchmark results.
+
+        Args:
+            config: Benchmark configuration
+        """
+        logging.basicConfig(level=getattr(logging, config.log_level.upper()))
+
+        self._validate()
+
+        # Phase 1: Build - Build reference implementations
         self.logger.info("Phase 1: Building reference implementations...")
 
         for def_name in self.definitions:
@@ -596,7 +638,7 @@ class Benchmark:
 
             ref_callable = self._reference_callables[def_name]
 
-            workload_list = self.workloads.get(def_name, [])
+            workload_list = [trace.workload for trace in self.workload.get(def_name, [])]
 
             # If no workloads, create a default one
             if not workload_list:
@@ -631,7 +673,7 @@ class Benchmark:
                             seed_manager,
                             device_manager,
                         )
-                        all_traces.append(trace)
+                        self.trace_set.add_trace(trace)
                     except Exception as e:
                         self.logger.error(f"Failed to evaluate {solution.name} on workload: {e}")
                         error_trace = Trace(
@@ -654,31 +696,10 @@ class Benchmark:
                                 "timestamp": datetime.now().isoformat(),
                             },
                         )
-                        all_traces.append(error_trace)
+                        self.trace_set.add_trace(error_trace)
 
-        # Phase 3: Aggregate - Create and return TraceSet
-        self.logger.info(f"Phase 3: Benchmark completed with {len(all_traces)} traces")
-
-        traces_by_definition = {}
-        workload_by_definition = {}
-        
-        for trace in all_traces:
-            if trace.is_workload():
-                if trace.definition not in workload_by_definition:
-                    workload_by_definition[trace.definition] = []
-                workload_by_definition[trace.definition].append(trace)
-            else:
-                if trace.definition not in traces_by_definition:
-                    traces_by_definition[trace.definition] = []
-                traces_by_definition[trace.definition].append(trace)
-
-        trace_set = TraceSet(
-            definitions=self.definitions,
-            solutions=self.solutions,
-            workload=workload_by_definition,
-            traces=traces_by_definition,
-        )
+        # Phase 3: Complete
+        trace_count = sum(len(traces) for traces in self.traces.values())
+        self.logger.info(f"Phase 3: Benchmark completed with {trace_count} traces")
 
         self._cleanup_temp_files()
-
-        return trace_set
