@@ -37,6 +37,49 @@ traces = TraceSet.from_path("./dataset")
 benchmark = Benchmark(traces)
 
 benchmark.run()
+
+# Accessing results
+print(traces.summary())
+
+# Customizing the benchmark run
+from flashinfer_bench import BenchmarkConfig
+config = BenchmarkConfig(warmup_runs=5, iterations=20, device="cuda:1")
+benchmark.run(config)
+```
+
+## Command Line Interface (CLI)
+
+FlashInfer Bench provides a CLI for running benchmarks and analyzing results.
+
+### Usage
+
+```bash
+flashinfer-bench run --local ./dataset
+flashinfer-bench run --local ./dataset1 --local ./dataset2
+flashinfer-bench report summary --local ./dataset
+flashinfer-bench report best --local ./dataset
+```
+
+#### Options
+- `--local <PATH>`: Specifies one or more local paths to load traces from. Can be used multiple times.
+- `--hub`: Load the latest traces from the FlashInfer Hub (not yet implemented).
+- `--warmup-runs <N>`: Number of warmup runs for benchmarking (default: 10).
+- `--iterations <N>`: Number of benchmark iterations (default: 50).
+- `--device <DEVICE>`: Device to run benchmarks on (default: cuda:0).
+- `--log-level <LEVEL>`: Logging level (default: INFO).
+- `--save-results` / `--no-save-results`: Whether to save results after running (default: save).
+
+#### Example
+
+```bash
+# Run benchmarks on a dataset
+flashinfer-bench run --local ./dataset
+
+# Print a summary of traces
+flashinfer-bench report summary --local ./dataset
+
+# Find the best solution for each definition
+flashinfer-bench report best --local ./dataset
 ```
 
 ## Schema
