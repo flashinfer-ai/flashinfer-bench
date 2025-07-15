@@ -1,172 +1,51 @@
-# flashinfer-bench
+# FlashInfer Bench
 
-## flashinfer-bench leaderboard
+**FlashInfer Bench** is a lightweight, extensible benchmarking suite for evaluating low-level kernel implementations of model inference workloads. It is centered around the `Trace` artifact — a detailed record of a workload execution. It enables systematic comparison of kernel implementations with correctness and performance metrics.
 
-`flashinfer-bench leaderboard` is a web-based leaderboard for benchmarking CUDA kernel generation tasks. It displays models, frameworks, and their associated kernels, linking to performance leaderboards.
+## Dataset Layout
 
----
-
-### Features
-
-✅ Models & Frameworks overview page
-
-✅ Model detail page with kernels and leaderboard links
-
-✅ Leaderboards showing top users and runtimes
-
----
-
-### How to run the leaderboard
-
-1️⃣ Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-```bash
-npm install
-```
-
-2️⃣ Run the pipeline and start the server:
-
-```bash
-python run_pipeline.py
-```
-
-You should see:
+Each dataset is organized as follows:
 
 ```
- * Running on http://127.0.0.1:5000/
+dataset/
+├── definitions/         # One JSON file per workload definition
+├── solutions/           # One JSON file per solution implementation
+└── traces/              # Benchmark results
 ```
 
+* Each **Definition** describes a computation task and reference logic.
+* Each **Solution** specifies a kernel or agent implementation for a definition.
+* Each **Trace** records a benchmark result: input config, performance, correctness, environment, etc.
 
-3️⃣ Open your browser:
+You can load the full dataset using:
 
-```
-http://127.0.0.1:5000/
-```
-
-✅ Navigate through Models & Frameworks, view kernels, and leaderboard pages.
-
----
-
-## How to run the Inspector frontend
-
-The Inspector is a React-based web application for viewing and analyzing kernel generation logs in JSONL format.
-
-1️⃣ Navigate to the inspector directory:
-
-```bash
-cd inspector
+```python
+from flashinfer_bench import TraceSet
+trace_set = TraceSet.from_path("/dataset")
 ```
 
-2️⃣ Install dependencies:
+## Benchmarking Kernels
 
-```bash
-npm install
+You can run local benchmarks using the `Benchmark` runner, which scans your dataset for all available definitions and solutions, executes them, and appends resulting traces to the `TraceSet`.
+
+It also supports single-solution execution via `.run_solution(...)`.
+
+```python
+from flashinfer_bench import Benchmark, TraceSet
+
+traces = TraceSet.from_path("./dataset")
+benchmark = Benchmark(traces)
+
+benchmark.run()
 ```
 
-3️⃣ Start the development server:
+## Schema
 
-```bash
-npm run dev
-```
+Each of the core entities is modeled as a dataclass:
 
-You should see:
+* **Definition**: Workload specification with axes, inputs, outputs, and a reference implementation.
+* **Solution**: A concrete implementation with source files and a launch entry point.
+* **Trace**: A benchmark result of a solution on a specific workload input.
 
-```
-  VITE v4.x.x  ready in xxx ms
+See [`schema/`](./schema/) for full documentation.
 
-  ➜  Local:   http://localhost:3000/
-  ➜  Network: use --host to expose
-```
-
-4️⃣ Open your browser:
-
-```
-http://localhost:3000/
-```
-
-5️⃣ Upload a `.jsonl` file containing kernel generation logs to view:
-   - **Problem Description**: The original problem prompt
-   - **Generated Kernel**: All generated CUDA kernels from iterations
-   - **Trace**: Complete JSON log of the generation process
-
----
-
-## How to run benchmark on single kernel description
-
-**Basic usage:**
-
-```bash
-python benchmark/benchmark.py <kernel_description.py> <kernel_generator.py>
-```
-
-**With advanced arguments:**
-
-```bash
-python benchmark/benchmark.py kernel_description.py kernel_generator.py \
-    --warmup 5 \
-    --iter 10 \
-    --report-n 16 \
-    --max-diff-limit 1e-5 \
-    --output benchmarking_results.json
-```
-
-## How to run benchmark on datasets
-
-**Basic usage:**
-
-```bash
-python run_benchmark.py <kernel_generator.py> --dataset-dir <path/to/dataset>
-```
-
-**Example:**
-
-```bash
-python run_benchmark.py agents/kernelllm_generator.py --dataset-dir dataset/kernelbench/level1
-```
-
-**Available arguments:**
-
-- `generator` - Path to kernel generator file (.py) **(required)**
-- `--dataset-dir` - Directory containing datapoint files to benchmark **(required)**
-- `--warmup` - Number of warmup iterations (default: 5)
-- `--iter` - Number of timing iterations per round (default: 10)
-- `--report-n` - Number of generation rounds (default: 16)
-- `--max-diff-limit` - Maximum difference for correctness (default: 1e-5)
-- `--correctness-trials` - Number of correctness trials with different inputs (default: 1)
-- `--seed` - Random seed for reproducibility (default: 42)
-- `--device` - CUDA device to use (e.g., 'cuda:0', 0, or 'auto')
-- `--backend` - Backend to use: cuda, triton (default: cuda)
-- `--loader-type` - Type of kernel loader: auto, kernelbench, triton, flashinfer (default: auto)
-- `--use-ncu` - Enable NCU profiling (default: false)
-- `--output` - Output aggregated results JSON file (default: benchmark_results/aggregated_results.json)
-- `--benchmark-script` - Path to the benchmark.py script (default: benchmark/benchmark.py)
-- `--timeout` - Timeout per datapoint in seconds (default: 1800)
-- `--verbose` - Enable verbose output
-- `--keep-temp` - Keep temporary directory for debugging
-
-**Advanced example:**
-
-```bash
-python run_benchmark.py kernels/flashinfer_generator.py \
-    --dataset-dir dataset/kernelbench/level1 \
-    --loader-type kernelbench \
-    --warmup 10 \
-    --iter 20 \
-    --report-n 32 \
-    --backend triton \
-    --device cuda:0 \
-    --verbose \
-    --keep-temp \
-    --output benchmark_results/flashinfer_results.json
-```
-
-This will run benchmarks on all datapoint files in the specified dataset directory and save aggregated results to `benchmark_results/flashinfer_results.json`.
-
-## ⚠️ Notes
-
-* The site relies on precomputed `leaderboard_[id].json` and model/kernel JSONL data in `leaderboard/leaderboard/static/`. Ensure these files exist and are updated by your data processing scripts under `leaderboard/scripts/`. The traces data should be in `leaderboard/public/data`.
-* Tailwind CSS must be built and linked properly in `leaderboard/leaderboard/static/css/main.css`.
