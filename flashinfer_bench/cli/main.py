@@ -31,10 +31,75 @@ def summary(args: argparse.Namespace):
         print(trace_set.summary())
 
 
+def merge_tracesets(trace_sets):
+    """Merge multiple TraceSets into one, raising on definition conflicts."""
+    if not trace_sets:
+        raise ValueError("No TraceSets to merge.")
+    # Start with a deep copy of the first TraceSet
+    from copy import deepcopy
+    merged = deepcopy(trace_sets[0])
+    for ts in trace_sets[1:]:
+        # Merge definitions
+        for name, definition in ts.definitions.items():
+            if name in merged.definitions:
+                if merged.definitions[name] != definition:
+                    raise ValueError(f"Definition conflict for '{name}' during merge.")
+            else:
+                merged.definitions[name] = definition
+        # Merge solutions
+        for def_name, solutions in ts.solutions.items():
+            if def_name not in merged.solutions:
+                merged.solutions[def_name] = []
+            merged.solutions[def_name].extend(solutions)
+        # Merge workloads
+        for def_name, workloads in ts.workload.items():
+            if def_name not in merged.workload:
+                merged.workload[def_name] = []
+            merged.workload[def_name].extend(workloads)
+        # Merge traces
+        for def_name, traces in ts.traces.items():
+            if def_name not in merged.traces:
+                merged.traces[def_name] = []
+            merged.traces[def_name].extend(traces)
+    return merged
+
+
+def export_traceset(trace_set, output_dir):
+    """Export a TraceSet to a directory in the expected structure."""
+    from flashinfer_bench.utils.json_utils import save_json, save_jsonl
+    output_dir = Path(output_dir)
+    (output_dir / "definitions").mkdir(parents=True, exist_ok=True)
+    (output_dir / "solutions").mkdir(parents=True, exist_ok=True)
+    (output_dir / "traces").mkdir(parents=True, exist_ok=True)
+    # Save definitions
+    for defn in trace_set.definitions.values():
+        out_path = output_dir / "definitions" / f"{defn.name}.json"
+        save_json(defn, out_path)
+    # Save solutions
+    for def_name, solutions in trace_set.solutions.items():
+        for sol in solutions:
+            out_path = output_dir / "solutions" / f"{sol.name}.json"
+            save_json(sol, out_path)
+    # Save workload traces
+    for def_name, workloads in trace_set.workload.items():
+        if workloads:
+            out_path = output_dir / "traces" / f"{def_name}_workloads.jsonl"
+            save_jsonl(workloads, out_path)
+    # Save regular traces
+    for def_name, traces in trace_set.traces.items():
+        if traces:
+            out_path = output_dir / "traces" / f"{def_name}.jsonl"
+            save_jsonl(traces, out_path)
+
+
 def merge(args: argparse.Namespace):
-    """Merge multiple TraceSets into a single one. WIP"""
-    print(f"Received arguments: {args}")
-    raise NotImplementedError("Merge is not implemented yet.")
+    """Merge multiple TraceSets into a single one and export to output directory."""
+    if not args.output:
+        raise ValueError("--output <MERGED_PATH> is required for merge.")
+    trace_sets = _load_traces(args)
+    merged = merge_tracesets(trace_sets)
+    export_traceset(merged, args.output)
+    print(f"Merged {len(trace_sets)} TraceSets and exported to {args.output}")
 
 
 def visualize(args: argparse.Namespace):
@@ -141,6 +206,15 @@ def cli():
 
     merge_parser = report_subparsers.add_parser("merge", help="Merges multiple traces.")
     merge_parser.add_argument("--output", type=Path)
+    merge_parser.add_argument(
+        "--local",
+        type=Path,
+        action="append",
+        help="Specifies one or more local paths to load traces from.",
+    )
+    merge_parser.add_argument(
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
     merge_parser.set_defaults(func=merge)
 
     visualize_parser = report_subparsers.add_parser(

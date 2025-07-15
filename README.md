@@ -58,6 +58,7 @@ flashinfer-bench run --local ./dataset
 flashinfer-bench run --local ./dataset1 --local ./dataset2
 flashinfer-bench report summary --local ./dataset
 flashinfer-bench report best --local ./dataset
+flashinfer-bench report merge --output ./examples/merged_dataset --local ./dataset --local ./examples/dataset2
 ```
 
 #### Options
