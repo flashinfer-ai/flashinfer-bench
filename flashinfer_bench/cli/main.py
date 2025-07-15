@@ -2,7 +2,8 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from flashinfer_bench import TraceSet
+from flashinfer_bench import TraceSet, Benchmark, BenchmarkConfig
+from flashinfer_bench.utils.json_utils import save_jsonl
 
 
 def best(args: argparse.Namespace):
@@ -43,9 +44,33 @@ def visualize(args: argparse.Namespace):
 
 
 def run(args: argparse.Namespace):
-    """Benchmark run. WIP"""
-    print(f"Received arguments: {args}")
-    raise NotImplementedError("Run is not implemented yet.")
+    """Benchmark run: executes benchmarks and writes results."""
+    if not args.local:
+        raise ValueError("A data source is required. Please use --local <PATH>.")
+    # Only support --local for now
+    for path in args.local:
+        trace_set = TraceSet.from_path(str(path))
+        config = BenchmarkConfig(
+            warmup_runs=args.warmup_runs,
+            iterations=args.iterations,
+            device=args.device,
+            log_level=args.log_level,
+        )
+        benchmark = Benchmark(trace_set)
+        print(f"Running benchmark for: {path}")
+        benchmark.run(config)
+        if args.save_results:
+            # Save updated traces back to the traces directory
+            traces_dir = Path(path) / "traces"
+            traces_dir.mkdir(parents=True, exist_ok=True)
+            for def_name, traces in trace_set.traces.items():
+                if not traces:
+                    continue
+                out_path = traces_dir / f"{def_name}.jsonl"
+                save_jsonl(traces, out_path)
+            print(f"Results saved to {traces_dir}")
+        else:
+            print("Benchmark run complete. Results not saved (use --save-results to enable saving).")
 
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
@@ -68,16 +93,6 @@ def cli():
         description="FlashInfer Bench CLI", formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument(
-        "--local",
-        type=Path,
-        action="append",  # Allows specifying --local multiple times
-        help="Specifies one or more local paths to load traces from.",
-    )
-    parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
-
     command_subparsers = parser.add_subparsers(
         dest="command", required=True, help="Primary commands"
     )
@@ -89,6 +104,15 @@ def cli():
     run_parser.add_argument("--device", default="cuda:0")
     run_parser.add_argument("--log-level", default="INFO")
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
+    run_parser.add_argument(
+        "--local",
+        type=Path,
+        action="append",
+        help="Specifies one or more local paths to load traces from.",
+    )
+    run_parser.add_argument(
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
     run_parser.set_defaults(func=run)
 
     report_parser = command_subparsers.add_parser(
@@ -100,6 +124,15 @@ def cli():
 
     summary_parser = report_subparsers.add_parser(
         "summary", help="Prints a human-readable summary of loaded traces."
+    )
+    summary_parser.add_argument(
+        "--local",
+        type=Path,
+        action="append",
+        help="Specifies one or more local paths to load traces from.",
+    )
+    summary_parser.add_argument(
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     summary_parser.set_defaults(func=summary)
 
