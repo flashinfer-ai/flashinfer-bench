@@ -103,9 +103,63 @@ def merge(args: argparse.Namespace):
 
 
 def visualize(args: argparse.Namespace):
-    """Visualize benchmark results. WIP"""
-    print(f"Received arguments: {args}")
-    raise NotImplementedError("Visualization is not implemented yet.")
+    """Visualize benchmark results as a console table."""
+    trace_sets = _load_traces(args)
+    
+    print("FlashInfer Bench Results Visualization")
+    print("=" * 80)
+    
+    for i, trace_set in enumerate(trace_sets):
+        if len(trace_sets) > 1:
+            print(f"\nDataset {i+1}:")
+            print("-" * 40)
+        
+        # Print summary statistics
+        summary = trace_set.summary()
+        print(f"Summary: {summary['passed']}/{summary['total']} traces passed")
+        if summary['avg_latency_ms']:
+            print(f"Average latency: {summary['avg_latency_ms']:.3f}ms")
+        
+        # Print detailed results table
+        print("\nDetailed Results:")
+        print("-" * 80)
+        print(f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}")
+        print("-" * 80)
+        
+        for def_name, traces in trace_set.traces.items():
+            for trace in traces:
+                status = trace.evaluation.get("status", "UNKNOWN")
+                perf = trace.evaluation.get("performance", {})
+                corr = trace.evaluation.get("correctness", {})
+                
+                speedup = perf.get("speedup_factor", "N/A")
+                if isinstance(speedup, (int, float)):
+                    speedup = f"{speedup:.2f}×"
+                
+                latency = perf.get("latency_ms", "N/A")
+                if isinstance(latency, (int, float)):
+                    latency = f"{latency:.3f}"
+                
+                max_error = corr.get("max_absolute_error", "N/A")
+                if isinstance(max_error, (int, float)):
+                    max_error = f"{max_error:.2e}"
+                
+                print(f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}")
+        
+        # Print best solutions
+        print("\nBest Solutions:")
+        print("-" * 80)
+        for def_name in trace_set.definitions.keys():
+            best_trace = trace_set.get_best_op(def_name)
+            if best_trace:
+                perf = best_trace.evaluation.get("performance", {})
+                corr = best_trace.evaluation.get("correctness", {})
+                speedup = perf.get("speedup_factor", "N/A")
+                if isinstance(speedup, (int, float)):
+                    speedup = f"{speedup:.2f}×"
+                print(f"{def_name}: {best_trace.solution} (Speedup: {speedup})")
+            else:
+                print(f"{def_name}: No valid solution found")
 
 
 def run(args: argparse.Namespace):
@@ -219,6 +273,15 @@ def cli():
 
     visualize_parser = report_subparsers.add_parser(
         "visualize", help="Generates a visual representation of benchmark results."
+    )
+    visualize_parser.add_argument(
+        "--local",
+        type=Path,
+        action="append",
+        help="Specifies one or more local paths to load traces from.",
+    )
+    visualize_parser.add_argument(
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     visualize_parser.set_defaults(func=visualize)
 
