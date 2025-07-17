@@ -7,7 +7,13 @@ import {
   Typography,
   Tabs,
   Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  TextField,
+  List
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { styled, Theme } from '@mui/material/styles';
 
 const MessageContainer = styled(Paper)(({ theme }: { theme: Theme }) => ({
@@ -17,80 +23,298 @@ const MessageContainer = styled(Paper)(({ theme }: { theme: Theme }) => ({
   overflowY: 'auto',
 }));
 
-const PrintMessage = styled(Box)(({ theme }: { theme: Theme }) => ({
-  marginBottom: theme.spacing(0.5),
-  padding: theme.spacing(0.5),
-  borderRadius: theme.spacing(0.5),
-  backgroundColor: theme.palette.grey[50],
-  fontFamily: 'monospace',
-  fontSize: '0.9em',
-}));
-
 interface TraceLine {
   [key: string]: any;
 }
 
+function AgentInspectorTraceItem({ line, idx }: { line: TraceLine; idx: number }) {
+  const type = line.type;
+  // Helper to render a multi-line text field
+  const renderTextField = (label: string, value: string | undefined) => (
+    <TextField
+      label={label}
+      value={value || ''}
+      fullWidth
+      multiline
+      minRows={2}
+      InputProps={{ readOnly: true }}
+      margin="dense"
+      variant="outlined"
+      sx={{ mb: 1 }}
+    />
+  );
+
+  if (type === 'llm_request') {
+    const modelName = line.model_name || line.model || (line.data && line.data.model_name);
+    const conversation = line.conversation || (line.data && line.data.conversation);
+    const llmOutput = line.llm_output || (line.data && line.data.llm_output);
+    const toolCalls = line.tool_calls || (line.data && line.data.tool_calls);
+    return (
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle2">llm_request #{idx + 1}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          {renderTextField('Model Name', modelName)}
+          {conversation && Array.isArray(conversation) && (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>Conversation:</Typography>
+              <List dense>
+                {conversation.map((msg: any, i: number) => (
+                  <Accordion key={i} sx={{ mb: 1 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="body2">Message #{i + 1}</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {Object.entries(msg).map(([k, v]) =>
+                        typeof v === 'string' ? renderTextField(k, v) : (
+                          <Box key={k} sx={{ mb: 1 }}>
+                            <Typography variant="caption">{k}:</Typography>
+                            <pre style={{ margin: 0 }}>{JSON.stringify(v, null, 2)}</pre>
+                          </Box>
+                        )
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </List>
+            </Box>
+          )}
+          {renderTextField('LLM Output', llmOutput)}
+          {toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 && (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold' }}>Tool Calls:</Typography>
+              <List dense>
+                {toolCalls.map((tool: any, i: number) => (
+                  <Accordion key={i} sx={{ mb: 1 }}>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="body2">Tool Call #{i + 1}</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {renderTextField('Tool Name', tool.tool_name)}
+                      {tool.arguments && (
+                        <Box sx={{ mb: 1 }}>
+                          <Typography variant="caption">Arguments:</Typography>
+                          <pre style={{ margin: 0 }}>{JSON.stringify(tool.arguments, null, 2)}</pre>
+                        </Box>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </List>
+            </Box>
+          )}
+        </AccordionDetails>
+      </Accordion>
+    );
+  } else if (type === 'tool_call' || type === 'mcp') {
+    // Show all fields in the schema
+    return (
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle2">{type} #{idx + 1}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          {Object.entries(line).map(([k, v]) =>
+            typeof v === 'string' ? renderTextField(k, v) : (
+              <Box key={k} sx={{ mb: 1 }}>
+                <Typography variant="caption">{k}:</Typography>
+                <pre style={{ margin: 0 }}>{JSON.stringify(v, null, 2)}</pre>
+              </Box>
+            )
+          )}
+        </AccordionDetails>
+      </Accordion>
+    );
+  } else {
+    // Fallback: show as JSON
+    return (
+      <Accordion>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="subtitle2">Unknown type #{idx + 1}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <pre style={{ margin: 0 }}>{JSON.stringify(line, null, 2)}</pre>
+        </AccordionDetails>
+      </Accordion>
+    );
+  }
+}
+
+function renderJsonField(label: string, value: any) {
+  if (typeof value === 'string') {
+    return (
+      <TextField
+        label={label}
+        value={value}
+        fullWidth
+        multiline
+        minRows={2}
+        InputProps={{ readOnly: true }}
+        margin="dense"
+        variant="outlined"
+        sx={{ mb: 1 }}
+      />
+    );
+  } else if (typeof value === 'object' && value !== null) {
+    return (
+      <Accordion sx={{ mb: 1 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="body2">{label}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <pre style={{ margin: 0 }}>{JSON.stringify(value, null, 2)}</pre>
+        </AccordionDetails>
+      </Accordion>
+    );
+  } else {
+    return (
+      <TextField
+        label={label}
+        value={String(value)}
+        fullWidth
+        InputProps={{ readOnly: true }}
+        margin="dense"
+        variant="outlined"
+        sx={{ mb: 1 }}
+      />
+    );
+  }
+}
+
+function renderDefinition(def: any) {
+  if (!def) return null;
+  return (
+    <Box>
+      {renderJsonField('Name', def.name)}
+      {renderJsonField('Type', def.type)}
+      {renderJsonField('Description', def.description)}
+      {renderJsonField('Axes', def.axes)}
+      {renderJsonField('Inputs', def.inputs)}
+      {renderJsonField('Outputs', def.outputs)}
+      {renderJsonField('Reference', def.reference)}
+      {renderJsonField('Constraints', def.constraints)}
+    </Box>
+  );
+}
+
+function renderSolution(sol: any) {
+  if (!sol) return null;
+  return (
+    <Box>
+      {renderJsonField('Name', sol.name)}
+      {renderJsonField('Definition', sol.definition)}
+      {renderJsonField('Description', sol.description)}
+      {renderJsonField('Author', sol.author)}
+      {renderJsonField('Spec', sol.spec)}
+      {sol.sources && Array.isArray(sol.sources) && (
+        <Accordion sx={{ mb: 1 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="body2">Sources</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            {sol.sources.map((src: any, i: number) => (
+              <Accordion key={i} sx={{ mb: 1 }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="body2">{src.path}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <TextField
+                    label="Content"
+                    value={src.content}
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    InputProps={{ readOnly: true }}
+                    margin="dense"
+                    variant="outlined"
+                  />
+                </AccordionDetails>
+              </Accordion>
+            ))}
+          </AccordionDetails>
+        </Accordion>
+      )}
+    </Box>
+  );
+}
+
+function renderTrace(trace: any) {
+  if (!trace) return null;
+  // Top-level fields: definition, solution, workload, evaluation
+  return (
+    <Box>
+      {renderJsonField('Definition', trace.definition)}
+      {renderJsonField('Solution', trace.solution)}
+      {renderJsonField('Workload', trace.workload)}
+      {renderJsonField('Evaluation', trace.evaluation)}
+    </Box>
+  );
+}
+
 function App() {
-  const [trace, setTrace] = React.useState<TraceLine[]>([]);
-  const [fileName, setFileName] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState(0);
-  const [problemDescription, setProblemDescription] = React.useState<string | null>(null);
-  const [generatedKernels, setGeneratedKernels] = React.useState<string[]>([]);
-  const messagesEndRef = React.useRef<null | HTMLDivElement>(null);
+  // State for each file type
+  const [definition, setDefinition] = React.useState<any>(null);
+  const [definitionFile, setDefinitionFile] = React.useState<string | null>(null);
+  const [solution, setSolution] = React.useState<any>(null);
+  const [solutionFile, setSolutionFile] = React.useState<string | null>(null);
+  const [trace, setTrace] = React.useState<any>(null);
+  const [traceFile, setTraceFile] = React.useState<string | null>(null);
+  // For agent inspector (trace elements)
+  const [traceElements, setTraceElements] = React.useState<any[]>([]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // File upload handlers
+  const handleDefinitionUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setFileName(file.name);
+      setDefinitionFile(file.name);
       const text = await file.text();
-      const lines = text.split('\n').filter((line: string) => line.trim().length > 0);
-      const parsed: TraceLine[] = [];
-      let foundProblem = false;
-      let problem = null;
-      const kernels: string[] = [];
-      for (const line of lines) {
-        try {
-          const obj = JSON.parse(line);
-          parsed.push(obj);
-          // Find problem description
-          if (!foundProblem && obj.type === 'prompt' && obj.data && obj.data.type === 'codegen') {
-            problem = obj.data.prompt;
-            foundProblem = true;
-          }
-          // For type 'iteration', search data.model_output and data.messages for model_output
-          if (obj.type === 'iteration' && obj.data) {
-            // Check for model_output directly in data
-            if (obj.data.model_output !== undefined && obj.data.model_output !== null) {
-              let kernel = obj.data.model_output;
-              if (typeof kernel === 'object') {
-                kernel = JSON.stringify(kernel, null, 2);
-              }
-              kernels.push(kernel);
-            }
-            // Check for model_output in messages
-            if (Array.isArray(obj.data.messages)) {
-              for (const msg of obj.data.messages) {
-                if (msg.model_output !== undefined && msg.model_output !== null) {
-                  let kernel = msg.model_output;
-                  if (typeof kernel === 'object') {
-                    kernel = JSON.stringify(kernel, null, 2);
-                  }
-                  kernels.push(kernel);
-                }
-              }
-            }
-          }
-        } catch (e) {
-          parsed.push({ error: 'Invalid JSON', raw: line });
-        }
+      try {
+        setDefinition(JSON.parse(text));
+      } catch {
+        setDefinition(null);
       }
-      setTrace(parsed);
-      setProblemDescription(problem);
-      setGeneratedKernels(kernels);
+    }
+  };
+  const handleSolutionUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setSolutionFile(file.name);
+      const text = await file.text();
+      try {
+        setSolution(JSON.parse(text));
+      } catch {
+        setSolution(null);
+      }
+    }
+  };
+  const handleTraceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setTraceFile(file.name);
+      const text = await file.text();
+      try {
+        const obj = JSON.parse(text);
+        setTrace(obj);
+        // For agent inspector: if obj has a 'trace' or 'elements' array, use it; else, fallback to []
+        if (Array.isArray(obj.trace)) {
+          setTraceElements(obj.trace);
+        } else if (Array.isArray(obj.elements)) {
+          setTraceElements(obj.elements);
+        } else if (Array.isArray(obj)) {
+          setTraceElements(obj);
+        } else {
+          setTraceElements([]);
+        }
+      } catch {
+        setTrace(null);
+        setTraceElements([]);
+      }
     }
   };
 
@@ -100,76 +324,86 @@ function App() {
         <Typography variant="h4" component="h1" gutterBottom>
           Inspector
         </Typography>
-        <input
-          type="file"
-          accept=".jsonl"
-          onChange={handleFileUpload}
-          style={{ display: 'none' }}
-          id="file-upload"
-        />
-        <label htmlFor="file-upload">
-          <Button variant="contained" component="span">
-            Upload .jsonl File
-          </Button>
-        </label>
-        {fileName && (
-          <Typography variant="subtitle1" sx={{ mt: 2 }}>
-            Showing log for: {fileName}
-          </Typography>
-        )}
         <Box sx={{ mt: 2 }}>
-          <Tabs value={tab} onChange={handleTabChange} aria-label="log tabs">
-            <Tab label="Problem Description" />
-            <Tab label="Generated Kernel" />
+          <Tabs value={tab} onChange={handleTabChange} aria-label="schema tabs">
+            <Tab label="Definition" />
+            <Tab label="Solution" />
             <Tab label="Trace" />
           </Tabs>
           <MessageContainer>
             {tab === 0 && (
               <Box>
-                {problemDescription ? (
-                  <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-                    {problemDescription}
-                  </Typography>
-                ) : (
-                  <Typography variant="body2" color="textSecondary">
-                    No problem description found in file.
+                <input
+                  type="file"
+                  accept=".json,.jsonl"
+                  onChange={handleDefinitionUpload}
+                  style={{ display: 'none' }}
+                  id="definition-upload"
+                />
+                <label htmlFor="definition-upload">
+                  <Button variant="contained" component="span">
+                    Upload Definition File
+                  </Button>
+                </label>
+                {definitionFile && (
+                  <Typography variant="subtitle1" sx={{ mt: 2 }}>
+                    Showing: {definitionFile}
                   </Typography>
                 )}
+                {definition && renderDefinition(definition)}
               </Box>
             )}
             {tab === 1 && (
               <Box>
-                {generatedKernels.length > 0 ? (
-                  generatedKernels.map((kernel, idx) => (
-                    <PrintMessage key={idx}>
-                      <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-                        {kernel}
-                      </Typography>
-                    </PrintMessage>
-                  ))
-                ) : (
-                  <Typography variant="body2" color="textSecondary">
-                    No generated kernel found in file.
+                <input
+                  type="file"
+                  accept=".json,.jsonl"
+                  onChange={handleSolutionUpload}
+                  style={{ display: 'none' }}
+                  id="solution-upload"
+                />
+                <label htmlFor="solution-upload">
+                  <Button variant="contained" component="span">
+                    Upload Solution File
+                  </Button>
+                </label>
+                {solutionFile && (
+                  <Typography variant="subtitle1" sx={{ mt: 2 }}>
+                    Showing: {solutionFile}
                   </Typography>
                 )}
+                {solution && renderSolution(solution)}
               </Box>
             )}
             {tab === 2 && (
               <Box>
-                {trace.length === 0 ? (
-                  <Typography variant="body2" color="textSecondary">
-                    No trace loaded. Please upload a .jsonl file.
+                <input
+                  type="file"
+                  accept=".json,.jsonl"
+                  onChange={handleTraceUpload}
+                  style={{ display: 'none' }}
+                  id="trace-upload"
+                />
+                <label htmlFor="trace-upload">
+                  <Button variant="contained" component="span">
+                    Upload Trace File
+                  </Button>
+                </label>
+                {traceFile && (
+                  <Typography variant="subtitle1" sx={{ mt: 2 }}>
+                    Showing: {traceFile}
                   </Typography>
-                ) : (
-                  trace.map((line: TraceLine, idx: number) => (
-                    <PrintMessage key={idx}>
-                      <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-                        {JSON.stringify(line, null, 2)}
-                      </Typography>
-                    </PrintMessage>
-                  ))
                 )}
-                <div ref={messagesEndRef} />
+                {trace && renderTrace(trace)}
+                {/* Agent Inspector: show all trace elements in a list, each in a drop-down box */}
+                {traceElements.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Agent Inspector</Typography>
+                    {traceElements.map((line, idx) => (
+                      <AgentInspectorTraceItem key={idx} line={line} idx={idx} />
+                    ))}
+                  </Box>
+                )}
               </Box>
             )}
           </MessageContainer>
