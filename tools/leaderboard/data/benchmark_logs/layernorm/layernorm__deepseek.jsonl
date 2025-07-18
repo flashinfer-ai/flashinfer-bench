@@ -1,1 +1,0 @@
-{"device":{"name":"NVIDIA L40S"},"kernel_id":"layernorm","source":"deepseek-coder","compiled":true,"time":0.320,"speedup":1.7,"max_diff":5e-7}

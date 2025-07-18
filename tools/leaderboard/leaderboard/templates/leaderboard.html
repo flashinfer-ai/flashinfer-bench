@@ -1,118 +1,73 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block content %}
+<div class="main-container mx-auto px-4 py-6">
+  <h1 class="text-3xl font-bold mb-6">
+    Leaderboard for <span class="text-blue-700">{{ definition.name }}</span>
+  </h1>
 
-{% block title %}{{ name }} - flashinfer-bench Leaderboards{% endblock %}
+  <section class="leaderboard-section mb-10">
+    <h2 class="text-2xl font-semibold mb-4">Description</h2>
+    <p>{{ definition.description }}</p>
+  </section>
 
-{# Determine if we need to load MathJax. #}
-{% set needs_mathjax = '\\(' in description or '$$' in description or '\\begin' in description %}
-
-{% block extra_head %}
-    {{ super() }}
-    {% if needs_mathjax %}
-    <script id="mathjax" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    {% endif %}
-{% endblock %}
-
-{% block content %}
-<script src="{{ url_for('static', filename='js/leaderboard.js') }}"></script>
-
-<div class="content-stack">
-    <h1 class="font-mono">
-        {% set color = name|to_color %}
-        <div class="{{ color }}-square"></div>
-        {{ name }}
-    </h1>
-    
-    <div class="leaderboard-grid">
-
-        <div class="leaderboard-card">
-            <h2>GPU Type{{ 's' if gpu_types|length > 1 or gpu_types|length == 0}}</h2>
-            <p>{{ gpu_types|join(', ') if gpu_types|length > 0 else 'None' }}</p>
-        </div>
-    </div>
-    
+  <section class="definition-header def-header-vertical mb-10">
+    <div><strong>Type:</strong> {{ definition.type }}</div>
     <div>
-        <div class="leaderboard-card">
-            <h2>Description</h2>
-            <p class="whitespace-pre-wrap leading-relaxed">{{ description }}</p>
-        </div>
+      <strong>Constraints:</strong>
+      {% if definition.constraints %} {{ definition.constraints | join(", ") }}
+      {% else %} None {% endif %}
     </div>
-
-    {# The 'max-h-[300px] overflow-y-hidden' is needed for toggleCodeBtn. #}
-    <div id="referenceImpl" class="leaderboard-card relative max-h-[300px] overflow-y-hidden">
-        <div class="absolute top-2 right-2 flex space-x-2">
-            <button id="toggleCodeBtn" class="code-block-btn">Show</button>
-            <button id="copyCodeBtn" class="code-block-btn">Copy</button>
-        </div>
-        <h2>Reference Implementation</h2>
-        <pre><code id="codeBlock">{{ reference }}</code></pre>
+    <div>
+      <strong>Reference:</strong>
+      <pre
+        class="reference-block"
+      ><code>{{ definition.reference | e }}</code></pre>
     </div>
+  </section>
 
-    {# If there are rankings, show rankings tables. #}
-    {% set has_rankings = rankings is defined and rankings|map('length')|list|sum > 0 %}
-
-    {% if has_rankings %}
-        <h1>Rankings</h1>
-
-        <div class="ranking-container">
-            {% for gpu_type, ranking in rankings.items() %}
-                {% if ranking|length > 0 %}
-                    <div class="ranking-section" id="section-{{ gpu_type|lower|replace(' ', '-') }}">
-                        <div class="flex justify-between items-center mb-2">
-                            <h2 class="font-mono">
-                                <span class="{{ color }}-chip px-3 py-1">
-                                    {{ gpu_type }}
-                                </span>
-                            </h2>
-
-                            {% if ranking|length > 3 %}
-                                <button class="rankings-btn" 
-                                        data-gpu-id="{{ gpu_type|lower|replace(' ', '-') }}"
-                                        data-count="{{ ranking|length }}">
-                                    Show All ({{ ranking|length }})
-                                </button>
-                            {% endif %}
-                        </div>
-
-                        <table class="ranking-table">
-                            <tbody class="ranking-table-row">
-                                {% for entry in ranking %}
-                                    {% set user = entry['user_name'] %}
-                                    {% set score = entry['score'] %}
-                                    {% set file_name = entry['file_name'] %}
-                                    {% set rank = entry['rank'] %}
-                                    {% set prev_score = entry['prev_score'] %}
-                                    <tr class="rank-row {% if rank > 3 %}hidden-row{% endif %}" data-rank="{{ rank }}">
-                                        <td>
-                                            {% if rank == 1 %}
-                                                <span class="font-bold">{{ user }} <span class="medal gold">🥇</span></span>
-                                            {% elif rank == 2 %}
-                                                <span class="font-bold">{{ user }} <span class="medal silver">🥈</span></span>
-                                            {% elif rank == 3 %}
-                                                <span class="font-bold">{{ user }} <span class="medal bronze">🥉</span></span>
-                                            {% else %}
-                                                {{ user }}
-                                            {% endif %}
-                                        </td>
-                                        <td class="font-mono">
-                                            {{ score|format_score }}
-                                            {% if prev_score != None %}
-                                                &nbsp;
-                                                <span class="text-gray-500">+{{ prev_score|format_score }}</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="font-mono">{{ file_name }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% endif %}
-            {% endfor %}
-        </div>
-    {% else %}
-        <h2>No submissions yet</h2>
-        <p>Be the first to submit a solution for this challenge!</p>
+  <section class="leaderboard-section mb-10">
+    <h2 class="text-2xl font-semibold mb-4">Rankings</h2>
+    {% if entries_by_device %} {% for device, entries in
+    entries_by_device.items() %}
+    <h3 class="text-xl font-semibold mt-8 mb-4 text-gray-800">{{ device }}</h3>
+    <div class="overflow-x-auto">
+      <table class="min-w-full table-auto border border-gray-300 text-sm">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="border px-4 py-2 text-left">Rank</th>
+            <th class="border px-4 py-2 text-left">Solution</th>
+            <th class="border px-4 py-2 text-left">Latency (ms)</th>
+            <th class="border px-4 py-2 text-left">Speedup</th>
+            <th class="border px-4 py-2 text-left">Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+          <tr class="hover:bg-gray-50">
+            <td class="border px-4 py-2">{{ loop.index }}</td>
+            <td class="border px-4 py-2 font-mono text-blue-700">
+              {{ entry.solution }}
+            </td>
+            <td class="border px-4 py-2">
+              {{ "%.3f"|format(entry.latency_ms) }}
+            </td>
+            <td class="border px-4 py-2">
+              {{ "%.2fx"|format(entry.speedup) }}
+            </td>
+            <td class="border px-4 py-2 text-gray-500">
+              {{ entry.timestamp }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %} {% else %}
+    <p class="text-gray-600">No entries available for this kernel.</p>
     {% endif %}
-</div>
+  </section>
 
-{% endblock %} 
+  <div>
+    <a class="back-link" href="{{ url_for('index') }}">← Back to kernels</a>
+  </div>
+</div>
+{% endblock %}

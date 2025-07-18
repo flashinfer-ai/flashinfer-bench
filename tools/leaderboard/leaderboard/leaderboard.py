@@ -1,61 +1,27 @@
 from flask import Blueprint, render_template, abort
-from datetime import datetime, timezone
-import json
-import os
-from leaderboard.time import to_time_left
+from collections import defaultdict
+from leaderboard.utils.export_utils import get_leaderboard, get_a_definition
 
-blueprint = Blueprint('leaderboard', __name__, url_prefix='/leaderboard')
+blueprint = Blueprint("leaderboard", __name__)
 
-@blueprint.route('/<int:leaderboard_id>')
-def leaderboard(leaderboard_id: int):
-    # Path to your precomputed JSON files
-    path = f"leaderboard/static/leaderboard_{leaderboard_id}.json"
-    
-    if not os.path.exists(path):
+@blueprint.route("/leaderboard/<definition_name>")
+def show_leaderboard(definition_name: str):
+    leaderboard_data = get_leaderboard()
+
+    if definition_name not in leaderboard_data:
         abort(404)
 
-    with open(path) as f:
-        data = json.load(f)
+    definition = get_a_definition(definition_name)
+    entries = leaderboard_data[definition_name]
 
-    leaderboard_data = data["leaderboard"]
-    rankings_data = data["rankings"]
-
-    name = leaderboard_data["name"]
-    # deadline = leaderboard_data.get("deadline", "")
-    # time_left = to_time_left(deadline) if deadline else None
-
-    # lang = leaderboard_data.get("lang", "Unknown")
-    # if lang == "py":
-    #     lang = "Python"
-
-    description = leaderboard_data.get("description", "")
-    reference = leaderboard_data.get("reference", "")
-    gpu_types = leaderboard_data.get("gpu_types", [])
-    gpu_types.sort()
-
-    # Compute ranks and score deltas
-    rankings = {}
-    for gpu_type, ranking_ in rankings_data.items():
-        ranking = []
-        prev_score = None
-
-        for i, entry in enumerate(ranking_):
-            entry["rank"] = i + 1
-            entry["prev_score"] = entry["score"] - prev_score if prev_score is not None else None
-            prev_score = entry["score"]
-            ranking.append(entry)
-
-        if ranking:
-            rankings[gpu_type] = ranking
+    # Group entries by device (hardware)
+    entries_by_device = defaultdict(list)
+    for entry in entries:
+        device = entry.get("device", "Unknown")
+        entries_by_device[device].append(entry)
 
     return render_template(
         "leaderboard.html",
-        name=name,
-        # deadline=deadline,
-        # time_left=time_left,
-        # lang=lang,
-        gpu_types=gpu_types,
-        description=description,
-        reference=reference,
-        rankings=rankings
+        definition=definition,
+        entries_by_device=dict(entries_by_device),
     )

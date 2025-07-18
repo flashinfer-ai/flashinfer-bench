@@ -1,1 +1,0 @@
-{"device":{"name":"NVIDIA RTX 4090"},"kernel_id":"gemm","source":"flashinfer","compiled":true,"time":0.290,"speedup":2.1,"max_diff":5e-7}

@@ -1,17 +1,10 @@
-import json
 from flask import Blueprint, render_template
-from datetime import datetime, timezone
+from leaderboard.utils.export_utils import get_definitions
 
 blueprint = Blueprint('index', __name__, url_prefix='/')
 
 @blueprint.route('')
 def index():
-    # Load pre-converted leaderboard data
-    with open("leaderboard/static/leaderboard.json") as f:
-        leaderboards = json.load(f)
-
-    return render_template(
-        'index.html',
-        leaderboards=leaderboards,
-        now=datetime.now(timezone.utc)
-    )
+    definitions = get_definitions()
+    print(f"[Info] Available definitions: {definitions}")
+    return render_template("index.html", definitions=definitions)

@@ -1,5 +1,0 @@
-{"model": "ResNet50", "kernel_name": "gemm", "leaderboard_id": 2}
-{"model": "ResNet50", "kernel_name": "softmax", "leaderboard_id": 1}
-{"model": "Conv2D", "kernel_name": "softmax", "leaderboard_id": 1}
-{"model": "Llama", "kernel_name": "gemm", "leaderboard_id": 2}
-{"model": "Llama", "kernel_name": "layernorm", "leaderboard_id": 3}
