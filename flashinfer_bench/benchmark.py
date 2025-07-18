@@ -118,14 +118,17 @@ def _time_kernel(callable_func: Callable, inputs: List[Any], warmup: int, iterat
 
 def _format_environment(device_manager: DeviceManager) -> Dict[str, Any]:
     device_info = device_manager.get_device_info()
+    try:
+        from triton import __version__ as triton_version
+    except ImportError:
+        triton_version = None
+
     return {
-        "device": device_info.get("device_str", "unknown"),
+        "device": device_info.get("device_name", None),
         "libs": {
             "torch": torch.__version__,
-            "driver_version": device_info.get("driver_version", "unknown"),
-            "device_name": device_info.get("device_name", "unknown"),
-            "compute_capability": str(device_info.get("compute_capability", "unknown")),
-            "backend": device_info.get("backend", "cuda"),
+            "triton": triton_version,
+            "cuda": device_info.get("cuda", None),
         },
     }
 
@@ -163,7 +166,7 @@ def _run_single_benchmark(
 
         # Correctness check
         num_trials = config.correctness_trials
-        max_diffs = []
+        abs_diffs = []
         rel_diffs = []
         pass_count = 0
 
@@ -180,26 +183,24 @@ def _run_single_benchmark(
                 impl_output = impl_callable(*trial_data_impl)
                 torch.cuda.synchronize()
 
-                max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
-                max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
-
                 shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
 
                 if not shape_correct:
                     status = "INCORRECT"
-                    max_abs_diff = float("inf")
-                    max_rel_diff = float("inf")
                     break
-                else:
-                    if max_abs_diff <= config.max_diff_limit:
-                        pass_count += 1
-                    max_diffs.append(max_abs_diff)
-                    rel_diffs.append(max_rel_diff)
+
+                max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
+                max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
+
+                if max_abs_diff <= config.max_diff_limit:
+                    pass_count += 1
+                abs_diffs.append(max_abs_diff)
+                rel_diffs.append(max_rel_diff)
 
         seed_manager.reset_seed()
 
-        overall_max_abs_diff = max(max_diffs) if max_diffs else float("inf")
-        overall_max_rel_diff = max(rel_diffs) if rel_diffs else float("inf")
+        max_abs_diff = max(abs_diffs, default=None) # None if list is empty, i.e. shape mismatch
+        max_rel_diff = max(rel_diffs, default=None)
 
         status = "PASSED" if pass_count == num_trials else "INCORRECT"
 
@@ -208,14 +209,10 @@ def _run_single_benchmark(
                 "status": status,
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
                 "correctness": {
-                    "max_relative_error": overall_max_abs_diff,
-                    "max_absolute_error": overall_max_rel_diff,
+                    "max_relative_error": max_rel_diff,
+                    "max_absolute_error": max_abs_diff,
                 },
-                "performance": {
-                    "latency_ms": float("inf"),
-                    "reference_latency_ms": float("inf"),
-                    "speedup_factor": 0.0,
-                },
+                "performance": None,
                 "environment": _format_environment(device_manager),
                 "timestamp": datetime.now().isoformat(),
             }
@@ -235,8 +232,8 @@ def _run_single_benchmark(
             "status": status,
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
             "correctness": {
-                "max_relative_error": overall_max_rel_diff,
-                "max_absolute_error": overall_max_abs_diff,
+                "max_relative_error": max_rel_diff,
+                "max_absolute_error": max_abs_diff,
             },
             "performance": {
                 "latency_ms": impl_latency,
@@ -254,15 +251,8 @@ def _run_single_benchmark(
         evaluation = {
             "status": "RUNTIME_ERROR",
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
-            "correctness": {
-                "max_relative_error": float("inf"),
-                "max_absolute_error": float("inf"),
-            },
-            "performance": {
-                "latency_ms": float("inf"),
-                "reference_latency_ms": float("inf"),
-                "speedup_factor": 0.0,
-            },
+            "correctness": None,
+            "performance": None,
             "environment": _format_environment(device_manager),
             "timestamp": datetime.now().isoformat(),
         }
@@ -373,7 +363,7 @@ class Benchmark:
 
         if target_def_name not in self.definitions:
             raise ValueError(
-                f"Solution '{solution_name}' reference undefined definition: {target_def_name}"
+                f"Solution '{solution_name}' references undefined definition: {target_def_name}"
             )
 
         definition = self.definitions[target_def_name]
@@ -389,49 +379,24 @@ class Benchmark:
         for i, workload in enumerate(workload_list):
             self.logger.info(f"Running workload {i+1}/{len(workload_list)}")
 
-            try:
-                # Use multiprocessing to run in isolation
-                ctx = mp.get_context("spawn")  # Use spawn to get clean CUDA context
-                with ctx.Pool(processes=1) as pool:
-                    result = pool.apply(
-                        _run_single_benchmark, args=(definition, target_solution, workload, config)
-                    )
-                    self.trace_set.add_trace(result)
-
-                    # Log result
-                    if result.evaluation["status"] == "PASSED":
-                        self.logger.info(
-                            f"Workload {i+1}: PASSED "
-                            f"(speedup: {result.evaluation['performance']['speedup_factor']:.2f}x)"
-                        )
-                    else:
-                        self.logger.warning(f"Workload {i+1}: {result.evaluation['status']}")
-                    self.logger.debug(result)
-
-            except Exception as e:
-                self.logger.error(f"Failed to run workload {i+1}: {str(e)}")
-
-                error_trace = Trace(
-                    definition=target_def_name,
-                    solution=solution_name,
-                    workload=workload,
-                    evaluation={
-                        "status": "RUNTIME_ERROR",
-                        "log_file": f"{solution_name}_error.log",
-                        "correctness": {
-                            "max_relative_error": f"{float('inf')}",
-                            "max_absolute_error": f"{float('inf')}",
-                        },
-                        "performance": {
-                            "latency_ms": f"{float('inf')}",
-                            "reference_latency_ms": f"{float('inf')}",
-                            "speedup_factor": 0.0,
-                        },
-                        "environment": {"error": str(e)},
-                        "timestamp": datetime.now().isoformat(),
-                    },
+            # Use multiprocessing to run in isolation
+            # Note that we don't catch multiprocessing errors
+            ctx = mp.get_context("spawn")  # Use spawn to get clean CUDA context
+            with ctx.Pool(processes=1) as pool:
+                result = pool.apply(
+                    _run_single_benchmark, args=(definition, target_solution, workload, config)
                 )
-                self.trace_set.add_trace(error_trace)
+                self.trace_set.add_trace(result)
+
+                # Log result
+                if result.evaluation["status"] == "PASSED":
+                    self.logger.info(
+                        f"Workload {i+1}: PASSED "
+                        f"(speedup: {result.evaluation['performance']['speedup_factor']:.2f}x)"
+                    )
+                else:
+                    self.logger.warning(f"Workload {i+1}: {result.evaluation['status']}")
+                self.logger.debug(result)
 
     def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         """

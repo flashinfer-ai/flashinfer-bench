@@ -59,7 +59,7 @@ class DeviceManager:
             "device_str": str(self.device),
             "compute_capability": torch.cuda.get_device_capability(device_id),
             "total_memory": torch.cuda.get_device_properties(device_id).total_memory,
-            "driver_version": torch.version.cuda,
+            "cuda": torch.version.cuda,
             "backend": self.backend,
         }
 
@@ -79,7 +79,7 @@ class CorrectnessChecker:
             return max(cls.max_absolute_diff(a[k], b[k]) for k in a.keys() & b.keys())
         if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
             return cls._tensor_max_abs(a, b)
-        return float("inf")
+        raise ValueError(f"Unsupported diff type: {type(a)} and {type(b)}")
 
     @classmethod
     def max_relative_diff(cls, a, b):
@@ -87,7 +87,7 @@ class CorrectnessChecker:
             return max(cls.max_relative_diff(a[k], b[k]) for k in a.keys() & b.keys())
         if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
             return cls._tensor_max_rel(a, b)
-        return float("inf")
+        raise ValueError(f"Unsupported diff type: {type(a)} and {type(b)}")
 
     @staticmethod
     def validate_shapes(a, b) -> Tuple[bool, str]:
