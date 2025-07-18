@@ -1,0 +1,18 @@
+{
+  "name": "gemm_m_dynamic_n_4096_k_14336",
+  "type": "gemm",
+  "description": "C = A @ B.T with dynamic M, N=4096, K=14336. Captured from Llama mlp.down_proj.",
+  "axes": {
+    "M": { "type": "var" },
+    "N": { "type": "const", "value": 4096 },
+    "K": { "type": "const", "value": 14336 }
+  },
+  "inputs": {
+    "A": { "shape": ["M", "K"], "dtype": "float16" },
+    "B": { "shape": ["N", "K"], "dtype": "float16" }
+  },
+  "outputs": {
+    "C": { "shape": ["M", "N"], "dtype": "float16" }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return {\"C\": C}"
+}

@@ -1,1 +1,0 @@
-{"definition":"gemm","solution":"","workload":{"axes":{"M":128},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
