@@ -1,10 +1,12 @@
 import importlib.util
 import logging
+import multiprocessing as mp
 import os
 import tempfile
+import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -25,6 +27,258 @@ from .utils.validation import (
 )
 
 
+def _compile_python_code(code_string: str, entry_point: str) -> Callable:
+    """Compile Python code string and return the specified entry point callable"""
+    namespace = {}
+    exec(code_string, namespace)
+
+    if entry_point not in namespace:
+        raise ValueError(f"Entry point '{entry_point}' not found in code")
+
+    return namespace[entry_point]
+
+
+def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
+    """
+    Compile Triton code using tempfile approach to handle @triton.jit decorator
+    Inspired by KernelBench-Triton https://github.com/ScalingIntelligence/KernelBench/pull/35/files#diff-7c33c37dd2ca3f92b111b25d2c1168f5c98f308c1f2d0e2add9e4b8b240e5918
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
+        tmp_file.write(code_string)
+        tempfile_path = tmp_file.name
+
+    spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
+    temp_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(temp_module)
+
+    if not hasattr(temp_module, entry_point):
+        os.unlink(tempfile_path)
+        raise ValueError(f"Entry point '{entry_point}' not found in Triton code")
+
+    return getattr(temp_module, entry_point), tempfile_path
+
+
+def _generate_test_inputs(
+    definition: Definition, workload_axes: Dict[str, int], device_manager: DeviceManager
+) -> List[torch.Tensor]:
+    """Generate test inputs based on definition and workload axes"""
+    inputs = []
+
+    input_shapes = definition.get_input_shapes(workload_axes)
+
+    for input_name, input_spec in definition.inputs.items():
+        shape = input_shapes[input_name]
+
+        dtype_str = input_spec["dtype"]
+        dtype_map = {
+            "float16": torch.float16,
+            "float32": torch.float32,
+            "bfloat16": torch.bfloat16,
+            "int32": torch.int32,
+            "int64": torch.int64,
+            "int8": torch.int8,
+            "bool": torch.bool,
+        }
+        dtype = dtype_map.get(dtype_str, torch.float32)
+
+        if dtype == torch.bool:
+            tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
+        else:
+            tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
+        inputs.append(tensor)
+
+    return inputs
+
+
+def _time_kernel(callable_func: Callable, inputs: List[Any], warmup: int, iterations: int) -> float:
+    """Time a callable execution using CUDA events"""
+    if isinstance(callable_func, nn.Module):
+        callable_func.eval()
+
+    with torch.no_grad():
+        for _ in range(warmup):
+            _ = callable_func(*inputs)
+
+    torch.cuda.synchronize()
+
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    start_event.record()
+    with torch.no_grad():
+        for _ in range(iterations):
+            _ = callable_func(*inputs)
+    end_event.record()
+
+    torch.cuda.synchronize()
+    elapsed_time_ms = start_event.elapsed_time(end_event)
+
+    return elapsed_time_ms / iterations
+
+
+def _format_environment(device_manager: DeviceManager) -> Dict[str, Any]:
+    device_info = device_manager.get_device_info()
+    return {
+        "device": device_info.get("device_str", "unknown"),
+        "libs": {
+            "torch": torch.__version__,
+            "driver_version": device_info.get("driver_version", "unknown"),
+            "device_name": device_info.get("device_name", "unknown"),
+            "compute_capability": str(device_info.get("compute_capability", "unknown")),
+            "backend": device_info.get("backend", "cuda"),
+        },
+    }
+
+
+def _run_single_benchmark(
+    definition: Definition, solution: Solution, workload: Dict, config: BenchmarkConfig
+) -> Trace:
+    """
+    Run a single benchmark in an isolated subprocess.
+    This function is the entry point for the subprocess.
+    """
+
+    logger = logging.getLogger(f"BenchmarkWorker-{os.getpid()}")
+    temp_files = []
+
+    try:
+        ref_callable = _compile_python_code(definition.reference, "run")
+
+        entry_point = solution.spec.get("entry_point", "run")
+        language = solution.spec.get("language", "Python").lower()
+
+        if not solution.sources or len(solution.sources) == 0:
+            raise BuildError(f"No source code found for solution: {solution.name}")
+
+        source_content = solution.sources[0]["content"]
+
+        if language == "triton":
+            impl_callable, temp_file = _compile_triton_code(source_content, entry_point)
+            temp_files.append(temp_file)
+        else:
+            impl_callable = _compile_python_code(source_content, entry_point)
+
+        seed_manager = SeedManager()
+        device_manager = DeviceManager(config.device)
+
+        # Correctness check
+        num_trials = config.correctness_trials
+        max_diffs = []
+        rel_diffs = []
+        pass_count = 0
+
+        with torch.no_grad():
+            for _ in range(num_trials):
+                inputs = _generate_test_inputs(definition, workload["axes"], device_manager)
+
+                trial_data_ref = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
+                trial_data_impl = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
+
+                ref_output = ref_callable(*trial_data_ref)
+                torch.cuda.synchronize()
+
+                impl_output = impl_callable(*trial_data_impl)
+                torch.cuda.synchronize()
+
+                max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
+                max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
+
+                shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
+
+                if not shape_correct:
+                    status = "INCORRECT"
+                    max_abs_diff = float("inf")
+                    max_rel_diff = float("inf")
+                    break
+                else:
+                    if max_abs_diff <= config.max_diff_limit:
+                        pass_count += 1
+                    max_diffs.append(max_abs_diff)
+                    rel_diffs.append(max_rel_diff)
+
+        seed_manager.reset_seed()
+
+        overall_max_abs_diff = max(max_diffs) if max_diffs else float("inf")
+        overall_max_rel_diff = max(rel_diffs) if rel_diffs else float("inf")
+
+        status = "PASSED" if pass_count == num_trials else "INCORRECT"
+
+        if status == "INCORRECT":
+            evaluation = {
+                "status": status,
+                "log_file": f"{solution.name}_{hash(str(workload))}.log",
+                "correctness": {
+                    "max_relative_error": overall_max_abs_diff,
+                    "max_absolute_error": overall_max_rel_diff,
+                },
+                "performance": {
+                    "latency_ms": float("inf"),
+                    "reference_latency_ms": float("inf"),
+                    "speedup_factor": 0.0,
+                },
+                "environment": _format_environment(device_manager),
+                "timestamp": datetime.now().isoformat(),
+            }
+            return Trace(
+                definition=definition.name,
+                solution=solution.name,
+                workload=workload,
+                evaluation=evaluation,
+            )
+
+        # Performance testing if correct
+        impl_latency = _time_kernel(impl_callable, inputs, config.warmup_runs, config.iterations)
+        ref_latency = _time_kernel(ref_callable, inputs, config.warmup_runs, config.iterations)
+        speedup = ref_latency / impl_latency if impl_latency > 0 else 0.0
+
+        evaluation = {
+            "status": status,
+            "log_file": f"{solution.name}_{hash(str(workload))}.log",
+            "correctness": {
+                "max_relative_error": overall_max_rel_diff,
+                "max_absolute_error": overall_max_abs_diff,
+            },
+            "performance": {
+                "latency_ms": impl_latency,
+                "reference_latency_ms": ref_latency,
+                "speedup_factor": speedup,
+            },
+            "environment": _format_environment(device_manager),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Error in benchmark: {str(e)}")
+        logger.error(traceback.format_exc())
+
+        evaluation = {
+            "status": "RUNTIME_ERROR",
+            "log_file": f"{solution.name}_{hash(str(workload))}.log",
+            "correctness": {
+                "max_relative_error": float("inf"),
+                "max_absolute_error": float("inf"),
+            },
+            "performance": {
+                "latency_ms": float("inf"),
+                "reference_latency_ms": float("inf"),
+                "speedup_factor": 0.0,
+            },
+            "environment": _format_environment(device_manager),
+            "timestamp": datetime.now().isoformat(),
+        }
+    finally:
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+
+    return Trace(
+        definition=definition.name,
+        solution=solution.name,
+        workload=workload,
+        evaluation=evaluation,
+    )
+
+
 class Benchmark:
     """
     The Benchmark class is a stateless runner of benchmarks.
@@ -35,18 +289,7 @@ class Benchmark:
     def __init__(self, trace_set: TraceSet):
         """Initialize Benchmark with a TraceSet containing definitions, solutions, and workloads"""
         self.trace_set = trace_set
-        self._reference_callables: Dict[str, Callable] = {}
-        self._solution_callables: Dict[str, Dict[str, Callable]] = {}
-        self._temp_files: List[Any] = (
-            []
-        )  # Track temp files for cleanup (triton building hack for now)
-
-        self.builder_registry = BuilderRegistry()
         self.logger = logging.getLogger(__name__)
-
-    def __del__(self):
-        """Cleanup temp files when object is destroyed"""
-        self._cleanup_temp_files()
 
     @property
     def traces(self) -> Dict[str, List[Trace]]:
@@ -103,393 +346,6 @@ class Benchmark:
                 if "axes" in workload_trace.workload:
                     validate_workload_axes(workload_trace.workload["axes"], definition.axes)
 
-    def _build_reference_testing(self, definition_name: str) -> Callable:
-        """TODO: In development, kernel builder system"""
-        if definition_name in self._reference_callables:
-            return self._reference_callables[definition_name]
-
-        if definition_name not in self.definitions:
-            raise ValueError(f"Definition not found: {definition_name}")
-
-        definition = self.definitions[definition_name]
-
-        try:
-            validate_reference_code(definition.reference)
-
-            builder = self.builder_registry.get_reference_builder()
-            callable_obj = builder.build_reference(definition)
-            self._reference_callables[definition_name] = callable_obj
-            return callable_obj
-        except Exception as e:
-            raise BuildError(f"Failed to build reference for {definition_name}: {str(e)}")
-
-    def _build_solution_testing(self, solution: Solution) -> Callable:
-        """TODO: In development, kernel builder system"""
-        if solution.definition in self._solution_callables:
-            if solution.name in self._solution_callables[solution.definition]:
-                return self._solution_callables[solution.definition][solution.name]
-
-        try:
-            builder = self.builder_registry.get_builder(solution)
-
-            definition = self.definitions[solution.definition]
-            if not builder.validate_signature(definition, solution):
-                raise BuildError(f"Signature mismatch for solution: {solution.name}")
-
-            callable_obj = builder.build_implementation(solution)
-
-            if solution.definition not in self._solution_callables:
-                self._solution_callables[solution.definition] = {}
-            self._solution_callables[solution.definition][solution.name] = callable_obj
-
-            return callable_obj
-        except Exception as e:
-            raise BuildError(f"Failed to build solution {solution.name}: {str(e)}")
-
-    def _build_reference(self, definition_name: str) -> Callable:
-        """Build reference callable for definition using direct compilation"""
-        if definition_name in self._reference_callables:
-            return self._reference_callables[definition_name]
-
-        if definition_name not in self.definitions:
-            raise ValueError(f"Definition not found: {definition_name}")
-
-        definition = self.definitions[definition_name]
-
-        try:
-            validate_reference_code(definition.reference)
-
-            callable_obj = self._compile_python_code(definition.reference, "run")
-            self._reference_callables[definition_name] = callable_obj
-            return callable_obj
-        except Exception as e:
-            raise BuildError(f"Failed to build reference for {definition_name}: {str(e)}")
-
-    def _build_solution(self, solution: Solution) -> Callable:
-        """Simple build implementation callable from solution using direct compilation"""
-        if solution.definition in self._solution_callables:
-            if solution.name in self._solution_callables[solution.definition]:
-                return self._solution_callables[solution.definition][solution.name]
-
-        try:
-            entry_point = solution.spec.get("entry_point", "run")
-            language = solution.spec.get("language", "Python").lower()
-
-            if not solution.sources or len(solution.sources) == 0:
-                raise BuildError(f"No source code found for solution: {solution.name}")
-
-            source_content = solution.sources[0]["content"]
-
-            if language == "triton":
-                callable_obj = self._compile_triton_code(source_content, entry_point)
-            else:
-                # Use compile/exec for Python code
-                callable_obj = self._compile_python_code(source_content, entry_point)
-
-            if solution.definition not in self._solution_callables:
-                self._solution_callables[solution.definition] = {}
-            self._solution_callables[solution.definition][solution.name] = callable_obj
-
-            return callable_obj
-        except Exception as e:
-            raise BuildError(f"Failed to build solution {solution.name}: {str(e)}")
-
-    def _compile_python_code(self, code_string: str, entry_point: str) -> Callable:
-        """Compile Python code string and return the specified entry point callable"""
-        try:
-            namespace = {}
-
-            exec(code_string, namespace)
-
-            if entry_point not in namespace:
-                raise ValueError(f"Entry point '{entry_point}' not found in code")
-
-            return namespace[entry_point]
-        except Exception as e:
-            raise BuildError(f"Failed to compile Python code: {str(e)}")
-
-    def _compile_triton_code(self, code_string: str, entry_point: str) -> Callable:
-        """
-        Compile Triton code using tempfile approach to handle @triton.jit decorator
-        Inspired by KernelBench-Triton https://github.com/ScalingIntelligence/KernelBench/pull/35/files#diff-7c33c37dd2ca3f92b111b25d2c1168f5c98f308c1f2d0e2add9e4b8b240e5918
-        """
-        try:
-            # Create a temporary named file with a .py extension (triton building hack for now)
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
-                tmp_file.write(code_string)
-                tempfile_path = tmp_file.name
-
-            self._temp_files.append(tempfile_path)
-
-            spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
-            temp_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(temp_module)
-
-            if not hasattr(temp_module, entry_point):
-                raise ValueError(f"Entry point '{entry_point}' not found in Triton code")
-
-            return getattr(temp_module, entry_point)
-        except Exception as e:
-            raise BuildError(f"Failed to compile Triton code: {str(e)}")
-
-    def _cleanup_temp_files(self):
-        """Clean up temporary files created during compilation"""
-        for temp_path in self._temp_files:
-            try:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
-                    self.logger.debug(f"Cleaned up temp file: {temp_path}")
-            except Exception as e:
-                self.logger.warning(f"Failed to cleanup temp file {temp_path}: {e}")
-        self._temp_files.clear()
-
-    def _format_environment(self, device_manager: DeviceManager) -> Dict[str, Any]:
-        device_info = device_manager.get_device_info()
-        return {
-            "device": device_info.get("device_str", "unknown"),
-            "libs": {
-                "torch": torch.__version__,
-                "driver_version": device_info.get("driver_version", "unknown"),
-                "device_name": device_info.get("device_name", "unknown"),
-                "compute_capability": str(device_info.get("compute_capability", "unknown")),
-                "backend": device_info.get("backend", "cuda"),
-            },
-        }
-
-    def _time_kernel(
-        self, callable_func: Callable, inputs: List[Any], warmup: int, iterations: int
-    ) -> float:
-        """Time a callable execution using CUDA events"""
-        if isinstance(callable_func, nn.Module):
-            callable_func.eval()
-
-        with torch.no_grad():
-            for _ in range(warmup):
-                _ = callable_func(*inputs)
-
-        torch.cuda.synchronize()
-
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        start_event.record()
-        with torch.no_grad():
-            for _ in range(iterations):
-                _ = callable_func(*inputs)
-        end_event.record()
-
-        torch.cuda.synchronize()
-        elapsed_time_ms = start_event.elapsed_time(end_event)
-
-        return elapsed_time_ms / iterations
-
-    def _generate_test_inputs(
-        self, definition: Definition, workload_axes: Dict[str, int], device_manager: DeviceManager
-    ) -> List[torch.Tensor]:
-        """Generate test inputs based on definition and workload axes"""
-        inputs = []
-
-        input_shapes = definition.get_input_shapes(workload_axes)
-
-        for input_name, input_spec in definition.inputs.items():
-            shape = input_shapes[input_name]
-
-            dtype_str = input_spec["dtype"]
-            dtype_map = {
-                "float16": torch.float16,
-                "float32": torch.float32,
-                "bfloat16": torch.bfloat16,
-                "int32": torch.int32,
-                "int64": torch.int64,
-                "int8": torch.int8,
-                "bool": torch.bool,
-            }
-            dtype = dtype_map.get(dtype_str, torch.float32)
-
-            if dtype == torch.bool:
-                tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
-            else:
-                tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
-            inputs.append(tensor)
-
-        return inputs
-
-    def _evaluate_single_workload(
-        self,
-        solution: Solution,
-        workload: Dict,
-        ref_callable: Callable,
-        impl_callable: Callable,
-        config: BenchmarkConfig,
-        seed_manager: SeedManager,
-        device_manager: DeviceManager,
-    ) -> Trace:
-        """Evaluate a solution on a single workload"""
-        definition = self.definitions[solution.definition]
-
-        inputs = self._generate_test_inputs(definition, workload["axes"], device_manager)
-
-        is_correct, max_abs_diff, max_rel_diff, _ = self._run_correctness_trials(
-            ref_callable, impl_callable, inputs, config, seed_manager, device_manager
-        )
-
-        status = "PASSED" if is_correct else "INCORRECT"
-
-        if not is_correct:
-            evaluation = {
-                "status": status,
-                "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                "correctness": {
-                    "max_relative_error": max_rel_diff,
-                    "max_absolute_error": max_abs_diff,
-                },
-                "performance": {
-                    "latency_ms": float("inf"),
-                    "reference_latency_ms": float("inf"),
-                    "speedup_factor": 0.0,
-                },
-                "environment": self._format_environment(device_manager),
-                "timestamp": datetime.now().isoformat(),
-            }
-        else:
-            try:
-                # Performance testing
-                impl_latency = self._time_kernel(
-                    impl_callable, inputs, config.warmup_runs, config.iterations
-                )
-                ref_latency = self._time_kernel(
-                    ref_callable, inputs, config.warmup_runs, config.iterations
-                )
-
-                speedup = ref_latency / impl_latency if impl_latency > 0 else 0.0
-
-                evaluation = {
-                    "status": status,
-                    "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                    "correctness": {
-                        "max_relative_error": max_rel_diff,
-                        "max_absolute_error": max_abs_diff,
-                    },
-                    "performance": {
-                        "latency_ms": impl_latency,
-                        "reference_latency_ms": ref_latency,
-                        "speedup_factor": speedup,
-                    },
-                    "environment": self._format_environment(device_manager),
-                    "timestamp": datetime.now().isoformat(),
-                }
-            except Exception as e:
-                evaluation = {
-                    "status": "RUNTIME_ERROR",
-                    "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                    "correctness": {
-                        "max_relative_error": float("inf"),
-                        "max_absolute_error": float("inf"),
-                    },
-                    "performance": {
-                        "latency_ms": float("inf"),
-                        "reference_latency_ms": float("inf"),
-                        "speedup_factor": 0.0,
-                    },
-                    "environment": self._format_environment(device_manager),
-                    "timestamp": datetime.now().isoformat(),
-                }
-
-        return Trace(
-            definition=solution.definition,
-            solution=solution.name,
-            workload=workload,
-            evaluation=evaluation,
-        )
-
-    def _run_correctness_trials(
-        self,
-        ref_callable: Callable,
-        impl_callable: Callable,
-        inputs: List[Any],
-        config: BenchmarkConfig,
-        seed_manager: SeedManager,
-        device_manager: DeviceManager,
-        num_trials: int = 1,
-    ) -> Tuple[bool, float, float, Dict]:
-        """Run correctness trials between reference and implementation"""
-        max_diffs = []
-        rel_diffs = []
-        pass_count = 0
-        metadata = {
-            "correctness_trials_attempted": num_trials,
-            "max_differences": [],
-            "rel_differences": [],
-            "trial_results": [],
-        }
-
-        original_seed = seed_manager.seed
-        seed_manager.reset_seed()
-
-        with torch.no_grad():
-            for trial in range(num_trials):
-                trial_result = {"trial": trial}
-
-                try:
-                    # Clone inputs to prevent aliasing
-                    trial_data_ref = [
-                        x.clone() if isinstance(x, torch.Tensor) else x for x in inputs
-                    ]
-                    trial_data_impl = [
-                        x.clone() if isinstance(x, torch.Tensor) else x for x in inputs
-                    ]
-
-                    ref_output = ref_callable(*trial_data_ref)
-                    torch.cuda.synchronize()
-
-                    impl_output = impl_callable(*trial_data_impl)
-                    torch.cuda.synchronize()
-
-                    max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
-                    max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
-
-                    shape_valid, shape_error = CorrectnessChecker.validate_shapes(
-                        ref_output, impl_output
-                    )
-                    if not shape_valid:
-                        trial_result["status"] = "shape_mismatch"
-                        trial_result["error"] = shape_error
-                        metadata["trial_results"].append(trial_result)
-                        seed_manager.seed = original_seed
-                        seed_manager.reset_seed()
-                        return False, float("inf"), float("inf"), metadata
-
-                    is_trial_correct = max_abs_diff <= config.max_diff_limit
-
-                    max_diffs.append(max_abs_diff)
-                    rel_diffs.append(max_rel_diff)
-
-                    if is_trial_correct:
-                        pass_count += 1
-                        trial_result["status"] = "pass"
-                    else:
-                        trial_result["status"] = "fail"
-
-                    trial_result["max_abs_diff"] = max_abs_diff
-                    trial_result["max_rel_diff"] = max_rel_diff
-                    metadata["trial_results"].append(trial_result)
-
-                except Exception as e:
-                    trial_result["status"] = "runtime_error"
-                    trial_result["error"] = str(e)
-                    metadata["trial_results"].append(trial_result)
-                    max_diffs.append(float("inf"))
-                    rel_diffs.append(float("inf"))
-
-        seed_manager.seed = original_seed
-        seed_manager.reset_seed()
-
-        overall_max_abs_diff = max(max_diffs) if max_diffs else float("inf")
-        overall_max_rel_diff = max(rel_diffs) if rel_diffs else float("inf")
-        is_correct = pass_count == num_trials and overall_max_abs_diff <= config.max_diff_limit
-
-        return is_correct, overall_max_abs_diff, overall_max_rel_diff, metadata
-
     def run_solution(self, solution_name: str, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         """Run benchmarks for a specific solution
 
@@ -499,6 +355,7 @@ class Benchmark:
         """
         logging.basicConfig(level=getattr(logging, config.log_level.upper()))
 
+        # Find the solution and its definition
         target_solution = None
         target_def_name = None
 
@@ -514,70 +371,60 @@ class Benchmark:
         if not target_solution:
             raise ValueError(f"Solution '{solution_name}' not found")
 
-        self.logger.info(f"Running benchmark for solution: {solution_name}")
+        if target_def_name not in self.definitions:
+            raise ValueError(
+                f"Solution '{solution_name}' reference undefined definition: {target_def_name}"
+            )
 
-        try:
-            ref_callable = self._build_reference(target_def_name)
-            self.logger.info(f"Built reference for {target_def_name}")
-        except Exception as e:
-            self.logger.error(f"Failed to build reference for {target_def_name}: {e}")
-            return
+        definition = self.definitions[target_def_name]
 
-        try:
-            impl_callable = self._build_solution(target_solution)
-            self.logger.info(f"Built solution {target_solution.name}")
-        except Exception as e:
-            self.logger.error(f"Failed to build solution {target_solution.name}: {e}")
-            return
-
-        seed_manager = SeedManager()
-        device_manager = DeviceManager(config.device)
-
+        # Get workloads
         workload_list = [trace.workload for trace in self.workload.get(target_def_name, [])]
-
         if not workload_list:
-            definition = self.definitions[target_def_name]
-            default_workload = {"axes": {}, "inputs": {}}
-
-            for axis_name, axis_def in definition.axes.items():
-                if axis_def["type"] == "var":
-                    default_workload["axes"][axis_name] = 32
-
-            for input_name in definition.inputs:
-                default_workload["inputs"][input_name] = {"type": "random"}
-
-            workload_list = [default_workload]
+            raise ValueError(f"No workloads found for definition {target_def_name}")
 
         self.logger.info(f"Evaluating {target_solution.name} on {len(workload_list)} workloads")
 
-        for workload in workload_list:
+        # Run each workload in a subprocess
+        for i, workload in enumerate(workload_list):
+            self.logger.info(f"Running workload {i+1}/{len(workload_list)}")
+
             try:
-                trace = self._evaluate_single_workload(
-                    target_solution,
-                    workload,
-                    ref_callable,
-                    impl_callable,
-                    config,
-                    seed_manager,
-                    device_manager,
-                )
-                self.trace_set.add_trace(trace)
+                # Use multiprocessing to run in isolation
+                ctx = mp.get_context("spawn")  # Use spawn to get clean CUDA context
+                with ctx.Pool(processes=1) as pool:
+                    result = pool.apply(
+                        _run_single_benchmark, args=(definition, target_solution, workload, config)
+                    )
+                    self.trace_set.add_trace(result)
+
+                    # Log result
+                    if result.evaluation["status"] == "PASSED":
+                        self.logger.info(
+                            f"Workload {i+1}: PASSED "
+                            f"(speedup: {result.evaluation['performance']['speedup_factor']:.2f}x)"
+                        )
+                    else:
+                        self.logger.warning(f"Workload {i+1}: {result.evaluation['status']}")
+                    self.logger.debug(result)
+
             except Exception as e:
-                self.logger.error(f"Failed to evaluate {target_solution.name} on workload: {e}")
+                self.logger.error(f"Failed to run workload {i+1}: {str(e)}")
+
                 error_trace = Trace(
                     definition=target_def_name,
-                    solution=target_solution.name,
+                    solution=solution_name,
                     workload=workload,
                     evaluation={
-                        "status": "EVALUATION_ERROR",
-                        "log_file": f"{target_solution.name}_error.log",
+                        "status": "RUNTIME_ERROR",
+                        "log_file": f"{solution_name}_error.log",
                         "correctness": {
-                            "max_relative_error": float("inf"),
-                            "max_absolute_error": float("inf"),
+                            "max_relative_error": f"{float('inf')}",
+                            "max_absolute_error": f"{float('inf')}",
                         },
                         "performance": {
-                            "latency_ms": float("inf"),
-                            "reference_latency_ms": float("inf"),
+                            "latency_ms": f"{float('inf')}",
+                            "reference_latency_ms": f"{float('inf')}",
                             "speedup_factor": 0.0,
                         },
                         "environment": {"error": str(e)},
@@ -589,6 +436,7 @@ class Benchmark:
     def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         """
         Updates the associated TraceSet with benchmark results.
+        This method simply iterates through all solutions and calls run_solution for each.
 
         Args:
             config: Benchmark configuration
@@ -597,109 +445,29 @@ class Benchmark:
 
         self._validate()
 
-        # Phase 1: Build - Build reference implementations
-        self.logger.info("Phase 1: Building reference implementations...")
+        self.logger.info("Starting benchmark run...")
 
-        for def_name in self.definitions:
-            try:
-                self._build_reference(def_name)
-                self.logger.info(f"Built reference for {def_name}")
-            except Exception as e:
-                self.logger.error(f"Failed to build reference for {def_name}: {e}")
-                # Skip all solutions for this definition
-                if def_name in self.solutions:
-                    del self.solutions[def_name]
-
-        self.logger.info("Building solution implementations...")
-        failed_solutions = []
-
+        # Collect all solutions
+        solutions = []
         for def_name, solution_list in self.solutions.items():
             for solution in solution_list:
-                try:
-                    self._build_solution(solution)
-                    self.logger.info(f"Built solution {solution.name}")
-                except Exception as e:
-                    self.logger.error(f"Failed to build solution {solution.name}: {e}")
-                    failed_solutions.append(solution.name)
+                solutions.append((def_name, solution))
 
-        # Remove failed solutions
-        for def_name, solution_list in self.solutions.items():
-            self.solutions[def_name] = [s for s in solution_list if s.name not in failed_solutions]
+        total_solutions = len(solutions)
+        self.logger.info(f"Found {total_solutions} solutions to benchmark")
 
-        # Phase 2: Run - Execute benchmarks for all valid workloads
-        self.logger.info("Phase 2: Running benchmarks...")
+        # Run each solution
+        for i, (def_name, solution) in enumerate(solutions):
+            self.logger.info(
+                f"Running solution {i+1}/{total_solutions}: {solution.name} for definition {def_name}"
+            )
 
-        seed_manager = SeedManager()
-        device_manager = DeviceManager(config.device)
-
-        for def_name, solution_list in self.solutions.items():
-            if def_name not in self._reference_callables:
+            try:
+                self.run_solution(solution.name, config)
+            except Exception as e:
+                self.logger.error(f"Failed to run solution {solution.name}: {str(e)}")
                 continue
 
-            ref_callable = self._reference_callables[def_name]
-
-            workload_list = [trace.workload for trace in self.workload.get(def_name, [])]
-
-            # If no workloads, create a default one
-            if not workload_list:
-                definition = self.definitions[def_name]
-                default_workload = {"axes": {}, "inputs": {}}
-
-                for axis_name, axis_def in definition.axes.items():
-                    if axis_def["type"] == "var":
-                        default_workload["axes"][axis_name] = 32
-
-                for input_name in definition.inputs:
-                    default_workload["inputs"][input_name] = {"type": "random"}
-
-                workload_list = [default_workload]
-
-            for solution in solution_list:
-                if solution.name not in self._solution_callables.get(def_name, {}):
-                    continue
-
-                impl_callable = self._solution_callables[def_name][solution.name]
-
-                self.logger.info(f"Evaluating {solution.name} on {len(workload_list)} workloads")
-
-                for workload in workload_list:
-                    try:
-                        trace = self._evaluate_single_workload(
-                            solution,
-                            workload,
-                            ref_callable,
-                            impl_callable,
-                            config,
-                            seed_manager,
-                            device_manager,
-                        )
-                        self.trace_set.add_trace(trace)
-                    except Exception as e:
-                        self.logger.error(f"Failed to evaluate {solution.name} on workload: {e}")
-                        error_trace = Trace(
-                            definition=def_name,
-                            solution=solution.name,
-                            workload=workload,
-                            evaluation={
-                                "status": "EVALUATION_ERROR",
-                                "log_file": f"{solution.name}_error.log",
-                                "correctness": {
-                                    "max_relative_error": float("inf"),
-                                    "max_absolute_error": float("inf"),
-                                },
-                                "performance": {
-                                    "latency_ms": float("inf"),
-                                    "reference_latency_ms": float("inf"),
-                                    "speedup_factor": 0.0,
-                                },
-                                "environment": {"error": str(e)},
-                                "timestamp": datetime.now().isoformat(),
-                            },
-                        )
-                        self.trace_set.add_trace(error_trace)
-
-        # Phase 3: Complete
+        # Final summary
         trace_count = sum(len(traces) for traces in self.traces.values())
-        self.logger.info(f"Phase 3: Benchmark completed with {trace_count} traces")
-
-        self._cleanup_temp_files()
+        self.logger.info(f"Benchmark completed with {trace_count} traces")

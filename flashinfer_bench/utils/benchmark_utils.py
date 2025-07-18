@@ -66,126 +66,43 @@ class DeviceManager:
 
 class CorrectnessChecker:
     @staticmethod
-    def max_absolute_diff(output1: torch.Tensor, output2: torch.Tensor) -> float:
-        if isinstance(output1, (list, tuple)) and isinstance(output2, (list, tuple)):
-            max_diffs = []
-            for o1, o2 in zip(output1, output2):
-                if isinstance(o1, torch.Tensor) and isinstance(o2, torch.Tensor):
-                    max_diffs.append(torch.max(torch.abs(o1 - o2)).item())
-            return max(max_diffs) if max_diffs else float("inf")
-        elif isinstance(output1, torch.Tensor) and isinstance(output2, torch.Tensor):
-            return torch.max(torch.abs(output1 - output2)).item()
-        else:
-            return float("inf")
+    def _tensor_max_abs(a: torch.Tensor, b: torch.Tensor) -> float:
+        return torch.max(torch.abs(a - b)).item()
 
     @staticmethod
-    def max_relative_diff(output1: torch.Tensor, output2: torch.Tensor) -> float:
-        if isinstance(output1, (list, tuple)) and isinstance(output2, (list, tuple)):
-            max_diffs = []
-            for o1, o2 in zip(output1, output2):
-                if isinstance(o1, torch.Tensor) and isinstance(o2, torch.Tensor):
-                    abs_diff = torch.abs(o1 - o2)
-                    rel_diff = abs_diff / (torch.abs(o1) + 1e-8)
-                    max_diffs.append(torch.max(rel_diff).item())
-            return max(max_diffs) if max_diffs else float("inf")
-        elif isinstance(output1, torch.Tensor) and isinstance(output2, torch.Tensor):
-            abs_diff = torch.abs(output1 - output2)
-            rel_diff = abs_diff / (torch.abs(output1) + 1e-8)
-            return torch.max(rel_diff).item()
-        else:
-            return float("inf")
+    def _tensor_max_rel(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-8) -> float:
+        return torch.max(torch.abs(a - b) / (torch.abs(a) + eps)).item()
+
+    @classmethod
+    def max_absolute_diff(cls, a, b):
+        if isinstance(a, dict) and isinstance(b, dict):
+            return max(cls.max_absolute_diff(a[k], b[k]) for k in a.keys() & b.keys())
+        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+            return cls._tensor_max_abs(a, b)
+        return float("inf")
+
+    @classmethod
+    def max_relative_diff(cls, a, b):
+        if isinstance(a, dict) and isinstance(b, dict):
+            return max(cls.max_relative_diff(a[k], b[k]) for k in a.keys() & b.keys())
+        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+            return cls._tensor_max_rel(a, b)
+        return float("inf")
 
     @staticmethod
-    def max_diff(output1: torch.Tensor, output2: torch.Tensor) -> float:
-        # For backward compatibility - returns absolute diff
-        return CorrectnessChecker.max_absolute_diff(output1, output2)
+    def validate_shapes(a, b) -> Tuple[bool, str]:
+        if isinstance(a, dict) and isinstance(b, dict):
+            shared_keys = a.keys() & b.keys()
+            missing_1 = b.keys() - a.keys()
+            missing_2 = a.keys() - b.keys()
+            if missing_1 or missing_2:
+                return False, f"Dict keys mismatch, only in a={missing_1}, only in b={missing_2}"
 
-    @staticmethod
-    def avg_diff(output1: torch.Tensor, output2: torch.Tensor) -> float:
-        if isinstance(output1, (list, tuple)) and isinstance(output2, (list, tuple)):
-            avg_diffs = []
-            for o1, o2 in zip(output1, output2):
-                if isinstance(o1, torch.Tensor) and isinstance(o2, torch.Tensor):
-                    avg_diffs.append(torch.mean(torch.abs(o1 - o2)).item())
-            return np.mean(avg_diffs) if avg_diffs else float("inf")
-        elif isinstance(output1, torch.Tensor) and isinstance(output2, torch.Tensor):
-            return torch.mean(torch.abs(output1 - output2)).item()
-        else:
-            return float("inf")
+            for k in shared_keys:
+                if a[k].shape != b[k].shape:
+                    return False, f"Shape mismatch for key '{k}': {a[k].shape} vs {b[k].shape}"
 
-    @staticmethod
-    def validate_shapes(output1: torch.Tensor, output2: torch.Tensor) -> Tuple[bool, str]:
-        if isinstance(output1, (list, tuple)) and isinstance(output2, (list, tuple)):
-            if len(output1) != len(output2):
-                return False, f"Output length mismatch: Expected {len(output1)}, got {len(output2)}"
-
-            for i, (o1, o2) in enumerate(zip(output1, output2)):
-                if isinstance(o1, torch.Tensor) and isinstance(o2, torch.Tensor):
-                    if o1.shape != o2.shape:
-                        return (
-                            False,
-                            f"Output[{i}] shape mismatch: Expected {o1.shape}, got {o2.shape}",
-                        )
-                elif type(o1) != type(o2):
-                    return False, f"Output[{i}] type mismatch: Expected {type(o1)}, got {type(o2)}"
-            return True, ""
-
-        elif isinstance(output1, torch.Tensor) and isinstance(output2, torch.Tensor):
-            if output1.shape != output2.shape:
-                return (
-                    False,
-                    f"Output shape mismatch: Expected {output1.shape}, got {output2.shape}",
-                )
-            return True, ""
-        elif type(output1) != type(output2):
-            return False, f"Output type mismatch: Expected {type(output1)}, got {type(output2)}"
-        else:
-            return True, ""
-
-    @staticmethod
-    def check_correctness(
-        output1: torch.Tensor,
-        output2: torch.Tensor,
-        max_diff_limit: float,
-        validate_shapes: bool = True,
-    ) -> Dict[str, Any]:
-        result = {
-            "correct": False,
-            "max_diff": float("inf"),
-            "avg_diff": float("inf"),
-            "shape_valid": True,
-            "shape_error": "",
-            "error": None,
-        }
-
-        try:
-            # shape validation
-            if validate_shapes:
-                shape_valid, shape_error = CorrectnessChecker.validate_shapes(output1, output2)
-                result["shape_valid"] = shape_valid
-                result["shape_error"] = shape_error
-
-                if not shape_valid:
-                    result["error"] = shape_error
-                    return result
-
-            # differences
-            max_diff = CorrectnessChecker.max_diff(output1, output2)
-            avg_diff = CorrectnessChecker.avg_diff(output1, output2)
-
-            result["max_diff"] = max_diff
-            result["avg_diff"] = avg_diff
-
-            result["correct"] = max_diff <= max_diff_limit
-
-        except Exception as e:
-            result["error"] = str(e)
-            result["correct"] = False
-
-        return result
-
-    @staticmethod
-    def is_correct(output1: torch.Tensor, output2: torch.Tensor, max_diff_limit: float) -> bool:
-        """Simple correctness check - returns only boolean result"""
-        result = CorrectnessChecker.check_correctness(output1, output2, max_diff_limit)
-        return result["correct"]
+        elif isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+            if a.shape != b.shape:
+                return False, f"Shape mismatch: {a.shape} vs {b.shape}"
+        return True, ""
