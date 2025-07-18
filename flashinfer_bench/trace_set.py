@@ -46,7 +46,7 @@ class TraceSet:
 
         # Load workload traces grouped by definition
         workload = {}
-        trace_files = glob.glob(str(base_path / "traces" / "*.jsonl"), recursive=True)
+        trace_files = glob.glob(str(base_path / "traces" / "**" / "*.jsonl"), recursive=True)
         for trace_file in trace_files:
             loaded_traces = load_jsonl(trace_file, Trace)
             for trace in cast(List[Trace], loaded_traces):
