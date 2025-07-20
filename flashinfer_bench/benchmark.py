@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import safetensors.torch as safetensors
+
 
 from .benchmark_config import BenchmarkConfig
 from .builders.base import BuilderRegistry, BuildError
@@ -59,32 +61,63 @@ def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
 
 
 def _generate_test_inputs(
-    definition: Definition, workload_axes: Dict[str, int], device_manager: DeviceManager
+    definition: Definition, workload: Dict[str, Any], device_manager: DeviceManager
 ) -> List[torch.Tensor]:
-    """Generate test inputs based on definition and workload axes"""
+    """Generate test inputs based on definition and workload specification"""
     inputs = []
+    workload_axes = workload["axes"]
+    workload_inputs = workload["inputs"]
 
     input_shapes = definition.get_input_shapes(workload_axes)
 
+    dtype_map = {
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "bfloat16": torch.bfloat16,
+        "int32": torch.int32,
+        "int64": torch.int64,
+        "int8": torch.int8,
+        "bool": torch.bool,
+    }
+
     for input_name, input_spec in definition.inputs.items():
         shape = input_shapes[input_name]
-
         dtype_str = input_spec["dtype"]
-        dtype_map = {
-            "float16": torch.float16,
-            "float32": torch.float32,
-            "bfloat16": torch.bfloat16,
-            "int32": torch.int32,
-            "int64": torch.int64,
-            "int8": torch.int8,
-            "bool": torch.bool,
-        }
         dtype = dtype_map.get(dtype_str, torch.float32)
 
-        if dtype == torch.bool:
-            tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
+        if input_name in workload_inputs:
+            input_desc = workload_inputs[input_name]
+            input_type = input_desc["type"]
+
+            if input_type == "random":
+                if dtype == torch.bool:
+                    tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
+                else:
+                    tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
+            elif input_type == "safetensors":
+                if safetensors is None:
+                    raise ImportError("safetensors library is required but not installed")
+                
+                path = input_desc["path"]
+                tensor_key = input_desc["tensor_key"]                
+                tensors = safetensors.load_file(path)
+                if tensor_key not in tensors:
+                    raise ValueError(f"Tensor key '{tensor_key}' not found in safetensors file '{path}'")
+                
+                tensor = tensors[tensor_key].to(device=device_manager.device, dtype=dtype)
+                
+                if list(tensor.shape) != shape:
+                    raise ValueError(f"Tensor '{input_name}' shape mismatch. Expected {shape}, got {list(tensor.shape)}")
+            else:
+                raise ValueError(f"Unsupported input type '{input_type}' for input '{input_name}'")
+
         else:
-            tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
+            # Default to random generation if not specified in workload
+            if dtype == torch.bool:
+                tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
+            else:
+                tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
+
         inputs.append(tensor)
 
     return inputs
@@ -172,7 +205,7 @@ def _run_single_benchmark(
 
         with torch.no_grad():
             for _ in range(num_trials):
-                inputs = _generate_test_inputs(definition, workload["axes"], device_manager)
+                inputs = _generate_test_inputs(definition, workload, device_manager)
 
                 trial_data_ref = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
                 trial_data_impl = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
