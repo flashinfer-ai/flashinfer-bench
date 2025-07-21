@@ -1,0 +1,26 @@
+{
+  "name": "gemm_m_dynamic_n_4096_k_4096_triton_chatgpt_v2",
+  "definition": "gemm_m_dynamic_n_4096_k_4096",
+  "description": "Improved Triton kernel for C = A @ B.T with dynamic M and fixed N=K=4096 (e.g., LLaMA o_proj). Uses float32 accumulation, optional fused ReLU, and optimizations for NVIDIA Hopper/Blackwell GPUs.",
+  "author": "chat-gpt",
+  "spec": {
+    "language": "Triton",
+    "target_hardware": [
+      "NVIDIA_H100",
+      "NVIDIA_B100",
+      "NVIDIA_B200"
+    ],
+    "dependencies": [
+      "torch",
+      "triton >= 2.4.0"
+    ],
+    "entry_point": "run",
+    "build_steps": []
+  },
+  "sources": [
+    {
+      "path": "main.py",
+      "content": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.autotune(\n    configs=[\n        triton.Config({\"BLOCK_M\": 128, \"BLOCK_N\": 128, \"BLOCK_K\": 64, \"GROUP_M\": 8}, num_stages=3, num_warps=8),\n        triton.Config({\"BLOCK_M\": 64,  \"BLOCK_N\": 256, \"BLOCK_K\": 64, \"GROUP_M\": 4}, num_stages=4, num_warps=8),\n        triton.Config({\"BLOCK_M\": 256, \"BLOCK_N\": 64,  \"BLOCK_K\": 64, \"GROUP_M\": 4}, num_stages=4, num_warps=8)\n    ],\n    key=[\"M\"]\n)\n@triton.jit\n\ndef _gemm_kernel_v2(\n    A_ptr, B_ptr, C_ptr,\n    M,\n    stride_am, stride_ak,\n    stride_bn, stride_bk,\n    stride_cm, stride_cn,\n    N: tl.constexpr, K: tl.constexpr,\n    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,\n    BLOCK_K: tl.constexpr, GROUP_M: tl.constexpr,\n    USE_RELU: tl.constexpr = False,\n):\n    pid = tl.program_id(axis=0)\n\n    num_pid_m = tl.cdiv(M, BLOCK_M)\n    num_pid_n = tl.cdiv(N, BLOCK_N)\n    num_pid_in_group = GROUP_M * num_pid_n\n\n    group_id = pid // num_pid_in_group\n    group_m_start = group_id * GROUP_M\n    group_m_size = tl.minimum(num_pid_m - group_m_start, GROUP_M)\n\n    pid_m = group_m_start + (pid % group_m_size)\n    pid_n = (pid % num_pid_in_group) // group_m_size\n\n    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n    offs_k = tl.arange(0, BLOCK_K)\n\n    a_ptrs = A_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak\n    b_ptrs = B_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn\n\n    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)\n\n    for k in range(0, K, BLOCK_K):\n        a = tl.load(a_ptrs, mask=offs_m[:, None] < M)\n        b = tl.load(b_ptrs, mask=offs_n[None, :] < N)\n        acc += tl.dot(a, b)\n        a_ptrs += BLOCK_K * stride_ak\n        b_ptrs += BLOCK_K * stride_bk\n\n    if USE_RELU:\n        acc = tl.maximum(acc, 0)\n\n    c = acc.to(tl.float16)\n    c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn\n    tl.store(c_ptrs, c, mask=(offs_m[:, None] < M) & (offs_n[None, :] < N))\n\n\ndef run(A: torch.Tensor, B: torch.Tensor, use_relu: bool = False):\n    \"\"\"\n    High-performance GEMM: Computes A @ B.T with B in row-major layout.\n    Args:\n        A: [M, 4096] float16\n        B: [4096, 4096] float16\n        use_relu: whether to apply ReLU activation to output\n    Returns:\n        {'C': [M, 4096] float16 tensor}\n    \"\"\"\n    assert A.dtype == torch.float16 and B.dtype == torch.float16, \"Inputs must be float16\"\n    M, K = A.shape\n    assert K == 4096 and B.shape == (4096, 4096), \"Expected N = K = 4096\"\n\n    C = torch.empty((M, 4096), dtype=torch.float16, device=A.device)\n\n    grid = lambda META: (\n        triton.cdiv(M, META[\"BLOCK_M\"]) * triton.cdiv(4096, META[\"BLOCK_N\"]),\n    )\n\n    _gemm_kernel_v2[grid](\n        A, B, C,\n        M,\n        A.stride(0), A.stride(1),\n        B.stride(0), B.stride(1),\n        C.stride(0), C.stride(1),\n        4096, 4096,\n        USE_RELU=use_relu,\n    )\n    return {\"C\": C}"
+    }
+  ]
+}

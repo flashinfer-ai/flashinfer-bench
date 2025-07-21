@@ -2,6 +2,14 @@
 
 **FlashInfer Bench** is a lightweight, extensible benchmarking suite for evaluating low-level kernel implementations of model inference workloads. It is centered around the `Trace` artifact — a detailed record of a workload execution. It enables systematic comparison of kernel implementations with correctness and performance metrics.
 
+## Installation
+
+Install FlashInfer Bench with pip:
+
+```bash
+pip install -v -e .
+``` 
+
 ## Dataset Layout
 
 Each dataset is organized as follows:
@@ -22,6 +30,34 @@ You can load the full dataset using:
 ```python
 from flashinfer_bench import TraceSet
 trace_set = TraceSet.from_path("/dataset")
+```
+
+## Command Line Interface (CLI)
+
+FlashInfer Bench provides a CLI for running benchmarks and analyzing results.
+
+### Usage
+
+#### Options
+- `--local <PATH>`: Specifies one or more local paths to load traces from. Can be used multiple times.
+- `--hub`: Load the latest traces from the FlashInfer Hub (not yet implemented).
+- `--warmup-runs <N>`: Number of warmup runs for benchmarking (default: 10).
+- `--iterations <N>`: Number of benchmark iterations (default: 50).
+- `--device <DEVICE>`: Device to run benchmarks on (default: cuda:0).
+- `--log-level <LEVEL>`: Logging level (default: INFO).
+- `--save-results` / `--no-save-results`: Whether to save results after running (default: save).
+
+#### Example
+
+```bash
+# Run benchmarks on a dataset
+flashinfer-bench run --local ./dataset
+
+# Print a summary of traces
+flashinfer-bench report summary --local ./dataset
+
+# Find the best solution for each definition
+flashinfer-bench report best --local ./dataset
 ```
 
 ## Benchmarking Kernels
@@ -45,43 +81,6 @@ print(traces.summary())
 from flashinfer_bench import BenchmarkConfig
 config = BenchmarkConfig(warmup_runs=5, iterations=20, device="cuda:1")
 benchmark.run(config)
-```
-
-## Command Line Interface (CLI)
-
-FlashInfer Bench provides a CLI for running benchmarks and analyzing results.
-
-### Usage
-
-```bash
-flashinfer-bench run --local ./dataset
-flashinfer-bench run --local ./dataset1 --local ./dataset2
-flashinfer-bench report summary --local ./dataset
-flashinfer-bench report best --local ./dataset
-flashinfer-bench report merge --output ./examples/merged_dataset --local ./dataset --local ./examples/dataset2
-flashinfer-bench report visualize --local ./dataset
-```
-
-#### Options
-- `--local <PATH>`: Specifies one or more local paths to load traces from. Can be used multiple times.
-- `--hub`: Load the latest traces from the FlashInfer Hub (not yet implemented).
-- `--warmup-runs <N>`: Number of warmup runs for benchmarking (default: 10).
-- `--iterations <N>`: Number of benchmark iterations (default: 50).
-- `--device <DEVICE>`: Device to run benchmarks on (default: cuda:0).
-- `--log-level <LEVEL>`: Logging level (default: INFO).
-- `--save-results` / `--no-save-results`: Whether to save results after running (default: save).
-
-#### Example
-
-```bash
-# Run benchmarks on a dataset
-flashinfer-bench run --local ./dataset
-
-# Print a summary of traces
-flashinfer-bench report summary --local ./dataset
-
-# Find the best solution for each definition
-flashinfer-bench report best --local ./dataset
 ```
 
 ## Schema
