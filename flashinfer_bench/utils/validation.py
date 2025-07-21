@@ -8,6 +8,8 @@ ALLOWED_DTYPES = [
     "float8_e5m2",
     "float4_e2m1",
     "int8",
+    "int16",
+    "int32",
     "bool",
 ]
 
