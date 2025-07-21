@@ -10,7 +10,7 @@ A web leaderboard for visualizing performance from FlashInfer Bench. This projec
 
 ## Running the Leaderboard
 
-### 1. Clone the repository
+### 1. Navigate to the Leaderboard Directory
 
 ```bash
 cd tools/leaderboard
