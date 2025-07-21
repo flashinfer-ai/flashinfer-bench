@@ -256,6 +256,15 @@ def cli():
     summary_parser.set_defaults(func=summary)
 
     best_parser = report_subparsers.add_parser("best", help="Find best solution for a definition.")
+    best_parser.add_argument(
+        "--local",
+        type=Path,
+        action="append",
+        help="Specifies one or more local paths to load traces from.",
+    )
+    best_parser.add_argument(
+        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
     best_parser.set_defaults(func=best)
 
     merge_parser = report_subparsers.add_parser("merge", help="Merges multiple traces.")
