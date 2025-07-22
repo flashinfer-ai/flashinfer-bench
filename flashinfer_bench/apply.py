@@ -1,5 +1,8 @@
 from __future__ import annotations
-import inspect, os, functools
+
+import functools
+import inspect
+import os
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from flashinfer_bench.trace_set import TraceSet
@@ -21,9 +24,9 @@ class ApplyRuntime:
             raise ValueError("FLASHINFER_BENCH_PATH is not set")
 
         self._ts: Optional[TraceSet] = None
-        # (def_name, tuple(sorted(axis→val))) → callable
+        # Apply best op cache: (def_name, tuple(sorted(axis→val))) → callable
         self._cache: Dict[Tuple[str, Tuple[Tuple[str, int], ...]], Callable] = {}
-        # def_name → tuple(input_name, dim_idx, axis)
+        # Stores what inputs have variable axes in the shape: def_name → tuple(input_name, dim_idx, axis)
         self._var_axes_table: Dict[str, Tuple[Tuple[str, int, str], ...]] = {}
 
     def resolve(
@@ -53,7 +56,52 @@ class ApplyRuntime:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        chosen = self._ts.get_best_op(def_name, axes, max_abs_diff, max_rel_diff) or fallback
+        best = self._ts.get_best_op(def_name, axes, max_abs_diff, max_rel_diff)
+        chosen: Callable = best or fallback
+
+        # Handling extra args compared to definition, we safely skip None args
+        # TODO(shanli): we need a better way to handle this, either a). enforce signature to align with definition, or b). preprocess before function call to pass only the required args
+        best_sig = inspect.signature(chosen)
+
+        if any(
+            pname not in best_sig.parameters and runtime_args.get(pname) is not None
+            for pname in runtime_args
+        ):
+            # mandatory arg missing -> fallback
+            chosen = fallback
+        elif any(pname not in best_sig.parameters for pname in runtime_args):
+            # create shim to drop extra args
+            @functools.wraps(best)
+            def _arg_shim(*a, **kw):
+                # drop keyword args
+                kw = {k: v for k, v in kw.items() if k in best_sig.parameters}
+                # drop positional args
+                a = a[: len(best_sig.parameters)]
+                return best(*a, **kw)
+
+            chosen = _arg_shim
+
+        # Unpack output to tuples
+        definition = self._ts.get_definition(def_name)
+        out_keys = list(definition.outputs)
+        if len(out_keys) >= 1:
+
+            def _unpack_shim(fn):
+                @functools.wraps(fn)
+                def wrapper(*a, **kw):
+                    res = fn(*a, **kw)
+                    if isinstance(res, dict) and all(k in res for k in out_keys):
+                        return (
+                            res[out_keys[0]]
+                            if len(out_keys) == 1
+                            else tuple(res[k] for k in out_keys)
+                        )
+                    return res
+
+                return wrapper
+
+            chosen = _unpack_shim(chosen)
+
         self._cache[cache_key] = chosen
         return chosen
 
@@ -61,7 +109,7 @@ class ApplyRuntime:
         if self._ts is None:
             self._ts = TraceSet.from_path(self.root)
 
-        if self._var_axes_table is None:
+        if not self._var_axes_table:
             for defn in self._ts.definitions.values():
                 axes = []
                 for inp_name, inp_spec in defn.inputs.items():
@@ -69,7 +117,6 @@ class ApplyRuntime:
                         if defn.axes[axis]["type"] == "var":
                             axes.append((inp_name, dim_idx, axis))
                 self._var_axes_table[defn.name] = tuple(axes)
-
 
     def _infer_axes(self, def_name: str, runtime_args: Dict[str, Any]) -> Dict[str, int]:
         """
@@ -92,7 +139,9 @@ class ApplyRuntime:
             axes[axis] = int(tensor.shape[dim_idx])
         return axes
 
+
 _runtime = ApplyRuntime()
+
 
 def apply(def_name_fn: Callable[..., str]) -> Callable[[Callable], Callable]:
     """
@@ -107,6 +156,7 @@ def apply(def_name_fn: Callable[..., str]) -> Callable[[Callable], Callable]:
     ... def gemm_bf16(A, B, bias=None):
     ...     return _gemm_module.gemm_bf16(A, B, bias)
     """
+
     def decorator(fallback: Callable) -> Callable:
         sig = inspect.signature(fallback)
 
