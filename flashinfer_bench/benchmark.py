@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
+import linecache
+import types
 
 import torch
 import torch.nn as nn
@@ -50,26 +52,19 @@ def _compile_python_code(code_string: str, entry_point: str) -> Callable:
 
 def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
     """
-    Compile Triton code using tempfile approach to handle @triton.jit decorator
-    Inspired by KernelBench-Triton https://github.com/ScalingIntelligence/KernelBench/pull/35/files#diff-7c33c37dd2ca3f92b111b25d2c1168f5c98f308c1f2d0e2add9e4b8b240e5918
-    """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
-        tmp_file.write(code_string)
-        tmp_file_path = tmp_file.name
+    Compile Triton code string and return the specified entry point callable
+    """    
+    mod_name = f"_fi_bench_triton_tmp_{uuid.uuid4().hex}"
+    fake_filename = f"<{mod_name}>"
+    linecache.cache[fake_filename] = (
+        len(code_string), None, code_string.splitlines(True), fake_filename)
 
-    try:
-        spec = importlib.util.spec_from_file_location(f"_fi_bench_triton_tmp_{uuid.uuid4().hex}", tmp_file_path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+    mod = types.ModuleType(mod_name)
+    exec(compile(code_string, fake_filename, "exec"), mod.__dict__)
 
-        if not hasattr(mod, entry_point):
-            raise ValueError(f"Entry point '{entry_point}' not found in Triton code")
-
-        fn = getattr(mod, entry_point)
-    finally:
-        os.unlink(tmp_file_path)
-
-    return fn
+    if not hasattr(mod, entry_point):
+        raise ValueError(f"{entry_point!r} not found")
+    return getattr(mod, entry_point)
 
 
 def _generate_test_inputs(
