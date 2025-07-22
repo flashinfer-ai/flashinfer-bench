@@ -1,20 +1,20 @@
 import importlib.util
+import linecache
 import logging
 import multiprocessing as mp
 import os
 import tempfile
 import traceback
+import types
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
-import linecache
-import types
 
+import safetensors.torch as safetensors
 import torch
 import torch.nn as nn
-import safetensors.torch as safetensors
-
+from triton.testing import do_bench
 
 from .benchmark_config import BenchmarkConfig
 from .builders.base import BuilderRegistry, BuildError
@@ -31,12 +31,17 @@ from .utils.validation import (
     validate_workload_axes,
 )
 
+
 def build_solution(solution: Solution) -> Callable:
     """Build a solution into a callable function"""
     if solution.spec.get("language", "Python").lower() == "triton":
-        return _compile_triton_code(solution.sources[0]["content"], solution.spec.get("entry_point", "run"))
+        return _compile_triton_code(
+            solution.sources[0]["content"], solution.spec.get("entry_point", "run")
+        )
     else:
-        return _compile_python_code(solution.sources[0]["content"], solution.spec.get("entry_point", "run"))
+        return _compile_python_code(
+            solution.sources[0]["content"], solution.spec.get("entry_point", "run")
+        )
 
 
 def _compile_python_code(code_string: str, entry_point: str) -> Callable:
@@ -53,11 +58,15 @@ def _compile_python_code(code_string: str, entry_point: str) -> Callable:
 def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
     """
     Compile Triton code string and return the specified entry point callable
-    """    
+    """
     mod_name = f"_fi_bench_triton_tmp_{uuid.uuid4().hex}"
     fake_filename = f"<{mod_name}>"
     linecache.cache[fake_filename] = (
-        len(code_string), None, code_string.splitlines(True), fake_filename)
+        len(code_string),
+        None,
+        code_string.splitlines(True),
+        fake_filename,
+    )
 
     mod = types.ModuleType(mod_name)
     exec(compile(code_string, fake_filename, "exec"), mod.__dict__)
@@ -104,17 +113,21 @@ def _generate_test_inputs(
             elif input_type == "safetensors":
                 if safetensors is None:
                     raise ImportError("safetensors library is required but not installed")
-                
+
                 path = input_desc["path"]
-                tensor_key = input_desc["tensor_key"]                
+                tensor_key = input_desc["tensor_key"]
                 tensors = safetensors.load_file(path)
                 if tensor_key not in tensors:
-                    raise ValueError(f"Tensor key '{tensor_key}' not found in safetensors file '{path}'")
-                
+                    raise ValueError(
+                        f"Tensor key '{tensor_key}' not found in safetensors file '{path}'"
+                    )
+
                 tensor = tensors[tensor_key].to(device=device_manager.device, dtype=dtype)
-                
+
                 if list(tensor.shape) != shape:
-                    raise ValueError(f"Tensor '{input_name}' shape mismatch. Expected {shape}, got {list(tensor.shape)}")
+                    raise ValueError(
+                        f"Tensor '{input_name}' shape mismatch. Expected {shape}, got {list(tensor.shape)}"
+                    )
             else:
                 raise ValueError(f"Unsupported input type '{input_type}' for input '{input_name}'")
 
@@ -135,25 +148,16 @@ def _time_kernel(callable_func: Callable, inputs: List[Any], warmup: int, iterat
     if isinstance(callable_func, nn.Module):
         callable_func.eval()
 
+    # One-time pre-run
     with torch.no_grad():
-        for _ in range(warmup):
-            _ = callable_func(*inputs)
-
+        callable_func(*inputs)
     torch.cuda.synchronize()
 
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    start_event.record()
-    with torch.no_grad():
-        for _ in range(iterations):
-            _ = callable_func(*inputs)
-    end_event.record()
-
-    torch.cuda.synchronize()
-    elapsed_time_ms = start_event.elapsed_time(end_event)
-
-    return elapsed_time_ms / iterations
+    return do_bench(
+        lambda: callable_func(*inputs),
+        warmup=warmup,
+        rep=iterations,
+    )
 
 
 def _format_environment(device_manager: DeviceManager) -> Dict[str, Any]:
@@ -237,7 +241,7 @@ def _run_single_benchmark(
 
         seed_manager.reset_seed()
 
-        max_abs_diff = max(abs_diffs, default=None) # None if list is empty, i.e. shape mismatch
+        max_abs_diff = max(abs_diffs, default=None)  # None if list is empty, i.e. shape mismatch
         max_rel_diff = max(rel_diffs, default=None)
 
         status = "PASSED" if pass_count == num_trials else "INCORRECT"
