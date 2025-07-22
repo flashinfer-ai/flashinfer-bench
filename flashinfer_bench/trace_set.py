@@ -108,12 +108,22 @@ class TraceSet:
     def get_best_op(
         self,
         name: str,
+        axes: Optional[Dict[str, int]] = None,
         max_abs_diff: float = 1e-5,
         max_relative_diff: float = 1e-5,
-    ) -> Optional[Trace]:
-        candidates = filter_passed_traces(self.get_traces_for_definition(name))
+    ) -> Optional[Callable]:
+        candidates = self.get_traces_for_definition(name)
+        if axes:
+            candidates = filter_by_axes(candidates, axes)
+        candidates = filter_passed_traces(candidates)
         candidates = filter_by_error(candidates, max_abs_diff, max_relative_diff)
-        return get_best_trace(candidates)
+        best = get_best_trace(candidates)
+        if best:
+            solution = self.get_solution(best.solution)
+            if solution:
+                from .benchmark import build_solution
+                return build_solution(solution)
+        return None
 
     def summary(self) -> Dict[str, Any]:
         """Get a summary of all traces."""
@@ -144,6 +154,8 @@ T = TypeVar("T")
 def build_index(items: List[T], key_fn: Callable[[T], str]) -> Dict[str, T]:
     return {key_fn(item): item for item in items}
 
+def filter_by_axes(traces: List[Trace], axes: Dict[str, int]) -> List[Trace]:
+    return [t for t in traces if all(t.workload["axes"].get(ax) == val for ax, val in axes.items())]
 
 def filter_passed_traces(traces: List[Trace]) -> List[Trace]:
     return [t for t in traces if t.evaluation["status"] == "PASSED"]

@@ -7,6 +7,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+import uuid
 
 import torch
 import torch.nn as nn
@@ -28,6 +29,13 @@ from .utils.validation import (
     validate_workload_axes,
 )
 
+def build_solution(solution: Solution) -> Callable:
+    """Build a solution into a callable function"""
+    if solution.spec.get("language", "Python").lower() == "triton":
+        return _compile_triton_code(solution.sources[0]["content"], solution.spec.get("entry_point", "run"))
+    else:
+        return _compile_python_code(solution.sources[0]["content"], solution.spec.get("entry_point", "run"))
+
 
 def _compile_python_code(code_string: str, entry_point: str) -> Callable:
     """Compile Python code string and return the specified entry point callable"""
@@ -47,17 +55,21 @@ def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
     """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp_file:
         tmp_file.write(code_string)
-        tempfile_path = tmp_file.name
+        tmp_file_path = tmp_file.name
 
-    spec = importlib.util.spec_from_file_location("temp_module", tempfile_path)
-    temp_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(temp_module)
+    try:
+        spec = importlib.util.spec_from_file_location(f"_fi_bench_triton_tmp_{uuid.uuid4().hex}", tmp_file_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
 
-    if not hasattr(temp_module, entry_point):
-        os.unlink(tempfile_path)
-        raise ValueError(f"Entry point '{entry_point}' not found in Triton code")
+        if not hasattr(mod, entry_point):
+            raise ValueError(f"Entry point '{entry_point}' not found in Triton code")
 
-    return getattr(temp_module, entry_point), tempfile_path
+        fn = getattr(mod, entry_point)
+    finally:
+        os.unlink(tmp_file_path)
+
+    return fn
 
 
 def _generate_test_inputs(
@@ -175,7 +187,6 @@ def _run_single_benchmark(
     """
 
     logger = logging.getLogger(f"BenchmarkWorker-{os.getpid()}")
-    temp_files = []
 
     try:
         ref_callable = _compile_python_code(definition.reference, "run")
@@ -189,8 +200,7 @@ def _run_single_benchmark(
         source_content = solution.sources[0]["content"]
 
         if language == "triton":
-            impl_callable, temp_file = _compile_triton_code(source_content, entry_point)
-            temp_files.append(temp_file)
+            impl_callable = _compile_triton_code(source_content, entry_point)
         else:
             impl_callable = _compile_python_code(source_content, entry_point)
 
@@ -289,10 +299,6 @@ def _run_single_benchmark(
             "environment": _format_environment(device_manager),
             "timestamp": datetime.now().isoformat(),
         }
-    finally:
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
 
     return Trace(
         definition=definition.name,
