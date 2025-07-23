@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import safetensors.torch as safetensors
 import torch
 import torch.nn as nn
+from torch.utils.cpp_extension import load_inline
 from triton.testing import do_bench
 
 from .benchmark_config import BenchmarkConfig
@@ -34,13 +35,20 @@ from .utils.validation import (
 
 def build_solution(solution: Solution) -> Callable:
     """Build a solution into a callable function"""
-    if solution.spec.get("language", "Python").lower() == "triton":
+    language = solution.spec.get("language", "python").lower()
+    entry_point = solution.spec.get("entry_point", "run")
+
+    if language == "triton":
         return _compile_triton_code(
-            solution.sources[0]["content"], solution.spec.get("entry_point", "run")
+            solution.sources[0]["content"], entry_point
+        )
+    elif language == "cuda":
+        return _compile_cuda_code(
+            solution.sources, entry_point
         )
     else:
         return _compile_python_code(
-            solution.sources[0]["content"], solution.spec.get("entry_point", "run")
+            solution.sources[0]["content"], entry_point
         )
 
 
@@ -75,6 +83,50 @@ def _compile_triton_code(code_string: str, entry_point: str) -> Callable:
         raise ValueError(f"{entry_point!r} not found")
     return getattr(mod, entry_point)
 
+def _compile_cuda_code(sources: List[Dict[str, str]], entry_point: str) -> Callable:
+    """
+    Compile CUDA code from sources and return the specified entry point callable.
+    Note: .cpp wrapper is required, do NOT include header files, pybind11 is optional.
+    """
+    cpp_sources = []
+    cuda_sources = []
+    has_pybind = False
+    
+    for source in sources:
+        path = source['path']
+        content = source['content']
+        
+        if 'pybind11' in content or 'PYBIND11_MODULE' in content:
+            has_pybind = True
+
+        if path.endswith('.cu'):
+            cuda_sources.append(content)
+        elif path.endswith('.cpp') or path.endswith('.cc') or path.endswith('.cxx'):
+            cpp_sources.append(content)
+    
+    module_name = f"_fi_bench_cuda_tmp_{uuid.uuid4().hex[:8]}"
+    
+    load_args = {
+        'name': module_name,
+        'cpp_sources': cpp_sources if cpp_sources else None,
+        'cuda_sources': cuda_sources if cuda_sources else None,
+        'verbose': False,
+        'with_cuda': True,
+    }
+    
+    if not has_pybind:
+        load_args['functions'] = [entry_point]
+    
+    load_args = {k: v for k, v in load_args.items() if v is not None}
+    
+    try:
+        module = load_inline(**load_args)
+    except Exception as e:
+        raise RuntimeError(f"Failed to compile CUDA code: {e}")
+    
+    if not hasattr(module, entry_point):
+        raise ValueError(f"{entry_point!r} not found")
+    return getattr(module, entry_point)
 
 def _generate_test_inputs(
     definition: Definition, workload: Dict[str, Any], device_manager: DeviceManager
