@@ -49,11 +49,45 @@ a:hover {
   height: 4rem;
 }
 
-/* Header Title */
-.site-header h1 {
-  margin: 0;
-  font-size: 1.75rem;
+.header-layout {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
+
+.header-row {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+
+.header-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: white;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.header-item .header-link {
+    text-decoration: none;
+    color: white;
+    font-size: 1.25rem;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.header-item .header-link:hover {
+    color: #d4deee;
+}
+
+.external-link::after {
+    content: " ↗";
+    font-size: 1rem;
+}
+
 
 /* Header Links */
 .site-header a {
@@ -238,4 +272,94 @@ tbody tr:nth-child(even) {
   overflow-x: auto;
   white-space: pre-wrap;
   line-height: 1.5;
+}
+
+
+/* FlashInfer Bench Docs Styles */
+.markdown-body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.6;
+  padding: 1rem;
+  background-color: #f9fafb;
+  color: #1f2937;
+}
+
+pre code {
+  display: block;
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.9em;
+  overflow-x: auto;
+}
+
+code {
+  background: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+.docs-container {
+    display: flex;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    gap: 2rem;
+}
+
+.docs-sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    border-right: 1px solid #e5e7eb;
+    padding-right: 1rem;
+    position: sticky;
+    top: 80px; /* adjust for header */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+}
+
+.docs-content {
+    flex: 1;
+    min-width: 0;
+}
+
+/* TOC Links */
+#toc ul {
+    list-style: none;
+    padding: 0;
+}
+
+#toc ul ul {
+    margin-left: 1rem;
+    border-left: 1px solid #e5e7eb;
+    padding-left: 0.5rem;
+}
+
+#toc li {
+    margin-bottom: 0.5rem;
+}
+
+#toc a {
+    text-decoration: none;
+    color: #374151;
+    font-size: 0.95rem;
+    transition: color 0.2s;
+}
+
+#toc a:hover {
+    color: #111827;
+}
+
+/* scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+#toc a.active {
+    color: #111827;
+    font-weight: bold;
+    border-left: 3px solid #2563eb;
+    padding-left: 5px;
 }

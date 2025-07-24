@@ -7,3 +7,4 @@ urllib3>=2.4.0,<3.0.0
 torch>=2.1.0,<3.0.0
 numpy>=1.26.4,<2.0.0
 safetensors
+markdown

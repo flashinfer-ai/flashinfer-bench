@@ -16,11 +16,16 @@ A web leaderboard for visualizing performance from FlashInfer Bench. This projec
 cd tools/leaderboard
 ```
 
-### 2. Set up a virtual environment and install dependencies
+### 2. Set up a virtual environment (optionally) and install dependencies
 
+Optional:
 ```bash
 python -m venv venv
 source venv/bin/activate
+```
+
+Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
@@ -48,4 +53,4 @@ This schema defines how `definitions`, `solutions`, and `traces` are structured 
 
 ## Extend the Leaderboard
 
-To add new definitions or solutions, simply place the JSON files in the appropriate directories (under `/flashinfer-bench/dataset/`). The leaderboard will automatically pick them up.
+To add new definitions or solutions, simply place the JSON files in the appropriate directories (under `/flashinfer-bench/dataset/`), and run the benchmark. The leaderboard will automatically pick them up.

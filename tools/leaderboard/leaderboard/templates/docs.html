@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="docs-container">
+    <!-- Sidebar for Table of Contents -->
+    <aside class="docs-sidebar">
+        <nav id="toc">
+            <!-- Table of contents will be injected here -->
+        </nav>
+    </aside>
+
+    <!-- Main Documentation Content -->
+    <main class="docs-content markdown-body">
+        {{ content|safe }}
+    </main>
+</div>
+
+
+<!-- Include the docs.js script -->
+<script src="{{ url_for('static', filename='js/docs.js') }}"></script>
+{% endblock %}

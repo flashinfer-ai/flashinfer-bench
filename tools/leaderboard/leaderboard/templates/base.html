@@ -16,9 +16,33 @@
   <body>
     <!-- Header -->
     <header class="site-header">
-      <div class="header-container">
-        <h1><a href="{{ url_for('index') }}">FlashInfer Bench</a></h1>
-      </div>
+        <div class="header-container">
+            <div class="header-layout">
+                <div class="header-row">
+                    <!-- Brand -->
+                    <a href="{{ url_for('index') }}" class="header-title">
+                        <span>FlashInfer Bench</span>
+                    </a>
+
+                    <!-- Navigation Items -->
+                    <div class="header-item">
+                        <a href="{{ url_for('docs') }}" class="header-link">
+                            Documentation
+                        </a>
+                    </div>
+                    <div class="header-item">
+                        <a href="{{ url_for('index') }}" class="header-link">
+                            Leaderboard
+                        </a>
+                    </div>
+                    <div class="header-item">
+                        <a href="https://github.com/mlc-ai/flashinfer-bench" target="_blank" class="header-link external-link">
+                            GitHub
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </header>
 
     <!-- Optional flash message -->
