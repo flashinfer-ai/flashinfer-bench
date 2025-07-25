@@ -162,6 +162,9 @@ def _generate_test_inputs(
                     tensor = torch.randint(0, 2, shape, dtype=dtype, device=device_manager.device)
                 else:
                     tensor = torch.randn(shape, dtype=dtype, device=device_manager.device)
+            elif input_type == "scalar":
+                value = input_desc["value"]
+                tensor = value
             elif input_type == "safetensors":
                 if safetensors is None:
                     raise ImportError("safetensors library is required but not installed")

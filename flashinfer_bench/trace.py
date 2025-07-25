@@ -84,6 +84,13 @@ class Trace:
         if input_type == "random":
             # Random inputs don't require additional fields
             pass
+        
+        elif input_type == "scalar":
+            if "value" not in descriptor:
+                raise ValueError(f"Scalar input '{name}' must have a 'value' field")
+
+            if not isinstance(descriptor["value"], (int, float)):
+                raise ValueError(f"Input '{name}' value must be a number")
 
         elif input_type == "safetensors":
             if "path" not in descriptor:

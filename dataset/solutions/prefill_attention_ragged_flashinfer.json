@@ -1,0 +1,19 @@
+{
+  "name": "prefill_attn_raggedkv_flashinfer",
+  "definition": "prefill_attn_raggedkv",
+  "description": "Batch prefill/append attention on Ragged KV-Cache (FlashInfer plan/run API).",
+  "author": "flashinfer",
+  "spec": {
+    "language": "Python",
+    "target_hardware": ["NVIDIA_H100", "NVIDIA_A100", "CPU"],
+    "dependencies": ["flashinfer >= 0.1.0", "torch >= 2.1"],
+    "entry_point": "run",
+    "build_steps": []
+  },
+  "sources": [
+    {
+      "path": "main.py",
+      "content": "import torch\nfrom flashinfer.prefill import BatchPrefillWithRaggedKVCacheWrapper\n\ndef run(\n    q, k, v,\n    qo_indptr, kv_indptr,\n    num_qo_heads, num_kv_heads, head_dim_qk\n):\n    device = q.device\n    workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)\n\n    wrapper = BatchPrefillWithRaggedKVCacheWrapper(workspace_buffer, \"NHD\")\n    wrapper.plan(\n        qo_indptr,\n        kv_indptr,\n        num_qo_heads,\n        num_kv_heads,\n        head_dim_qk,\n        causal=True,\n    )\n\n    out = wrapper.run(\n        q=q,\n        k=k,\n        v=v,\n    )\n    return out"
+    }
+  ]
+}
