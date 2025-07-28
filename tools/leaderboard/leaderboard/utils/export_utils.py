@@ -15,7 +15,7 @@ _LEADERBOARD_JSON = None
 def get_trace_set() -> TraceSet:
     global _TRACE_SET
     if _TRACE_SET is None:
-        path = os.getenv("FLASHINFER_BENCH_DATASET_PATH", "../../dataset/")
+        path = os.getenv("FLASHINFER_BENCH_DATASET_PATH", "../../dataset/internal")
         if not os.path.exists(path):
             raise FileNotFoundError(f"Dataset path '{path}' does not exist. Please set FLASHINFER_BENCH_DATASET_PATH environment variable or ensure the dataset is available.")
         _TRACE_SET = TraceSet.from_path(path)
@@ -78,7 +78,7 @@ def to_leaderboard_json(
                         "latency_ms": perf["latency_ms"],
                         "speedup": perf["speedup_factor"],
                         "author": solution.get_author() if solution else "Unknown",
-                        "solution_file": solution.get_code() if solution else "",
+                        "solution_full": solution.get_code() if solution else "",
                     })
             result[device].sort(key=lambda x: (x["workload"], x["latency_ms"]))
 
@@ -86,41 +86,14 @@ def to_leaderboard_json(
 
     return leaderboard
 
-# def to_leaderboard_json(
-#     max_abs_error: float = 1e-5,
-#     max_rel_error: float = 1e-5,
-# ) -> Dict[str, List[Dict[str, Any]]]:
-#     """Generate leaderboard JSON from a TraceSet without modifying the class."""
-#     leaderboard = {}
-
-#     for def_name, traces in get_trace_set().traces.items():
-#         valid = filter_passed_traces(traces)
-#         valid = filter_by_error(valid, max_abs_error, max_rel_error)
-
-#         entries = []
-#         for trace in valid:
-#             try:
-#                 evaluation = trace.evaluation
-#                 perf = evaluation["performance"]
-#                 environment = evaluation["environment"]
-#                 entries.append({
-#                     "solution": trace.solution,
-#                     "latency_ms": perf["latency_ms"],
-#                     "speedup": perf["speedup_factor"],
-#                     "device": environment["device"],
-#                     "status": evaluation["status"],
-#                     "timestamp": evaluation["timestamp"],
-#                 })
-#             except Exception as e:
-#                 print(f"[Warning] Skipping invalid trace: {e}")
-
-#         entries.sort(key=lambda x: x["latency_ms"])
-#         leaderboard[def_name] = entries
-
-#     return leaderboard
-
 def get_leaderboard() -> dict:
     global _LEADERBOARD_JSON
     if _LEADERBOARD_JSON is None:
         _LEADERBOARD_JSON = to_leaderboard_json()
     return _LEADERBOARD_JSON
+
+def get_important_workloads(definition: Definition) -> List[str]:
+    raw = json.loads(definition.to_json())
+    raw_workloads = raw.get("important_workloads", [])
+    print(f"[Debug] Important workloads for definition '{definition.name}': {raw_workloads}")
+    return [json.dumps(w, sort_keys=True) for w in raw_workloads]

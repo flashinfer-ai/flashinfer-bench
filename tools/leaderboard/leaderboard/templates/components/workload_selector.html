@@ -1,0 +1,11 @@
+{% macro workload_selector(important_workloads) %}
+<h2 class="text-2xl font-semibold mb-4 flex items-center gap-10">
+  Rankings by workload<span class="ml-4"></span>
+  <select id="workload-select" class="workload-select">
+    <option value="all">All</option>
+    {% for workload in important_workloads %}
+      <option value="{{ workload }}">{{ workload }}</option>
+    {% endfor %}
+  </select>
+</h2>
+{% endmacro %}

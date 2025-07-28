@@ -219,6 +219,10 @@ tbody tr:nth-child(even) {
   background-color: #f9fafb;
 }
 
+.hidden {
+  display: none;
+}
+
 /* Back link */
 .back-link {
   display: inline-block;
@@ -241,6 +245,16 @@ tbody tr:nth-child(even) {
 }
 
 /* Leaderboard Section Headings */
+
+.workload-select {
+  transition: background-color 0.2s ease;
+  font-family: monospace;
+  font-size: 1.1rem;
+}
+
+.workload-select:hover {
+  background-color: rgb(130, 162, 214);
+}
 
 /* Metadata Header */
 .definition-header {
@@ -265,7 +279,8 @@ tbody tr:nth-child(even) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   background-color: #f3f4f6;
   color: #374151;
-  padding: 1rem;
+  text-align: left;
+  /* padding: 1rem; */
   margin-top: 0.5rem;
   border-radius: 0.375rem;
   font-size: 0.9rem;
@@ -363,3 +378,4 @@ html {
     border-left: 3px solid #2563eb;
     padding-left: 5px;
 }
+

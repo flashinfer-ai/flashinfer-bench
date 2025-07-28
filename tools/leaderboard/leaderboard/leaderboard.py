@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, abort
 from collections import defaultdict
-from leaderboard.utils.export_utils import get_leaderboard, get_a_definition
+from leaderboard.utils.export_utils import get_leaderboard, get_a_definition, get_important_workloads
 
 blueprint = Blueprint("leaderboard", __name__)
 
@@ -12,8 +12,9 @@ def show_leaderboard(definition_name: str):
         abort(404)
 
     definition = get_a_definition(definition_name)
-    entries = leaderboard_data[definition_name]
+    important_workloads = get_important_workloads(definition)
 
+    entries = leaderboard_data[definition_name]
     entries_by_device_and_workload = defaultdict(lambda: defaultdict(list))
     for device, entries_for_device in entries.items():
         for entry in entries_for_device:
@@ -23,5 +24,6 @@ def show_leaderboard(definition_name: str):
     return render_template(
         "leaderboard.html",
         definition=definition,
-        entries_by_device_and_workload=dict(entries_by_device_and_workload)
+        entries_by_device_and_workload=dict(entries_by_device_and_workload),
+        important_workloads=important_workloads
     )
