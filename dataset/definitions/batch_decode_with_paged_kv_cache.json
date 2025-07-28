@@ -7,7 +7,8 @@
     "H_qo": { "type": "const", "value": 32 },
     "H_kv": { "type": "const", "value": 8 },
     "D": { "type": "const", "value": 128 },
-    "T_kv": { "type": "var" },
+    "num_pages": { "type": "var" },
+    "page_size": { "type": "var"},
     "I": { "type": "var" },
     "NNZ": { "type": "var" }
   },
@@ -21,12 +22,12 @@
       "shape": ["B", "H_qo", "D"],
       "dtype": "bfloat16"
     },
-    "k": {
-      "shape": ["T_kv", "H_kv", "D"],
+    "k_cache": {
+      "shape": ["num_pages", "page_size", "H_kv", "D"],
       "dtype": "bfloat16"
     },
-    "v": {
-      "shape": ["T_kv", "H_kv", "D"],
+    "v_cache": {
+      "shape": ["num_pages", "page_size", "H_kv", "D"],
       "dtype": "bfloat16"
     },
     "kv_indptr": {
@@ -56,5 +57,5 @@
       "dtype": "bfloat16"
     }
   },
-  "reference": "import torch\n\ndef run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, page_size, sm_scale):\n    batch_size, num_qo_heads, head_dim = q.shape\n    num_kv_heads = k_cache.shape[2]\n    \n    output = torch.empty_like(q)\n\n    for seq_idx in range(batch_size):\n        page_start = kv_indptr[seq_idx].item()\n        page_end = kv_indptr[seq_idx + 1].item()\n        seq_pages = kv_indices[page_start:page_end]\n\n        last_page_len = kv_last_page_len[seq_idx].item()\n        seq_len = (len(seq_pages) - 1) * page_size + last_page_len\n\n        # Gather keys and values\n        seq_k_pages = k_cache[seq_pages]  # (num_pages, page_size, num_kv_heads, head_dim)\n        seq_v_pages = v_cache[seq_pages]\n\n        k_seq = seq_k_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]  # (L, num_kv_heads, D)\n        v_seq = seq_v_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]\n        q_seq = q[seq_idx]  # (num_qo_heads, D)\n\n        if num_qo_heads != num_kv_heads:\n            kv_head_ratio = num_qo_heads // num_kv_heads\n            k_seq = k_seq.repeat_interleave(kv_head_ratio, dim=1)\n            v_seq = v_seq.repeat_interleave(kv_head_ratio, dim=1)\n\n        # Compute attention scores\n        attn_scores = torch.einsum(\"hd,ldh->hl\", q_seq, k_seq) * sm_scale  # (H, L)\n        attn_probs = torch.softmax(attn_scores, dim=-1)  # (H, L)\n\n        # Weighted sum\n        out = torch.einsum(\"hl,ldh->hd\", attn_probs, v_seq)  # (H, D)\n        output[seq_idx] = out\n\n    return {\"out\": output}"
+  "reference": "import torch\n\ndef run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale, logits_soft_cap):\n    batch_size, num_qo_heads, head_dim = q.shape\n    num_kv_heads = k_cache.shape[2]\n    page_size = k_cache.shape[1]\n    \n    output = torch.empty_like(q)\n\n    for seq_idx in range(batch_size):\n        page_start = kv_indptr[seq_idx].item()\n        page_end = kv_indptr[seq_idx + 1].item()\n        seq_pages = kv_indices[page_start:page_end]\n\n        num_pages = len(seq_pages)\n        if num_pages == 0:\n            output[seq_idx] = 0\n            continue\n\n        last_page_len = kv_last_page_len[seq_idx].item()\n        seq_len = (num_pages - 1) * page_size + last_page_len\n\n        seq_k_pages = k_cache[seq_pages]\n        seq_v_pages = v_cache[seq_pages]\n\n        k_seq = seq_k_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]\n        v_seq = seq_v_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]\n        q_seq = q[seq_idx]\n\n        if num_qo_heads != num_kv_heads:\n            kv_head_ratio = num_qo_heads // num_kv_heads\n            k_seq = k_seq.repeat_interleave(kv_head_ratio, dim=1)\n            v_seq = v_seq.repeat_interleave(kv_head_ratio, dim=1)\n\n        attn_scores = torch.einsum(\"hd,lhd->hl\", q_seq, k_seq) * sm_scale\n        \n        if logits_soft_cap > 0.0:\n            attn_scores = logits_soft_cap * torch.tanh(attn_scores / logits_soft_cap)\n        \n        attn_probs = torch.softmax(attn_scores, dim=-1)\n\n        out = torch.einsum(\"hl,lhd->hd\", attn_probs, v_seq)\n        output[seq_idx] = out\n\n    return output"
 }

@@ -152,6 +152,47 @@ def forward_pytorch(
     
     return output
 
+def forward_pytorch_2(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, page_size, sm_scale):
+    batch_size, num_qo_heads, head_dim = q.shape
+    num_kv_heads = k_cache.shape[2]
+    
+    output = torch.empty_like(q)
+
+    for seq_idx in range(batch_size):
+        page_start = kv_indptr[seq_idx].item()
+        page_end = kv_indptr[seq_idx + 1].item()
+        seq_pages = kv_indices[page_start:page_end]
+
+        num_pages = len(seq_pages)
+        if num_pages == 0:
+            output[seq_idx] = 0
+            continue
+
+        last_page_len = kv_last_page_len[seq_idx].item()
+        seq_len = (num_pages - 1) * page_size + last_page_len
+
+        # Gather keys and values
+        seq_k_pages = k_cache[seq_pages]  # (num_pages, page_size, num_kv_heads, head_dim)
+        seq_v_pages = v_cache[seq_pages]
+
+        k_seq = seq_k_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]  # (L, num_kv_heads, D)
+        v_seq = seq_v_pages.reshape(-1, num_kv_heads, head_dim)[:seq_len]
+        q_seq = q[seq_idx]  # (num_qo_heads, D)
+
+        if num_qo_heads != num_kv_heads:
+            kv_head_ratio = num_qo_heads // num_kv_heads
+            k_seq = k_seq.repeat_interleave(kv_head_ratio, dim=1)
+            v_seq = v_seq.repeat_interleave(kv_head_ratio, dim=1)
+
+        # Compute attention scores
+        attn_scores = torch.einsum("hd,lhd->hl", q_seq, k_seq) * sm_scale  # (H, L)
+        attn_probs = torch.softmax(attn_scores, dim=-1)  # (H, L)
+
+        # Weighted sum
+        out = torch.einsum("hl,lhd->hd", attn_probs, v_seq)  # (H, D)
+        output[seq_idx] = out
+
+    return output
 
 def kernel_descriptions():
     return """
@@ -215,10 +256,9 @@ if __name__ == "__main__":
     kv_last_page_len = torch.tensor([1, 1], dtype=torch.int32, device=DEVICE)
     
     print("batch decode (paged attention kv cache) PyTorch")
-    out_pytorch = forward_pytorch(
+    out_pytorch = forward_pytorch_2(
         q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len,
-        PAGE_SIZE, SM_SCALE, LOGITS_SOFT_CAP
-    )
+        PAGE_SIZE, SM_SCALE)
     
     print("batch decode (paged attention kv cache) FlashInfer")  
     out_flashinfer = forward_flashinfer(

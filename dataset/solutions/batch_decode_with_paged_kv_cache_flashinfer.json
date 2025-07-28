@@ -1,0 +1,19 @@
+{
+  "name": "batch_decode_with_paged_kv_cache_flashinfer",
+  "definition": "batch_decode_with_paged_kv_cache",
+  "description": "Batch decode with paged KV-Cache (FlashInfer plan/run API).",
+  "author": "flashinfer",
+  "spec": {
+    "language": "Python",
+    "target_hardware": ["NVIDIA_H100", "NVIDIA_A100", "CPU"],
+    "dependencies": ["flashinfer >= 0.1.0", "torch >= 2.1"],
+    "entry_point": "run",
+    "build_steps": []
+  },
+  "sources": [
+    {
+      "path": "main.py",
+      "content": "import torch\nimport flashinfer\n\ndef run(\n    q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, page_size, sm_scale\n):\n    batch_size, num_qo_heads, head_dim = q.shape\n    _, _, num_kv_heads, _ = k_cache.shape\n    device = q.device\n    \n    workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)\n    \n    wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(\n        workspace_buffer,\n        kv_layout=\"NHD\",\n        use_tensor_cores=False,\n    )\n    \n    wrapper.plan(\n        indptr=kv_indptr,\n        indices=kv_indices,\n        last_page_len=kv_last_page_len,\n        num_qo_heads=num_qo_heads,\n        num_kv_heads=num_kv_heads,\n        head_dim=head_dim,\n        page_size=page_size,\n        pos_encoding_mode=\"NONE\",\n        window_left=-1,\n        logits_soft_cap=0.0,\n        q_data_type=q.dtype,\n        kv_data_type=k_cache.dtype,\n        sm_scale=sm_scale,\n        non_blocking=True,\n    )\n    \n    output = wrapper.run(\n        q=q,\n        paged_kv_cache=(k_cache, v_cache),\n        return_lse=False,\n    )\n    \n    return {\"out\": output}"
+    }
+  ]
+}
