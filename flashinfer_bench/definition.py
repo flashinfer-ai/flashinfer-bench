@@ -142,3 +142,7 @@ class Definition:
             shapes[output_name] = shape
 
         return shapes
+    
+    def get_type(self) -> str:
+        """Get the type of the definition."""
+        return self.type

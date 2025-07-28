@@ -151,3 +151,14 @@ class Solution:
     def requires_build(self) -> bool:
         """Check if the solution requires a build step."""
         return "build_steps" in self.spec and bool(self.spec["build_steps"])
+    
+    def get_code(self) -> str:
+        """Get the source code of the main file."""
+        main_source = self.get_main_source()
+        if main_source:
+            return main_source["content"]
+        return ""
+    
+    def get_author(self) -> str:
+        """Get the author of the solution."""
+        return self.author if self.author else "Unknown"

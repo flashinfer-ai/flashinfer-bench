@@ -3,23 +3,28 @@
   <h1 class="page-title">Kernel Leaderboard</h1>
 
   {% if definitions %}
-  <ul class="definitions">
-    {% for name in definitions.keys() %}
-    <li class="definition-card">
-      <a
-        class="definition-link"
-        href="{{ url_for('leaderboard.show_leaderboard', definition_name=name) }}"
-      >
-        <div class="definition-name">{{ name }}</div>
-        {% if definitions[name].description %}
-        <div class="definition-description-card">
-          {{ definitions[name].description }}
-        </div>
-        {% endif %}
-      </a>
-    </li>
+    {% for type, def_names in grouped.items()|sort %}
+      <h2 class="text-xl font-bold mt-6 mb-4">{{ type }}</h2>
+      <ul class="definitions">
+        {% for defn in def_names %}
+          {% set name = defn %}
+          {% set definition = definitions[name] %}
+        <li class="definition-card">
+          <a
+            class="definition-link"
+            href="{{ url_for('leaderboard.show_leaderboard', definition_name=name) }}"
+          >
+            <div class="definition-name">{{ name }}</div>
+            {% if defn.description %}
+            <div class="definition-description-card">
+              {{ defn.description }}
+            </div>
+            {% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
     {% endfor %}
-  </ul>
   {% else %}
   <p class="empty-message">No kernel found.</p>
   {% endif %}

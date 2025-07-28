@@ -1,6 +1,6 @@
 {
-  "name": "prefill_attn_raggedkv_flashinfer",
-  "definition": "prefill_attn_raggedkv",
+  "name": "batch_prefill_with_ragged_kv_cache_flashinfer",
+  "definition": "batch_prefill_with_ragged_kv_cache",
   "description": "Batch prefill/append attention on Ragged KV-Cache (FlashInfer plan/run API).",
   "author": "flashinfer",
   "spec": {

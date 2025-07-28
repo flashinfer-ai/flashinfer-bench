@@ -51,7 +51,7 @@ def load_prompts_from_sharegpt(n: int):
     for example in ds:
         conv = example.get("conversations", [])
         if conv and conv[0]["from"].lower() == "human":
-            prompts.append("a" + conv[0]["value"])
+            prompts.append(conv[0]["value"])
         if len(prompts) >= n:
             break
 
@@ -69,7 +69,7 @@ def run_benchmark(base_url, prompts, batch_size, label=""):
     tokenizer = DummyTokenizer()
     set_global_args(SimpleNamespace(
         disable_ignore_eos=False,
-        disable_stream=False,
+        disable_stream=True,
         return_logprob=False,
         backend="sglang",
         dataset_name="custom",
@@ -131,9 +131,13 @@ def main():
         base_url,
         timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
         other_args=[
-            "--cuda-graph-max-bs", batch_size,
+            # "--cuda-graph-max-bs", batch_size,
+            "--chunked-prefill-size", "-1",
+            "--max-prefill-tokens", "1024",
+            "--disable-cuda-graph",
             "--max-running-requests", batch_size,
             "--tp-size", 1,
+            "--quantization", "fp8",
         ],
         env={
             "SGLANG_RECORD_STEP_TIME": "1",

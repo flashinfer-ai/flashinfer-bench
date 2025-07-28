@@ -14,14 +14,14 @@ def show_leaderboard(definition_name: str):
     definition = get_a_definition(definition_name)
     entries = leaderboard_data[definition_name]
 
-    # Group entries by device (hardware)
-    entries_by_device = defaultdict(list)
-    for entry in entries:
-        device = entry.get("device", "Unknown")
-        entries_by_device[device].append(entry)
+    entries_by_device_and_workload = defaultdict(lambda: defaultdict(list))
+    for device, entries_for_device in entries.items():
+        for entry in entries_for_device:
+            workload = entry["workload"]
+            entries_by_device_and_workload[device][workload].append(entry)
 
     return render_template(
         "leaderboard.html",
         definition=definition,
-        entries_by_device=dict(entries_by_device),
+        entries_by_device_and_workload=dict(entries_by_device_and_workload)
     )

@@ -4,8 +4,10 @@ import sys, os
 from collections import defaultdict
 from statistics import mean
 
+import json
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
-from flashinfer_bench.trace_set import TraceSet, filter_passed_traces, filter_by_error
+from flashinfer_bench.trace_set import TraceSet, filter_passed_traces, filter_by_error, Definition
 
 _TRACE_SET = None
 _LEADERBOARD_JSON = None
@@ -13,11 +15,23 @@ _LEADERBOARD_JSON = None
 def get_trace_set() -> TraceSet:
     global _TRACE_SET
     if _TRACE_SET is None:
-        _TRACE_SET = TraceSet.from_path("../../dataset/")
+        path = os.getenv("FLASHINFER_BENCH_DATASET_PATH", "../../dataset/")
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Dataset path '{path}' does not exist. Please set FLASHINFER_BENCH_DATASET_PATH environment variable or ensure the dataset is available.")
+        _TRACE_SET = TraceSet.from_path(path)
     return _TRACE_SET
 
 def get_definitions():
     return get_trace_set().definitions
+
+def grouped_definitions():
+    """Group definitions by their category."""
+    definitions = get_definitions()
+    grouped = defaultdict(list)
+    for name, definition in definitions.items():
+        category = definition.get_type()
+        grouped[category].append(name)
+    return dict(grouped)
 
 def get_a_definition(definition_name: str) -> Dict[str, Any]:
     """Get the definition details for a specific definition name."""
@@ -32,40 +46,43 @@ def to_leaderboard_json(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Generate leaderboard JSON from a TraceSet, averaging latency per solution."""
     leaderboard = {}
+    trace_set = get_trace_set()
 
-    for def_name, traces in get_trace_set().traces.items():
+    for def_name, traces in trace_set.traces.items():
         valid = filter_passed_traces(traces)
         valid = filter_by_error(valid, max_abs_error, max_rel_error)
 
-        # Group traces by solution
-        grouped: Dict[str, List[Any]] = defaultdict(list)
+        entries_by_device_and_workload = defaultdict(lambda: defaultdict(list))
+        
         for trace in valid:
-            grouped[trace.solution].append(trace)
-
-        entries = []
-        for solution_name, traces_for_solution in grouped.items():
             try:
-                latencies = [t.evaluation["performance"]["latency_ms"] for t in traces_for_solution]
-                speedups = [t.evaluation["performance"]["speedup_factor"] for t in traces_for_solution]
+                device = trace.evaluation["environment"]["device"]
+                axes = trace.workload.get("axes", {})
+                w_id = json.dumps(axes, sort_keys=True)  # e.g. {"M": 248} → '{"M": 248}'
 
-                # Use first trace for static fields like device
-                ref = traces_for_solution[0]
-                perf = ref.evaluation["performance"]
-                env = ref.evaluation["environment"]
-
-                entries.append({
-                    "solution": solution_name,
-                    "latency_ms": mean(latencies),
-                    "speedup": mean(speedups),
-                    "device": env["device"],
-                    "status": ref.evaluation["status"],
-                    "timestamp": ref.evaluation["timestamp"],
-                })
+                entries_by_device_and_workload[device][w_id].append(trace)
             except Exception as e:
-                print(f"[Warning] Skipping invalid solution group '{solution_name}': {e}")
+                print(f"[Warning] Failed to group trace for solution '{trace.solution}': {e}")
 
-        entries.sort(key=lambda x: x["latency_ms"])
-        leaderboard[def_name] = entries
+        result = {}
+        for device, workloads in entries_by_device_and_workload.items():
+            result[device] = []
+            for w_id, traces_for_workload in workloads.items():
+                for trace in traces_for_workload:
+                    perf = trace.evaluation["performance"]
+                    solution_name = trace.solution
+                    solution = trace_set.get_solution(solution_name)
+                    result[device].append({
+                        "workload": w_id,
+                        "solution": solution_name,
+                        "latency_ms": perf["latency_ms"],
+                        "speedup": perf["speedup_factor"],
+                        "author": solution.get_author() if solution else "Unknown",
+                        "solution_file": solution.get_code() if solution else "",
+                    })
+            result[device].sort(key=lambda x: (x["workload"], x["latency_ms"]))
+
+        leaderboard[def_name] = result
 
     return leaderboard
 

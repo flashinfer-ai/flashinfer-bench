@@ -1,6 +1,6 @@
 {
-  "name": "prefill_attn_raggedkv",
-  "type": "prefill_attention_ragged",
+  "name": "batch_prefill_with_ragged_kv_cache",
+  "type": "prefill",
   "description": "Batch prefill/append attention on Ragged KV-Cache (FlashInfer plan/run API).",
   "axes": {
     "B": { "type": "var" },
