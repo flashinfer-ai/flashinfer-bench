@@ -95,5 +95,4 @@ def get_leaderboard() -> dict:
 def get_important_workloads(definition: Definition) -> List[str]:
     raw = json.loads(definition.to_json())
     raw_workloads = raw.get("important_workloads", [])
-    print(f"[Debug] Important workloads for definition '{definition.name}': {raw_workloads}")
     return [json.dumps(w, sort_keys=True) for w in raw_workloads]

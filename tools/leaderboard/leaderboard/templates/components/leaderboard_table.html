@@ -7,8 +7,11 @@
     
     {% for workload_str, entries in workloads.items() %}
     <div class="workload-section" data-workload="{{ workload_str }}">
-      <h4 class="text-md font-medium mb-2 text-gray-600">
-        Workload: <code>{{ workload_str }}</code>
+      <h4 class="text-lg font-semibold mb-3 text-gray-700"></h4>
+        Workload:
+        <code>
+          {{ workload_str | replace('\"', '') | replace('{', '') | replace('}', '') | replace(': ', ' = ') }}
+        </code>
       </h4>
       <div class="overflow-x-auto">
         <table class="min-w-full table-auto border border-gray-300 text-sm">
@@ -24,7 +27,7 @@
           </thead>
           <tbody>
             {% for entry in entries %}
-              {{ solution_row(entry, loop.index, loop.index0) }}
+              {{ solution_row(entry, loop.index, loop.index0, workload_str) }}
             {% endfor %}
           </tbody>
         </table>

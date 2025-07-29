@@ -1,5 +1,5 @@
-{% macro solution_row(entry, rank, index) %}
-{% set safe_id = index ~ "-" ~ entry.solution[:10]|replace("/", "_") %}
+{% macro solution_row(entry, rank, index, workload) %}
+{% set safe_id = workload ~ "-" ~ index ~ "-" ~ entry.solution[:10]|replace("/", "_") %}
 <tr class="hover:bg-gray-50">
   <td class="border px-4 py-2">{{ rank }}</td>
   <td class="border px-4 py-2 font-mono text-blue-700">{{ entry.solution }}</td>
@@ -11,7 +11,11 @@
       class="text-blue-600 underline text-sm toggle-solution"
       data-target="solution-{{ safe_id }}"
     >
-      Show
+      {% if entry.solution_full %}
+        Show
+      {% else %}
+        No Solution
+      {% endif %}
     </button>
   </td>
 </tr>
