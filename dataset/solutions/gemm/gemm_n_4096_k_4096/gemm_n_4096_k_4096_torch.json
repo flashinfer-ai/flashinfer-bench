@@ -1,11 +1,12 @@
 {
-    "name": "gemm_m_dynamic_n_6144_k_4096_torch_linear",
-    "definition": "gemm_m_dynamic_n_6144_k_4096",
+    "name": "gemm_n_4096_k_4096_torch",
+    "definition": "gemm_n_4096_k_4096",
     "description": "Baseline GEMM implemented with torch.nn.functional.linear.",
     "author": "torch.nn",
     "spec": {
       "language": "Python",
       "target_hardware": ["NVIDIA_H100", "NVIDIA_A100", "CPU"],
+      // TODO(shanli): check version
       "dependencies": ["torch"],
       "entry_point": "run",
       "build_steps": []
@@ -13,7 +14,7 @@
     "sources": [
       {
         "path": "main.py",
-        "content": "import torch\nimport torch.nn.functional as F\n\ndef run(A: torch.Tensor, B: torch.Tensor):\n    C = F.linear(A, B)\n    return {\"C\": C}\n"
+        "content": "import torch\nimport torch.nn.functional as F\n\ndef run(A: torch.Tensor, B: torch.Tensor):\n    print(\"substituted impl\")\n    C = F.linear(A, B)\n    return {\"C\": C}\n"
       }
     ]
   }

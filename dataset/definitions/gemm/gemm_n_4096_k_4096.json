@@ -1,10 +1,10 @@
 {
-  "name": "gemm_m_dynamic_n_6144_k_4096",
+  "name": "gemm_n_4096_k_4096",
   "type": "gemm",
-  "description": "C = A @ B.T with dynamic M, N=6144, K=4096. Captured from Llama self_attn.qkv_proj.",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.1 8B attn.o_proj.",
   "axes": {
     "M": { "type": "var" },
-    "N": { "type": "const", "value": 6144 },
+    "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
   "inputs": {

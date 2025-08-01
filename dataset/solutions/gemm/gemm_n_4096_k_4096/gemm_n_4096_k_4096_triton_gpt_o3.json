@@ -1,6 +1,6 @@
 {
-    "name": "gemm_m_dynamic_n_4096_k_4096_triton_gpt_o3",
-    "definition": "gemm_m_dynamic_n_4096_k_4096",
+    "name": "gemm_n_4096_k_4096_triton_gpt_o3",
+    "definition": "gemm_n_4096_k_4096",
     "description": "High-performance Triton kernel for C = A @ B.T with dynamic M and fixed N=K=4096 (captured from Llama self-attn.o_proj). Auto-tunes over several block shapes, uses float32 accumulation, and targets NVIDIA Hopper/Blackwell GPUs.",
     "author": "gpt-o3",
     "spec": {

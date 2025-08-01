@@ -1,6 +1,6 @@
 {
-    "name": "gemm_m_dynamic_n_4096_k_14336_torch_linear",
-    "definition": "gemm_m_dynamic_n_4096_k_14336",
+    "name": "gemm_n_6144_k_4096_torch",
+    "definition": "gemm_n_6144_k_4096",
     "description": "Baseline GEMM implemented with torch.nn.functional.linear.",
     "author": "torch.nn",
     "spec": {

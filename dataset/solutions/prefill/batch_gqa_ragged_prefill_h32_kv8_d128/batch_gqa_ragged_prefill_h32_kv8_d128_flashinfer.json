@@ -1,0 +1,24 @@
+{
+  "name": "batch_gqa_ragged_prefill_h32_kv8_d128_flashinfer",
+  "definition": "batch_gqa_ragged_prefill_h32_kv8_d128",
+  "description": "Solution using FlashInfer BatchPrefillWithRaggedKVCacheWrapper API.",
+  "author": "flashinfer",
+  "spec": {
+    "language": "Python",
+    "target_hardware": [
+      "NVIDIA_H100",
+      "NVIDIA_A100"
+    ],
+    "dependencies": [
+      "flashinfer >= 0.2.8"
+    ],
+    "entry_point": "run",
+    "build_steps": []
+  },
+  "sources": [
+    {
+      "path": "main.py",
+      "content": "import torch\nimport flashinfer\n\n\ndef run(q, k, v, qo_indptr, kv_indptr, sm_scale):\n    total_q, num_attention_heads, head_dim = q.shape\n    total_kv, num_key_value_heads, _ = k.shape\n\n    # Check constants\n    assert num_attention_heads == 32\n    assert num_key_value_heads == 8\n    assert head_dim == 128\n\n    # Check constraints\n    assert total_q == qo_indptr[-1].item()\n    assert total_kv == kv_indptr[-1].item()\n\n    device = q.device\n\n    workspace = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)\n\n    prefill = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(workspace, kv_layout=\"NHD\")\n\n    prefill.plan(\n        qo_indptr=qo_indptr,\n        kv_indptr=kv_indptr,\n        num_qo_heads=num_attention_heads,\n        num_kv_heads=num_key_value_heads,\n        head_dim_qk=head_dim,\n        causal=True,               # causal mask always enabled (per definition)\n        sm_scale=sm_scale,         # use provided softmax scale\n        q_data_type=q.dtype,\n        kv_data_type=k.dtype,\n    )\n\n    output, lse = prefill.run(q, k, v, return_lse=True)\n\n    return {\"output\": output, \"lse\": lse}\n"
+    }
+  ]
+}
