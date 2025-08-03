@@ -244,19 +244,7 @@ def _run_single_benchmark(
 
     try:
         ref_callable = _compile_python_code(definition.reference, "run")
-
-        entry_point = solution.spec.get("entry_point", "run")
-        language = solution.spec.get("language", "Python").lower()
-
-        if not solution.sources or len(solution.sources) == 0:
-            raise BuildError(f"No source code found for solution: {solution.name}")
-
-        source_content = solution.sources[0]["content"]
-
-        if language == "triton":
-            impl_callable = _compile_triton_code(source_content, entry_point)
-        else:
-            impl_callable = _compile_python_code(source_content, entry_point)
+        impl_callable = build_solution(solution)
 
         seed_manager = SeedManager()
         device_manager = DeviceManager(config.device)
@@ -309,7 +297,11 @@ def _run_single_benchmark(
                     "max_relative_error": max_rel_diff,
                     "max_absolute_error": max_abs_diff,
                 },
-                "performance": None,
+                "performance": {
+                    "latency_ms": 0.0,
+                    "reference_latency_ms": 0.0,
+                    "speedup_factor": 0.0,
+                },
                 "environment": _format_environment(device_manager),
                 "timestamp": datetime.now().isoformat(),
             }
@@ -321,8 +313,22 @@ def _run_single_benchmark(
             )
 
         # Performance testing if correct
-        impl_latency = _time_kernel(impl_callable, inputs, config.warmup_runs, config.iterations)
-        ref_latency = _time_kernel(ref_callable, inputs, config.warmup_runs, config.iterations)
+        impl_latencies = []
+        ref_latencies = []
+        
+        for _ in range(5): # Hardcoded 5 for now, can maybe add to BenchmarkConfig in the future
+            timing_inputs = _generate_test_inputs(definition, workload, device_manager)
+            impl_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
+            ref_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
+            
+            impl_latency = _time_kernel(impl_callable, impl_timing_inputs, config.warmup_runs, config.iterations)
+            ref_latency = _time_kernel(ref_callable, ref_timing_inputs, config.warmup_runs, config.iterations)
+            
+            impl_latencies.append(impl_latency)
+            ref_latencies.append(ref_latency)
+
+        impl_latency = sum(impl_latencies) / len(impl_latencies)
+        ref_latency = sum(ref_latencies) / len(ref_latencies)
         speedup = ref_latency / impl_latency if impl_latency > 0 else 0.0
 
         evaluation = {
