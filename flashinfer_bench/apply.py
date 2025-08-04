@@ -152,7 +152,7 @@ def apply(def_name_fn: Callable[..., str]) -> Callable[[Callable], Callable]:
 
     Usage
     -----
-    >>> @flashinfer_bench.apply(lambda A, B: f"gemm_m_dynamic_n_{B.shape[0]}_k_{B.shape[1]}")
+    >>> @flashinfer_bench.apply(lambda A, B: f"gemm_n_{B.shape[0]}_k_{B.shape[1]}")
     ... def gemm_bf16(A, B, bias=None):
     ...     return _gemm_module.gemm_bf16(A, B, bias)
     """

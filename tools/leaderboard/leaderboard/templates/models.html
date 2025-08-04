@@ -8,8 +8,11 @@
   {% for model in models %}
       <ul class="definitions">
         <li class="definition-card">
-          <a href="{{ url_for('model_component.show_model', model_name=model.file_name) }}">
-            {{ model.model_name }}
+          <a
+            class="definition-link"
+            href="{{ url_for('model_component.show_model', model_name=model.file_name) }}"
+          >
+            <div class="definition-name">{{ model.model_name }}</div>
           </a>
         </li>
       </ul>

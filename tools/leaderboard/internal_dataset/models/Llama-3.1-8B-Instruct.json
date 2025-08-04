@@ -1,72 +1,73 @@
 {
   "model_name": "Llama-3.1-8B-Instruct",
-  "structure":
-  {
-    "type": "LlamaForCausalLM",
+  "structure": {
+    "type": "model: LlamaForCausalLM",
     "children": [
       {
-        "type": "LlamaModel",
+        "type": "model: LlamaModel",
         "children": [
           {
-            "type": "Embedding",
+            "type": "embed_tokens: Embedding",
             "children": []
           },
           {
-            "type": "ModuleList",
+            "type": "layers: ModuleList",
             "children": [
               {
                 "type": "LlamaDecoderLayer",
                 "children": [
                   {
-                    "type": "LlamaAttention",
-                    "definition": "batch_decode_with_paged_kv_cache",
+                    "type": "self_attn: LlamaAttention",
+                    "definition": [
+                      "batch_gqa_paged_decode_h32_kv8_d128_ps1",
+                      "batch_gqa_ragged_prefill_h32_kv8_d128"
+                    ],
                     "children": [
                       {
-                        "type": "q_proj",
-                        "children": []
+                        "type": "qkv_proj: Linear",
+                        "children": [],
+                        "definition": [
+                          "gemm_n_6144_k_4096"
+                        ]
                       },
                       {
-                        "type": "k_proj",
-                        "children": []
-                      },
-                      {
-                        "type": "v_proj",
-                        "children": []
-                      },
-                      {
-                        "type": "o_proj",
-                        "definition": "gemm_m_dynamic_n_4096_k_4096",
+                        "type": "o_proj: Linear",
+                        "definition": [
+                          "gemm_n_4096_k_4096"
+                        ],
                         "children": []
                       }
                     ]
                   },
                   {
-                    "type": "LlamaMLP",
+                    "type": "mlp: LlamaMLP",
                     "children": [
                       {
-                        "type": "gate_proj",
-                        "children": []
+                        "type": "gate_up_proj: Linear",
+                        "children": [],
+                        "definition": [
+                          "gemm_n_28672_k_4096"
+                        ]
                       },
                       {
-                        "type": "up_proj",
-                        "children": []
+                        "type": "down_proj: Linear",
+                        "children": [],
+                        "definition": [
+                          "gemm_n_4096_k_14336"
+                        ]
                       },
                       {
-                        "type": "down_proj",
-                        "children": []
-                      },
-                      {
-                        "type": "SiLU",
+                        "type": "act_fn: SiLU",
                         "children": []
                       }
                     ]
                   },
                   {
-                    "type": "LlamaRMSNorm",
+                    "type": "input_layernorm: LlamaRMSNorm",
                     "children": []
                   },
                   {
-                    "type": "LlamaRMSNorm",
+                    "type": "post_attention_layernorm: LlamaRMSNorm",
                     "children": []
                   }
                 ]
@@ -74,17 +75,17 @@
             ]
           },
           {
-            "type": "LlamaRMSNorm",
+            "type": "norm: LlamaRMSNorm",
             "children": []
           },
           {
-            "type": "LlamaRotaryEmbedding",
+            "type": "rotary_emb: LlamaRotaryEmbedding",
             "children": []
           }
         ]
       },
       {
-        "type": "Linear",
+        "type": "lm_head: Linear",
         "children": []
       }
     ]

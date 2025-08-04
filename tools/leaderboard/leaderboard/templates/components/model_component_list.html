@@ -3,7 +3,7 @@
   {% if structure.definition %}
     - 
     {% for def in structure.definition %}
-      <a href="{{ url_for('leaderboard.show_leaderboard', definition_name=def) }}">
+      <a href="{{ url_for('leaderboard.show_leaderboard', definition_name=def) }}" class="external-link">
         {{ def }}
       </a>
       {% if not loop.last %}, {% endif %}

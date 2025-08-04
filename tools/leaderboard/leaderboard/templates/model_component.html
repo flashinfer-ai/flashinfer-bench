@@ -2,7 +2,9 @@
 {% block title %}Model: {{ model_name }}{% endblock %}
 
 {% block content %}
-<h1>Model Structure: {{ model_name }}</h1>
-{% set structure = structure %}
-{% include "components/model_component_list.html" %}
+<h1>Components for {{ model_name }}</h1>
+<div class="model-structure">
+  {% set structure = structure %}
+  {% include "components/model_component_list.html" %}
+</div>
 {% endblock %}

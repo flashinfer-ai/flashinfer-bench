@@ -379,3 +379,26 @@ html {
     padding-left: 5px;
 }
 
+/* model structure list */
+.model-structure ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.model-structure li {
+  margin: 0.4em 0;
+  font-family: monospace;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.model-structure a {
+  color: #007acc;
+  text-decoration: none;
+  margin-left: 0.4em;
+}
+
+.model-structure a:hover {
+  text-decoration-style: none;
+}
