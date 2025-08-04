@@ -6,7 +6,7 @@ Usage:
 
 Arguments:
 --model-path: Path to the model directory that can be served by SGLang.
---num-prompts: Number of first-round human prompts to load from the ShareGPT dataset.
+--num-prompts: Batch size & Number of first-round human prompts to load from the ShareGPT dataset.
 """
 
 import os
@@ -119,7 +119,7 @@ def main():
     parser.add_argument("--num-prompts", type=int, default=64, help="Number of prompts to use from ShareGPT")
     args = parser.parse_args()
 
-    batch_size = 16
+    batch_size = args.num_prompts
     base_url = "http://127.0.0.1:20000"
 
     # Load ShareGPT prompts
@@ -131,7 +131,7 @@ def main():
         base_url,
         timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
         other_args=[
-            # "--cuda-graph-max-bs", batch_size,
+            # "--cuda-graph-max-bs", batch_size,  # uncommented to enable CUDA graph
             "--chunked-prefill-size", "-1",
             "--max-prefill-tokens", "1024",
             "--disable-cuda-graph",
