@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_talisman import Talisman
 
-from . import error, index, leaderboard, docs
+from . import error, index, leaderboard, docs, models, model_component
 
 def create_app(test_config=None):
     # Check if we're in development mode:
@@ -38,6 +38,12 @@ def create_app(test_config=None):
     
     app.register_blueprint(docs.blueprint)
     app.add_url_rule('/docs', endpoint='docs')
+    
+    app.register_blueprint(models.blueprint)
+    app.add_url_rule('/models', endpoint='models')
+    
+    app.register_blueprint(model_component.blueprint)
+    app.add_url_rule('/models/<model_name>', endpoint='model_component')
 
     app.errorhandler(404)(error.page_not_found)
     app.errorhandler(500)(error.server_error)

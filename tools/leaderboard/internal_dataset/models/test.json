@@ -1,0 +1,99 @@
+{
+  "model_name": "Llama-3.1-8B-Instruct",
+  "structure": {
+    "type": "model: LlamaForCausalLM",
+    "children": [
+      {
+        "type": "model: LlamaModel",
+        "children": [
+          {
+            "type": "embed_tokens: Embedding",
+            "children": []
+          },
+          {
+            "type": "layers: ModuleList",
+            "children": [
+              {
+                "type": "LlamaDecoderLayer",
+                "children": [
+                  {
+                    "type": "self_attn: LlamaAttention",
+                    "definition": [
+                      "batch_gqa_paged_decode_h32_kv8_d128_ps1",
+                      "batch_gqa_ragged_prefill_h32_kv8_d128"
+                    ],
+                    "children": [
+                      {
+                        "type": "q_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "k_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "v_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "o_proj: Linear",
+                        "definition": [
+                          "gemm_m_dynamic_n_4096_k_4096",
+                          "gemm_m_dynamic_n_28672_k_4096",
+                          "gemm_m_dynamic_n_4096_k_28672",
+                          "gemm_m_dynamic_n_4096_k_28672"
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "mlp: LlamaMLP",
+                    "children": [
+                      {
+                        "type": "gate_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "up_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "down_proj: Linear",
+                        "children": []
+                      },
+                      {
+                        "type": "act_fn: SiLU",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "input_layernorm: LlamaRMSNorm",
+                    "children": []
+                  },
+                  {
+                    "type": "post_attention_layernorm: LlamaRMSNorm",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "norm: LlamaRMSNorm",
+            "children": []
+          },
+          {
+            "type": "rotary_emb: LlamaRotaryEmbedding",
+            "children": []
+          }
+        ]
+      },
+      {
+        "type": "lm_head: Linear",
+        "children": []
+      }
+    ]
+  }
+}

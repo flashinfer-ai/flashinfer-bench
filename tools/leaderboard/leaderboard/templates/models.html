@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="main-container">
+  <h1 class="page-title">Kernel Leaderboard</h1>
+
+  {% if models %}
+  {% for model in models %}
+      <ul class="definitions">
+        <li class="definition-card">
+          <a href="{{ url_for('model_component.show_model', model_name=model.file_name) }}">
+            {{ model.model_name }}
+          </a>
+        </li>
+      </ul>
+    {% endfor %}
+  {% else %}
+  <p class="empty-message">No model found.</p>
+  {% endif %}
+</div>
+{% endblock %}

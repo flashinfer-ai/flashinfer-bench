@@ -26,7 +26,7 @@ class TraceSet:
 
         # Load definitions with uniqueness check
         definitions = {}
-        definitions_files = glob.glob(str(base_path / "definitions" / "*.json"), recursive=True)
+        definitions_files = glob.glob(str(base_path / "definitions" / "*" / "*.json"), recursive=True)
         for definition_file in definitions_files:
             with open(definition_file, "r") as f:
                 definition = Definition.from_json(f.read())
@@ -36,7 +36,7 @@ class TraceSet:
 
         # Load solutions grouped by definition
         solutions = {}
-        solutions_files = glob.glob(str(base_path / "solutions" / "*.json"), recursive=True)
+        solutions_files = glob.glob(str(base_path / "solutions" / "**" / "*.json"), recursive=True)
         for solution_file in solutions_files:
             with open(solution_file, "r") as f:
                 solution = Solution.from_json(f.read())
