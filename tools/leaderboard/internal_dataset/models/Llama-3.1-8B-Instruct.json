@@ -19,7 +19,7 @@
                   {
                     "type": "self_attn: LlamaAttention",
                     "definition": [
-                      "batch_gqa_paged_decode_h32_kv8_d128_ps1",
+                      "batch_gqa_paged_decode_bs64_h32_kv8_d128_ps1",
                       "batch_gqa_ragged_prefill_h32_kv8_d128"
                     ],
                     "children": [

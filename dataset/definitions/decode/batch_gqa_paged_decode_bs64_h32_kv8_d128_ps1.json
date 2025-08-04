@@ -1,10 +1,11 @@
 {
-  "name": "batch_gqa_paged_decode_h32_kv8_d128_ps1",
+  "name": "batch_gqa_paged_decode_bs64_h32_kv8_d128_ps1",
   "type": "decode",
   "description": "Batch Grouped Query Attention (GQA) decode with paged KV cache. Captured from Llama-3.1-8B.",
   "axes": {
     "batch_size": {
-      "type": "var"
+      "type": "const",
+      "value": 64
     },
     "num_qo_heads": {
       "type": "const",
@@ -26,7 +27,8 @@
       "value": 1
     },
     "len_kv_indptr": {
-      "type": "var"
+      "type": "const",
+      "value": 65
     },
     "num_kv_indices": {
       "type": "var"
