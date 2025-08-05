@@ -44,7 +44,7 @@ jobs:
             --dataset-path ../../dataset
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
           path: tools/leaderboard/public
 
