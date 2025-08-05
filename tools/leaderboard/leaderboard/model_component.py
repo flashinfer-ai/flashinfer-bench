@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, abort
 from leaderboard.utils.model_utils import get_model_structure
 
 blueprint = Blueprint("model_component", __name__, url_prefix='/models')
