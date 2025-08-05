@@ -46,19 +46,31 @@ def build_solution(solution: Solution) -> Callable:
         return _compile_cuda_code(
             solution.sources, entry_point
         )
-    else:
+    else: # python
         return _compile_python_code(
-            solution.sources[0]["content"], entry_point
+            solution.sources, entry_point
         )
 
 
-def _compile_python_code(code_string: str, entry_point: str) -> Callable:
+def _compile_python_code(sources: List[Dict[str, str]], entry_point: str) -> Callable:
     """Compile Python code string and return the specified entry point callable"""
     namespace = {}
-    exec(code_string, namespace)
+    
+    for source in sources:
+        path = source['path']
+        content = source['content']
+        annotated_content = f"# Source: {path}\n{content}"
+        
+        try:
+            exec(annotated_content, namespace)
+        except Exception as e:
+            raise RuntimeError(f"Failed to execute code from '{path}': {e}")
 
     if entry_point not in namespace:
-        raise ValueError(f"Entry point '{entry_point}' not found in code")
+        available_callables = [name for name, obj in namespace.items() if callable(obj) and not name.startswith('_')]
+        raise ValueError(
+            f"Entry point '{entry_point}' not found in code. "
+        )
 
     return namespace[entry_point]
 
