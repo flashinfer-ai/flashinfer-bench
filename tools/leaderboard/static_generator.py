@@ -1,12 +1,5 @@
-#!/usr/bin/env python3
-"""
-Static Site Generator for FlashInfer Bench Leaderboard
-Converts the Flask app to static HTML pages for deployment to GitHub Pages/Vercel
-"""
-
 import os
 import sys
-import json
 import shutil
 from pathlib import Path
 from urllib.parse import urljoin
@@ -21,8 +14,7 @@ from leaderboard.utils.export_utils import (
     grouped_definitions,
     get_leaderboard,
     get_a_definition,
-    get_important_workloads,
-    get_trace_set
+    get_important_workloads
 )
 
 from leaderboard.utils.model_utils import (
@@ -141,14 +133,14 @@ class StaticSiteGenerator:
         template = self.env.get_template("docs.html")
         
         # Read the markdown content
-        docs_file = Path("docs/index.md")
+        docs_file = Path("leaderboard/docs/index.md")
         docs_content = ""
         if docs_file.exists():
             import markdown
             docs_content = markdown.markdown(docs_file.read_text())
         
         html = template.render(
-            docs_content=docs_content,
+            content=docs_content,
             config={}
         )
         

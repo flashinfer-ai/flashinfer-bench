@@ -1,7 +1,10 @@
 import os
 import json
+from pathlib import Path
 
-MODELS_DIR = os.path.join("/home/yiyanz/python/flashinfer-bench/tools/leaderboard/internal_dataset", "models")
+current_dir = Path(__file__).parent
+leaderboard_root = current_dir.parent.parent  # Go up to tools/leaderboard
+MODELS_DIR = os.path.join(leaderboard_root, "internal_dataset", "models")
 
 def get_model_structure(model_name: str):
     """Get the structure of a specific model."""
