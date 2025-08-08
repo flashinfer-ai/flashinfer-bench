@@ -256,7 +256,25 @@ def _run_single_benchmark(
 
     try:
         ref_callable = _compile_python_code(definition.reference, "run")
-        impl_callable = build_solution(solution)
+        try:
+            impl_callable = build_solution(solution)
+        except Exception as compile_err:
+            logger.error(f"Compilation error: {compile_err}")
+            logger.error(traceback.format_exc())
+            evaluation = {
+                "status": "COMPILE_ERROR",
+                "log_file": f"{solution.name}_{hash(str(workload))}.log",
+                "correctness": None,
+                "performance": None,
+                "environment": _format_environment(DeviceManager(config.device)),
+                "timestamp": datetime.now().isoformat(),
+            }
+            return Trace(
+                definition=definition.name,
+                solution=solution.name,
+                workload=workload,
+                evaluation=evaluation,
+            )
 
         seed_manager = SeedManager()
         device_manager = DeviceManager(config.device)
@@ -283,7 +301,8 @@ def _run_single_benchmark(
                 shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
 
                 if not shape_correct:
-                    status = "INCORRECT"
+                    logger.error(f"Shape mismatch for trial {_}: {err_msg}")
+                    status = "SHAPE_MISMATCH"
                     break
 
                 max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
@@ -299,9 +318,9 @@ def _run_single_benchmark(
         max_abs_diff = max(abs_diffs, default=None)  # None if list is empty, i.e. shape mismatch
         max_rel_diff = max(rel_diffs, default=None)
 
-        status = "PASSED" if pass_count == num_trials else "INCORRECT"
+        status = "PASSED" if pass_count == num_trials else "INCORRECT_RESULT"
 
-        if status == "INCORRECT":
+        if status == "INCORRECT_RESULT" or status == "SHAPE_MISMATCH":
             evaluation = {
                 "status": status,
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
@@ -364,7 +383,9 @@ def _run_single_benchmark(
         logger.error(traceback.format_exc())
 
         evaluation = {
+            # TODO: differentiate between compile/runtime errors
             "status": "RUNTIME_ERROR",
+            # TODO: save actual log file
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
             "correctness": None,
             "performance": None,
