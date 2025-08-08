@@ -124,6 +124,8 @@ def _compile_cuda_code(sources: List[Dict[str, str]], entry_point: str) -> Calla
         'cuda_sources': cuda_sources if cuda_sources else None,
         'verbose': False,
         'with_cuda': True,
+        'extra_include_paths': ['./3rdparty/cutlass/include'],
+        'extra_ldflags': ['-lcublas', '-lcudnn'],
     }
     
     if not has_pybind:
