@@ -4,7 +4,7 @@
   <td class="border px-4 py-2">{{ rank }}</td>
   <td class="border px-4 py-2 font-mono text-blue-700">{{ entry.solution }}</td>
   <td class="border px-4 py-2">{{ "%.3f"|format(entry.latency_ms) }}</td>
-  <td class="border px-4 py-2">{{ "%.2fx"|format(entry.speedup) }}</td>
+  <td class="border px-4 py-2">{{ "%.5fx"|format(entry.speedup) }}</td>
   <td class="border px-4 py-2">{{ entry.author }}</td>
   <td class="border px-4 py-2">
     <button
