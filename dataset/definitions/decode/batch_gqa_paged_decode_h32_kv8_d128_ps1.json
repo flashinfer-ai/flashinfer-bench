@@ -26,8 +26,7 @@
       "value": 1
     },
     "len_kv_indptr": {
-      "type": "const",
-      "value": 65
+      "type": "var"
     },
     "num_kv_indices": {
       "type": "var"

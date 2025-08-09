@@ -1,0 +1,37 @@
+{
+  "name": "segment_gemm_e256_n7168_k2048",
+  "type": "segment_gemm",
+  "description": "DeepSeek V3 MoE down projection (W2) using SegmentGEMM",
+  "axes": {
+    "batch_size": { "type": "var" },
+    "num_experts": { "type": "const", "value": 256 },
+    "M": { "type": "var" },
+    "N": { "type": "const", "value": 7168 },
+    "K": { "type": "const", "value": 2048 }
+  },
+  "inputs": {
+    "x": {
+      "shape": ["M", "K"],
+      "dtype": "bfloat16"
+    },
+    "weights": {
+      "shape": ["num_experts", "N", "K"],
+      "dtype": "bfloat16"
+    },
+    "seg_indptr": {
+      "shape": ["batch_size"],
+      "dtype": "int32"
+    },
+    "weight_indices": {
+      "shape": ["batch_size"],
+      "dtype": "int32"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["M", "N"],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": "import torch\n\ndef run(x, weights, seg_indptr, weight_indices):\n    \"\"\"\n    SegmentGEMM for down projection in MoE.\n    Each segment of tokens is multiplied with its assigned expert's weights.\n    \"\"\"\n    batch_size = seg_indptr.shape[0]\n    total_tokens = x.shape[0]\n    out_features = weights.shape[1]\n    \n    output = torch.zeros(total_tokens, out_features, dtype=x.dtype, device=x.device)\n    \n    for i in range(batch_size):\n        start_idx = 0 if i == 0 else seg_indptr[i-1]\n        end_idx = seg_indptr[i]\n        expert_idx = weight_indices[i]\n        \n        segment_input = x[start_idx:end_idx]\n        expert_weights = weights[expert_idx]  # [out_features, in_features]\n        segment_output = torch.matmul(segment_input, expert_weights.T)\n        \n        output[start_idx:end_idx] = segment_output\n    \n    return {\"output\": output}"
+}
