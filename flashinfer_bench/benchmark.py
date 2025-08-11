@@ -255,7 +255,10 @@ def _run_reference_benchmark(
     logger = logging.getLogger(f"ReferenceWorker-{os.getpid()}")
     
     try:
-        ref_callable = _compile_python_code(definition.reference, "run")
+        ref_callable = _compile_python_code(
+            [{"path": "main.py", "content": definition.reference}], 
+            "run"
+        )
     except Exception as e:
         logger.error(f"Reference compilation error: {e}")
         logger.error(traceback.format_exc())
