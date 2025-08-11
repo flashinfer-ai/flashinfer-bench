@@ -18,14 +18,47 @@ Note that a `Definition` does not contain specific input *data* for its variable
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `name` | string | Yes | A unique, human-readable name for the workload, should include concrete problem information (e.g., `llama3.1_8b_batch_paged_prefill`). |
-| `type` | string | Yes | The general workload type name (e.g., `prefill`). Used for grouping and filtering. |
+| `name` | string | Yes | A unique, human-readable name for the workload, should include concrete problem information. Naming convention: `{props}_{compute}_{constants}` (e.g. `batch_gqa_paged_decode_h32_kv8_d128_ps1`). |
+| `tags` | array | No | The string tags associated with this definition. Used for grouping and filtering. |
 | `description` | string | No | A brief, human-readable description of the workload and its purpose. |
 | `axes` | object | Yes | Key-value pairs defining the symbolic dimensions used in tensor shapes. |
 | `inputs` | object | Yes | Named input tensors (e.g.,`"A"`,`"B"`). |
 | `outputs` | object | Yes | Named output tensors (e.g.,`"C"`). |
 | `reference` | string | Yes | The reference implementation in PyTorch, serving as the mathematical specification. |
 | `constraints` | array | No | An optional list of assertions describing relationships between axes. |
+
+### `tags` : Additional Attributes
+
+`tags` is an **array of strings** that attaches searchable attributes to a definition. Tags use **namespaced keys** to keep meanings clear and filterable.
+
+Each tag is either:
+
+- a namespaced key–value string: `"<namespace>:<value>"`, or
+- a flag without a value (e.g., `"fused"`).
+
+Controlled namespaces:
+
+- `scope:*` — The model-level scope in which the kernel operates.
+    
+    Examples: `scope:attention`, `scope:mlp`, `scope:moe`, `scope:norm`, `scope:rope`, `scope:embedding`.
+    
+- `type:*` — The compute form
+    
+    Examples: `type:gemm`, `type:grouped_gemm`, `type:segment_gemm`, `type:attention`, `type:rmsnorm`, `type:prefill`, `type:decode`.
+    
+- `model:*` — Models known to use this definition (ideally **system-derived** from references/traces).
+    
+    Examples: `model:llama-3.1-8b`, `model:deepseek-v3`.
+    
+- `quantization:*` — Indicates quantization characteristics. For the simple case, encode the effective dtype.
+    
+    Examples: `quantization:float8_e4m3`, `quantization:int8`.
+    
+- `status:*` — Community/validation status.
+    
+    Examples: `status:verified`, `status:unverified`, `status:deprecated`.
+    
+- `fused` — Flag tag indicating the definition represents a fused kernel.
 
 ### `axes` : Dimension Definitions
 
@@ -134,7 +167,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "gemm",
-  "type": "gemm",
   "description": "A standard GEMM operation (C = A @ B.T).",
   "axes": {
     "M": { "type": "var" },
@@ -157,7 +189,12 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "float16"
     }
   },
-  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return {\"C\": C}"
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return {\"C\": C}",
+  "tags": [
+    "scope:mlp",
+    "type:gemm",
+    "status:verified"
+  ]
 }
 
 ```
@@ -167,7 +204,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "quantized_gemm",
-  "type": "gemm",
   "description": "A GEMM operation with per-tensor quantized inputs and per-group scaling factors.",
   "axes": {
     "M": { "type": "var" },
@@ -200,7 +236,12 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "bfloat16"
     }
   },
-  "reference": "..."
+  "reference": "...",
+  "tags": [
+    "scope:mlp",
+    "type:gemm",
+    "quantization:float8_e4m3"
+  ]
 }
 ```
 
@@ -209,7 +250,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "grouped_gemm",
-  "type": "gemm",
   "description": "A batch of independent GEMM operations, grouped along a 'G' dimension.",
   "axes": {
     "G": { "type": "var" },
@@ -233,7 +273,11 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "float16"
     }
   },
-  "reference": "..."
+  "reference": "...",
+  "tags": [
+    "scope:mlp",
+    "type:grouped_gemm"
+  ]
 }
 ```
 
@@ -242,7 +286,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "quantized_grouped_gemm",
-  "type": "gemm",
   "description": "A batched GEMM operation where the inputs are quantized, with per-group scaling factors.",
   "axes": {
     "G": { "type": "var" },
@@ -275,7 +318,12 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "bfloat16"
     }
   },
-  "reference": "..."
+  "reference": "...",
+  "tags": [
+    "scope:mlp",
+    "type:grouped_gemm",
+    "quantization:float8_e4m3"
+  ]
 }
 ```
 
@@ -284,7 +332,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "rmsnorm",
-  "type": "rmsnorm",
   "description": "Root Mean Square Normalization, a common layer normalization variant.",
   "axes": {
     "batch_size": { "type": "var" },
@@ -310,7 +357,11 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "float16"
     }
   },
-  "reference": "import torch\n\ndef run(input, weight, eps):\n    variance = input.to(torch.float32).pow(2).mean(-1, keepdim=True)\n    rstd = torch.rsqrt(variance + eps)\n    hidden_states = input * rstd\n    output = (hidden_states * weight).to(weight.dtype)\n    return {\"output\": output}"
+  "reference": "import torch\n\ndef run(input, weight, eps):\n    variance = input.to(torch.float32).pow(2).mean(-1, keepdim=True)\n    rstd = torch.rsqrt(variance + eps)\n    hidden_states = input * rstd\n    output = (hidden_states * weight).to(weight.dtype)\n    return {\"output\": output}",
+  "tags": [
+    "scope:norm",
+    "type:rmsnorm"
+  ]
 }
 ```
 
@@ -319,7 +370,6 @@ The `reference` field is a string that contains the reference implementation of 
 ```json
 {
   "name": "gqa_4_attention",
-  "type": "attention",
   "description": "Grouped-Query Attention with a query-to-key-value head ratio of 4.",
   "axes": {
     "B": { "type": "var" },
@@ -358,6 +408,11 @@ The `reference` field is a string that contains the reference implementation of 
       "dtype": "float32"
     }
   },
-  "reference": "..."
+  "reference": "...",
+  "tags": [
+    "scope:attention",
+    "type:prefill",
+    "status:unverified"
+  ]
 }
 ```

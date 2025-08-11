@@ -1,5 +1,5 @@
 {
-  "name": "batch_gqa_ragged_prefill_h32_kv8_d128",
+  "name": "gqa_ragged_prefill_h32_kv8_d128",
   "type": "prefill",
   "description": "Batch Grouped Query Attention (GQA) prefill with ragged KV cache. Causal mask is always enabled.",
   "axes": {
@@ -69,10 +69,6 @@
         "len_indptr"
       ],
       "dtype": "int32"
-    },
-    "sm_scale": {
-      "shape": [],
-      "dtype": "float32"
     }
   },
   "outputs": {
@@ -83,13 +79,6 @@
         "head_dim"
       ],
       "dtype": "bfloat16"
-    },
-    "lse": {
-      "shape": [
-        "total_q",
-        "num_qo_heads"
-      ],
-      "dtype": "float32"
     }
   },
   "reference": "import torch\nimport math\n\n@torch.no_grad()\ndef run(q, k, v, qo_indptr, kv_indptr, sm_scale):\n    total_q, num_qo_heads, head_dim = q.shape\n    total_kv, num_kv_heads, _ = k.shape\n    len_indptr = qo_indptr.shape[0]\n\n    # Check constants\n    assert num_qo_heads == 32\n    assert num_kv_heads == 8\n    assert head_dim == 128\n\n    # Check constraints\n    assert total_q == qo_indptr[-1].item()\n    assert total_kv == kv_indptr[-1].item()\n\n    device = q.device\n\n    output = torch.zeros(\n        (total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (total_q, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    gqa_ratio = num_qo_heads // num_kv_heads\n\n    q_f32 = q.to(torch.float32)\n    k_f32 = k.to(torch.float32)\n    v_f32 = v.to(torch.float32)\n\n    for b in range(len_indptr - 1):\n        q_start = int(qo_indptr[b].item())\n        q_end = int(qo_indptr[b + 1].item())\n\n        kv_start = int(kv_indptr[b].item())\n        kv_end = int(kv_indptr[b + 1].item())\n\n        if q_start >= q_end or kv_start >= kv_end:\n            # No queries or KV for this batch element\n            continue\n\n        # Get Q, K, V for this batch\n        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]\n        k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]\n        v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]\n\n        num_q_tokens = q_batch.shape[0]\n        num_kv_tokens = k_batch.shape[0]\n        delta = num_kv_tokens - num_q_tokens\n\n        for q_idx in range(num_q_tokens):\n            global_q_idx = q_start + q_idx\n\n            # Causal attention mask\n            max_kv_idx = min(q_idx + 1 + delta, num_kv_tokens)\n\n            if max_kv_idx <= 0:\n                continue\n\n            q_pos = q_batch[q_idx]  # [num_qo_heads, head_dim]\n\n            for h in range(num_qo_heads):\n                # Find corresponding KV head for GQA\n                kv_head = h // gqa_ratio\n\n                q_head = q_pos[h]  # [head_dim]\n                k_head = k_batch[:max_kv_idx, kv_head]  # [max_kv_idx, head_dim]\n                v_head = v_batch[:max_kv_idx, kv_head]  # [max_kv_idx, head_dim]\n\n                logits = torch.matmul(q_head, k_head.T)  # [max_kv_idx]\n                logits_scaled = logits * sm_scale\n\n                # Compute 2-base LSE\n                lse[global_q_idx, h] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n                attn = torch.softmax(logits_scaled, dim=-1)  # [max_kv_idx]\n                out_head = torch.matmul(attn, v_head)  # [head_dim]\n                output[global_q_idx, h] = out_head.to(torch.bfloat16)\n\n    return {\"output\": output, \"lse\": lse}"

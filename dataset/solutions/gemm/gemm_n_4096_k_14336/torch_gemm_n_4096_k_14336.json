@@ -1,14 +1,14 @@
 {
-    "name": "gemm_n_4096_k_14336_torch",
+    "name": "torch_gemm_n_4096_k_14336",
     "definition": "gemm_n_4096_k_14336",
     "description": "Baseline GEMM implemented with torch.nn.functional.linear.",
-    "author": "torch.nn",
+    "author": "PyTorch",
     "spec": {
       "language": "Python",
       "target_hardware": ["NVIDIA_H100", "NVIDIA_A100", "CPU"],
       "dependencies": ["torch"],
-      "entry_point": "run",
-      "build_steps": []
+      "entry_point": "main.py::run",
+      "build_commands": []
     },
     "sources": [
       {

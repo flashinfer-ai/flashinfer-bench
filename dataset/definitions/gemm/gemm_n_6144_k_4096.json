@@ -1,7 +1,11 @@
 {
   "name": "gemm_n_6144_k_4096",
-  "type": "gemm",
   "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.1 8B attn.qkv_proj.",
+  "tags": [
+    "scope:attention",
+    "type:gemm",
+    "model:llama-3.1-8b"
+  ],
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 6144 },

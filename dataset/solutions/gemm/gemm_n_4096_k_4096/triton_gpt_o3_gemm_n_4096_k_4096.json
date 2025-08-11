@@ -1,5 +1,5 @@
 {
-    "name": "gemm_n_4096_k_4096_triton_gpt_o3",
+    "name": "triton_gpt_o3_gemm_n_4096_k_4096",
     "definition": "gemm_n_4096_k_4096",
     "description": "High-performance Triton kernel for C = A @ B.T with dynamic M and fixed N=K=4096 (captured from Llama self-attn.o_proj). Auto-tunes over several block shapes, uses float32 accumulation, and targets NVIDIA Hopper/Blackwell GPUs.",
     "author": "gpt-o3",
@@ -14,8 +14,8 @@
         "torch",
         "triton >= 2.4.0"
       ],
-      "entry_point": "run",
-      "build_steps": []
+      "entry_point": "main.py::run",
+      "build_commands": []
     },
     "sources": [
       {

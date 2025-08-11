@@ -1,19 +1,20 @@
 {
-  "name": "batch_gqa_paged_decode_h32_kv8_d128_ps1_flashinfer",
-  "definition": "batch_gqa_paged_decode_h32_kv8_d128_ps1",
+  "name": "flashinfer_gqa_paged_decode_h32_kv8_d128_ps1",
+  "definition": "gqa_paged_decode_h32_kv8_d128_ps1",
   "description": "Solution using FlashInfer BatchDecodeWithPagedKVCacheWrapper API.",
   "author": "flashinfer",
   "spec": {
     "language": "Python",
     "target_hardware": [
       "NVIDIA_H100",
-      "NVIDIA_A100"
+      "NVIDIA_H200",
+      "NVIDIA_B200"
     ],
     "dependencies": [
       "flashinfer >= 0.2.8"
     ],
-    "entry_point": "run",
-    "build_steps": []
+    "entry_point": "main.py::run",
+    "build_commands": []
   },
   "sources": [
     {

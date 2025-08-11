@@ -1,43 +1,43 @@
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":256},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":248},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":240},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":232},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":224},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":216},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":208},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":200},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":192},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":184},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":176},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":168},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":160},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":152},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":144},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":136},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":128},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":120},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":112},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":104},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":96},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":88},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":80},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":72},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":64},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":56},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":48},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":40},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":32},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":24},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":16},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":8},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":4},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":2},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":1},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":7},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":35},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":972},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":70},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":2053},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":8192},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":2379},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
-{"definition":"gemm_n_6144_k_4096","solution":"","workload":{"axes":{"M":15},"inputs":{"A":{"type":"random"},"B":{"type":"random"}}},"evaluation":{}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "000bed54-6e96-4655-a8ef-61dd810c6e1b", "axes": {"M": 256}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "342e6dfa-076a-499f-8921-054f503100b7", "axes": {"M": 248}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "a73527f6-7701-43ac-8032-077e7461926c", "axes": {"M": 240}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "bfd9b353-4131-474b-8060-ca1d57c7c86e", "axes": {"M": 232}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "c5c256fc-8483-44f4-8e20-e6ca0a7de69a", "axes": {"M": 224}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "4bc7f138-6225-4981-a282-a7f63c9ba77c", "axes": {"M": 216}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "3fb595c8-b079-4104-9971-ea111675a54a", "axes": {"M": 208}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "39b0275d-3832-4e0c-857e-23f93b4a49cd", "axes": {"M": 200}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "7cb4e12c-193b-4d8f-b129-e3a3c3a44a34", "axes": {"M": 192}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "f8b22ebe-fd61-4fbe-a25c-028cdbf38d66", "axes": {"M": 184}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "af0d058f-cf8c-4029-8551-795c61b3e68a", "axes": {"M": 176}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "2e011468-f5ac-4a2d-a453-6049544454bc", "axes": {"M": 168}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "410434c2-b732-44ce-9caa-658471c62b5c", "axes": {"M": 160}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "b598d604-a3dc-473a-8774-d8ff8be018f9", "axes": {"M": 152}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "1459cc54-6a42-4c66-b36e-af363b08b406", "axes": {"M": 144}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "1d65bb75-1568-4f2f-a5ce-1e2f051d2c52", "axes": {"M": 136}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "fa90185a-1549-434f-8b2d-da007c55d3d0", "axes": {"M": 128}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "5b2af05a-42ea-427e-9252-8477591651d3", "axes": {"M": 120}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "973e9b89-5cb2-4bf7-921d-5aa195cd483e", "axes": {"M": 112}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "70741a6a-fb7f-4a85-95e3-f53a23877d6a", "axes": {"M": 104}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "044a0e91-093b-451c-b350-4e3584664f78", "axes": {"M": 96}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "6d52724e-c22e-4d5f-884a-e36c8bb56f88", "axes": {"M": 88}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "b3cd8379-9eb0-4962-9fd7-c9689563c3d6", "axes": {"M": 80}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "f0d7afa3-602d-4b39-bf81-6b269da7da1f", "axes": {"M": 72}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "8c2d42fd-2a7f-46f9-b1f5-9bcb9197486d", "axes": {"M": 64}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "100982d0-47c3-4558-b420-7c7e03cc14c8", "axes": {"M": 56}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "e2a669f0-171e-4e7e-9a8f-8371097345bd", "axes": {"M": 48}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "9c87618b-7b6e-43b5-9169-dc68e949097a", "axes": {"M": 40}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "b0931dc6-2aed-46aa-9199-afbfbc630edf", "axes": {"M": 32}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "245cb53f-3029-4153-bcdd-a01789ff8142", "axes": {"M": 24}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "ae01e4c2-42c3-4187-805c-c7a8ec6ee61f", "axes": {"M": 16}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "eaecffe5-237c-4bb9-89c7-c62175ee0ae6", "axes": {"M": 8}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "38c73574-2719-45ca-8d62-0b8103ef95a1", "axes": {"M": 4}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "3413462d-a144-4035-8773-af31e628a066", "axes": {"M": 2}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "74c12c29-4826-400f-a5ab-30eea79defcc", "axes": {"M": 1}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "0fa99f0b-1334-417d-b5a9-087806b5b511", "axes": {"M": 7}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "2f89fa7f-23ba-46c7-b422-cee6b677f943", "axes": {"M": 35}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "35af8dd3-037e-4d78-ba39-61795bc40112", "axes": {"M": 972}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "ba973a1f-ae70-4542-9456-1179812aa0a6", "axes": {"M": 70}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "88ff8914-263f-4202-8093-826f2f30810a", "axes": {"M": 2053}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "33a78bbf-0071-43b4-874b-60aee52b5f08", "axes": {"M": 8192}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "3c6254c6-20a6-459e-80e4-46d5d04b1762", "axes": {"M": 2379}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}
+{"definition": "gemm_n_6144_k_4096", "solution": "", "workload": {"uuid": "cd17170b-a377-49cc-a779-3728c0287a1c", "axes": {"M": 15}, "inputs": {"A": {"type": "random"}, "B": {"type": "random"}}}, "evaluation": {}}

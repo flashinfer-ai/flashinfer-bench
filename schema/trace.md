@@ -21,6 +21,7 @@ This object provides the concrete data required to instantiate a `Definition`. T
 
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
+| `uuid` | string | Yes | A randomly generate UUID for this workload entry. |
 | `axes` | object | Yes | An object mapping `var` axis names from the `Definition` to their concrete integer values. |
 | `inputs` | object | Yes | An object describing the location and format of the required input tensor data files. |
 
@@ -86,6 +87,7 @@ The `environment` object specifies the exact execution environment for this benc
   "definition": "rmsnorm",
   "solution": "rmsnorm_triton_v1",
   "workload": {
+    "uuid": "6120f144-b973-4bd9-b884-77ecb132914e",
     "axes": {
       "batch_size": 32
     },

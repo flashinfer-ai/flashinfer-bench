@@ -1,19 +1,20 @@
 {
-  "name": "batch_mla_paged_decode_h128_ckv512_kpe64_ps1_flashinfer",
-  "definition": "batch_mla_paged_decode_h128_ckv512_kpe64_ps1",
+  "name": "flashinfer_mla_paged_decode_h128_ckv512_kpe64_ps1",
+  "definition": "mla_paged_decode_h128_ckv512_kpe64_ps1",
   "description": "Solution using FlashInfer BatchMLAPagedAttentionWrapper API.",
   "author": "flashinfer",
   "spec": {
     "language": "Python",
     "target_hardware": [
       "NVIDIA_H100",
-      "NVIDIA_A100"
+      "NVIDIA_H200",
+      "NVIDIA_B200"
     ],
     "dependencies": [
       "flashinfer >= 0.2.8"
     ],
-    "entry_point": "run",
-    "build_steps": []
+    "entry_point": "main.py::run",
+    "build_commands": []
   },
   "sources": [
     {

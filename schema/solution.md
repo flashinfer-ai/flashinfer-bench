@@ -37,12 +37,12 @@ This object details the technical requirements and properties of the source code
 | `language` | string | Yes | The primary programming language (e.g.,`Triton`,`CUDA`). The source code should always launched from Python. |
 | `target_hardware` | array | Yes | A list of hardware architectures this is compatible with (e.g.,`NVIDIA_H100`, `NVIDIA_B200`). |
 | `dependencies` | array | No | A list of required libraries or toolchains (e.g.,`CUDA >= 12.0`,`triton >= 2.2`). |
-| `entry_point` | string | Yes | The exact name of the function to be called, which must adhere to the strict naming convention. |
-| `build_steps` | array | No | A list of shell commands required to build the source code. Can be empty for JIT-compiled languages. |
+| `entry_point` | string | Yes | The exact path to the function to be called. Format should be `{file_path}::{function_name}` (e.g. `main.py::run`). |
+| `build_commands` | array | No | A list of shell commands required to build the source code. |
 
 ### Signature and Naming Convention
 
-The schema enforces a strict naming convention to eliminate ambiguity. The function specified in `spec.entry_point` **must accept arguments whose names exactly match the keys in the `inputs` and `outputs` objects of the corresponding `Definition`**.
+The schema enforces a strict naming convention to eliminate ambiguity. The function specified in `spec.entry_point` **must accept arguments whose names exactly match the keys in the `inputs` and `outputs` objects of the corresponding z`Definition`**.
 
 - **For JIT-compiled languages like Triton**, the `source` code should provide a Python launcher function as the `entry_point`. This launcher function must have a signature that matches the workload's defined names and will be called using keyword arguments.
 - **For AOT-compiled languages like CUDA C++**, the `source` should ideally include a C++ host-side launcher function (not just the `__global__` kernel) that can be bound to Python to expose a function with the required named-argument signature.
@@ -64,8 +64,8 @@ The schema enforces a strict naming convention to eliminate ambiguity. The funct
       "triton >= 2.3",
       "torch"
     ],
-    "entry_point": "run",
-    "build_steps": []
+    "entry_point": "main.py::run",
+    "build_commands": []
   },
   "sources": [
     {
@@ -73,7 +73,7 @@ The schema enforces a strict naming convention to eliminate ambiguity. The funct
       "content": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.autotune(\n    configs=[\n        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),\n        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8)\n    ],\n    key=['M', 'N', 'K'],\n)\n@triton.jit\ndef _gemm_kernel(\n    A, B, C, M, N, K, stride_am, stride_ak, stride_bn, stride_bk, stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr\n):\n    # ... (Triton kernel logic as before)\n    pid = tl.program_id(axis=0)\n    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)\n    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)\n    num_pid_in_group = GROUP_SIZE_M * num_pid_n\n    group_id = pid // num_pid_in_group\n    first_pid_m = group_id * GROUP_SIZE_M\n    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)\n    pid_m = first_pid_m + (pid % group_size_m)\n    pid_n = (pid % num_pid_in_group) // group_size_m\n\n    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]\n    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = A + (offs_am * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = B + (offs_bn * stride_bn + offs_k[:, None] * stride_bk)\n\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):\n        a = tl.load(a_ptrs)\n        b = tl.load(b_ptrs)\n        accumulator += tl.dot(a, b)\n        a_ptrs += BLOCK_SIZE_K * stride_ak\n        b_ptrs += BLOCK_SIZE_K * stride_bk\n    c = accumulator.to(C.dtype.element_ty)\n\n    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)\n    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]\n    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)\n    tl.store(c_ptrs, c, mask=c_mask)\n\ndef run(A, B):\n    M, K = A.shape\n    N, _ = B.shape\n    C = torch.empty((M, N), device=A.device, dtype=A.dtype)\n    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )\n    _gemm_kernel[grid](A, B, C, M, N, K, A.stride(0), A.stride(1), B.stride(0), B.stride(1), C.stride(0), C.stride(1))\n    return {\"C\": C}"
     }
   ]
-
+}
 ```
 
 ### Example: Triton Implementation for RMS Norm
@@ -95,8 +95,8 @@ The schema enforces a strict naming convention to eliminate ambiguity. The funct
       "torch",
       "triton >= 2.3"
     ],
-    "entry_point": "run",
-    "build_steps": []
+    "entry_point": "main.py::run",
+    "build_commands": []
   },
   "sources": [
     {
