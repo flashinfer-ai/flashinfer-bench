@@ -246,29 +246,188 @@ def _format_environment(device_manager: DeviceManager) -> Dict[str, Any]:
     }
 
 
+def _run_reference_benchmark(
+    definition: Definition, workload: Dict, config: BenchmarkConfig
+) -> Dict[str, Any]:
+    """
+    Run reference implementation benchmark in an isolated subprocess.
+    """
+    logger = logging.getLogger(f"ReferenceWorker-{os.getpid()}")
+    
+    try:
+        ref_callable = _compile_python_code(definition.reference, "run")
+    except Exception as e:
+        logger.error(f"Reference compilation error: {e}")
+        logger.error(traceback.format_exc())
+        return {
+            "status": "COMPILE_ERROR",
+            "error": str(e),
+            "environment": _format_environment(DeviceManager(config.device)),
+            "timestamp": datetime.now().isoformat(),
+        }
+    
+    try:
+        seed_manager = SeedManager()
+        device_manager = DeviceManager(config.device)
+        
+        ref_outputs = []
+        ref_latencies = []
+        
+        with torch.no_grad():
+            for trial in range(config.correctness_trials):
+                inputs = _generate_test_inputs(definition, workload, device_manager)
+                trial_data = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
+                
+                ref_output = ref_callable(*trial_data)
+                torch.cuda.synchronize()
+                ref_outputs.append(ref_output)
+        
+        seed_manager.reset_seed()
+        
+        # Performance testing
+        for _ in range(5):  # TODO: Hardcoded 5 for now, can maybe add to BenchmarkConfig in the future
+            timing_inputs = _generate_test_inputs(definition, workload, device_manager)
+            ref_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
+            
+            ref_latency = _time_kernel(ref_callable, ref_timing_inputs, config.warmup_runs, config.iterations)
+            ref_latencies.append(ref_latency)
+        
+        avg_ref_latency = sum(ref_latencies) / len(ref_latencies)
+        
+        return {
+            "status": "PASSED",
+            "outputs": ref_outputs,
+            "latency": avg_ref_latency,
+            "environment": _format_environment(device_manager),
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in reference benchmark execution: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return {
+            "status": "RUNTIME_ERROR",
+            "error": str(e),
+            "environment": _format_environment(DeviceManager(config.device)),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+def _run_solution_benchmark(
+    definition: Definition, solution: Solution, workload: Dict, config: BenchmarkConfig
+) -> Dict[str, Any]:
+    """
+    Run solution implementation benchmark in an isolated subprocess.
+    """
+    logger = logging.getLogger(f"SolutionWorker-{os.getpid()}")
+    
+    try:
+        impl_callable = build_solution(solution)
+    except Exception as e:
+        logger.error(f"Solution compilation error: {e}")
+        logger.error(traceback.format_exc())
+        return {
+            "status": "COMPILE_ERROR",
+            "error": str(e),
+            "environment": _format_environment(DeviceManager(config.device)),
+            "timestamp": datetime.now().isoformat(),
+        }
+    
+    try:
+        seed_manager = SeedManager()
+        device_manager = DeviceManager(config.device)
+        
+        # Run correctness trials to get solution outputs
+        impl_outputs = []
+        impl_latencies = []
+        
+        with torch.no_grad():
+            for trial in range(config.correctness_trials):
+                inputs = _generate_test_inputs(definition, workload, device_manager)
+                trial_data = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
+                
+                impl_output = impl_callable(*trial_data)
+                torch.cuda.synchronize()
+                impl_outputs.append(impl_output)
+        
+        seed_manager.reset_seed()
+        
+        # Performance testing
+        for _ in range(5):  # TODO: Hardcoded 5 for now, can maybe add to BenchmarkConfig in the future
+            timing_inputs = _generate_test_inputs(definition, workload, device_manager)
+            impl_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
+            
+            impl_latency = _time_kernel(impl_callable, impl_timing_inputs, config.warmup_runs, config.iterations)
+            impl_latencies.append(impl_latency)
+        
+        avg_impl_latency = sum(impl_latencies) / len(impl_latencies)
+        
+        return {
+            "status": "PASSED",
+            "outputs": impl_outputs,
+            "latency": avg_impl_latency,
+            "environment": _format_environment(device_manager),
+            "timestamp": datetime.now().isoformat(),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in solution benchmark execution: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return {
+            "status": "RUNTIME_ERROR",
+            "error": str(e),
+            "environment": _format_environment(DeviceManager(config.device)),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
 def _run_single_benchmark(
     definition: Definition, solution: Solution, workload: Dict, config: BenchmarkConfig
 ) -> Trace:
     """
-    Run a single benchmark in an isolated subprocess.
-    This function is the entry point for the subprocess.
+    Run a single benchmark by coordinating separate reference and solution subprocesses.
+    This function orchestrates the comparison between reference and solution implementations.
     """
-
-    logger = logging.getLogger(f"BenchmarkWorker-{os.getpid()}")
-
+    logger = logging.getLogger(f"BenchmarkCoordinator-{os.getpid()}")
+    
     try:
-        ref_callable = _compile_python_code(definition.reference, "run")
-        try:
-            impl_callable = build_solution(solution)
-        except Exception as compile_err:
-            logger.error(f"Compilation error: {compile_err}")
-            logger.error(traceback.format_exc())
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=1) as pool:
+            ref_result = pool.apply(
+                _run_reference_benchmark, args=(definition, workload, config)
+            )
+        
+        if ref_result["status"] != "PASSED":
+            logger.error(f"Reference benchmark failed with status {ref_result['status']}: {ref_result.get('error', 'Unknown error')}")
+            evaluation = {
+                "status": ref_result["status"], 
+                "log_file": f"{solution.name}_{hash(str(workload))}.log",
+                "correctness": None,
+                "performance": None,
+                "environment": ref_result.get("environment", {}),
+                "timestamp": datetime.now().isoformat(),
+            }
+            return Trace(
+                definition=definition.name,
+                solution=solution.name,
+                workload=workload,
+                evaluation=evaluation,
+            )
+        
+        with ctx.Pool(processes=1) as pool:
+            impl_result = pool.apply(
+                _run_solution_benchmark, args=(definition, solution, workload, config)
+            )
+        
+        if impl_result["status"] == "COMPILE_ERROR":
             evaluation = {
                 "status": "COMPILE_ERROR",
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
                 "correctness": None,
                 "performance": None,
-                "environment": _format_environment(DeviceManager(config.device)),
+                "environment": impl_result.get("environment", {}),
                 "timestamp": datetime.now().isoformat(),
             }
             return Trace(
@@ -277,91 +436,72 @@ def _run_single_benchmark(
                 workload=workload,
                 evaluation=evaluation,
             )
-
-        seed_manager = SeedManager()
-        device_manager = DeviceManager(config.device)
-
-        # Correctness check
-        num_trials = config.correctness_trials
+        
+        if impl_result["status"] != "PASSED":
+            evaluation = {
+                "status": "RUNTIME_ERROR",
+                "log_file": f"{solution.name}_{hash(str(workload))}.log",
+                "correctness": None,
+                "performance": None,
+                "environment": impl_result.get("environment", {}),
+                "timestamp": datetime.now().isoformat(),
+            }
+            return Trace(
+                definition=definition.name,
+                solution=solution.name,
+                workload=workload,
+                evaluation=evaluation,
+            )
+        
+        ref_outputs = ref_result["outputs"]
+        impl_outputs = impl_result["outputs"]
+        
+        if len(ref_outputs) != len(impl_outputs):
+            raise ValueError(f"Mismatch in number of outputs: ref={len(ref_outputs)}, impl={len(impl_outputs)}")
+        
         abs_diffs = []
         rel_diffs = []
         pass_count = 0
-
-        with torch.no_grad():
-            for _ in range(num_trials):
-                inputs = _generate_test_inputs(definition, workload, device_manager)
-
-                trial_data_ref = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
-                trial_data_impl = [x.clone() if isinstance(x, torch.Tensor) else x for x in inputs]
-
-                ref_output = ref_callable(*trial_data_ref)
-                torch.cuda.synchronize()
-
-                impl_output = impl_callable(*trial_data_impl)
-                torch.cuda.synchronize()
-
-                shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
-
-                if not shape_correct:
-                    logger.error(f"Shape mismatch for trial {_}: {err_msg}")
-                    status = "SHAPE_MISMATCH"
-                    break
-
-                max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
-                max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
-
-                if max_abs_diff <= config.max_diff_limit:
-                    pass_count += 1
-                abs_diffs.append(max_abs_diff)
-                rel_diffs.append(max_rel_diff)
-
-        seed_manager.reset_seed()
-
-        max_abs_diff = max(abs_diffs, default=None)  # None if list is empty, i.e. shape mismatch
-        max_rel_diff = max(rel_diffs, default=None)
-
-        status = "PASSED" if pass_count == num_trials else "INCORRECT_RESULT"
-
-        if status == "INCORRECT_RESULT" or status == "SHAPE_MISMATCH":
-            evaluation = {
-                "status": status,
-                "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                "correctness": {
-                    "max_relative_error": max_rel_diff,
-                    "max_absolute_error": max_abs_diff,
-                },
-                "performance": {
-                    "latency_ms": 0.0,
-                    "reference_latency_ms": 0.0,
-                    "speedup_factor": 0.0,
-                },
-                "environment": _format_environment(device_manager),
-                "timestamp": datetime.now().isoformat(),
-            }
-            return Trace(
-                definition=definition.name,
-                solution=solution.name,
-                workload=workload,
-                evaluation=evaluation,
-            )
-
-        # Performance testing if correct
-        impl_latencies = []
-        ref_latencies = []
         
-        for _ in range(5): # Hardcoded 5 for now, can maybe add to BenchmarkConfig in the future
-            timing_inputs = _generate_test_inputs(definition, workload, device_manager)
-            impl_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
-            ref_timing_inputs = [x.clone() if isinstance(x, torch.Tensor) else x for x in timing_inputs]
+        for i, (ref_output, impl_output) in enumerate(zip(ref_outputs, impl_outputs)):
+            shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
             
-            impl_latency = _time_kernel(impl_callable, impl_timing_inputs, config.warmup_runs, config.iterations)
-            ref_latency = _time_kernel(ref_callable, ref_timing_inputs, config.warmup_runs, config.iterations)
+            if not shape_correct:
+                logger.error(f"Shape mismatch for trial {i}: {err_msg}")
+                evaluation = {
+                    "status": "INCORRECT",
+                    "log_file": f"{solution.name}_{hash(str(workload))}.log",
+                    "correctness": None,
+                    "performance": {
+                        "latency_ms": impl_result["latency"],
+                        "reference_latency_ms": ref_result["latency"],
+                        "speedup_factor": 0.0,
+                    },
+                    "environment": impl_result.get("environment", {}),
+                    "timestamp": datetime.now().isoformat(),
+                }
+                return Trace(
+                    definition=definition.name,
+                    solution=solution.name,
+                    workload=workload,
+                    evaluation=evaluation,
+                )
             
-            impl_latencies.append(impl_latency)
-            ref_latencies.append(ref_latency)
-
-        impl_latency = sum(impl_latencies) / len(impl_latencies)
-        ref_latency = sum(ref_latencies) / len(ref_latencies)
+            max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
+            max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
+            
+            if max_abs_diff <= config.max_diff_limit:
+                pass_count += 1
+            abs_diffs.append(max_abs_diff)
+            rel_diffs.append(max_rel_diff)
+        
+        max_abs_diff = max(abs_diffs, default=0.0)
+        max_rel_diff = max(rel_diffs, default=0.0)
+        
+        status = "PASSED" if pass_count == len(ref_outputs) else "INCORRECT"
+        
+        impl_latency = impl_result["latency"]
+        ref_latency = ref_result["latency"]
         speedup = ref_latency / impl_latency if impl_latency > 0 else 0.0
 
         evaluation = {
@@ -376,13 +516,18 @@ def _run_single_benchmark(
                 "reference_latency_ms": ref_latency,
                 "speedup_factor": speedup,
             },
-            "environment": _format_environment(device_manager),
+            "environment": impl_result.get("environment", {}),
             "timestamp": datetime.now().isoformat(),
         }
 
     except Exception as e:
         logger.error(f"Error in benchmark: {str(e)}")
         logger.error(traceback.format_exc())
+
+        try:
+            environment = impl_result.get("environment", {})
+        except NameError:
+            environment = _format_environment(DeviceManager(config.device))
 
         evaluation = {
             # TODO: differentiate between compile/runtime errors
@@ -391,7 +536,7 @@ def _run_single_benchmark(
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
             "correctness": None,
             "performance": None,
-            "environment": _format_environment(device_manager),
+            "environment": environment,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -513,24 +658,18 @@ class Benchmark:
         for i, workload in enumerate(workload_list):
             self.logger.info(f"Running workload {i+1}/{len(workload_list)}")
 
-            # Use multiprocessing to run in isolation
-            # Note that we don't catch multiprocessing errors
-            ctx = mp.get_context("spawn")  # Use spawn to get clean CUDA context
-            with ctx.Pool(processes=1) as pool:
-                result = pool.apply(
-                    _run_single_benchmark, args=(definition, target_solution, workload, config)
-                )
-                self.trace_set.add_trace(result)
+            result = _run_single_benchmark(definition, target_solution, workload, config)
+            self.trace_set.add_trace(result)
 
-                # Log result
-                if result.evaluation["status"] == "PASSED":
-                    self.logger.info(
-                        f"Workload {i+1}: PASSED "
-                        f"(speedup: {result.evaluation['performance']['speedup_factor']:.2f}x)"
-                    )
-                else:
-                    self.logger.warning(f"Workload {i+1}: {result.evaluation['status']}")
-                self.logger.debug(result)
+            # Log result
+            if result.evaluation["status"] == "PASSED":
+                self.logger.info(
+                    f"Workload {i+1}: PASSED "
+                    f"(speedup: {result.evaluation['performance']['speedup_factor']:.2f}x)"
+                )
+            else:
+                self.logger.warning(f"Workload {i+1}: {result.evaluation['status']}")
+            self.logger.debug(result)
 
     def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         """
