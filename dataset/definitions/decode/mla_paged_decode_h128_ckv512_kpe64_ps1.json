@@ -37,7 +37,8 @@
     }
   },
   "constraints": [
-    "num_indptr == batch_size + 1"
+    "num_indptr == batch_size + 1",
+    "num_pages == kv_indptr[-1]"
   ],
   "inputs": {
     "q_nope": {
@@ -88,7 +89,8 @@
       "shape": [
         "num_pages"
       ],
-      "dtype": "int32"
+      "dtype": "int32",
+      "description": "Token indices for each page. For page_size=1, each index corresponds to one token. Since this is decode, num_pages == kv_indptr[-1] == batch_size."
     },
     "kv_len_arr": {
       "shape": [
