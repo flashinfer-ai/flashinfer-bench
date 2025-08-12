@@ -1,0 +1,100 @@
+{
+  "name": "mla_ragged_prefill_h128_qk192_vo128",
+  "description": "Multi-head Latent Attention (MLA) ragged prefill without Matrix Absorption. Captured from DeepSeek-V2/V3 models during total prefill (self-attention). Note that qo_indptr and kv_indptr should be identical in this case.",
+  "tags": [
+    "scope:attention",
+    "type:prefill",
+    "status:draft",
+    "model:deepseek-v2",
+    "model:deepseek-v3",
+    "model:deepseek-r1"
+  ],
+  "axes": {
+    "num_qo_heads": {
+      "type": "const",
+      "value": 128
+    },
+    "head_dim_qk": {
+      "type": "const",
+      "value": 192
+    },
+    "head_dim_vo": {
+      "type": "const",
+      "value": 128
+    },
+    "total_q": {
+      "type": "var"
+    },
+    "total_kv": {
+      "type": "var"
+    },
+    "len_indptr": {
+      "type": "var"
+    }
+  },
+  "constraints": [
+    "total_q == total_kv",
+    "total_q == qo_indptr[-1].item()",
+    "total_kv == kv_indptr[-1].item()"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "head_dim_qk"
+      ],
+      "dtype": "bfloat16"
+    },
+    "k": {
+      "shape": [
+        "total_kv",
+        "num_qo_heads",
+        "head_dim_qk"
+      ],
+      "dtype": "bfloat16"
+    },
+    "v": {
+      "shape": [
+        "total_kv",
+        "num_qo_heads",
+        "head_dim_vo"
+      ],
+      "dtype": "bfloat16"
+    },
+    "qo_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32"
+    },
+    "kv_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32"
+    },
+    "sm_scale": {
+      "shape": [],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "head_dim_vo"
+      ],
+      "dtype": "bfloat16"
+    },
+    "lse": {
+      "shape": [
+        "total_q",
+        "num_qo_heads"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q, k, v, qo_indptr, kv_indptr, sm_scale):\n    total_q, num_qo_heads, head_dim_qk = q.shape\n    total_kv = k.shape[0]\n    head_dim_vo = v.shape[-1]\n    num_indptr = qo_indptr.shape[0]\n\n    # Check constants\n    assert num_qo_heads == 128\n    assert head_dim_qk == 192\n    assert head_dim_vo == 128\n\n    # Check constraints\n    assert total_q == qo_indptr[-1].item()\n    assert total_kv == kv_indptr[-1].item()\n    assert total_q == total_kv\n\n    device = q.device\n\n    out = torch.zeros((total_q, num_qo_heads, head_dim_vo), dtype=torch.bfloat16, device=device)\n    lse = torch.full((total_q, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device)\n\n    q = q.to(torch.float32)\n    k = k.to(torch.float32)\n    v = v.to(torch.float32)\n\n    for b in range(num_indptr - 1):\n        q0, q1 = int(qo_indptr[b].item()), int(qo_indptr[b + 1].item())\n        k0, k1 = int(kv_indptr[b].item()), int(kv_indptr[b + 1].item())\n        if q0 >= q1 or k0 >= k1:\n            continue\n\n        qb = q[q0:q1]  # [q_len, num_qo_heads, head_dim_qk]\n        kb = k[k0:k1]  # [kv_len, num_kv_heads, head_dim_qk]\n        vb = v[k0:k1]  # [kv_len, num_kv_heads, head_dim_vo]\n        q_len = qb.shape[0]\n        kv_len = kb.shape[0]\n\n        logits = torch.einsum(\"qhd,khd->qhk\", qb, kb)  # [q_len, num_qo_heads, kv_len]\n        logits_scaled = logits * sm_scale\n\n        # Causal mask, no need to allow offset because indptrs should be identical\n        i = torch.arange(q_len, device=device).unsqueeze(-1)  # [q_len, 1]\n        j = torch.arange(kv_len, device=device).unsqueeze(0)  # [1, kv_len]\n        logits_scaled.masked_fill_((j > i).unsqueeze(1), float(\"-inf\"))\n\n        # Compute 2-base LSE\n        lse[q0:q1] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n        attn = torch.softmax(logits_scaled, dim=-1)  # [q_len, num_qo_heads, kv_len]\n        out_b = torch.einsum(\"qhk,khd->qhd\", attn, vb)  # [q_len, num_qo_heads, head_dim_vo]\n        out[q0:q1] = out_b.to(torch.bfloat16)\n\n    return {\"output\": out, \"lse\": lse}"
+}
