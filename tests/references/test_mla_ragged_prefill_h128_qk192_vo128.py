@@ -45,7 +45,7 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
         logits = torch.einsum("qhd,khd->qhk", qb, kb)  # [q_len, num_qo_heads, kv_len]
         logits_scaled = logits * sm_scale
 
-        # causal mask, no need to allow offset because indptrs should be identical
+        # Causal mask, no need to allow offset because indptrs should be identical
         i = torch.arange(q_len, device=device).unsqueeze(-1)  # [q_len, 1]
         j = torch.arange(kv_len, device=device).unsqueeze(0)  # [1, kv_len]
         logits_scaled.masked_fill_((j > i).unsqueeze(1), float("-inf"))
@@ -162,9 +162,13 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
 
     print("Running FlashInfer...")
     fi_o, fi_lse = prefill.run(inputs["q"], inputs["k"], inputs["v"], return_lse=True)
-    fi_o = fi_o.float()
 
     print("\nComparing outputs...")
+    print(f"Reference output shape: {ref_o.shape}")
+    print(f"FlashInfer output shape: {fi_o.shape}")
+    print(f"Reference LSE shape: {ref_lse.shape}")
+    print(f"FlashInfer LSE shape: {fi_lse.shape}")
+
     abs_diff = (ref_o - fi_o).abs()
     rel_diff = abs_diff / (fi_o.abs() + 1e-8)
 

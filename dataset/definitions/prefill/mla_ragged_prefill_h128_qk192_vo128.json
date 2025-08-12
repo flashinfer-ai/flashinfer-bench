@@ -4,7 +4,7 @@
   "tags": [
     "scope:attention",
     "type:prefill",
-    "status:draft",
+    "status:verified",
     "model:deepseek-v2",
     "model:deepseek-v3",
     "model:deepseek-r1"

@@ -1,7 +1,13 @@
 {
   "name": "segment_gemm_e256_n7168_k2048",
-  "type": "segment_gemm",
   "description": "DeepSeek V3 MoE down projection (W2) using SegmentGEMM",
+  "tags": [
+    "scope:moe",
+    "type:gemm",
+    "status:draft",
+    "model:deepseek-v3",
+    "model:deepseek-r1"
+  ],
   "axes": {
     "batch_size": { "type": "var" },
     "num_experts": { "type": "const", "value": 256 },

@@ -4,17 +4,18 @@
   "tags": [
     "scope:attention",
     "type:decode",
+    "status:verified",
     "model:llama-3.1-8b"
   ],
   "axes": {
     "batch_size": {
       "type": "var"
     },
-    "num_attention_heads": {
+    "num_qo_heads": {
       "type": "const",
       "value": 32
     },
-    "num_key_value_heads": {
+    "num_kv_heads": {
       "type": "const",
       "value": 8
     },

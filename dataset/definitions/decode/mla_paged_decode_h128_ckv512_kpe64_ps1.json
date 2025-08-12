@@ -13,7 +13,7 @@
     "batch_size": {
       "type": "var"
     },
-    "num_attention_heads": {
+    "num_qo_heads": {
       "type": "const",
       "value": 128
     },
@@ -30,7 +30,8 @@
       "value": 1
     },
     "num_pages": {
-      "type": "var"
+      "type": "var",
+      "description": "Number of pages in the KV cache. Since this is decode and page_size=1, num_pages == kv_indptr[-1] == batch_size."
     },
     "num_indptr": {
       "type": "var"
@@ -44,7 +45,7 @@
     "q_nope": {
       "shape": [
         "batch_size",
-        "num_attention_heads",
+        "num_qo_heads",
         "head_dim_ckv"
       ],
       "dtype": "bfloat16"
@@ -52,7 +53,7 @@
     "q_pe": {
       "shape": [
         "batch_size",
-        "num_attention_heads",
+        "num_qo_heads",
         "head_dim_kpe"
       ],
       "dtype": "bfloat16"
@@ -90,7 +91,7 @@
         "num_pages"
       ],
       "dtype": "int32",
-      "description": "Token indices for each page. For page_size=1, each index corresponds to one token. Since this is decode, num_pages == kv_indptr[-1] == batch_size."
+      "description": "Token indices for each page. For page_size=1, each index corresponds to one token."
     },
     "kv_len_arr": {
       "shape": [
@@ -107,7 +108,7 @@
     "output": {
       "shape": [
         "batch_size",
-        "num_attention_heads",
+        "num_qo_heads",
         "head_dim_ckv"
       ],
       "dtype": "bfloat16"
@@ -115,10 +116,10 @@
     "lse": {
       "shape": [
         "batch_size",
-        "num_attention_heads"
+        "num_qo_heads"
       ],
       "dtype": "float32"
     }
   },
-  "reference": "import math\nimport torch\n\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, sm_scale):\n    batch_size, num_attention_heads, head_dim_ckv = q_nope.shape\n    head_dim_kpe = q_pe.shape[-1]\n    page_size = ckv_cache.shape[1]\n    num_indptr = kv_indptr.shape[0]\n\n    # Check constants\n    assert num_attention_heads == 128\n    assert head_dim_ckv == 512\n    assert head_dim_kpe == 64\n    assert page_size == 1\n\n    # Check constraints\n    assert num_indptr == batch_size + 1\n\n    device = q_nope.device\n\n    Kc_all = ckv_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_ckv]\n    Kp_all = kpe_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_kpe]\n\n    output = torch.zeros(\n        (batch_size, num_attention_heads, head_dim_ckv), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (batch_size, num_attention_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    for b in range(batch_size):\n        page_beg = int(kv_indptr[b].item())\n        page_end = int(kv_indptr[b + 1].item())\n\n        if page_beg >= page_end:\n            # No KV cache for this batch element\n            output[b].zero_()\n            continue\n\n        pages = kv_indices[page_beg:page_end]\n        L_tokens = int(kv_len_arr[b].item())\n\n        if L_tokens <= 0 or pages.numel() == 0:\n            output[b].zero_()\n            continue\n\n        # Pages are token indices for page_size=1\n        # We only need the first L_tokens\n        tok_idx = pages[:L_tokens].to(torch.long)\n\n        Kc = Kc_all[tok_idx]  # [L_tokens, head_dim_ckv]\n        Kp = Kp_all[tok_idx]  # [L_tokens, head_dim_kpe]\n        qn = q_nope[b].to(torch.float32)  # [num_attention_heads, head_dim_ckv]\n        qp = q_pe[b].to(torch.float32)  # [num_attention_heads, head_dim_kpe]\n\n        logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_attention_heads, L_tokens]\n        logits_scaled = logits * sm_scale\n\n        # Compute 2-base LSE\n        lse[b] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n        attn = torch.softmax(logits_scaled, dim=-1)  # [num_attention_heads, L_tokens]\n        out = attn @ Kc  # [num_attention_heads, head_dim_ckv]\n        output[b] = out.to(torch.bfloat16)\n\n    return {\"output\": output, \"lse\": lse}"
+  "reference": "import math\nimport torch\n\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, sm_scale):\n    batch_size, num_qo_heads, head_dim_ckv = q_nope.shape\n    head_dim_kpe = q_pe.shape[-1]\n    page_size = ckv_cache.shape[1]\n    num_indptr = kv_indptr.shape[0]\n\n    # Check constants\n    assert num_qo_heads == 128\n    assert head_dim_ckv == 512\n    assert head_dim_kpe == 64\n    assert page_size == 1\n\n    # Check constraints\n    assert num_indptr == batch_size + 1\n\n    device = q_nope.device\n\n    Kc_all = ckv_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_ckv]\n    Kp_all = kpe_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_kpe]\n\n    output = torch.zeros(\n        (batch_size, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (batch_size, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    for b in range(batch_size):\n        page_beg = int(kv_indptr[b].item())\n        page_end = int(kv_indptr[b + 1].item())\n\n        if page_beg >= page_end:\n            # No KV cache for this batch element\n            output[b].zero_()\n            continue\n\n        pages = kv_indices[page_beg:page_end]\n        L_tokens = int(kv_len_arr[b].item())\n\n        if L_tokens <= 0 or pages.numel() == 0:\n            output[b].zero_()\n            continue\n\n        # Pages are token indices for page_size=1\n        # We only need the first L_tokens\n        tok_idx = pages[:L_tokens].to(torch.long)\n\n        Kc = Kc_all[tok_idx]  # [L_tokens, head_dim_ckv]\n        Kp = Kp_all[tok_idx]  # [L_tokens, head_dim_kpe]\n        qn = q_nope[b].to(torch.float32)  # [num_qo_heads, head_dim_ckv]\n        qp = q_pe[b].to(torch.float32)  # [num_qo_heads, head_dim_kpe]\n\n        logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_qo_heads, L_tokens]\n        logits_scaled = logits * sm_scale\n\n        # Compute 2-base LSE\n        lse[b] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n        attn = torch.softmax(logits_scaled, dim=-1)  # [num_qo_heads, L_tokens]\n        out = attn @ Kc  # [num_qo_heads, head_dim_ckv]\n        output[b] = out.to(torch.bfloat16)\n\n    return {\"output\": output, \"lse\": lse}"
 }
