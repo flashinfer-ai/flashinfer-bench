@@ -72,6 +72,7 @@ Represents a constant dimension.
 | --- | --- | --- | --- |
 | `type` | string | Yes | Must be `"const"` |
 | `value` | integer | Yes | Constant value of the axis |
+| `description` | string | No | Brief description. |
 
 Example:
 
@@ -91,6 +92,7 @@ Represents a variable axis whose value will be determined by the input data. The
 | --- | --- | --- | --- | --- |
 | `type` | string | Yes | Must be `"var"` | — |
 | `parent` | string | No | (Optional) name of parent axis for nesting | `null` |
+| `description` | string | No | Brief description |  |
 
 Example:
 
@@ -106,10 +108,11 @@ Example:
 
 These fields describe the input and output tensors of the workload. They contain any number of key-value pairs, where each key is the name of a tensor (e.g., `"A"`, `"B"`, `"C"`). The value is a tensor description:
 
-| Field | Type | Required | Description | Default |
-| --- | --- | --- | --- | --- |
-| `shape` | array | Yes | List of axis names (strings) | — |
-| `dtype` | string | No | Data type of the tensor | `"float16"` |
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `shape` | array | Yes | List of axis names (strings) |
+| `dtype` | string | Yes | Data type of the tensor |
+| `description` | string | No | Brief description. |
 
 ### `dtype` : Data Types
 
