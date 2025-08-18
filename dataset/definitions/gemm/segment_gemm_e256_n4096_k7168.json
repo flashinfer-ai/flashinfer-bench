@@ -1,9 +1,8 @@
 {
   "name": "segment_gemm_e256_n4096_k7168",
   "description": "DeepSeek V3 MoE gate+up projection (W13) using SegmentGEMM",
+  "type": "gemm",
   "tags": [
-    "scope:moe",
-    "type:gemm",
     "status:draft",
     "model:deepseek-v3",
     "model:deepseek-r1"

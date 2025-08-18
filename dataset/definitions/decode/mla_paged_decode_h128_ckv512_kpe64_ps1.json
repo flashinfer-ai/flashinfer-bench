@@ -1,9 +1,8 @@
 {
   "name": "mla_paged_decode_h128_ckv512_kpe64_ps1",
   "description": "Batch Multi-head Latent Attention (MLA) decode with paged KV cache. Captured from DeepSeek-V2/V3 models.",
+  "type": "mla",
   "tags": [
-    "scope:attention",
-    "type:decode",
     "status:verified",
     "model:deepseek-v2",
     "model:deepseek-v3",

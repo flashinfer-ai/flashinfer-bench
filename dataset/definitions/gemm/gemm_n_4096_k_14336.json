@@ -1,9 +1,8 @@
 {
   "name": "gemm_n_4096_k_14336",
   "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.1 8B mlp.down_proj.",
+  "type": "gemm",
   "tags": [
-    "scope:mlp",
-    "type:gemm",
     "status:verified",
     "model:llama-3.1-8b"
   ],

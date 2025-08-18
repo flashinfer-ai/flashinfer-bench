@@ -1,9 +1,8 @@
 {
   "name": "mla_ragged_prefill_h128_qk192_vo128",
   "description": "Multi-head Latent Attention (MLA) ragged prefill without Matrix Absorption. Captured from DeepSeek-V2/V3 models during total prefill (self-attention). Note that qo_indptr and kv_indptr should be identical in this case.",
+  "type": "mla",
   "tags": [
-    "scope:attention",
-    "type:prefill",
     "status:verified",
     "model:deepseek-v2",
     "model:deepseek-v3",
