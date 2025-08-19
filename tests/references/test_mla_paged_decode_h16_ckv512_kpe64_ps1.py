@@ -7,13 +7,13 @@ import torch
 
 @torch.no_grad()
 def run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, sm_scale):
-    batch_size, num_attention_heads, head_dim_ckv = q_nope.shape
+    batch_size, num_qo_heads, head_dim_ckv = q_nope.shape
     head_dim_kpe = q_pe.shape[-1]
     page_size = ckv_cache.shape[1]
     num_indptr = kv_indptr.shape[0]
 
     # Check constants
-    assert num_attention_heads == 128
+    assert num_qo_heads == 16
     assert head_dim_ckv == 512
     assert head_dim_kpe == 64
     assert page_size == 1
@@ -27,11 +27,9 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, s
     Kp_all = kpe_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_kpe]
 
     output = torch.zeros(
-        (batch_size, num_attention_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
+        (batch_size, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
     )
-    lse = torch.full(
-        (batch_size, num_attention_heads), -float("inf"), dtype=torch.float32, device=device
-    )
+    lse = torch.full((batch_size, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     for b in range(batch_size):
         page_beg = int(kv_indptr[b].item())
@@ -55,17 +53,17 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, s
 
         Kc = Kc_all[tok_idx]  # [L_tokens, head_dim_ckv]
         Kp = Kp_all[tok_idx]  # [L_tokens, head_dim_kpe]
-        qn = q_nope[b].to(torch.float32)  # [num_attention_heads, head_dim_ckv]
-        qp = q_pe[b].to(torch.float32)  # [num_attention_heads, head_dim_kpe]
+        qn = q_nope[b].to(torch.float32)  # [num_qo_heads, head_dim_ckv]
+        qp = q_pe[b].to(torch.float32)  # [num_qo_heads, head_dim_kpe]
 
-        logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_attention_heads, L_tokens]
+        logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_qo_heads, L_tokens]
         logits_scaled = logits * sm_scale
 
         # Compute 2-base LSE
         lse[b] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)
 
-        attn = torch.softmax(logits_scaled, dim=-1)  # [num_attention_heads, L_tokens]
-        out = attn @ Kc  # [num_attention_heads, head_dim_ckv]
+        attn = torch.softmax(logits_scaled, dim=-1)  # [num_qo_heads, L_tokens]
+        out = attn @ Kc  # [num_qo_heads, head_dim_ckv]
         output[b] = out.to(torch.bfloat16)
 
     return {"output": output, "lse": lse}
@@ -74,7 +72,7 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, kv_len_arr, s
 def generate_random_inputs(
     batch_size,
     max_seq_len,
-    num_attention_heads=128,
+    num_qo_heads=16,
     head_dim_ckv=512,
     head_dim_kpe=64,
     page_size=1,
@@ -102,11 +100,9 @@ def generate_random_inputs(
 
     # Generate query tensors
     q_nope = torch.randn(
-        batch_size, num_attention_heads, head_dim_ckv, dtype=torch.bfloat16, device=device
+        batch_size, num_qo_heads, head_dim_ckv, dtype=torch.bfloat16, device=device
     )
-    q_pe = torch.randn(
-        batch_size, num_attention_heads, head_dim_kpe, dtype=torch.bfloat16, device=device
-    )
+    q_pe = torch.randn(batch_size, num_qo_heads, head_dim_kpe, dtype=torch.bfloat16, device=device)
 
     # Generate compressed KV and positional caches
     # Add some extra pages to simulate a real scenario
@@ -115,8 +111,8 @@ def generate_random_inputs(
     kpe_cache = torch.randn(num_pages, page_size, head_dim_kpe, dtype=torch.bfloat16, device=device)
 
     # Generate attention parameters
-    # MLA uses head dimension before matrix absorption (128 + 64 = 192)
-    sm_scale = 1.0 / np.sqrt(192)  # sqrt(head_dim_ckv/num_heads + head_dim_kpe)
+    # MLA uses head dimension before matrix absorption (16 + 64 = 80)
+    sm_scale = 1.0 / np.sqrt(80)  # sqrt(head_dim_ckv/num_heads + head_dim_kpe)
     sm_scale = torch.tensor(sm_scale, dtype=torch.float32, device=device)
 
     # For decode, qo_indptr is just [0, 1, 2, ..., batch_size]
@@ -148,14 +144,14 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         return
 
     # Constants from kernel definition
-    num_attention_heads = 128
+    num_qo_heads = 16
     head_dim_ckv = 512
     head_dim_kpe = 64
     page_size = 1
 
     # Generate inputs
     inputs = generate_random_inputs(
-        batch_size, max_seq_len, num_attention_heads, head_dim_ckv, head_dim_kpe, page_size, device
+        batch_size, max_seq_len, num_qo_heads, head_dim_ckv, head_dim_kpe, page_size, device
     )
 
     print(f"Generated sequences with lengths: {inputs['seq_lens'].cpu().numpy()}")
@@ -190,7 +186,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         kv_indptr=inputs["kv_indptr"],
         kv_indices=inputs["kv_indices"],
         kv_len_arr=inputs["kv_len_arr"],
-        num_heads=num_attention_heads,
+        num_heads=num_qo_heads,
         head_dim_ckv=head_dim_ckv,
         head_dim_kpe=head_dim_kpe,
         page_size=page_size,
@@ -271,8 +267,8 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
             for i in range(top_k):
                 idx = top_indices[i].item()
                 # Convert flat index back to 3D indices
-                batch_idx = idx // (num_attention_heads * head_dim_ckv)
-                head_idx = (idx % (num_attention_heads * head_dim_ckv)) // head_dim_ckv
+                batch_idx = idx // (num_qo_heads * head_dim_ckv)
+                head_idx = (idx % (num_qo_heads * head_dim_ckv)) // head_dim_ckv
                 dim_idx = idx % head_dim_ckv
 
                 ref_val = ref_o_f32.flatten()[idx].item()
@@ -292,8 +288,8 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
             print(f"\nTop {top_k} LSE error locations:")
             for i in range(top_k):
                 idx = top_lse_indices[i].item()
-                batch_idx = idx // num_attention_heads
-                head_idx = idx % num_attention_heads
+                batch_idx = idx // num_qo_heads
+                head_idx = idx % num_qo_heads
 
                 ref_val = ref_lse.flatten()[idx].item()
                 fi_val = fi_lse.flatten()[idx].item()

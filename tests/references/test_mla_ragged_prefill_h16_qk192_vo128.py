@@ -12,7 +12,7 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
     num_indptr = qo_indptr.shape[0]
 
     # Check constants
-    assert num_qo_heads == 128
+    assert num_qo_heads == 16
     assert head_dim_qk == 192
     assert head_dim_vo == 128
 
@@ -64,7 +64,7 @@ def generate_random_inputs(
     batch_size,
     max_q_len,
     max_kv_len,
-    num_heads=128,
+    num_heads=16,
     head_dim_qk=192,
     head_dim_vo=128,
     device="cuda",
@@ -121,7 +121,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
         print("WARNING: CUDA not available, skipping test")
         return True  # skip as pass to not break CI
 
-    H = 128
+    H = 16
     Dqk = 192
     Dvo = 128
 
@@ -139,7 +139,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
         inputs["kv_indptr"],
         inputs["sm_scale"],
     )
-    ref_o = ref["output"].float()
+    ref_o = ref["output"]
     ref_lse = ref["lse"]
 
     print("\nSetting up FlashInfer (ragged prefill wrapper)...")

@@ -1,0 +1,25 @@
+{
+  "name": "flashinfer_mla_paged_decode_h16_ckv512_kpe64_ps1",
+  "definition": "mla_ragged_prefill_h16_qk192_vo128",
+  "description": "Solution using FlashInfer BatchMLAPagedAttentionWrapper API.",
+  "author": "flashinfer",
+  "spec": {
+    "language": "Python",
+    "target_hardware": [
+      "NVIDIA_H100",
+      "NVIDIA_H200",
+      "NVIDIA_B200"
+    ],
+    "dependencies": [
+      "flashinfer >= 0.2.8"
+    ],
+    "entry_point": "main.py::run",
+    "build_commands": []
+  },
+  "sources": [
+    {
+      "path": "main.py",
+      "content": "import torch\nimport flashinfer\n\n\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, kv_len_arr, sm_scale):\n    batch_size, num_attention_heads, head_dim_ckv = q_nope.shape\n    _, _, head_dim_kpe = q_pe.shape\n    page_size = ckv_cache.shape[1]\n    num_indptr = qo_indptr.shape[0]\n\n    # Check constants\n    assert num_attention_heads == 16\n    assert head_dim_ckv == 512\n    assert head_dim_kpe == 64\n    assert page_size == 1\n\n    # Check constraints\n    assert num_indptr == batch_size + 1\n\n    device = q_nope.device\n\n    workspace = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)\n\n    mla = flashinfer.mla.BatchMLAPagedAttentionWrapper(workspace)\n\n    mla.plan(\n        qo_indptr=qo_indptr,\n        kv_indptr=kv_indptr,\n        kv_indices=kv_indices,\n        kv_len_arr=kv_len_arr,\n        num_heads=num_attention_heads,\n        head_dim_ckv=head_dim_ckv,\n        head_dim_kpe=head_dim_kpe,\n        page_size=page_size,\n        causal=False,\n        sm_scale=sm_scale,\n        q_data_type=q_nope.dtype,\n        kv_data_type=ckv_cache.dtype,\n        use_profiler=False,\n    )\n\n    output, lse = mla.run(\n        q_nope=q_nope,\n        q_pe=q_pe,\n        ckv_cache=ckv_cache,\n        kpe_cache=kpe_cache,\n        return_lse=True,\n    )\n\n    return {\"output\": output, \"lse\": lse}\n"
+    }
+  ]
+}
