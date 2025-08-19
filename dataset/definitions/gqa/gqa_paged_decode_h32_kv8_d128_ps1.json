@@ -3,6 +3,7 @@
   "description": "Batch Grouped Query Attention (GQA) decode with paged KV cache. Captured from Llama-3.1-8B.",
   "type": "gqa",
   "tags": [
+    "stage:decode",
     "status:verified",
     "model:llama-3.1-8b"
   ],

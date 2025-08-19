@@ -3,6 +3,7 @@
   "description": "Multi-head Latent Attention (MLA) paged incremental prefill with Matrix Absorption. Used for incremental prefill in DeepSeek-V2/V3 models.",
   "type": "mla",
   "tags": [
+    "stage:prefill",
     "status:draft",
     "model:deepseek-v2",
     "model:deepseek-v3",

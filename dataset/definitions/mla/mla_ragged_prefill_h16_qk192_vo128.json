@@ -3,6 +3,7 @@
   "description": "Multi-head Latent Attention (MLA) ragged prefill without Matrix Absorption. Captured from DeepSeek-V2/V3 models during total prefill with tensor parallel size 8. Note that qo_indptr and kv_indptr should be identical in this case.",
   "type": "mla",
   "tags": [
+    "stage:prefill",
     "status:verified",
     "model:deepseek-v2",
     "model:deepseek-v3",

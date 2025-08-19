@@ -3,6 +3,7 @@
   "description": "Batch Grouped Query Attention (GQA) prefill with ragged KV cache. Causal mask is always enabled.",
   "type": "gqa",
   "tags": [
+    "stage:prefill",
     "status:verified",
     "model:llama-3.1-8b"
   ],
