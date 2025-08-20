@@ -2,23 +2,21 @@ import { promises as fs } from "fs"
 import path from "path"
 import { Definition, Solution, Trace, CanonicalWorkload, Model } from "./schemas"
 
-// Get the flashinfer-bench path from environment or use default
-const FLASHINFER_BENCH_PATH = process.env.FLASHINFER_BENCH_PATH || "../flashinfer-bench"
+// Get the flashinfer-trace path from environment or use default
+const FLASHINFER_TRACE_PATH = process.env.FLASHINFER_TRACE_PATH || "/tmp/flashinfer-trace"
 const MODELS_DATA_PATH = process.env.MODELS_DATA_PATH || "./data/models"
 const CANONICAL_WORKLOADS_PATH = process.env.CANONICAL_WORKLOADS_PATH || "./data/canonical-workloads"
 
 // Helper to resolve paths relative to the project root
 function getDataPath(subPath: string): string {
-  const basePath = process.cwd().includes('apps/web')
-    ? path.resolve(process.cwd(), '../', FLASHINFER_BENCH_PATH)
-    : path.resolve(process.cwd(), FLASHINFER_BENCH_PATH)
+  const basePath = path.resolve(FLASHINFER_TRACE_PATH)
   
   console.log(`Using base path: ${basePath}`)
   return path.join(basePath, subPath)
 }
 
 export async function getAllDefinitions(): Promise<Definition[]> {
-  const definitionsDir = getDataPath("dataset/definitions")
+  const definitionsDir = getDataPath("definitions")
   
   try {
     // Read all subdirectories (gemm, decode, prefill, etc.)
@@ -59,7 +57,7 @@ export async function getDefinition(name: string): Promise<Definition | null> {
 }
 
 export async function getSolutionsForDefinition(definitionName: string): Promise<Solution[]> {
-  const solutionsDir = getDataPath("dataset/solutions")
+  const solutionsDir = getDataPath("solutions")
   
   try {
     // Try to read the solutions directory
@@ -112,7 +110,7 @@ export async function getSolutionsForDefinition(definitionName: string): Promise
 }
 
 export async function getTracesForDefinition(definitionName: string): Promise<Trace[]> {
-  const tracesDir = getDataPath("dataset/traces")
+  const tracesDir = getDataPath("traces")
   
   try {
     // Check if traces directory exists
