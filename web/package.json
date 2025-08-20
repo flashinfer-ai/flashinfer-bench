@@ -1,5 +1,5 @@
 {
-  "name": "flashinfer-hub",
+  "name": "flashinfer-bench",
   "private": true,
   "scripts": {
     "dev": "turbo run dev",

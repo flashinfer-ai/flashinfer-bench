@@ -9,8 +9,8 @@ import { Toaster } from "@/components/ui/toaster"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "FlashInfer Hub",
-  description: "Community-driven ecosystem for high-performance kernels",
+  title: "FlashInfer-Bench",
+  description: "AI for AI Infrastructure for Accelerating AI Deployment",
 }
 
 export default function RootLayout({
