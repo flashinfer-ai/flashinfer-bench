@@ -28,11 +28,9 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
   const [selectedTab, setSelectedTab] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
 
-  // Extract all unique scopes from definitions tags
-  const scopes = Array.from(new Set(
-    definitions.flatMap(d => 
-      (d.tags || []).filter(tag => tag.startsWith('scope:')).map(tag => tag.replace('scope:', ''))
-    )
+  // Extract all unique types from definitions
+  const types = Array.from(new Set(
+    definitions.map(d => d.type).filter(Boolean)
   )).sort()
 
   // Filter definitions based on search
@@ -42,16 +40,14 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
     (d.tags || []).some(tag => tag.toLowerCase().includes(search.toLowerCase()))
   )
 
-  // Group definitions by scope
-  const scopeGroups: Record<string, DefinitionWithCounts[]> = {
+  // Group definitions by type
+  const typeGroups: Record<string, DefinitionWithCounts[]> = {
     all: filteredDefinitions
   }
   
-  // Create groups for each scope
-  scopes.forEach(scope => {
-    scopeGroups[scope] = filteredDefinitions.filter(d => 
-      (d.tags || []).includes(`scope:${scope}`)
-    )
+  // Create groups for each type
+  types.forEach(type => {
+    typeGroups[type] = filteredDefinitions.filter(d => d.type === type)
   })
 
   // Reset page when search or tab changes
@@ -79,23 +75,27 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
 
   const renderDefinitionCard = (def: DefinitionWithCounts) => {
-    // Extract type from tags (type:{type})
-    const typeTag = (def.tags || []).find(tag => tag.startsWith('type:'))
-    const type = typeTag ? typeTag.replace('type:', '') : (def.type || 'unknown')
+    const type = def.type || 'unknown'
     
     const typeColor = {
+      // Attention types - green shades
+      mha: "bg-green-500",
+      gqa: "bg-emerald-500",
+      mla: "bg-teal-500",
+      // GEMM types - blue shades
       gemm: "bg-blue-500",
-      decode: "bg-green-500",
-      prefill: "bg-purple-500",
-      attention: "bg-indigo-500"
+      grouped_gemm: "bg-sky-500",
+      batch_gemm: "bg-indigo-500",
+      // Misc types - purple/orange shades
+      sampling: "bg-purple-500",
+      norm: "bg-orange-500",
+      moe: "bg-pink-500"
     }[type] || "bg-gray-500"
 
     // Extract tags for display
     const tags = def.tags || []
     const modelTags = tags.filter(tag => tag.startsWith('model:'))
     const statusTags = tags.filter(tag => tag.startsWith('status:'))
-    const scopeTags = tags.filter(tag => tag.startsWith('scope:'))
-    const typeTags = tags.filter(tag => tag.startsWith('type:'))
 
     return (
       <Link key={def.name} href={`/kernels/${def.name}`}>
@@ -128,22 +128,23 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
               
                 {/* Display tags */}
                 <div className="flex flex-wrap gap-1">
-                  {typeTags.map(tag => (
-                    <span key={tag} className={`text-xs px-2 py-1 rounded-full ${
-                      type === "gemm" ? "bg-blue-100 text-blue-700" :
-                      type === "decode" ? "bg-green-100 text-green-700" :
-                      type === "prefill" ? "bg-purple-100 text-purple-700" :
-                      type === "attention" ? "bg-indigo-100 text-indigo-700" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>
-                      {tag.replace('type:', '')}
-                    </span>
-                  ))}
-                  {scopeTags.map(tag => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag.replace('scope:', '')}
-                    </Badge>
-                  ))}
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    // Attention types
+                    type === "mha" ? "bg-green-100 text-green-700" :
+                    type === "gqa" ? "bg-emerald-100 text-emerald-700" :
+                    type === "mla" ? "bg-teal-100 text-teal-700" :
+                    // GEMM types
+                    type === "gemm" ? "bg-blue-100 text-blue-700" :
+                    type === "grouped_gemm" ? "bg-sky-100 text-sky-700" :
+                    type === "batch_gemm" ? "bg-indigo-100 text-indigo-700" :
+                    // Misc types
+                    type === "sampling" ? "bg-purple-100 text-purple-700" :
+                    type === "norm" ? "bg-orange-100 text-orange-700" :
+                    type === "moe" ? "bg-pink-100 text-pink-700" :
+                    "bg-gray-100 text-gray-700"
+                  }`}>
+                    {type.replace('_', ' ').toUpperCase()}
+                  </span>
                   {modelTags.map(tag => (
                     <Badge key={tag} variant="secondary" className="text-xs">
                       {tag.replace('model:', '')}
@@ -293,11 +294,11 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
       </div>
       
       <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList>
-          <TabsTrigger value="all">All ({scopeGroups.all.length})</TabsTrigger>
-          {scopes.map(scope => (
-            <TabsTrigger key={scope} value={scope}>
-              {scope.charAt(0).toUpperCase() + scope.slice(1)} ({scopeGroups[scope]?.length || 0})
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="all">All ({typeGroups.all.length})</TabsTrigger>
+          {types.map(type => (
+            <TabsTrigger key={type} value={type}>
+              {type.replace(/_/g, ' ').toUpperCase()} ({typeGroups[type]?.length || 0})
             </TabsTrigger>
           ))}
         </TabsList>
@@ -308,29 +309,29 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
           ) : (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {scopeGroups.all
+                {typeGroups.all
                   .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
                   .map(renderDefinitionCard)}
               </div>
-              {scopeGroups.all.length === 0 && search && (
+              {typeGroups.all.length === 0 && search && (
                 <p className="text-center text-muted-foreground py-8">No kernels found matching &quot;{search}&quot;</p>
               )}
-              {renderPagination(scopeGroups.all.length)}
+              {renderPagination(typeGroups.all.length)}
             </>
           )}
         </TabsContent>
         
-        {scopes.map(scope => (
-          <TabsContent key={scope} value={scope} className="mt-6">
+        {types.map(type => (
+          <TabsContent key={type} value={type} className="mt-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {(scopeGroups[scope] || [])
+              {(typeGroups[type] || [])
                 .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
                 .map(renderDefinitionCard)}
             </div>
-            {(scopeGroups[scope] || []).length === 0 && (
-              <p className="text-center text-muted-foreground py-8">No {scope} kernels found</p>
+            {(typeGroups[type] || []).length === 0 && (
+              <p className="text-center text-muted-foreground py-8">No {type} kernels found</p>
             )}
-            {renderPagination((scopeGroups[scope] || []).length)}
+            {renderPagination((typeGroups[type] || []).length)}
           </TabsContent>
         ))}
       </Tabs>
