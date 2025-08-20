@@ -1,8 +1,15 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { getModel } from "@/lib/data-loader"
+import { getModel, getAllModels } from "@/lib/data-loader"
 import { ModelTabs } from "./model-tabs"
+
+export async function generateStaticParams() {
+  const models = await getAllModels()
+  return models.map((model) => ({
+    id: model.id,
+  }))
+}
 
 export default async function ModelDetailPage({ 
   params,

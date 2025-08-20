@@ -1,6 +1,13 @@
 import { notFound } from "next/navigation"
-import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getCanonicalWorkloads } from "@/lib/data-loader"
+import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getCanonicalWorkloads, getAllDefinitions } from "@/lib/data-loader"
 import { DefinitionPageContent } from "./definition-page-content"
+
+export async function generateStaticParams() {
+  const definitions = await getAllDefinitions()
+  return definitions.map((definition) => ({
+    name: definition.name,
+  }))
+}
 
 export default async function TraceDetailPage({ 
   params 
