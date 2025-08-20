@@ -6,8 +6,7 @@ import { ModelCard } from "@/components/model-card"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
 import { KernelsSection } from "./kernels-section"
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ kernel_search?: string }> }) {
-  const { kernel_search } = await searchParams
+export default async function HomePage() {
   const [allDefinitions, models] = await Promise.all([getAllDefinitions(), getAllModels()])
   
   // Load counts for each definition
@@ -69,7 +68,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       </section>
 
       {/* Kernels Section */}
-      <KernelsSection definitions={definitionsWithCounts} initialSearch={kernel_search || ""} />
+      <KernelsSection definitions={definitionsWithCounts} />
     </div>
   )
 }

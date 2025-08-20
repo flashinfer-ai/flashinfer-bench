@@ -10,8 +10,6 @@ const CANONICAL_WORKLOADS_PATH = process.env.CANONICAL_WORKLOADS_PATH || "./data
 // Helper to resolve paths relative to the project root
 function getDataPath(subPath: string): string {
   const basePath = path.resolve(FLASHINFER_TRACE_PATH)
-  
-  console.log(`Using base path: ${basePath}`)
   return path.join(basePath, subPath)
 }
 

@@ -18,14 +18,13 @@ interface DefinitionWithCounts extends Definition {
 
 interface KernelsSectionProps {
   definitions: DefinitionWithCounts[]
-  initialSearch?: string
 }
 
 const ITEMS_PER_PAGE = 9
 
-export function KernelsSection({ definitions, initialSearch = "" }: KernelsSectionProps) {
+export function KernelsSection({ definitions }: KernelsSectionProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [search, setSearch] = useState(initialSearch)
+  const [search, setSearch] = useState("")
   const [selectedTab, setSelectedTab] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -304,15 +303,21 @@ export function KernelsSection({ definitions, initialSearch = "" }: KernelsSecti
         </TabsList>
         
         <TabsContent value="all" className="mt-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {scopeGroups.all
-              .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
-              .map(renderDefinitionCard)}
-          </div>
-          {scopeGroups.all.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">No kernels found matching &quot;{search}&quot;</p>
+          {definitions.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No kernels found</p>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {scopeGroups.all
+                  .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+                  .map(renderDefinitionCard)}
+              </div>
+              {scopeGroups.all.length === 0 && search && (
+                <p className="text-center text-muted-foreground py-8">No kernels found matching &quot;{search}&quot;</p>
+              )}
+              {renderPagination(scopeGroups.all.length)}
+            </>
           )}
-          {renderPagination(scopeGroups.all.length)}
         </TabsContent>
         
         {scopes.map(scope => (
