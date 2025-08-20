@@ -2,6 +2,7 @@
 
 import React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Cpu, Copy, Check, Filter } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ProgressCircle } from "@/components/ui/progress-circle"
@@ -14,6 +15,7 @@ interface ModelCardProps {
 }
 
 export function ModelCard({ model, href }: ModelCardProps) {
+  const router = useRouter()
   const [copied, setCopied] = React.useState(false)
   
   // Count only layers (kernels)
@@ -31,7 +33,7 @@ export function ModelCard({ model, href }: ModelCardProps) {
   const handleFilter = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    window.location.href = `/?kernel_search=${encodeURIComponent(model.id)}`
+    router.push(`/?kernel_search=${encodeURIComponent(`model:${model.id}`)}`)
   }
   
   return (
