@@ -77,33 +77,14 @@ export function Editor({ data, onBack }: EditorProps) {
     }
   }
 
-  // Validate JSON and sync code if needed
+  // Validate JSON only
   useEffect(() => {
     try {
-      const parsed = JSON.parse(jsonText)
+      JSON.parse(jsonText)
       setJsonError(null)
-      
-      // Sync code from JSON if it was edited
-      if (isDefinition && parsed.reference !== referenceCode) {
-        setReferenceCode(parsed.reference || "")
-      } else if (isSolution && parsed.sources) {
-        const newSourceCode: Record<string, string> = {}
-        parsed.sources.forEach((file: any) => {
-          newSourceCode[file.path] = file.content || ""
-        })
-        
-        // Only update if sources actually changed
-        if (JSON.stringify(newSourceCode) !== JSON.stringify(sourceCode)) {
-          setSourceCode(newSourceCode)
-          if (!activeSourceFile && parsed.sources.length > 0) {
-            setActiveSourceFile(parsed.sources[0].path)
-          }
-        }
-      }
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : "Invalid JSON")
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonText])
 
   // Smart insertion functions
