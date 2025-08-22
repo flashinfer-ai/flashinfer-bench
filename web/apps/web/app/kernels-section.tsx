@@ -1,15 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
-import { ArrowRight, Copy, Check, ChevronDown, ChevronRight, ChevronLeft, Search, Info } from "lucide-react"
+import { Copy, Check, ChevronRight, ChevronLeft, Search, Info } from "lucide-react"
 import { Definition } from "@/lib/schemas"
 
 interface DefinitionWithCounts extends Definition {
@@ -24,18 +23,10 @@ interface KernelsSectionProps {
 const ITEMS_PER_PAGE = 9
 
 export function KernelsSection({ definitions }: KernelsSectionProps) {
-  const searchParams = useSearchParams()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [selectedTab, setSelectedTab] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
-  
-  useEffect(() => {
-    const kernelSearch = searchParams.get('kernel_search')
-    if (kernelSearch) {
-      setSearch(kernelSearch)
-    }
-  }, [searchParams])
 
   // Extract all unique types from definitions
   const types = Array.from(new Set(
