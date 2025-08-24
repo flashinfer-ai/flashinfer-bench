@@ -283,6 +283,10 @@ def _run_reference_benchmark(
                 
                 ref_output = ref_callable(*trial_data)
                 torch.cuda.synchronize()
+                if isinstance(ref_output, torch.Tensor):
+                    ref_output = ref_output.cpu()
+                elif isinstance(ref_output, dict):
+                    ref_output = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in ref_output.items()}
                 ref_outputs.append(ref_output)
         
         seed_manager.reset_seed()
@@ -352,6 +356,10 @@ def _run_solution_benchmark(
                 
                 impl_output = impl_callable(*trial_data)
                 torch.cuda.synchronize()
+                if isinstance(impl_output, torch.Tensor):
+                    impl_output = impl_output.cpu()
+                elif isinstance(impl_output, dict):
+                    impl_output = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in impl_output.items()}
                 impl_outputs.append(impl_output)
         
         seed_manager.reset_seed()
