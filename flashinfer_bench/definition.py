@@ -24,6 +24,7 @@ class Definition:
     inputs: Dict[str, Dict[str, Any]]
     outputs: Dict[str, Dict[str, Any]]
     reference: str
+    tags: Optional[List[str]] = field(default=None)
     description: Optional[str] = field(default=None)
     constraints: Optional[List[str]] = field(default=None)
 
@@ -80,6 +81,16 @@ class Definition:
             validate_reference_code(self.reference)
         except ValueError as e:
             raise ValueError(f"Invalid reference implementation: {e}")
+
+        # Validate tags if present
+        if self.tags:
+            if not isinstance(self.tags, list):
+                raise ValueError("Tags must be a list")
+            for tag in self.tags:
+                if not isinstance(tag, str):
+                    raise ValueError("All tags must be strings")
+                if not tag.strip():
+                    raise ValueError("Tags cannot be empty strings")
 
         # Validate constraints if present
         if self.constraints:
@@ -146,3 +157,24 @@ class Definition:
     def get_type(self) -> str:
         """Get the type of the definition."""
         return self.type
+    
+    def get_tags(self) -> List[str]:
+        """Get the tags of the definition."""
+        return self.tags or []
+    
+    def has_tag(self, tag: str) -> bool:
+        """Check if the definition has a specific tag."""
+        return tag in self.get_tags()
+    
+    def get_tags_by_namespace(self, namespace: str) -> List[str]:
+        """Get all tags that belong to a specific namespace (e.g., 'model', 'stage')."""
+        prefix = f"{namespace}:"
+        return [tag for tag in self.get_tags() if tag.startswith(prefix)]
+    
+    def get_tag_value(self, namespace: str) -> Optional[str]:
+        """Get the value of a namespaced tag (e.g., for 'model:llama-3.1-8b' returns 'llama-3.1-8b')."""
+        tags = self.get_tags_by_namespace(namespace)
+        if tags:
+            # Return the value part after the colon
+            return tags[0].split(":", 1)[1] if ":" in tags[0] else None
+        return None

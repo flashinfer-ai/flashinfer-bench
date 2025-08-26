@@ -66,12 +66,27 @@ class DeviceManager:
 
 class CorrectnessChecker:
     @staticmethod
+    def _tensor_allclose(a: torch.Tensor, b: torch.Tensor, rtol: float = 1e-4, atol: float = 1e-5) -> bool:
+        return torch.allclose(a, b, rtol=rtol, atol=atol)
+
+    @staticmethod
     def _tensor_max_abs(a: torch.Tensor, b: torch.Tensor) -> float:
         return torch.max(torch.abs(a - b)).item()
 
     @staticmethod
     def _tensor_max_rel(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-8) -> float:
         return torch.max(torch.abs(a - b) / (torch.abs(a) + eps)).item()
+
+    @classmethod
+    def allclose(cls, a, b, rtol: float = 1e-4, atol: float = 1e-5) -> bool:
+        if isinstance(a, dict) and isinstance(b, dict):
+            shared_keys = a.keys() & b.keys()
+            if len(shared_keys) != len(a) or len(shared_keys) != len(b):
+                return False
+            return all(cls.allclose(a[k], b[k], rtol=rtol, atol=atol) for k in shared_keys)
+        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+            return cls._tensor_allclose(a, b, rtol=rtol, atol=atol)
+        raise ValueError(f"Unsupported types: {type(a)} and {type(b)}")
 
     @classmethod
     def max_absolute_diff(cls, a, b):

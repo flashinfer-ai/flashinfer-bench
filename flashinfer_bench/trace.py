@@ -145,6 +145,10 @@ class Trace:
 
     def _validate_correctness(self, correctness: Dict[str, Any]):
         """Validate correctness metrics."""
+        # Allow none for error cases (COMPILE_ERROR, RUNTIME_ERROR, etc.)
+        if correctness is None:
+            return
+            
         if not isinstance(correctness, dict):
             raise ValueError("evaluation.correctness must be a dictionary")
 
@@ -159,6 +163,10 @@ class Trace:
 
     def _validate_performance(self, performance: Dict[str, Any]):
         """Validate performance metrics."""
+        # Allow none for error cases (COMPILE_ERROR, RUNTIME_ERROR, etc.)
+        if performance is None:
+            return
+            
         if not isinstance(performance, dict):
             raise ValueError("evaluation.performance must be a dictionary")
 
