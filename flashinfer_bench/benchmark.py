@@ -118,6 +118,7 @@ def _compile_cuda_code(sources: List[Dict[str, str]], entry_point: str) -> Calla
     
     module_name = f"_fi_bench_cuda_tmp_{uuid.uuid4().hex[:8]}"
     
+    # Hardcoded to compile cutlass, cublas, and cudnn for now, will allow user specification in the future.
     load_args = {
         'name': module_name,
         'cpp_sources': cpp_sources if cpp_sources else None,
@@ -192,7 +193,7 @@ def _generate_test_inputs(
                     )
 
                 tensor = tensors[tensor_key].to(device=device_manager.device, dtype=dtype)
-
+                
                 if list(tensor.shape) != shape:
                     raise ValueError(
                         f"Tensor '{input_name}' shape mismatch. Expected {shape}, got {list(tensor.shape)}"
@@ -415,8 +416,20 @@ def _run_single_benchmark(
             evaluation = {
                 "status": ref_result["status"], 
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                "correctness": None,
-                "performance": None,
+                "correctness": {
+                    "passed": False,
+                    "trials_passed": 0,
+                    "total_trials": 0,
+                    "rtol": config.rtol,
+                    "atol": config.atol,
+                    "max_absolute_error": 0.0,
+                    "max_relative_error": 0.0,
+                },
+                "performance": {
+                    "latency_ms": 0.0,
+                    "reference_latency_ms": 0.0,
+                    "speedup_factor": 0.0
+                },
                 "environment": ref_result.get("environment", {}),
                 "timestamp": datetime.now().isoformat(),
             }
@@ -436,8 +449,20 @@ def _run_single_benchmark(
             evaluation = {
                 "status": "COMPILE_ERROR",
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                "correctness": None,
-                "performance": None,
+                "correctness": {
+                    "passed": False,
+                    "trials_passed": 0,
+                    "total_trials": 0,
+                    "rtol": config.rtol,
+                    "atol": config.atol,
+                    "max_absolute_error": 0.0,
+                    "max_relative_error": 0.0,
+                },
+                "performance": {
+                    "latency_ms": 0.0,
+                    "reference_latency_ms": 0.0,
+                    "speedup_factor": 0.0
+                },
                 "environment": impl_result.get("environment", {}),
                 "timestamp": datetime.now().isoformat(),
             }
@@ -452,8 +477,20 @@ def _run_single_benchmark(
             evaluation = {
                 "status": "RUNTIME_ERROR",
                 "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                "correctness": None,
-                "performance": None,
+                "correctness": {
+                    "passed": False,
+                    "trials_passed": 0,
+                    "total_trials": 0,
+                    "rtol": config.rtol,
+                    "atol": config.atol,
+                    "max_absolute_error": 0.0,
+                    "max_relative_error": 0.0,
+                },
+                "performance": {
+                    "latency_ms": 0.0,
+                    "reference_latency_ms": 0.0,
+                    "speedup_factor": 0.0
+                },
                 "environment": impl_result.get("environment", {}),
                 "timestamp": datetime.now().isoformat(),
             }
@@ -470,9 +507,9 @@ def _run_single_benchmark(
         if len(ref_outputs) != len(impl_outputs):
             raise ValueError(f"Mismatch in number of outputs: ref={len(ref_outputs)}, impl={len(impl_outputs)}")
         
-        abs_diffs = []
-        rel_diffs = []
         pass_count = 0
+        max_abs_diff = 0.0
+        max_rel_diff = 0.0
         
         for i, (ref_output, impl_output) in enumerate(zip(ref_outputs, impl_outputs)):
             shape_correct, err_msg = CorrectnessChecker.validate_shapes(ref_output, impl_output)
@@ -482,7 +519,14 @@ def _run_single_benchmark(
                 evaluation = {
                     "status": "INCORRECT",
                     "log_file": f"{solution.name}_{hash(str(workload))}.log",
-                    "correctness": None,
+                    "correctness": {
+                        "passed": False,
+                        "shape_error": err_msg,
+                        "rtol": config.rtol,
+                        "atol": config.atol,
+                        "max_absolute_error": 0.0,
+                        "max_relative_error": 0.0,
+                    },
                     "performance": {
                         "latency_ms": impl_result["latency"],
                         "reference_latency_ms": ref_result["latency"],
@@ -498,16 +542,13 @@ def _run_single_benchmark(
                     evaluation=evaluation,
                 )
             
-            max_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
-            max_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
-            
-            if max_abs_diff <= config.max_diff_limit:
+            if CorrectnessChecker.allclose(ref_output, impl_output, rtol=config.rtol, atol=config.atol):
                 pass_count += 1
-            abs_diffs.append(max_abs_diff)
-            rel_diffs.append(max_rel_diff)
-        
-        max_abs_diff = max(abs_diffs, default=0.0)
-        max_rel_diff = max(rel_diffs, default=0.0)
+            else:
+                trial_abs_diff = CorrectnessChecker.max_absolute_diff(ref_output, impl_output)
+                trial_rel_diff = CorrectnessChecker.max_relative_diff(ref_output, impl_output)
+                max_abs_diff = max(max_abs_diff, trial_abs_diff)
+                max_rel_diff = max(max_rel_diff, trial_rel_diff)
         
         status = "PASSED" if pass_count == len(ref_outputs) else "INCORRECT"
         
@@ -515,13 +556,24 @@ def _run_single_benchmark(
         ref_latency = ref_result["latency"]
         speedup = ref_latency / impl_latency if impl_latency > 0 else 0.0
 
+        correctness_info = {
+            "passed": status == "PASSED",
+            "trials_passed": pass_count,
+            "total_trials": len(ref_outputs),
+            "rtol": config.rtol,
+            "atol": config.atol,
+            "max_absolute_error": max_abs_diff,
+            "max_relative_error": max_rel_diff,
+        }
+        
+        if status != "PASSED":
+            correctness_info["max_absolute_error"] = max_abs_diff
+            correctness_info["max_relative_error"] = max_rel_diff
+
         evaluation = {
             "status": status,
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
-            "correctness": {
-                "max_relative_error": max_rel_diff,
-                "max_absolute_error": max_abs_diff,
-            },
+            "correctness": correctness_info,
             "performance": {
                 "latency_ms": impl_latency,
                 "reference_latency_ms": ref_latency,
@@ -545,8 +597,20 @@ def _run_single_benchmark(
             "status": "RUNTIME_ERROR",
             # TODO: save actual log file
             "log_file": f"{solution.name}_{hash(str(workload))}.log",
-            "correctness": None,
-            "performance": None,
+            "correctness": {
+                "passed": False,
+                "trials_passed": 0,
+                "total_trials": 0,
+                "rtol": config.rtol,
+                "atol": config.atol,
+                "max_absolute_error": 0.0,
+                "max_relative_error": 0.0,
+            },
+            "performance": {
+                "latency_ms": 0.0,
+                "reference_latency_ms": 0.0,
+                "speedup_factor": 0.0
+            },
             "environment": environment,
             "timestamp": datetime.now().isoformat(),
         }
@@ -665,7 +729,6 @@ class Benchmark:
 
         self.logger.info(f"Evaluating {target_solution.name} on {len(workload_list)} workloads")
 
-        # Run each workload in a subprocess
         for i, workload in enumerate(workload_list):
             self.logger.info(f"Running workload {i+1}/{len(workload_list)}")
 
