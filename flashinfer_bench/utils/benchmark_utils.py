@@ -2,6 +2,7 @@
 
 import os
 import random
+import re
 from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
@@ -66,58 +67,56 @@ class DeviceManager:
 
 class CorrectnessChecker:
     @staticmethod
-    def _tensor_allclose(a: torch.Tensor, b: torch.Tensor, rtol: float = 1e-4, atol: float = 1e-5) -> bool:
-        return torch.allclose(a, b, rtol=rtol, atol=atol)
-
+    def check_correctness(ref_outputs, impl_outputs, rtol: float = 1e-4, atol: float = 1e-5) -> Tuple[bool, Dict[str, Any]]:
+        try:
+            torch.testing.assert_close(
+                impl_outputs, 
+                ref_outputs, 
+                rtol=rtol, 
+                atol=atol,
+                check_device=False,
+                check_dtype=True,
+                equal_nan=True
+            )
+            return True, {}
+            
+        except AssertionError as e:
+            error_msg = str(e)
+            error_details = CorrectnessChecker._parse_error_message(error_msg)
+            return False, error_details
+            
+        except Exception as e:
+            return False, {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "max_absolute_error": 0.0,
+                "max_relative_error": 0.0
+            }
+    
     @staticmethod
-    def _tensor_max_abs(a: torch.Tensor, b: torch.Tensor) -> float:
-        return torch.max(torch.abs(a - b)).item()
-
-    @staticmethod
-    def _tensor_max_rel(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-8) -> float:
-        return torch.max(torch.abs(a - b) / (torch.abs(a) + eps)).item()
-
-    @classmethod
-    def allclose(cls, a, b, rtol: float = 1e-4, atol: float = 1e-5) -> bool:
-        if isinstance(a, dict) and isinstance(b, dict):
-            shared_keys = a.keys() & b.keys()
-            if len(shared_keys) != len(a) or len(shared_keys) != len(b):
-                return False
-            return all(cls.allclose(a[k], b[k], rtol=rtol, atol=atol) for k in shared_keys)
-        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
-            return cls._tensor_allclose(a, b, rtol=rtol, atol=atol)
-        raise ValueError(f"Unsupported types: {type(a)} and {type(b)}")
-
-    @classmethod
-    def max_absolute_diff(cls, a, b):
-        if isinstance(a, dict) and isinstance(b, dict):
-            return max(cls.max_absolute_diff(a[k], b[k]) for k in a.keys() & b.keys())
-        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
-            return cls._tensor_max_abs(a, b)
-        raise ValueError(f"Unsupported diff type: {type(a)} and {type(b)}")
-
-    @classmethod
-    def max_relative_diff(cls, a, b):
-        if isinstance(a, dict) and isinstance(b, dict):
-            return max(cls.max_relative_diff(a[k], b[k]) for k in a.keys() & b.keys())
-        if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
-            return cls._tensor_max_rel(a, b)
-        raise ValueError(f"Unsupported diff type: {type(a)} and {type(b)}")
-
-    @staticmethod
-    def validate_shapes(a, b) -> Tuple[bool, str]:
-        if isinstance(a, dict) and isinstance(b, dict):
-            shared_keys = a.keys() & b.keys()
-            missing_1 = b.keys() - a.keys()
-            missing_2 = a.keys() - b.keys()
-            if missing_1 or missing_2:
-                return False, f"Dict keys mismatch, only in a={missing_1}, only in b={missing_2}"
-
-            for k in shared_keys:
-                if a[k].shape != b[k].shape:
-                    return False, f"Shape mismatch for key '{k}': {a[k].shape} vs {b[k].shape}"
-
-        elif isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
-            if a.shape != b.shape:
-                return False, f"Shape mismatch: {a.shape} vs {b.shape}"
-        return True, ""
+    def _parse_error_message(error_msg: str) -> Dict[str, Any]:
+        details = {
+            "error_message": error_msg,
+            "max_absolute_error": 0.0,
+            "max_relative_error": 0.0,
+            "error_type": "comparison_failed"
+        }
+        
+        abs_match = re.search(r"Greatest absolute difference: ([\d.e+-]+)", error_msg)
+        if abs_match:
+            details["max_absolute_error"] = float(abs_match.group(1))
+        
+        rel_match = re.search(r"Greatest relative difference: ([\d.e+-]+)", error_msg)
+        if rel_match:
+            details["max_relative_error"] = float(rel_match.group(1))
+        
+        if "shape" in error_msg.lower():
+            details["error_type"] = "shape_mismatch"
+        
+        elif "dtype" in error_msg.lower():
+            details["error_type"] = "dtype_mismatch"
+            
+        elif "device" in error_msg.lower():
+            details["error_type"] = "device_mismatch"
+        
+        return details
