@@ -143,6 +143,10 @@ class Trace:
         except Exception:
             raise ValueError("evaluation.timestamp must be a valid ISO 8601 timestamp")
 
+        if "error" in self.evaluation:
+            if not isinstance(self.evaluation["error"], str):
+                raise ValueError("evaluation.error must be a string")
+
     def _validate_correctness(self, correctness: Dict[str, Any]):
         """Validate correctness metrics."""
         # Allow none for error cases (COMPILE_ERROR, RUNTIME_ERROR, etc.)
