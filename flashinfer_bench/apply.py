@@ -18,10 +18,11 @@ class ApplyRuntime:
         return cls._instance
 
     def _init_once(self):
-        self.enabled: bool = bool(os.getenv("ENABLE_FLASHINFER_APPLY"))
-        self.root: str = os.getenv("FLASHINFER_BENCH_PATH")
-        if self.enabled and not self.root:
-            raise ValueError("FLASHINFER_BENCH_PATH is not set")
+        self.apply_enabled: bool = bool(os.getenv("ENABLE_FIB_APPLY"))
+        self.tracing_enabled: bool = bool(os.getenv("ENABLE_FIB_TRACING"))
+        self.root: str = os.getenv("FIB_DATASET_PATH")
+        if self.apply_enabled and not self.root:
+            raise ValueError("FIB_DATASET_PATH is not set")
 
         self._ts: Optional[TraceSet] = None
         # Apply best op cache: (def_name, tuple(sorted(axis→val))) → callable
@@ -37,19 +38,16 @@ class ApplyRuntime:
         max_abs_diff: float = 1e-5,
         max_rel_diff: float = 1e-5,
     ) -> Callable:
-        if not self.enabled:
-            return fallback
-
         self._ensure_traceset()
 
         if def_name not in self._ts.definitions:
-            print(f"Definition '{def_name}' not found in traceset")
+            print(f"[Apply] Definition '{def_name}' not found in traceset")
             return fallback
 
         try:
             axes = self._infer_axes(def_name, runtime_args)
         except Exception as e:
-            print(f"Error inferring axes for definition '{def_name}': {e}")
+            print(f"[Apply] Error inferring axes for definition '{def_name}': {e}")
             return fallback
 
         cache_key = (def_name, tuple(sorted(axes.items())))
@@ -58,49 +56,6 @@ class ApplyRuntime:
 
         best = self._ts.get_best_op(def_name, axes, max_abs_diff, max_rel_diff)
         chosen: Callable = best or fallback
-
-        # Handling extra args compared to definition, we safely skip None args
-        # TODO(shanli): we need a better way to handle this, either a). enforce signature to align with definition, or b). preprocess before function call to pass only the required args
-        best_sig = inspect.signature(chosen)
-
-        if any(
-            pname not in best_sig.parameters and runtime_args.get(pname) is not None
-            for pname in runtime_args
-        ):
-            # mandatory arg missing -> fallback
-            chosen = fallback
-        elif any(pname not in best_sig.parameters for pname in runtime_args):
-            # create shim to drop extra args
-            @functools.wraps(best)
-            def _arg_shim(*a, **kw):
-                # drop keyword args
-                kw = {k: v for k, v in kw.items() if k in best_sig.parameters}
-                # drop positional args
-                a = a[: len(best_sig.parameters)]
-                return best(*a, **kw)
-
-            chosen = _arg_shim
-
-        # Unpack output to tuples
-        definition = self._ts.get_definition(def_name)
-        out_keys = list(definition.outputs)
-        if len(out_keys) >= 1:
-
-            def _unpack_shim(fn):
-                @functools.wraps(fn)
-                def wrapper(*a, **kw):
-                    res = fn(*a, **kw)
-                    if isinstance(res, dict) and all(k in res for k in out_keys):
-                        return (
-                            res[out_keys[0]]
-                            if len(out_keys) == 1
-                            else tuple(res[k] for k in out_keys)
-                        )
-                    return res
-
-                return wrapper
-
-            chosen = _unpack_shim(chosen)
 
         self._cache[cache_key] = chosen
         return chosen
@@ -118,7 +73,12 @@ class ApplyRuntime:
                             axes.append((inp_name, dim_idx, axis))
                 self._var_axes_table[defn.name] = tuple(axes)
 
-    def _infer_axes(self, def_name: str, runtime_args: Dict[str, Any]) -> Dict[str, int]:
+    @property
+    def traceset(self) -> Optional[TraceSet]:
+        """Get the current traceset for validation purposes."""
+        return self._ts
+
+    def infer_axes(self, def_name: str, runtime_args: Dict[str, Any]) -> Dict[str, int]:
         """
         Use input shape in definition + runtime tensor shapes to determine
         concrete values for every variable axis.
@@ -164,7 +124,20 @@ def apply(def_name_fn: Callable[..., str]) -> Callable[[Callable], Callable]:
         def wrapped(*args: Any, **kwargs: Any):
             bound = sig.bind_partial(*args, **kwargs)
             def_name = def_name_fn(*args, **kwargs)
-            impl = _runtime.resolve(def_name, bound.arguments, fallback)
+
+            if _runtime.tracing_enabled:
+                from flashinfer_bench.tracer import get_tracer
+
+                tracer = get_tracer()
+                print(f"[Tracer] Tracing '{def_name}'")
+                tracer.collect(def_name, bound.arguments)
+
+            if _runtime.apply_enabled:
+                print(f"[Apply] Substituting '{def_name}'")
+                impl = _runtime.resolve(def_name, bound.arguments, fallback)
+            else:
+                impl = fallback
+
             return impl(*args, **kwargs)
 
         return wrapped
