@@ -24,13 +24,12 @@ class TracingRule:
     tensors_to_dump: Union[List[str], Callable[[Dict[str, Any]], List[str]]]
     """Which inputs to persist. List[str] for static selection, Callable for dynamic."""
 
-    dedup_policy: Callable[
-        [str, Dict[str, Any], Dict[str, torch.Tensor], Dict[str, torch.Tensor]], bool
-    ]
+    dedup_policy: Callable[["TraceEntry", "TraceEntry"], bool]
     """Final in-group deduplication decision. Returns True if duplicate."""
 
-    dedup_keys: Optional[Callable[[str, Dict[str, Any], Dict[str, torch.Tensor]], Hashable]] = None
-    """Optional blocking function for candidate partitioning during dedup."""
+    dedup_keys: Callable[[Dict[str, Any],
+                           Dict[str, torch.Tensor]], Hashable]
+    """Blocking function for candidate partitioning during dedup."""
 
 
 @dataclass
@@ -61,7 +60,7 @@ class TracingConfig:
         self.blob_dir = Path(self.blob_dir)
 
         # Create directories
-        (self.out_dir / "workloads").mkdir(parents=True, exist_ok=True)
+        (self.out_dir / "traces/workloads").mkdir(parents=True, exist_ok=True)
         self.blob_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -80,7 +79,7 @@ class TraceEntry:
 class Tracer:
     """Process-wide singleton tracer for workload collection."""
 
-    def __init__(self, config: TracingConfig, verbose: bool = False):
+    def __init__(self, config: TracingConfig):
         """
         Initialize the tracer.
 
@@ -89,7 +88,6 @@ class Tracer:
             verbose: Enable verbose logging
         """
         self.config = config
-        self.verbose = verbose
 
         # In-memory buffer
         self.entries: List[TraceEntry] = []
@@ -114,11 +112,10 @@ class Tracer:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        if verbose:
-            print(f"[Tracer] Initialized")
-            print(f"  Output dir: {config.out_dir}")
-            print(f"  Blob dir: {config.blob_dir}")
-            print(f"  Rules: {len(config.rules)} definitions configured")
+        print(f"[Tracer] Initialized")
+        print(f"  Output dir: {config.out_dir}")
+        print(f"  Blob dir: {config.blob_dir}")
+        print(f"  Rules: {len(config.rules)} definitions configured")
 
     def _validate_config(self):
         """Validate configuration at enable-time."""
@@ -297,16 +294,18 @@ class Tracer:
                     return
 
             if not self._in_cuda_graph:
-                picked[name] = val.detach().cpu().clone()
+                val = val.detach().cpu().clone()
+            picked[name] = val
 
-            entry = TraceEntry(
-                def_name=def_name,
-                axes=axes,
-                definition_input_names=definition_input_names,
-                picked=picked,
-                order=self.order_counter,
-            )
+        entry = TraceEntry(
+            def_name=def_name,
+            axes=axes,
+            definition_input_names=definition_input_names,
+            picked=picked,
+            order=self.order_counter,
+        )
 
+        with self._lock:
             if self._in_cuda_graph:
                 # Deferred snapshot
                 self._cuda_graph_entries.append(entry)
@@ -315,7 +314,7 @@ class Tracer:
 
             self.order_counter += 1
 
-            if self.verbose and len(self.entries) % 100 == 0:
+            if len(self.entries) % 100 == 0:
                 print(f"[Tracer] Buffered {len(self.entries)} entries")
 
     def cuda_graph_scope(self):
@@ -362,208 +361,124 @@ class Tracer:
         Returns:
             Statistics about the flush operation
         """
-        if self._flushed or not self.entries:
-            if self.verbose:
-                print("[Tracer] No entries to flush or already flushed")
-            return {
+        with self._lock:
+            if not self.entries:
+                return {
                 "total_entries": 0,
                 "groups": {},
                 "representatives": 0,
-                "dedup_errors": 0,
+                "dedup_errors": self.dedup_errors,
                 "files_written": 0,
-            }
+                }
+            batch = self.entries
+            self.entries = []
+        per_def: Dict[str, List[TraceEntry]] = {}
+        for e in batch:
+            per_def.setdefault(e.def_name, []).append(e)
 
-        # Group entries
-        groups = self._group_entries(self.entries)
+        files_written: Set[str] = set()
+        per_def_stats: Dict[str, Dict[str, int]] = {}
+        total_reps = 0
+        dedup_errors = 0
 
-        # Deduplicate and write
-        total_representatives = 0
-        files_written = set()
-        group_stats = {}
+        for def_name, entries in per_def.items():
+            rule = self.config.rules.get(def_name, self.config.default)
+            if rule is None:
+                continue
 
-        for (def_name, axes_key), group_entries in groups.items():
-            # Run deduplication
-            representatives = self._deduplicate_group(def_name, group_entries)
-            total_representatives += len(representatives)
+            # Bucketing by dedup_keys
+            buckets: Dict[Hashable, List[TraceEntry]] = {}
+            for e in entries:
+                try:
+                    key = rule.dedup_keys(e)
+                    if key is None:
+                        print(f"[Tracer] dedup_keys returned None for {def_name}:{e}, treating as unique")
+                        key = ("__none__", e.order)
+                except Exception as err:
+                    print(f"[Tracer] dedup_keys error for {def_name}:{e} because of {err}, treating as unique")
+                    key = ("__err__", e.order)
+                    dedup_errors += 1
+                buckets.setdefault(key, []).append(e)
 
-            # Write to disk
+            # Inside each bucket, run greedy representatives by pairwise policy
+            reps: List[TraceEntry] = []
+            for bucket_entries in buckets.values():
+                cand = sorted(bucket_entries, key=lambda x: x.order)
+                reps_in_bucket: List[TraceEntry] = []
+                for c in cand:
+                    dup = False
+                    for r in reps_in_bucket:
+                        try:
+                            if rule.dedup_policy(c, r):  # True → c duplicates r
+                                dup = True
+                                break
+                        except Exception as e:
+                            print(f"[Tracer] dedup_policy error for {def_name}:{c} vs {r} because of {e}, treating as unique")
+                            # conservative: keep c
+                            dup = False
+                            dedup_errors += 1
+                            break
+                    if not dup:
+                        reps_in_bucket.append(c)
+                reps.extend(reps_in_bucket)
+
             output_path = self.config.out_dir / "workloads" / f"{def_name}.workload.jsonl"
-            self._write_representatives(def_name, representatives, output_path)
+            self._write_representatives(def_name, reps, output_path)
             files_written.add(def_name)
 
-            # Track stats
-            if def_name not in group_stats:
-                group_stats[def_name] = {"total_entries": 0, "axis_groups": 0, "representatives": 0}
+            st = per_def_stats.setdefault(def_name, {"total_entries": 0, "buckets": 0, "representatives": 0})
+            st["total_entries"] += len(entries)
+            st["buckets"] += len(buckets)
+            st["representatives"] += len(reps)
+            total_reps += len(reps)
 
-            group_stats[def_name]["total_entries"] += len(group_entries)
-            group_stats[def_name]["axis_groups"] += 1
-            group_stats[def_name]["representatives"] += len(representatives)
-
-            if self.verbose:
-                print(
-                    f"[Tracer] {def_name}: {len(group_entries)} entries → {len(representatives)} representatives"
-                )
-
-        # Mark as flushed and clear entries
-        total_entries = len(self.entries)
-        self.entries.clear()
-        self._flushed = True
-
-        stats = {
-            "total_entries": total_entries,
-            "groups": group_stats,
-            "representatives": total_representatives,
-            "dedup_errors": self.dedup_errors,
+        return {
+            "total_entries": len(batch),
+            "groups": per_def_stats,
+            "representatives": total_reps,
+            "dedup_errors": dedup_errors,
             "files_written": len(files_written),
         }
 
-        if self.verbose:
-            print(f"[Tracer] Flush complete:")
-            print(f"  Total entries: {total_entries}")
-            print(f"  Definitions: {len(group_stats)}")
-            print(f"  Representatives: {total_representatives}")
-            print(f"  Dedup errors: {self.dedup_errors}")
-            print(f"  Files written: {len(files_written)}")
-
-        # Reset for next collection cycle
-        self._flushed = False
-        self.dedup_errors = 0  # Reset dedup error counter
-
-        return stats
-
-    def _group_entries(
-        self, entries: List[TraceEntry]
-    ) -> Dict[Tuple[str, Tuple], List[TraceEntry]]:
-        """Group entries by (def_name, axes)."""
-        groups = {}
-        for entry in entries:
-            axes_key = tuple(sorted(entry.axes.items()))
-            group_key = (entry.def_name, axes_key)
-
-            if group_key not in groups:
-                groups[group_key] = []
-            groups[group_key].append(entry)
-
-        return groups
-
-    def _deduplicate_group(self, def_name: str, entries: List[TraceEntry]) -> List[TraceEntry]:
-        """Deduplicate entries within a group using deterministic greedy algorithm."""
-        rule = self.config.rules.get(def_name, self.config.defaults)
-        if rule is None:
-            return entries
-
-        # Sort by order for deterministic processing
-        sorted_entries = sorted(entries, key=lambda e: e.order)
-
-        # Optional blocking with dedup_keys
-        if rule.dedup_keys:
-            blocks = {}
-            for entry in sorted_entries:
-                try:
-                    key = rule.dedup_keys(def_name, entry.axes, entry.picked)
-                    if key not in blocks:
-                        blocks[key] = []
-                    blocks[key].append(entry)
-                except Exception as e:
-                    if self.verbose:
-                        print(f"[Tracer] dedup_keys error for {def_name}: {e}")
-                    # Treat as unique block
-                    blocks[id(entry)] = [entry]
-
-            # Deduplicate within each block
-            representatives = []
-            for block_entries in blocks.values():
-                block_reps = self._deduplicate_block(def_name, block_entries, rule.dedup_policy)
-                representatives.extend(block_reps)
-
-            return sorted(representatives, key=lambda e: e.order)
-        else:
-            # No blocking, deduplicate entire group
-            return self._deduplicate_block(def_name, sorted_entries, rule.dedup_policy)
-
-    def _deduplicate_block(
-        self, def_name: str, entries: List[TraceEntry], dedup_policy: Callable
-    ) -> List[TraceEntry]:
-        """Deduplicate entries within a block using the dedup policy."""
-        representatives = []
-
-        for candidate in entries:
-            is_duplicate = False
-
-            for rep in representatives:
-                try:
-                    if dedup_policy(def_name, candidate.axes, candidate.picked, rep.picked):
-                        is_duplicate = True
-                        break
-                except Exception as e:
-                    # On exception, treat as non-duplicate
-                    self.dedup_errors += 1
-                    if self.verbose:
-                        print(f"[Tracer] dedup_policy error for {def_name}: {e}")
-
-            if not is_duplicate:
-                representatives.append(candidate)
-
-        return representatives
-
-    def _write_representatives(
-        self, def_name: str, representatives: List[TraceEntry], output_path: Path
-    ):
-        """Write representative entries to JSONL and save tensors."""
+    def _write_representatives(self, def_name: str, reps: List[TraceEntry], output_path: Path):
         output_path.parent.mkdir(parents=True, exist_ok=True)
-
         with open(output_path, "a") as f:
-            for entry in representatives:
+            for entry in reps:
                 workload_uuid = str(uuid.uuid4())
-
-                # Save tensors to safetensors
-                input_specs = {}
+                input_specs: Dict[str, Any] = {}
                 if entry.picked:
-                    safetensor_path = self._save_tensors(def_name, workload_uuid, entry.picked)
-
-                    for input_name in entry.picked:
-                        input_specs[input_name] = {
+                    safepath = self._save_tensors(def_name, workload_uuid, entry.picked)
+                    for name in entry.picked:
+                        input_specs[name] = {
                             "type": "safetensors",
-                            "path": str(safetensor_path.relative_to(self.config.blob_dir)),
-                            "tensor_key": input_name,
+                            "path": str(safepath.relative_to(self.config.blob_dir)),
+                            "tensor_key": name,
                         }
+                # backfill random for non-dumped inputs
+                for name in entry.definition_input_names:
+                    if name not in input_specs:
+                        input_specs[name] = {"type": "random"}
 
-                # Uniform random backfill for non-dumped inputs
-                for input_name in entry.definition_input_names:
-                    if input_name not in input_specs:
-                        input_specs[input_name] = {"type": "random"}
-
-                # Create workload entry
-                workload = {
+                record = {
                     "definition": def_name,
                     "solution": "",
-                    "workload": {"uuid": workload_uuid, "axes": entry.axes, "inputs": input_specs},
+                    "workload": {
+                        "uuid": workload_uuid,
+                        "axes": entry.axes,
+                        "inputs": input_specs,
+                    },
                     "evaluation": {},
                 }
-
-                # Write as single line
-                json.dump(workload, f)
+                json.dump(record, f)
                 f.write("\n")
 
-    def _save_tensors(
-        self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]
-    ) -> Path:
-        """Save tensors to safetensors file."""
-        # Create directory for definition
+    def _save_tensors(self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]) -> Path:
         def_dir = self.config.blob_dir / def_name
         def_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save to safetensors
-        safetensor_path = def_dir / f"{workload_uuid}.safetensors"
-
-        # Convert tensors to CPU if needed
-        cpu_tensors = {}
-        for name, tensor in tensors.items():
-            cpu_tensors[name] = tensor.cpu() if tensor.is_cuda else tensor
-
-        safetensors.torch.save_file(cpu_tensors, safetensor_path)
-
-        return safetensor_path
+        path = def_dir / f"{def_name}_{workload_uuid}.safetensors"
+        cpu_tensors = {k: (v.cpu() if v.is_cuda else v) for k, v in tensors.items()}
+        safetensors.torch.save_file(cpu_tensors, path)
+        return path
 
     def _cleanup(self):
         """Cleanup handler for atexit."""
