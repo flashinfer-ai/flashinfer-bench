@@ -24,11 +24,10 @@ class TracingRule:
     tensors_to_dump: Union[List[str], Callable[[Dict[str, Any]], List[str]]]
     """Which inputs to persist. List[str] for static selection, Callable for dynamic."""
 
-    dedup_policy: Callable[["TraceEntry", "TraceEntry"], bool]
+    dedup_policy: Callable[[List["TraceEntry"]], List["TraceEntry"]]
     """Final in-group deduplication decision. Returns True if duplicate."""
 
-    dedup_keys: Callable[[Dict[str, Any],
-                           Dict[str, torch.Tensor]], Hashable]
+    dedup_keys: Optional[Callable[["TraceEntry"], Hashable]] = None
     """Blocking function for candidate partitioning during dedup."""
 
 
@@ -44,9 +43,6 @@ class TracingConfig:
 
     rules: Dict[str, TracingRule]
     """Mapping from definition name to tracing rule."""
-
-    default: Optional[TracingRule] = None
-    """Fallback rule for definitions not in rules."""
 
     dataset_path: Optional[str] = None
     """Optional dataset path for tracing-only mode (when FIB_DATASET_PATH not set)."""
@@ -69,7 +65,7 @@ class TraceEntry:
     """In-memory buffer entry for collected workloads."""
 
     def_name: str
-    axes: Dict[str, Any]
+    axes: Dict[str, int]
     definition_input_names: Set[str]
     picked: Dict[str, torch.Tensor]
     order: int
@@ -100,9 +96,6 @@ class Tracer:
         # CUDA Graph support
         self._cuda_graph_entries: List[TraceEntry] = []
         self._in_cuda_graph = False
-
-        # Statistics
-        self.dedup_errors = 0
 
         # Validate configuration at enable-time
         self._validate_config()
@@ -183,7 +176,7 @@ class Tracer:
             def_name: Definition name
             runtime_args: Runtime arguments from sig.bind_partial
         """
-        rule = self.config.rules.get(def_name, self.config.default)
+        rule = self.config.rules.get(def_name)
         if rule is None:
             print(f"[Tracer] Tracing rule not configured for {def_name}, skipping")
             return
@@ -382,44 +375,37 @@ class Tracer:
         dedup_errors = 0
 
         for def_name, entries in per_def.items():
-            rule = self.config.rules.get(def_name, self.config.default)
+            rule = self.config.rules.get(def_name)
             if rule is None:
                 continue
 
             # Bucketing by dedup_keys
             buckets: Dict[Hashable, List[TraceEntry]] = {}
-            for e in entries:
-                try:
-                    key = rule.dedup_keys(e)
+            if rule.dedup_keys:
+                for e in entries:
+                    try:
+                        key = rule.dedup_keys(e)
+                    except Exception as err:
+                        print(f"[Tracer] dedup_keys error for {def_name}:{e} because of {err}")
+                        key = ("__err__")
+                        dedup_errors += 1
                     if key is None:
-                        print(f"[Tracer] dedup_keys returned None for {def_name}:{e}, treating as unique")
-                        key = ("__none__", e.order)
-                except Exception as err:
-                    print(f"[Tracer] dedup_keys error for {def_name}:{e} because of {err}, treating as unique")
-                    key = ("__err__", e.order)
-                    dedup_errors += 1
-                buckets.setdefault(key, []).append(e)
+                        print(f"[Tracer] dedup_keys returned None for {def_name}:{e}")
+                        key = ("__none__")
+                    buckets.setdefault(key, []).append(e)
+            else:
+                # All in the same bucket
+                buckets[("__all__",)].extend(entries)
 
-            # Inside each bucket, run greedy representatives by pairwise policy
+            # Inside each bucket, run dedup_policy to pick representatives
             reps: List[TraceEntry] = []
             for bucket_entries in buckets.values():
-                cand = sorted(bucket_entries, key=lambda x: x.order)
-                reps_in_bucket: List[TraceEntry] = []
-                for c in cand:
-                    dup = False
-                    for r in reps_in_bucket:
-                        try:
-                            if rule.dedup_policy(c, r):  # True → c duplicates r
-                                dup = True
-                                break
-                        except Exception as e:
-                            print(f"[Tracer] dedup_policy error for {def_name}:{c} vs {r} because of {e}, treating as unique")
-                            # conservative: keep c
-                            dup = False
-                            dedup_errors += 1
-                            break
-                    if not dup:
-                        reps_in_bucket.append(c)
+                try:
+                    reps_in_bucket = rule.dedup_policy(bucket_entries)
+                except Exception as err:
+                    print(f"[Tracer] dedup_policy error for {def_name} because of {err}, keeping all entries")
+                    reps_in_bucket = bucket_entries
+                    dedup_errors += 1
                 reps.extend(reps_in_bucket)
 
             output_path = self.config.out_dir / "workloads" / f"{def_name}.workload.jsonl"
