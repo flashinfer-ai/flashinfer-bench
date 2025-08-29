@@ -89,8 +89,10 @@ def policy_dedup_by_avg_seq_len(k: int = 1):
         kept: List["TraceEntry"] = []
         counts: Dict[int, int] = {}
         for e in entries:
-            ten = e.picked.get("kv_indptr") or e.picked.get("seq_indptr")
-            if not ten or ten.dim != 1 or ten.numel < 2:
+            ten = e.picked.get("kv_indptr")
+            if not ten:
+                ten = e.picked.get("seq_indptr")
+            if not ten or ten.dim() != 1 or ten.numel() < 2:
                 raise ValueError("indptr tensor doesn't exist or has invalid shape")
             total = ten[-1].item()
             bs = len(ten) - 1

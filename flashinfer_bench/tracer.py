@@ -1,5 +1,6 @@
 import atexit
 import json
+import logging
 import signal
 import threading
 import uuid
@@ -76,6 +77,8 @@ class Tracer:
         self._cuda_graph_entries: List[TraceEntry] = []
         self._in_cuda_graph = False
 
+        self._logger = logging.getLogger(__name__)
+
         # Validate configuration at enable-time
         self._validate()
 
@@ -105,12 +108,11 @@ class Tracer:
         # Validate rule keys exist in definitions
         for def_name in self.rules:
             if def_name not in _runtime.traceset.definitions:
-                print(f"[Tracer] Warning: Rule found for unknown definition: {def_name}")
+                self._logger.warning(f"Rule found for unknown definition: {def_name}")
 
-        print(f"[Tracer] Initialized")
-        print(f"  Output dir: {self.out_dir}")
-        print(f"  Blob dir: {self.blob_dir}")
-        print(f"  Rules: {len(self.rules)} definitions configured")
+        self._logger.info(f"Tracer Initialized")
+        self._logger.info(f"  Output dir: {self.out_dir} / Blob dir: {self.blob_dir}")
+        self._logger.info(f"  Rules: {len(self.rules)} definitions configured")
 
     def collect(
         self,
@@ -126,7 +128,7 @@ class Tracer:
         """
         rule = self.rules.get(def_name)
         if rule is None:
-            print(f"[Tracer] Tracing rule not configured for {def_name}, skipping")
+            self._logger.error(f"Tracing rule not configured for {def_name}, skipping")
             return
 
         from flashinfer_bench.apply import _runtime
@@ -134,13 +136,13 @@ class Tracer:
         _runtime._ensure_traceset()
 
         if def_name not in _runtime.traceset.definitions:
-            print(f"[Tracer] Definition {def_name} not found")
+            self._logger.error(f"Definition {def_name} not found")
             return
 
         try:
             axes = _runtime.infer_axes(def_name, runtime_args)
         except ValueError as e:
-            print(f"[Tracer] Error inferring axes for {def_name}: {e}")
+            self._logger.error(f"Error inferring axes for {def_name}: {e}")
             return
 
         # Validate runtime arguments
@@ -152,11 +154,11 @@ class Tracer:
         unexpected = sorted(runtime_input_names - definition_input_names)
 
         if missing:
-            print(f"[Tracer] Missing inputs for {def_name}: {missing}")
+            self._logger.error(f"Missing inputs for {def_name}: {missing}")
             return
 
         if unexpected:
-            print(f"[Tracer] Unexpected inputs for {def_name}: {unexpected}")
+            self._logger.error(f"Unexpected inputs for {def_name}: {unexpected}")
             return
 
         # At this point, runtime_args exactly matches definition.inputs
@@ -169,14 +171,14 @@ class Tracer:
         if not isinstance(names_to_dump, list) or not all(
             isinstance(name, str) for name in names_to_dump
         ):
-            print(f"[Tracer] tensors_to_dump must return List[str], got {names_to_dump}")
+            self._logger.error(f"tensors_to_dump must return List[str], got {names_to_dump}")
             return
 
         # Names specified to dump but not in definition
         unknown = [n for n in names_to_dump if n not in definition_input_names]
         if unknown:
-            print(
-                f"[Tracer] Invalid tensors_to_dump for {def_name}: unknown={unknown} (expected one of {sorted(definition_input_names)})"
+            self._logger.error(
+                f"Invalid tensors_to_dump for {def_name}: unknown={unknown} (expected one of {sorted(definition_input_names)})"
             )
             return
 
@@ -189,14 +191,14 @@ class Tracer:
                 shape_spec = _materialize_shape(definition, axes, spec.get("shape"))
                 dtype_spec = _torch_dtype_from_def(spec.get("dtype"))
             except ValueError as e:
-                print(f"[Tracer] Error materializing specs for {name}: {e}")
+                self._logger.error(f"Error materializing specs for {name}: {e}")
                 return
 
             val = runtime_args.get(name)
 
             if val is None:
-                print(
-                    f"[Tracer] Required input '{name}' is None (missing or optional) for {def_name}"
+                self._logger.error(
+                    f"Required input '{name}' is None (missing or optional) for {def_name}"
                 )
                 return
 
@@ -204,32 +206,38 @@ class Tracer:
             if shape_spec == ():
                 if isinstance(val, torch.Tensor):
                     if val.ndim != 0:
-                        print(
-                            f"[Tracer] Input '{name}' expects 0-D tensor, got shape {tuple(val.shape)}"
+                        self._logger.error(
+                            f"Input '{name}' expects 0-D tensor, got shape {tuple(val.shape)}"
                         )
                         return
                     if val.dtype != dtype_spec:
-                        print(
-                            f"[Tracer] Input '{name}' must have dtype {dtype_spec}, got {val.dtype}"
+                        self._logger.error(
+                            f"Input '{name}' must have dtype {dtype_spec}, got {val.dtype}"
                         )
                         return
                 elif isinstance(val, (int, float, bool)):
                     val = torch.tensor(val, dtype=dtype_spec)
                 else:
-                    print(
-                        f"[Tracer] Input '{name}' must be a 0-D tensor or Python scalar, got {type(val).__name__}"
+                    self._logger.error(
+                        f"Input '{name}' must be a 0-D tensor or Python scalar, got {type(val).__name__}"
                     )
                     return
             # Non-scalar input
             else:
                 if not isinstance(val, torch.Tensor):
-                    print(f"[Tracer] Input '{name}' must be a tensor (got {type(val).__name__})")
+                    self._logger.error(
+                        f"Input '{name}' must be a tensor (got {type(val).__name__})"
+                    )
                     return
                 if val.shape != shape_spec:
-                    print(f"[Tracer] Input '{name}' must have shape {shape_spec}, got {val.shape}")
+                    self._logger.error(
+                        f"Input '{name}' must have shape {shape_spec}, got {val.shape}"
+                    )
                     return
                 if val.dtype != dtype_spec:
-                    print(f"[Tracer] Input '{name}' must have dtype {dtype_spec}, got {val.dtype}")
+                    self._logger.error(
+                        f"Input '{name}' must have dtype {dtype_spec}, got {val.dtype}"
+                    )
                     return
 
             if not self._in_cuda_graph:
@@ -253,7 +261,7 @@ class Tracer:
             self.order_counter += 1
 
             if len(self.entries) % 100 == 0:
-                print(f"[Tracer] Buffered {len(self.entries)} entries")
+                self._logger.info(f"[Tracer] Buffered {len(self.entries)} entries")
 
     def cuda_graph_scope(self):
         """Context manager for CUDA Graph collection."""
@@ -335,11 +343,13 @@ class Tracer:
                     try:
                         key = rule.dedup_keys(e)
                     except Exception as err:
-                        print(f"[Tracer] dedup_keys error for {def_name}:{e} because of {err}")
+                        self._logger.warning(
+                            f"dedup_keys error for {def_name}:{e} because of {err}"
+                        )
                         key = "__err__"
                         dedup_errors += 1
                     if key is None:
-                        print(f"[Tracer] dedup_keys returned None for {def_name}:{e}")
+                        self._logger.warning(f"dedup_keys returned None for {def_name}:{e}")
                         key = "__none__"
                     buckets.setdefault(key, []).append(e)
             else:
@@ -352,8 +362,8 @@ class Tracer:
                 try:
                     reps_in_bucket = rule.dedup_policy(bucket_entries)
                 except Exception as err:
-                    print(
-                        f"[Tracer] dedup_policy error for {def_name} because of {err}, keeping all entries"
+                    self._logger.warning(
+                        f"dedup_policy error for {def_name} because of {err}, keeping all entries"
                     )
                     reps_in_bucket = bucket_entries
                     dedup_errors += 1
@@ -386,7 +396,11 @@ class Tracer:
                 workload_uuid = str(uuid.uuid4())
                 input_specs: Dict[str, Any] = {}
                 if entry.picked:
-                    safepath = self._save_tensors(def_name, workload_uuid, entry.picked)
+                    try:
+                        safepath = self._save_tensors(def_name, workload_uuid, entry.picked)
+                    except Exception as e:
+                        self._logger.error(f"Failed to save tensors for {def_name}: {e}")
+                        continue
                     for name in entry.picked:
                         input_specs[name] = {
                             "type": "safetensors",
@@ -426,14 +440,14 @@ class Tracer:
         try:
             self.flush()
         except Exception as e:
-            print(f"[Tracer] Flush failed: {e}")
+            self._logger.error(f"Flush failed: {e}")
 
     def _signal_handler(self, signum, frame):
         """Signal handler for SIGTERM/SIGINT."""
         try:
             self.flush()
         except Exception as e:
-            print(f"[Tracer] Flush failed: {e}")
+            self._logger.error(f"Flush failed: {e}")
 
 
 # ============================================================================
@@ -468,7 +482,7 @@ def enable_tracing(
             try:
                 _current_tracer.flush()
             except Exception as e:
-                print(f"[Tracer] Cannot flush existing tracer: {e}, overriding")
+                _current_tracer._logger.error(f"Cannot flush existing tracer: {e}, overriding")
                 _current_tracer = None
 
         # If no rules are specified, we do full tracing.
@@ -499,7 +513,7 @@ def end_tracing():
             try:
                 _current_tracer.flush()
             except Exception as e:
-                print(f"[Tracer] Flush failed: {e}")
+                _current_tracer._logger.error(f"Flush failed: {e}")
             _current_tracer = None
 
 
@@ -537,10 +551,10 @@ def _axis_value(definition, axes: Dict[str, Any], axis_name: str) -> int:
     if axis_spec is None:
         raise ValueError(f"Unknown axis '{axis_name}' in shape")
     if axis_spec.get("type") == "const":
-        val = int(axis_spec["value"])
+        val = axis_spec.get("value")
         if val is None:
             raise ValueError(f"Const axis '{axis_name}' missing value/size")
-        return val
+        return int(val)
     if axis_spec.get("type") == "var":
         raise ValueError(f"Axis '{axis_name}' is var but missing in axes")
     raise ValueError(f"Unsupported axis type for '{axis_name}': {axis_spec.get('type')}")
