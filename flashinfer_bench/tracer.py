@@ -46,7 +46,12 @@ class TraceEntry:
 class Tracer:
     """Process-wide singleton tracer for workload collection."""
 
-    def __init__(self, rules: Dict[str, TracingRule], out_dir: Optional[Path] = None, blob_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        rules: Dict[str, TracingRule],
+        out_dir: Optional[Path] = None,
+        blob_dir: Optional[Path] = None,
+    ):
         """
         Initialize the tracer.
 
@@ -79,7 +84,6 @@ class Tracer:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-
     def _validate(self):
         """Validate tracer configuration at enable-time."""
         from flashinfer_bench.apply import _runtime
@@ -88,14 +92,15 @@ class Tracer:
         _runtime._ensure_traceset()
 
         if not _runtime.traceset:
-                raise ValueError(
-                    "Dataset not available. Set FIB_DATASET_PATH environment variable."
-                )
+            raise ValueError("Dataset not available. Set FIB_DATASET_PATH environment variable.")
 
         if self.out_dir is None:
-            self.out_dir = Path(_runtime.root / "traces" / "workloads")
+            self.out_dir = Path(_runtime.root) / "traces" / "workloads"
         if self.blob_dir is None:
-            self.blob_dir = Path(_runtime.root / "blob" / "workloads")
+            self.blob_dir = Path(_runtime.root) / "blob" / "workloads"
+
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.blob_dir.mkdir(parents=True, exist_ok=True)
 
         # Validate rule keys exist in definitions
         for def_name in self.rules:
@@ -301,11 +306,11 @@ class Tracer:
         with self._lock:
             if not self.entries:
                 return {
-                "total_entries": 0,
-                "groups": {},
-                "representatives": 0,
-                "dedup_errors": 0,
-                "files_written": 0,
+                    "total_entries": 0,
+                    "groups": {},
+                    "representatives": 0,
+                    "dedup_errors": 0,
+                    "files_written": 0,
                 }
             batch = self.entries
             self.entries = []
@@ -331,11 +336,11 @@ class Tracer:
                         key = rule.dedup_keys(e)
                     except Exception as err:
                         print(f"[Tracer] dedup_keys error for {def_name}:{e} because of {err}")
-                        key = ("__err__")
+                        key = "__err__"
                         dedup_errors += 1
                     if key is None:
                         print(f"[Tracer] dedup_keys returned None for {def_name}:{e}")
-                        key = ("__none__")
+                        key = "__none__"
                     buckets.setdefault(key, []).append(e)
             else:
                 # All in the same bucket
@@ -347,7 +352,9 @@ class Tracer:
                 try:
                     reps_in_bucket = rule.dedup_policy(bucket_entries)
                 except Exception as err:
-                    print(f"[Tracer] dedup_policy error for {def_name} because of {err}, keeping all entries")
+                    print(
+                        f"[Tracer] dedup_policy error for {def_name} because of {err}, keeping all entries"
+                    )
                     reps_in_bucket = bucket_entries
                     dedup_errors += 1
                 reps.extend(reps_in_bucket)
@@ -356,7 +363,9 @@ class Tracer:
             self._write_representatives(def_name, reps, output_path)
             files_written.add(def_name)
 
-            st = per_def_stats.setdefault(def_name, {"total_entries": 0, "buckets": 0, "representatives": 0})
+            st = per_def_stats.setdefault(
+                def_name, {"total_entries": 0, "buckets": 0, "representatives": 0}
+            )
             st["total_entries"] += len(entries)
             st["buckets"] += len(buckets)
             st["representatives"] += len(reps)
@@ -402,7 +411,9 @@ class Tracer:
                 json.dump(record, f)
                 f.write("\n")
 
-    def _save_tensors(self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]) -> Path:
+    def _save_tensors(
+        self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]
+    ) -> Path:
         def_dir = self.blob_dir / def_name
         def_dir.mkdir(parents=True, exist_ok=True)
         path = def_dir / f"{def_name}_{workload_uuid}.safetensors"
@@ -430,7 +441,11 @@ class Tracer:
 # ============================================================================
 
 
-def enable_tracing(rules: Optional[Dict[str, TracingRule]] = None, out_dir: Optional[Path] = None, blob_dir: Optional[Path] = None) -> Tracer:
+def enable_tracing(
+    rules: Optional[Dict[str, TracingRule]] = None,
+    out_dir: Optional[Path] = None,
+    blob_dir: Optional[Path] = None,
+) -> Tracer:
     """
     Enable tracing with the given tracing rule set.
 
@@ -459,6 +474,7 @@ def enable_tracing(rules: Optional[Dict[str, TracingRule]] = None, out_dir: Opti
         # If no rules are specified, we do full tracing.
         if rules is None:
             from tracing_rules import fib_full_tracing
+
             rules = fib_full_tracing
 
         _current_tracer = Tracer(rules, out_dir=out_dir, blob_dir=blob_dir)

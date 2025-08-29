@@ -1,37 +1,33 @@
-from pathlib import Path
-from typing import Any, Dict, Hashable, List, Optional
+import random
+from typing import Any, Dict, List, Optional
 
 import torch
-import random
 
 from flashinfer_bench.tracer import TraceEntry, TracingRule
+
 
 # ============================================================================
 # Dedup Policy Presets
 # ============================================================================
-def policy_keep_all():
-    """
-    Keep all entries as unique.
-    """
-    def _policy(entries: List["TraceEntry"]) -> List["TraceEntry"]:
-        return entries
-    return _policy
-
 def policy_keep_first_k(k: int):
     """
     Keep first k entries as unique.
     """
+
     def policy(entries: List["TraceEntry"]) -> List["TraceEntry"]:
         if k <= 0:
             raise ValueError("k must be > 0")
         entries_sorted = sorted(entries, key=lambda e: e.order)
         return entries_sorted[: min(k, len(entries_sorted))]
+
     return policy
 
-def policy_keep_random_k(k: int , seed: Optional[int] = None):
+
+def policy_keep_random_k(k: int, seed: Optional[int] = None):
     """
     Keep random k entries as unique.
     """
+
     def _policy(entries: List["TraceEntry"]) -> List["TraceEntry"]:
         if k <= 0:
             raise ValueError("k must be > 0")
@@ -40,7 +36,9 @@ def policy_keep_random_k(k: int , seed: Optional[int] = None):
         if seed is not None:
             random.seed(seed)
         return random.sample(entries, k)
+
     return _policy
+
 
 def policy_dedup_by_axes(k: int = 1):
     """
@@ -48,6 +46,7 @@ def policy_dedup_by_axes(k: int = 1):
 
     k: The number of entries with the same axes values to keep.
     """
+
     def _policy(entries: List["TraceEntry"]) -> List["TraceEntry"]:
         if k <= 0:
             raise ValueError("k must be > 0")
@@ -63,7 +62,9 @@ def policy_dedup_by_axes(k: int = 1):
                 kept.append(e)
                 counts[key] = c + 1
         return kept
+
     return _policy
+
 
 def policy_dedup_by_avg_seq_len(k: int = 1):
     """Deduplicate by rounded average sequence length inferred from `kv_indptr`.
@@ -81,6 +82,7 @@ def policy_dedup_by_avg_seq_len(k: int = 1):
     Returns:
     A policy(entries) -> subset(entries), stable by entry.order.
     """
+
     def _policy(entries: List["TraceEntry"]) -> List["TraceEntry"]:
         if k <= 0:
             raise ValueError("k must be > 0")
@@ -98,95 +100,95 @@ def policy_dedup_by_avg_seq_len(k: int = 1):
                 kept.append(e)
                 counts[avg] = c + 1
         return kept
+
     return _policy
+
+
+# Keep all entries as unique.
+KEEP_ALL = lambda entries: entries
+# Keep one random entry as unique.
+KEEP_RANDOM_ONE = policy_keep_random_k(1)
+# Deduplicate by axes values and keep one entry for exact same axes.
+DEDUP_BY_AXES = policy_dedup_by_axes()
+# Deduplicate by average sequence length and keep one entry for exact same length.
+DEDUP_BY_AVG_SEQ_LEN = policy_dedup_by_avg_seq_len()
 
 # ============================================================================
 # Dedup Keys Presets
 # ============================================================================
-def key_axes():
-    """Key function for grouping entries by their axes."""
-    def _key(entry: "TraceEntry") -> Hashable:
-        return tuple(sorted(entry.axes.items()))
-    return _key
+
+# Generate key by entry axis values.
+KEY_AXES = lambda entry: tuple(sorted(entry.axes.items()))
+
 
 # ============================================================================
 # tensors_to_dump Presets
 # ============================================================================
-def dump_all():
-    """Dump all tensors."""
-    def _dump(inputs: Dict[str, Any]) -> List[str]:
-        return [name for name, val in inputs.items() if isinstance(val, torch.Tensor)]
-    return _dump
-
-def dump_none():
-    """Dump no tensors."""
-    def _dump(_: Dict[str, Any]) -> List[str]:
-        return []
-    return _dump
-
 def dump_int32():
     """Select only int32 tensors for dumping. These inputs are usually indptrs."""
+
     def _dump(inputs: Dict[str, Any]) -> List[str]:
         picks: List[str] = []
         for name, val in inputs.items():
             if isinstance(val, torch.Tensor) and val.dtype == torch.int32:
                 picks.append(name)
         return picks
+
     return _dump
+
+
+# Dump all tensors.
+DUMP_ALL = lambda inputs: [name for name, val in inputs.items() if isinstance(val, torch.Tensor)]
+# Dump no tensors.
+DUMP_NONE = lambda _: []
+DUMP_INT32 = dump_int32()
 
 # ============================================================================
 # TracingRule Presets
 # ============================================================================
-gemm_rule = TracingRule(
-    tensors_to_dump=dump_none(),
-    dedup_policy=policy_dedup_by_axes(),
-    dedup_keys=key_axes()
-)
+gemm_rule = TracingRule(tensors_to_dump=DUMP_NONE, dedup_policy=DEDUP_BY_AXES, dedup_keys=KEY_AXES)
 
 mla_paged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
 mla_ragged_prefill_rule = TracingRule(
     tensors_to_dump=["seq_indptr", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
 mla_paged_decode_rule = TracingRule(
     tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
 gqa_paged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
 gqa_ragged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
 gqa_paged_decode_rule = TracingRule(
     tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len(),
-    dedup_keys=key_axes()
+    dedup_policy=DEDUP_BY_AVG_SEQ_LEN,
+    dedup_keys=KEY_AXES,
 )
 
-all_dump_rule = TracingRule(
-    tensors_to_dump=dump_all(),
-    dedup_policy=policy_keep_all()
-)
+all_dump_rule = TracingRule(tensors_to_dump=DUMP_ALL, dedup_policy=KEEP_ALL)
 
 axes_only_rule = TracingRule(
-    tensors_to_dump=dump_none(),
-    dedup_policy=policy_dedup_by_axes()
+    tensors_to_dump=DUMP_NONE,
+    dedup_policy=DEDUP_BY_AXES,
 )
 
 
@@ -194,32 +196,29 @@ axes_only_rule = TracingRule(
 # Rule set Presets
 # ============================================================================
 fib_full_tracing = {
-        "gemm_n_28672_k_4096": gemm_rule,
-        "gemm_n_4096_k_14336": gemm_rule,
-        "gemm_n_4096_k_4096": gemm_rule,
-        "gemm_n_6144_k_4096": gemm_rule,
-        
-        "gqa_paged_decode_h32_kv4_d128_ps1": gqa_paged_decode_rule,
-        "gqa_paged_decode_h32_kv8_d128_ps1": gqa_paged_decode_rule,
-        "gqa_paged_prefill_causal_h32_kv4_d128_ps1": gqa_paged_prefill_rule,
-        "gqa_paged_prefill_causal_h32_kv8_d128_ps1": gqa_paged_prefill_rule,
-        "gqa_ragged_prefill_causal_h32_kv4_d128": gqa_ragged_prefill_rule,
-        "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_rule,
-
-        "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
-        "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
-        "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule
+    "gemm_n_28672_k_4096": gemm_rule,
+    "gemm_n_4096_k_14336": gemm_rule,
+    "gemm_n_4096_k_4096": gemm_rule,
+    "gemm_n_6144_k_4096": gemm_rule,
+    "gqa_paged_decode_h32_kv4_d128_ps1": gqa_paged_decode_rule,
+    "gqa_paged_decode_h32_kv8_d128_ps1": gqa_paged_decode_rule,
+    "gqa_paged_prefill_causal_h32_kv4_d128_ps1": gqa_paged_prefill_rule,
+    "gqa_paged_prefill_causal_h32_kv8_d128_ps1": gqa_paged_prefill_rule,
+    "gqa_ragged_prefill_causal_h32_kv4_d128": gqa_ragged_prefill_rule,
+    "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_rule,
+    "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
+    "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
+    "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule,
 }
 
 fib_attn_tracing = {
-        "gqa_paged_decode_h32_kv4_d128_ps1": gqa_paged_decode_rule,
-        "gqa_paged_decode_h32_kv8_d128_ps1": gqa_paged_decode_rule,
-        "gqa_paged_prefill_causal_h32_kv4_d128_ps1": gqa_paged_prefill_rule,
-        "gqa_paged_prefill_causal_h32_kv8_d128_ps1": gqa_paged_prefill_rule,
-        "gqa_ragged_prefill_causal_h32_kv4_d128": gqa_ragged_prefill_rule,
-        "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_rule,
-
-        "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
-        "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
-        "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule
+    "gqa_paged_decode_h32_kv4_d128_ps1": gqa_paged_decode_rule,
+    "gqa_paged_decode_h32_kv8_d128_ps1": gqa_paged_decode_rule,
+    "gqa_paged_prefill_causal_h32_kv4_d128_ps1": gqa_paged_prefill_rule,
+    "gqa_paged_prefill_causal_h32_kv8_d128_ps1": gqa_paged_prefill_rule,
+    "gqa_ragged_prefill_causal_h32_kv4_d128": gqa_ragged_prefill_rule,
+    "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_rule,
+    "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
+    "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
+    "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule,
 }
