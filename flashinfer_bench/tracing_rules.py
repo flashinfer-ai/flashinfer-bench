@@ -1,10 +1,10 @@
 from pathlib import Path
-from random import random
-from typing import Any, Dict, Hashable, List
+from typing import Any, Dict, Hashable, List, Optional
 
 import torch
+import random
 
-from flashinfer_bench.tracer import TraceEntry, TracingConfig, TracingRule
+from flashinfer_bench.tracer import TraceEntry, TracingRule
 
 # ============================================================================
 # Dedup Policy Presets
@@ -28,7 +28,7 @@ def policy_keep_first_k(k: int):
         return entries_sorted[: min(k, len(entries_sorted))]
     return policy
 
-def policy_keep_random_k(k: int):
+def policy_keep_random_k(k: int , seed: Optional[int] = None):
     """
     Keep random k entries as unique.
     """
@@ -37,6 +37,8 @@ def policy_keep_random_k(k: int):
             raise ValueError("k must be > 0")
         if k > len(entries):
             return entries
+        if seed is not None:
+            random.seed(seed)
         return random.sample(entries, k)
     return _policy
 
@@ -68,7 +70,7 @@ def policy_dedup_by_avg_seq_len(k: int = 1):
 
     - For each entry, if `picked['kv_indptr']` or `picked['seq_indptr']` exists and is valid (a 1-D tensor with
     length >= 2), we compute:
-    avg_seq_len = int(round(indptr[-1].item() / len(indptr) - 1))
+    avg_seq_len = int(round(indptr[-1].item() / (len(indptr) - 1)))
     Entries with the same `avg_seq_len` are considered duplicates, and at most
     `k` entries are kept for each `avg_seq_len` value.
 
@@ -89,7 +91,7 @@ def policy_dedup_by_avg_seq_len(k: int = 1):
             if not ten or ten.dim != 1 or ten.numel < 2:
                 raise ValueError("indptr tensor doesn't exist or has invalid shape")
             total = ten[-1].item()
-            bs = int(ten.numel - 1)
+            bs = len(ten) - 1
             avg = int(round(total / bs))
             c = counts.get(avg, 0)
             if c < k:
@@ -136,65 +138,62 @@ def dump_int32():
 # TracingRule Presets
 # ============================================================================
 gemm_rule = TracingRule(
-    tensors_to_dump=dump_none,
-    dedup_policy=policy_dedup_by_axes,
-    dedup_keys=key_axes
+    tensors_to_dump=dump_none(),
+    dedup_policy=policy_dedup_by_axes(),
+    dedup_keys=key_axes()
 )
 
 mla_paged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 mla_ragged_prefill_rule = TracingRule(
     tensors_to_dump=["seq_indptr", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 mla_paged_decode_rule = TracingRule(
     tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 gqa_paged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 gqa_ragged_prefill_rule = TracingRule(
     tensors_to_dump=["qo_indptr", "kv_indptr", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 gqa_paged_decode_rule = TracingRule(
     tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
-    dedup_policy=policy_dedup_by_avg_seq_len,
-    dedup_keys=key_axes
+    dedup_policy=policy_dedup_by_avg_seq_len(),
+    dedup_keys=key_axes()
 )
 
 all_dump_rule = TracingRule(
-    tensors_to_dump=dump_all,
-    dedup_policy=policy_keep_all
+    tensors_to_dump=dump_all(),
+    dedup_policy=policy_keep_all()
 )
 
 axes_only_rule = TracingRule(
-    tensors_to_dump=dump_none,
-    dedup_policy=policy_dedup_by_axes,
+    tensors_to_dump=dump_none(),
+    dedup_policy=policy_dedup_by_axes()
 )
 
 
 # ============================================================================
-# Config Presets
+# Rule set Presets
 # ============================================================================
-fib_full_tracing = TracingConfig(
-    out_dir=Path("/tmp/traces"),
-    blob_dir=Path("/tmp/blob"),
-    rules={
+fib_full_tracing = {
         "gemm_n_28672_k_4096": gemm_rule,
         "gemm_n_4096_k_14336": gemm_rule,
         "gemm_n_4096_k_4096": gemm_rule,
@@ -210,13 +209,9 @@ fib_full_tracing = TracingConfig(
         "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
         "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
         "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule
-    }
-)
+}
 
-fib_attn_tracing = TracingConfig(
-    out_dir=Path("/tmp/traces"),
-    blob_dir=Path("/tmp/blob"),
-    rules={
+fib_attn_tracing = {
         "gqa_paged_decode_h32_kv4_d128_ps1": gqa_paged_decode_rule,
         "gqa_paged_decode_h32_kv8_d128_ps1": gqa_paged_decode_rule,
         "gqa_paged_prefill_causal_h32_kv4_d128_ps1": gqa_paged_prefill_rule,
@@ -227,5 +222,4 @@ fib_attn_tracing = TracingConfig(
         "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_rule,
         "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_rule,
         "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_rule
-    }
-)
+}

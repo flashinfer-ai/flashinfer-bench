@@ -32,35 +32,6 @@ class TracingRule:
 
 
 @dataclass
-class TracingConfig:
-    """Global configuration for tracing."""
-
-    out_dir: Path
-    """Output directory for workload JSONL files."""
-
-    blob_dir: Path
-    """Root directory for safetensors storage."""
-
-    rules: Dict[str, TracingRule]
-    """Mapping from definition name to tracing rule."""
-
-    dataset_path: Optional[str] = None
-    """Optional dataset path for tracing-only mode (when FIB_DATASET_PATH not set)."""
-
-    strict: bool = True
-    """Whether to strictly validate rules at enable-time."""
-
-    def __post_init__(self):
-        """Ensure paths are Path objects and create directories."""
-        self.out_dir = Path(self.out_dir)
-        self.blob_dir = Path(self.blob_dir)
-
-        # Create directories
-        (self.out_dir / "traces/workloads").mkdir(parents=True, exist_ok=True)
-        self.blob_dir.mkdir(parents=True, exist_ok=True)
-
-
-@dataclass
 class TraceEntry:
     """In-memory buffer entry for collected workloads."""
 
@@ -75,15 +46,18 @@ class TraceEntry:
 class Tracer:
     """Process-wide singleton tracer for workload collection."""
 
-    def __init__(self, config: TracingConfig):
+    def __init__(self, rules: Dict[str, TracingRule], out_dir: Optional[Path] = None, blob_dir: Optional[Path] = None):
         """
         Initialize the tracer.
 
         Args:
-            config: Tracing configuration
-            verbose: Enable verbose logging
+            rules: A set of tracing rules
+            out_dir: Output directory for traces. Default is FIB_DATASET_PATH/traces/workloads
+            blob_dir: Blob directory for safetensors. Default is FIB_DATASET_PATH/blob/workloads
         """
-        self.config = config
+        self.rules = rules
+        self.out_dir = out_dir
+        self.blob_dir = blob_dir
 
         # In-memory buffer
         self.entries: List[TraceEntry] = []
@@ -98,71 +72,40 @@ class Tracer:
         self._in_cuda_graph = False
 
         # Validate configuration at enable-time
-        self._validate_config()
+        self._validate()
 
         # Register cleanup handlers
         atexit.register(self._cleanup)
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        print(f"[Tracer] Initialized")
-        print(f"  Output dir: {config.out_dir}")
-        print(f"  Blob dir: {config.blob_dir}")
-        print(f"  Rules: {len(config.rules)} definitions configured")
 
-    def _validate_config(self):
-        """Validate configuration at enable-time."""
+    def _validate(self):
+        """Validate tracer configuration at enable-time."""
         from flashinfer_bench.apply import _runtime
 
-        # If dataset_path is provided in config, temporarily set it
-        original_root = _runtime.root
-        if self.config.dataset_path:
-            _runtime.root = self.config.dataset_path
+        # Ensure traceset is loaded
+        _runtime._ensure_traceset()
 
-        try:
-            # Ensure traceset is loaded
-            _runtime._ensure_traceset()
+        if not _runtime.traceset:
+                raise ValueError(
+                    "Dataset not available. Set FIB_DATASET_PATH environment variable."
+                )
 
-            if not _runtime.traceset:
-                if self.config.strict:
-                    raise ValueError(
-                        "TraceSet not available. Set FIB_DATASET_PATH environment variable "
-                        "or provide dataset_path in TracingConfig."
-                    )
-                else:
-                    if self.verbose:
-                        print("[Tracer] TraceSet not available, validation skipped")
-                    return
+        if self.out_dir is None:
+            self.out_dir = Path(_runtime.root / "traces" / "workloads")
+        if self.blob_dir is None:
+            self.blob_dir = Path(_runtime.root / "blob" / "workloads")
 
-            traceset = _runtime.traceset
+        # Validate rule keys exist in definitions
+        for def_name in self.rules:
+            if def_name not in _runtime.traceset.definitions:
+                print(f"[Tracer] Warning: Rule found for unknown definition: {def_name}")
 
-            # Validate rule keys exist in definitions
-            for def_name in self.config.rules:
-                if def_name not in traceset.definitions:
-                    if self.config.strict:
-                        raise ValueError(f"Rule for unknown definition: {def_name}")
-                    elif self.verbose:
-                        print(f"[Tracer] Warning: Rule for unknown definition: {def_name}")
-
-            # Validate static input names
-            for def_name, rule in self.config.rules.items():
-                if def_name in traceset.definitions and isinstance(rule.tensors_to_dump, list):
-                    definition = traceset.definitions[def_name]
-                    for input_name in rule.tensors_to_dump:
-                        if input_name not in definition.inputs:
-                            if self.config.strict:
-                                raise ValueError(
-                                    f"Rule for {def_name} references unknown input: {input_name}"
-                                )
-                            elif self.verbose:
-                                print(
-                                    f"[Tracer] Warning: Rule for {def_name} references unknown input: {input_name}"
-                                )
-
-        finally:
-            # Restore original root if we changed it
-            if self.config.dataset_path:
-                _runtime.root = original_root
+        print(f"[Tracer] Initialized")
+        print(f"  Output dir: {self.out_dir}")
+        print(f"  Blob dir: {self.blob_dir}")
+        print(f"  Rules: {len(self.rules)} definitions configured")
 
     def collect(
         self,
@@ -176,7 +119,7 @@ class Tracer:
             def_name: Definition name
             runtime_args: Runtime arguments from sig.bind_partial
         """
-        rule = self.config.rules.get(def_name)
+        rule = self.rules.get(def_name)
         if rule is None:
             print(f"[Tracer] Tracing rule not configured for {def_name}, skipping")
             return
@@ -212,7 +155,6 @@ class Tracer:
             return
 
         # At this point, runtime_args exactly matches definition.inputs
-
         # Validate tensors_to_dump
         if isinstance(rule.tensors_to_dump, list):
             names_to_dump = rule.tensors_to_dump
@@ -228,10 +170,9 @@ class Tracer:
         # Names specified to dump but not in definition
         unknown = [n for n in names_to_dump if n not in definition_input_names]
         if unknown:
-            if self.verbose:
-                print(
-                    f"[Tracer] Invalid tensors_to_dump for {def_name}: unknown={unknown} (expected one of {sorted(definition_input_names)})"
-                )
+            print(
+                f"[Tracer] Invalid tensors_to_dump for {def_name}: unknown={unknown} (expected one of {sorted(definition_input_names)})"
+            )
             return
 
         picked: Dict[str, torch.Tensor] = {}
@@ -290,15 +231,14 @@ class Tracer:
                 val = val.detach().cpu().clone()
             picked[name] = val
 
-        entry = TraceEntry(
-            def_name=def_name,
-            axes=axes,
-            definition_input_names=definition_input_names,
-            picked=picked,
-            order=self.order_counter,
-        )
-
         with self._lock:
+            entry = TraceEntry(
+                def_name=def_name,
+                axes=axes,
+                definition_input_names=definition_input_names,
+                picked=picked,
+                order=self.order_counter,
+            )
             if self._in_cuda_graph:
                 # Deferred snapshot
                 self._cuda_graph_entries.append(entry)
@@ -318,12 +258,14 @@ class Tracer:
                 self.tracer = tracer
 
             def __enter__(self):
-                self.tracer._in_cuda_graph = True
+                with self.tracer._lock:
+                    self.tracer._in_cuda_graph = True
                 return self
 
             def __exit__(self, exc_type, exc_val, exc_tb):
-                self.tracer._in_cuda_graph = False
-                self.tracer.snapshot_graph_tensors()
+                with self.tracer._lock:
+                    self.tracer._in_cuda_graph = False
+                    self.tracer.snapshot_graph_tensors()
 
         return CudaGraphScope(self)
 
@@ -354,13 +296,15 @@ class Tracer:
         Returns:
             Statistics about the flush operation
         """
+        if self._in_cuda_graph:
+            raise RuntimeError("Cannot flush during CUDA Graph replay")
         with self._lock:
             if not self.entries:
                 return {
                 "total_entries": 0,
                 "groups": {},
                 "representatives": 0,
-                "dedup_errors": self.dedup_errors,
+                "dedup_errors": 0,
                 "files_written": 0,
                 }
             batch = self.entries
@@ -375,7 +319,7 @@ class Tracer:
         dedup_errors = 0
 
         for def_name, entries in per_def.items():
-            rule = self.config.rules.get(def_name)
+            rule = self.rules.get(def_name)
             if rule is None:
                 continue
 
@@ -395,7 +339,7 @@ class Tracer:
                     buckets.setdefault(key, []).append(e)
             else:
                 # All in the same bucket
-                buckets[("__all__",)].extend(entries)
+                buckets.setdefault("__all__", []).extend(entries)
 
             # Inside each bucket, run dedup_policy to pick representatives
             reps: List[TraceEntry] = []
@@ -408,7 +352,7 @@ class Tracer:
                     dedup_errors += 1
                 reps.extend(reps_in_bucket)
 
-            output_path = self.config.out_dir / "workloads" / f"{def_name}.workload.jsonl"
+            output_path = self.out_dir / f"{def_name}.workload.jsonl"
             self._write_representatives(def_name, reps, output_path)
             files_written.add(def_name)
 
@@ -437,7 +381,7 @@ class Tracer:
                     for name in entry.picked:
                         input_specs[name] = {
                             "type": "safetensors",
-                            "path": str(safepath.relative_to(self.config.blob_dir)),
+                            "path": str(safepath.relative_to(self.blob_dir)),
                             "tensor_key": name,
                         }
                 # backfill random for non-dumped inputs
@@ -459,7 +403,7 @@ class Tracer:
                 f.write("\n")
 
     def _save_tensors(self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]) -> Path:
-        def_dir = self.config.blob_dir / def_name
+        def_dir = self.blob_dir / def_name
         def_dir.mkdir(parents=True, exist_ok=True)
         path = def_dir / f"{def_name}_{workload_uuid}.safetensors"
         cpu_tensors = {k: (v.cpu() if v.is_cuda else v) for k, v in tensors.items()}
@@ -470,15 +414,15 @@ class Tracer:
         """Cleanup handler for atexit."""
         try:
             self.flush()
-        except:
-            pass
+        except Exception as e:
+            print(f"[Tracer] Flush failed: {e}")
 
     def _signal_handler(self, signum, frame):
         """Signal handler for SIGTERM/SIGINT."""
         try:
             self.flush()
-        except:
-            pass
+        except Exception as e:
+            print(f"[Tracer] Flush failed: {e}")
 
 
 # ============================================================================
@@ -486,15 +430,17 @@ class Tracer:
 # ============================================================================
 
 
-def enable_tracing(config: TracingConfig) -> Tracer:
+def enable_tracing(rules: Optional[Dict[str, TracingRule]] = None, out_dir: Optional[Path] = None, blob_dir: Optional[Path] = None) -> Tracer:
     """
-    Enable tracing with the given configuration.
+    Enable tracing with the given tracing rule set.
 
     Creates or replaces the process-wide singleton tracer.
     If replacing, flushes the previous instance first.
 
     Args:
-        config: Tracing configuration
+        rules: A set of tracing rules. Default is `tracing_rules.fib_full_tracing`
+        out_dir: Output directory for traces. Default is FIB_DATASET_PATH/traces/workloads
+        blob_dir: Blob directory for safetensors. Default is FIB_DATASET_PATH/blob/workloads
 
     Returns:
         The new tracer instance
@@ -506,11 +452,16 @@ def enable_tracing(config: TracingConfig) -> Tracer:
         if _current_tracer is not None:
             try:
                 _current_tracer.flush()
-            except:
-                pass
+            except Exception as e:
+                print(f"[Tracer] Cannot flush existing tracer: {e}, overriding")
+                _current_tracer = None
 
-        # Create new tracer
-        _current_tracer = Tracer(config)
+        # If no rules are specified, we do full tracing.
+        if rules is None:
+            from tracing_rules import fib_full_tracing
+            rules = fib_full_tracing
+
+        _current_tracer = Tracer(rules, out_dir=out_dir, blob_dir=blob_dir)
 
         # TODO: Register @apply reporting hook here
         # This would integrate with the apply decorator
@@ -523,16 +474,16 @@ def get_tracer() -> Optional[Tracer]:
     return _current_tracer
 
 
-def disable_tracing():
-    """Disable tracing and flush any pending data."""
+def end_tracing():
+    """End tracing and flush any pending data."""
     global _current_tracer
 
     with _tracer_lock:
         if _current_tracer is not None:
             try:
                 _current_tracer.flush()
-            except:
-                pass
+            except Exception as e:
+                print(f"[Tracer] Flush failed: {e}")
             _current_tracer = None
 
 
