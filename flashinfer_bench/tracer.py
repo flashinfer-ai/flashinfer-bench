@@ -126,6 +126,7 @@ class Tracer:
             def_name: Definition name
             runtime_args: Runtime arguments from sig.bind_partial
         """
+        self._logger.info(f"Tracing '{def_name}'")
         rule = self.rules.get(def_name)
         if rule is None:
             self._logger.error(f"Tracing rule not configured for {def_name}, skipping")

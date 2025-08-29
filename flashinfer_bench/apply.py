@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import logging
 import os
 from typing import Any, Callable, Dict, Optional, Tuple
 
@@ -30,6 +31,8 @@ class ApplyRuntime:
         # Stores what inputs have variable axes in the shape: def_name → tuple(input_name, dim_idx, axis)
         self._var_axes_table: Dict[str, Tuple[Tuple[str, int, str], ...]] = {}
 
+        self._logger = logging.getLogger(__name__)
+
     def resolve(
         self,
         def_name: str,
@@ -38,16 +41,17 @@ class ApplyRuntime:
         max_abs_diff: float = 1e-5,
         max_rel_diff: float = 1e-5,
     ) -> Callable:
+        self._logger.info(f"Resolving '{def_name}'")
         self._ensure_traceset()
 
         if def_name not in self._ts.definitions:
-            print(f"[Apply] Definition '{def_name}' not found in traceset")
+            self._logger.error(f"Definition '{def_name}' not found in traceset")
             return fallback
 
         try:
             axes = self._infer_axes(def_name, runtime_args)
         except Exception as e:
-            print(f"[Apply] Error inferring axes for definition '{def_name}': {e}")
+            self._logger.error(f"Error inferring axes for definition '{def_name}': {e}")
             return fallback
 
         cache_key = (def_name, tuple(sorted(axes.items())))
@@ -129,11 +133,9 @@ def apply(def_name_fn: Callable[..., str]) -> Callable[[Callable], Callable]:
                 from flashinfer_bench.tracer import get_tracer
 
                 tracer = get_tracer()
-                print(f"[Tracer] Tracing '{def_name}'")
                 tracer.collect(def_name, bound.arguments)
 
             if _runtime.apply_enabled:
-                print(f"[Apply] Substituting '{def_name}'")
                 impl = _runtime.resolve(def_name, bound.arguments, fallback)
             else:
                 impl = fallback
