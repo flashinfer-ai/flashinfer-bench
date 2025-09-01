@@ -488,7 +488,7 @@ def enable_tracing(
 
         # If no rules are specified, we do full tracing.
         if rules is None:
-            from tracing_rules import fib_full_tracing
+            from ...tracing_rules import fib_full_tracing
 
             rules = fib_full_tracing
 
