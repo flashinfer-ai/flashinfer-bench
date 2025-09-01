@@ -1,5 +1,3 @@
-"""FlashInfer Bench - A benchmarking framework for GPU kernel implementations."""
-
 from flashinfer_bench.benchmark import Benchmark
 from flashinfer_bench.benchmark_config import BenchmarkConfig
 from flashinfer_bench.data import (
@@ -23,7 +21,7 @@ from flashinfer_bench.data import (
     Workload,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 __all__ = [
     # Main classes
