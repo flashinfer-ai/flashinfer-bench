@@ -139,13 +139,6 @@ class Solution:
             if source.path == path:
                 return source
 
-    def is_jit_compiled(self) -> bool:
-        """Check if the solution uses a JIT-compiled language."""
-        return (
-            self.spec.language == SupportedLanguages.TRITON
-            or self.spec.language == SupportedLanguages.PYTHON
-        )
-
     def requires_build(self) -> bool:
         """Check if the solution requires a build step."""
         return bool(self.spec.build_commands) or self.spec.language == SupportedLanguages.CUDA

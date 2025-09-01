@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .definition import Definition
+from .json_codec import load_json_file, load_jsonl_file
 from .solution import Solution
 from .trace import EvaluationStatus, Trace
 
@@ -29,8 +30,6 @@ class TraceSet:
     @classmethod
     def from_path(cls, path: str) -> "TraceSet":
         """Load a TraceSet from a directory structure."""
-        from .json_codec import load_json_file, load_jsonl_file
-
         base_path = Path(path)
 
         # Load json files from all subdirectories

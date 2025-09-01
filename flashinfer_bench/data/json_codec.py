@@ -1,6 +1,7 @@
 """Unified JSON encoding/decoding for all dataclasses."""
 
 import json
+import types
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar, Union, get_args, get_origin
@@ -194,57 +195,28 @@ _FIELD_DECODERS = {
 def dataclass_to_dict(obj: Any) -> Any:
     """Convert a dataclass instance to a dictionary, handling nested dataclasses."""
     if is_dataclass(obj) and not isinstance(obj, type):
-        result = {}
+        result: Dict[str, Any] = {}
         preserve = _PRESERVE_NULL_FIELDS.get(type(obj), set())
 
-        # Check if this class has a custom field order
+        all_fields = list(fields(obj))
         custom_order = _FIELD_ORDER.get(type(obj))
-
         if custom_order:
-            field_map = {f.name: f for f in fields(obj)}
-
-            # Output fields in custom order
-            for field_name in custom_order:
-                if field_name not in field_map:
-                    continue
-
-                v = getattr(obj, field_name)
-
-                # Fields that should preserve None
-                if field_name in preserve:
-                    result[field_name] = None if v is None else dataclass_to_dict(v)
-                else:
-                    # Skip None values for other optional fields
-                    if v is None:
-                        continue
-                    result[field_name] = dataclass_to_dict(v)
-
-            # Protective branch to add any remaining fields not in custom order
-            for f in fields(obj):
-                if f.name in custom_order:
-                    continue
-
-                v = getattr(obj, f.name)
-
-                # Fields that should preserve None
-                if f.name in preserve:
-                    result[f.name] = None if v is None else dataclass_to_dict(v)
-                else:
-                    # Skip None values for other optional fields
-                    if v is None:
-                        continue
-                    result[f.name] = dataclass_to_dict(v)
+            by_name = {f.name: f for f in all_fields}
+            ordered_fields = [by_name[n] for n in custom_order if n in by_name]
+            # Append remaining fields not in custom order
+            ordered_fields += [f for f in all_fields if f.name not in custom_order]
         else:
-            # No custom order, use declaration order
-            for f in fields(obj):
-                v = getattr(obj, f.name)
+            ordered_fields = all_fields
 
-                if f.name in preserve:
-                    result[f.name] = None if v is None else dataclass_to_dict(v)
-                else:
-                    if v is None:
-                        continue
-                    result[f.name] = dataclass_to_dict(v)
+        # Preserve None
+        for f in ordered_fields:
+            v = getattr(obj, f.name)
+            if f.name in preserve:
+                result[f.name] = None if v is None else dataclass_to_dict(v)
+            else:
+                if v is None:
+                    continue
+                result[f.name] = dataclass_to_dict(v)
 
         return result
     elif isinstance(obj, dict):
@@ -288,14 +260,20 @@ def dict_to_dataclass(data: Dict[str, Any], cls: Type[T]) -> T:
         origin = get_origin(tp)
         args = get_args(tp)
 
-        # Handle Optional types
-        if get_origin(tp) is Union and type(None) in args:
-            # Get the non-None type from Optional
-            actual_type = args[0] if args[0] != type(None) else args[1]
-            if is_dataclass(actual_type) and isinstance(v, dict):
-                kwargs[f.name] = dict_to_dataclass(v, actual_type)
-            else:
-                kwargs[f.name] = v
+        # Handle Optional[T] where T may use typing.Union or PEP 604 (T | None)
+        union_types = {Union}
+        if hasattr(types, "UnionType"):
+            union_types.add(types.UnionType)  # type: ignore[attr-defined]
+        if origin in union_types and type(None) in args:
+            non_none_args = tuple(a for a in args if a is not type(None))
+            # Prefer dataclass conversion when value is dict and any arg is a dataclass
+            if isinstance(v, dict):
+                dc_types = [a for a in non_none_args if is_dataclass(a)]
+                if dc_types:
+                    kwargs[f.name] = dict_to_dataclass(v, dc_types[0])
+                    continue
+            # Otherwise, use value as-is
+            kwargs[f.name] = v
             continue
 
         # Handle Dict[K, V] where V is a dataclass

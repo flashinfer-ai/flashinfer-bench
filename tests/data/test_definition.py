@@ -113,26 +113,3 @@ def test_definition_tags_and_constraints(sample_reference_code):
             reference=sample_reference_code,
             constraints=["M >"],  # invalid python expression
         )
-
-
-def test_definition_shape_resolution(sample_reference_code):
-    d = Definition(
-        name="d",
-        type="op",
-        axes={"B": AxisVar(), "M": AxisConst(value=8)},
-        inputs={"A": TensorSpec(shape=["B", "M"], dtype="float32")},
-        outputs={"O": TensorSpec(shape=["B", "M"], dtype="float32")},
-        reference=sample_reference_code,
-    )
-    # Bindings should map first occurrence of var axes
-    bindings = d.get_var_axes_bindings
-    assert bindings == {"B": ("A", 0)}
-
-    # Shapes: missing var should raise
-    with pytest.raises(ValueError):
-        d.get_input_shapes()
-    # Provide var values
-    iv = d.get_input_shapes({"B": 4})
-    ov = d.get_output_shapes({"B": 4})
-    assert iv["A"] == [4, 8]
-    assert ov["O"] == [4, 8]

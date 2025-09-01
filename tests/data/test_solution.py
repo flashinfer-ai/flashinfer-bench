@@ -77,7 +77,6 @@ def test_solution_validation_and_helpers():
         sources=[s1, s2],
     )
     assert sol.get_entry_source() is s1
-    assert sol.is_jit_compiled() is True
     assert sol.requires_build() is False
 
     # CUDA requires build

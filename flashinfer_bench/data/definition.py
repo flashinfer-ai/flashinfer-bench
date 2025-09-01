@@ -28,6 +28,21 @@ class AxisVar:
     description: Optional[str] = None
 
 
+ALLOWED_DTYPES = {
+    "float32",
+    "float16",
+    "bfloat16",
+    "float8_e4m3",
+    "float8_e5m2",
+    "float4_e2m1",
+    "int64",
+    "int32",
+    "int16",
+    "int8",
+    "bool",
+}
+
+
 @dataclass
 class TensorSpec:
     """Specification for a tensor including shape and data type."""
@@ -53,21 +68,8 @@ class TensorSpec:
             raise ValueError(f"TensorSpec shape must be a list, got {type(self.shape)}")
 
         # Validate dtype is one of the allowed values
-        allowed_dtypes = {
-            "float32",
-            "float16",
-            "bfloat16",
-            "float8_e4m3",
-            "float8_e5m2",
-            "float4_e2m1",
-            "int64",
-            "int32",
-            "int16",
-            "int8",
-            "bool",
-        }
-        if self.dtype not in allowed_dtypes:
-            raise ValueError(f"Invalid dtype '{self.dtype}'. Must be one of {allowed_dtypes}")
+        if self.dtype not in ALLOWED_DTYPES:
+            raise ValueError(f"Invalid dtype '{self.dtype}'. Must be one of {ALLOWED_DTYPES}")
 
 
 @dataclass
@@ -184,43 +186,3 @@ class Definition:
                 if isinstance(ax_def, AxisVar) and axis not in bindings:
                     bindings[axis] = (inp_name, dim_idx)
         return bindings
-
-    def get_input_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
-        """Get concrete input shapes given variable axis values."""
-        var_values = var_values or {}
-        shapes = {}
-
-        for input_name, input_spec in self.inputs.items():
-            shape = []
-            for axis_name in input_spec.shape:
-                axis = self.axes[axis_name]
-                if isinstance(axis, AxisConst):
-                    shape.append(axis.value)
-                elif isinstance(axis, AxisVar):
-                    if axis_name not in var_values:
-                        raise ValueError(f"Missing value for variable axis '{axis_name}'")
-                    shape.append(var_values[axis_name])
-            shapes[input_name] = shape
-
-        return shapes
-
-    def get_output_shapes(
-        self, var_values: Optional[Dict[str, int]] = None
-    ) -> Dict[str, List[int]]:
-        """Get concrete output shapes given variable axis values."""
-        var_values = var_values or {}
-        shapes = {}
-
-        for output_name, output_spec in self.outputs.items():
-            shape = []
-            for axis_name in output_spec.shape:
-                axis = self.axes[axis_name]
-                if isinstance(axis, AxisConst):
-                    shape.append(axis.value)
-                elif isinstance(axis, AxisVar):
-                    if axis_name not in var_values:
-                        raise ValueError(f"Missing value for variable axis '{axis_name}'")
-                    shape.append(var_values[axis_name])
-            shapes[output_name] = shape
-
-        return shapes
