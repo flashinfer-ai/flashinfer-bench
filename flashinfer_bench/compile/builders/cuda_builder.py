@@ -60,8 +60,9 @@ class CUDABuilder(Builder):
 
         sources = [s for s in sol.sources if s.path.endswith(tuple(CUDA_ALLOWED_EXTS))]
 
-        if not sources:
-            raise BuildError("No CUDA/C++ sources provided for CUDA build")
+        has_cuda_sources = any(s.path.endswith(".cu") for s in sources)
+        if not has_cuda_sources:
+            raise BuildError("No CUDA sources provided for CUDA build")
 
         src_paths = [os.path.join(build_dir, s.path) for s in sources]
 
@@ -70,7 +71,8 @@ class CUDABuilder(Builder):
             os.path.join(build_dir),
             os.path.abspath("./3rdparty/cutlass/include"),
         ]
-        extra_ldflags = ["-lcublas", "-lcudnn"]
+        # TODO(shanli): CUDA lib discovery
+        extra_ldflags = []
 
         closer = self._make_closer()
 
