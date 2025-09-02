@@ -7,20 +7,16 @@ name = "flashinfer-bench"
 version = "0.0.1"
 description = "FlashInfer Bench - A benchmarking framework for GPU kernel implementations"
 readme = "README.md"
-requires-python = ">=3.8"
-license = {text = "MIT"}
+requires-python = ">=3.8,<4.0"
+license = { text = "Apache License 2.0" }
 authors = [
-    {name = "FlashInfer Team", email = "flashinfer@example.com"}
+    {name = "FlashInfer team"}
 ]
 dependencies = [
-    "torch>=2.0.0",
-    "numpy>=1.20.0",
+    "torch>=2.4.0",
     "pydantic>=2.0.0",
-    "click>=8.0.0",
-    "jsonschema>=4.0.0",
-    "safetensors>=0.4.0",
-    "tabulate>=0.9.0",
-    "matplotlib>=3.5.0",
+    "safetensors>=0.5.0",
+    "flashinfer-python>=0.2.1"
 ]
 
 [project.optional-dependencies]
@@ -33,6 +29,10 @@ dev = [
     "ruff>=0.1.0",
     "pre-commit>=3.0.0",
 ]
+cuda12 = [
+  "nvidia-cublas-cu12>=12.3",
+  "nvidia-cudnn-cu12>=9.0",
+]
 
 [project.scripts]
 flashinfer-bench = "flashinfer_bench.cli.main:cli"
@@ -40,6 +40,8 @@ flashinfer-bench = "flashinfer_bench.cli.main:cli"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["flashinfer_bench*"]
+[tool.setuptools.package-data]
+"flashinfer_bench._deps.cutlass" = ["include/**"]
 
 [tool.black]
 line-length = 100
