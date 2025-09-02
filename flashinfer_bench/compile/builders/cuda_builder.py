@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
+from importlib import resources
+from pathlib import Path
 from typing import Dict, List
 
 from flashinfer_bench.compile.builder import (
@@ -13,15 +16,106 @@ from flashinfer_bench.compile.builder import (
 )
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution, SupportedLanguages
+from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLanguages
 
 CUDA_ALLOWED_EXTS = [".cu", ".cpp", ".cc", ".cxx", ".c"]
+
+
+def _get_package_paths(pkg_name: str, lib_names: List[str] = None):
+    include_path = None
+    ldflags = []
+
+    try:
+        include_dir = resources.files(pkg_name) / "include"
+        if include_dir.exists():
+            include_path = str(include_dir)
+
+        if lib_names:
+            lib_dir = resources.files(pkg_name) / "lib"
+            if lib_dir.exists():
+                lib_path = Path(lib_dir)
+
+                if sys.platform.startswith("linux"):
+                    ldflags = [f"-L{lib_path}", f"-Wl,-rpath,{lib_path}"]
+
+                    for lib_name in lib_names:
+                        # Look for unversioned .so first
+                        lib_file = lib_path / f"lib{lib_name}.so"
+                        if lib_file.exists():
+                            ldflags.append(f"-l{lib_name}")
+                        else:
+                            # Find versioned .so files
+                            versioned = sorted(lib_path.glob(f"lib{lib_name}.so.*"))
+                            if versioned:
+                                ldflags.append(f"-l:{versioned[-1].name}")
+                            else:
+                                ldflags.append(f"-l{lib_name}")  # Fallback
+
+                elif sys.platform == "win32":
+                    ldflags = [f"/LIBPATH:{lib_path}"] + lib_names
+
+    except Exception:
+        pass
+
+    return include_path, ldflags
+
+
+CUDA_DEPS = {
+    "cublas": ("nvidia.cublas", ["cublas", "cublasLt"]),
+    "cudnn": ("nvidia.cudnn", ["cudnn"]),
+    "cutlass": ("flashinfer_bench._deps.cutlass", None),  # Header-only
+}
+
+
+def _discover_cuda_deps(extra_include_paths: Dict[str, str], extra_ldflags: Dict[str, List[str]]):
+    for dep_name, (pkg_name, libs) in CUDA_DEPS.items():
+        include_path, ldflags = _get_package_paths(pkg_name, libs)
+        if include_path:
+            extra_include_paths[dep_name] = include_path
+        if ldflags:
+            extra_ldflags[dep_name] = ldflags
+
+
+CUDA_DEPS_INCLUDE_PATTERNS = {
+    "cublas": re.compile(
+        r'^\s*#\s*include\s*[<"]\s*(?:cublas|cublasLt)', re.MULTILINE | re.IGNORECASE
+    ),
+    "cudnn": re.compile(r'^\s*#\s*include\s*[<"]\s*cudnn', re.MULTILINE | re.IGNORECASE),
+    "cutlass": re.compile(r'^\s*#\s*include\s*[<"]\s*cutlass/', re.MULTILINE),
+}
+
+
+def _check_dependency(sources: List[SourceFile], dep_name: str) -> bool:
+    pattern = CUDA_DEPS_INCLUDE_PATTERNS.get(dep_name)
+    if not pattern:
+        return False
+
+    for source in sources:
+        if not isinstance(source.content, str):
+            continue
+
+        # Fast skip
+        if dep_name not in source.content.lower():
+            continue
+
+        # Remove comments
+        content = source.content
+        content = re.sub(r"//.*?$", "", content, flags=re.MULTILINE)
+        content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+
+        if pattern.search(content):
+            return True
+
+    return False
 
 
 class CUDABuilder(Builder):
     def __init__(self) -> None:
         super().__init__()
         self._build_dirs: Dict[str, str] = {}
+        self._extra_include_paths: Dict[str, str] = {}
+        self._extra_ldflags: Dict[str, List[str]] = {}
+        _discover_cuda_deps(self._extra_include_paths, self._extra_ldflags)
 
     def can_build(self, sol: Solution) -> bool:
         return sol.spec.language == SupportedLanguages.CUDA
@@ -66,11 +160,33 @@ class CUDABuilder(Builder):
 
         src_paths = [os.path.join(build_dir, s.path) for s in sources]
 
-        # TODO(shanli): CUDA lib discovery
-        extra_include_paths = [
-            os.path.join(build_dir),
-        ]
+        extra_include_paths = [build_dir]
         extra_ldflags = []
+
+        if _check_dependency(sources, "cublas"):
+            cublas_inc = self._extra_include_paths["cublas"]
+            if not cublas_inc:
+                raise BuildError(
+                    f"cuBLAS is not available in the current environment but referenced by {sol.name}"
+                )
+            extra_include_paths.append(cublas_inc)
+            extra_ldflags.extend(self._extra_ldflags["cublas"])
+        if _check_dependency(sources, "cudnn"):
+            cudnn_inc = self._extra_include_paths["cudnn"]
+            if not cudnn_inc:
+                raise BuildError(
+                    f"cuDNN is not available in the current environment but referenced by {sol.name}"
+                )
+            extra_include_paths.append(cudnn_inc)
+            extra_ldflags.extend(self._extra_ldflags["cudnn"])
+        if _check_dependency(sources, "cutlass"):
+            cutlass_inc = self._extra_include_paths["cutlass"]
+            if not cutlass_inc:
+                raise BuildError(
+                    f"CUTLASS is not available in the current environment but referenced by {sol.name}"
+                )
+            extra_include_paths.append(cutlass_inc)
+
         closer = self._make_closer()
 
         try:
