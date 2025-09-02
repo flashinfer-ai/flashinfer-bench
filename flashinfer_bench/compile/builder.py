@@ -1,42 +1,96 @@
 from __future__ import annotations
 
+import hashlib
+import os
+import re
+import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable, Dict, Optional
 
+from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution
+from flashinfer_bench.data.solution import Solution, SourceFile
 
 
-@dataclass
-class Runnable:
-    """
-    A built implementation that can be invoked directly.
-    - entry: callable entry point; signature will align with Definition inputs/outputs
-    - meta: metadata for build information/flags/versions etc.
-    """
-
-    entry: Callable[..., Any]
-    meta: dict[str, Any]
+def write_sources_to_dir(dir: str, sources: list[SourceFile]) -> None:
+    os.makedirs(dir, exist_ok=True)
+    for src in sources:
+        abspath = os.path.join(dir, src.path)
+        os.makedirs(os.path.dirname(abspath), exist_ok=True)
+        with open(abspath, "w", encoding="utf-8") as f:
+            f.write(src.content)
 
 
-# Backward-compat alias for early adopters during refactor
-RunnableSolution = Runnable
+def write_sources_to_temp(base: str, sources: list[SourceFile], pkg: Optional[str] = None) -> str:
+    os.makedirs(base, exist_ok=True)
+    tmpdir = tempfile.mkdtemp(dir=base)
+    if pkg:
+        tmpdir = os.path.join(tmpdir, pkg)
+        os.makedirs(tmpdir, exist_ok=True)
+    write_sources_to_dir(tmpdir, sources)
+    return tmpdir
+
+
+def create_pkg_name(sol: Solution, prefix: str = "") -> str:
+    # Normalize the solution name
+    s = re.sub(r"[^0-9a-zA-Z_]", "_", sol.name)
+    if not s or s[0].isdigit():
+        s = "_" + s
+
+    # Hash the sources
+    h = hashlib.sha1()
+    for src in sol.sources:
+        h.update(src.path.encode())
+        h.update(src.content.encode())
+
+    return prefix + s + "_" + h.hexdigest()[:4]
+
+
+class BuildError(RuntimeError):
+    """Raised when a builder fails to construct a runnable implementation."""
 
 
 class Builder(ABC):
-    """Standardized builder abstraction: Solution -> Runnable"""
+    """Builder abstraction: (Definition, Solution) -> Runnable with hidden cache."""
+
+    def __init__(self) -> None:
+        self._cache: Dict[str, Runnable] = {}
 
     @abstractmethod
-    def can_build(self, sol: Solution) -> bool:  # pragma: no cover - skeleton
+    def can_build(self, solution: Solution) -> bool:
+        """Build guard to check if this builder can handle the given solution."""
         ...
 
     @abstractmethod
-    def fingerprint(self, sol: Solution) -> str:  # pragma: no cover - skeleton
-        """A fingerprint for cache and reuse (not strictly stable)."""
+    def _build(self, definition: Definition, solution: Solution) -> Runnable:
+        """Perform a real build and return a Runnable; raise BuildError on failure."""
         ...
 
     @abstractmethod
-    def build(self, defn: Definition, sol: Solution) -> Runnable:  # pragma: no cover - skeleton
-        """Build/load and return an invokable entry point."""
+    def _make_closer(self, *args, **kwargs) -> Callable[[], None]:
+        """Factory for a resource closer used by the concrete builder."""
         ...
+
+    @abstractmethod
+    def _make_key(self, solution: Solution) -> str:
+        """Cache key for a solution."""
+        ...
+
+    def build(self, definition: Definition, solution: Solution) -> Runnable:
+        """Public entry with per-solution cache keyed by solution.name."""
+        key = self._make_key(solution)
+        if key in self._cache:
+            return self._cache[key]
+        runnable = self._build(definition, solution)
+        self._cache[key] = runnable
+        return runnable
+
+    def clear_cache(self) -> None:
+        """Close all cached runnables and clear the cache."""
+        for r in list(self._cache.values()):
+            try:
+                r.close()
+            except Exception:
+                # Best-effort cleanup; keep going
+                pass
+        self._cache.clear()
