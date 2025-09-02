@@ -66,14 +66,11 @@ class CUDABuilder(Builder):
 
         src_paths = [os.path.join(build_dir, s.path) for s in sources]
 
-        # Hardcode cutlass headers for now
+        # TODO(shanli): CUDA lib discovery
         extra_include_paths = [
             os.path.join(build_dir),
-            os.path.abspath("./3rdparty/cutlass/include"),
         ]
-        # TODO(shanli): CUDA lib discovery
         extra_ldflags = []
-
         closer = self._make_closer()
 
         try:

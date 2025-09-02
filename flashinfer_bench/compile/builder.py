@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import tempfile
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, Optional
@@ -23,23 +25,19 @@ def write_sources_to_temp(base: str, sources: list[SourceFile], pkg: Optional[st
     os.makedirs(base, exist_ok=True)
     tmpdir = tempfile.mkdtemp(dir=base)
     if pkg:
-        tmp_dir = os.path.join(tmpdir, pkg)
-        os.makedirs(tmp_dir, exist_ok=True)
-    write_sources_to_dir(tmp_dir, sources)
-    return tmp_dir
+        tmpdir = os.path.join(tmpdir, pkg)
+        os.makedirs(tmpdir, exist_ok=True)
+    write_sources_to_dir(tmpdir, sources)
+    return tmpdir
 
 
 def create_pkg_name(sol: Solution, prefix: str = "") -> str:
     # Normalize the solution name
-    import re
-
     s = re.sub(r"[^0-9a-zA-Z_]", "_", sol.name)
     if not s or s[0].isdigit():
         s = "_" + s
 
     # Hash the sources
-    import hashlib
-
     h = hashlib.sha1()
     for src in sol.sources:
         h.update(src.path.encode())
