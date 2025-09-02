@@ -60,13 +60,9 @@ class BuildSpec:
         # Validate entry_point
         if not self.entry_point:
             raise ValueError("entry_point cannot be empty")
-        try:
-            entry_file, _ = self.entry_point.split("::", 1)
-        except ValueError:
+        if "::" not in self.entry_point:
             raise ValueError("spec.entry_point must be '<relative_file.py>::<function_name>'")
-
-        if not entry_file.endswith(".py"):
-            raise ValueError(f"entry_point file must be a .py (Python file), got '{entry_file}'")
+        # TODO(shanli): validations against entry file existence and function existence
 
         # Validate dependencies if present
         if self.dependencies is not None:
@@ -129,6 +125,7 @@ class Solution:
                 raise ValueError(f"Duplicate source path '{source.path}'")
             seen_paths.add(source.path)
 
+        # TODO(shanli): stronger validation for entry file and function
         if entry_file not in seen_paths:
             raise ValueError(f"Entry source file '{entry_file}' not found in sources")
 
