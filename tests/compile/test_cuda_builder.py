@@ -119,3 +119,68 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
     Z = r(X=X, Y=Y)
     assert torch.allclose(Z, X + Y)
+
+
+def test_cuda_references_cublas(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
+
+    defn = Definition(
+        name="touch_cublas",
+        type="op",
+        axes={"N": AxisConst(value=1)},
+        inputs={"X": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"Y": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\n" "def run(X: torch.Tensor):\n    return X\n",
+    )
+
+    binding_cpp = r"""
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+
+torch::Tensor touch_cublas(torch::Tensor X) {
+    TORCH_CHECK(X.is_cuda(), "Input must be CUDA");
+    cublasHandle_t handle;
+    cublasStatus_t st = cublasCreate(&handle);
+    TORCH_CHECK(st == CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
+    cublasDestroy(handle);
+    return X;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("touch_cublas", &touch_cublas);
+}
+"""
+
+    # Provide at least one CUDA TU so the CUDA toolchain is used
+    dummy_cu = r"""
+extern "C" __global__ void _fi_dummy_kernel__() {}
+"""
+
+    spec = BuildSpec(
+        language=SupportedLanguages.CUDA,
+        target_hardware=["gpu"],
+        entry_point="binding.cpp::touch_cublas",
+    )
+    srcs = [
+        SourceFile(path="binding.cpp", content=binding_cpp),
+        SourceFile(path="dummy.cu", content=dummy_cu),
+    ]
+    sol = Solution(
+        name="cuda_touch_cublas",
+        definition="touch_cublas",
+        author="tester",
+        spec=spec,
+        sources=srcs,
+    )
+
+    b = CUDABuilder()
+    r = b.build(defn, sol)
+
+    import torch
+
+    X = torch.ones(1, dtype=torch.float32, device="cuda")
+    Y = r(X=X)
+    assert Y.is_cuda and Y.numel() == 1 and Y.item() == 1.0
