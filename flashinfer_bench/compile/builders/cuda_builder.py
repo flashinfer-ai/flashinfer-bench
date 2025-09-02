@@ -55,6 +55,7 @@ def _get_package_paths(pkg_name: str, lib_names: List[str] = None):
                     ldflags = [f"/LIBPATH:{lib_path}"] + lib_names
 
     except Exception:
+        # TODO(shanli): add logger to print warning
         pass
 
     return include_path, ldflags
@@ -163,29 +164,17 @@ class CUDABuilder(Builder):
         extra_include_paths = [build_dir]
         extra_ldflags = []
 
-        if _check_dependency(sources, "cublas"):
-            cublas_inc = self._extra_include_paths["cublas"]
-            if not cublas_inc:
-                raise BuildError(
-                    f"cuBLAS is not available in the current environment but referenced by {sol.name}"
-                )
-            extra_include_paths.append(cublas_inc)
-            extra_ldflags.extend(self._extra_ldflags["cublas"])
-        if _check_dependency(sources, "cudnn"):
-            cudnn_inc = self._extra_include_paths["cudnn"]
-            if not cudnn_inc:
-                raise BuildError(
-                    f"cuDNN is not available in the current environment but referenced by {sol.name}"
-                )
-            extra_include_paths.append(cudnn_inc)
-            extra_ldflags.extend(self._extra_ldflags["cudnn"])
-        if _check_dependency(sources, "cutlass"):
-            cutlass_inc = self._extra_include_paths["cutlass"]
-            if not cutlass_inc:
-                raise BuildError(
-                    f"CUTLASS is not available in the current environment but referenced by {sol.name}"
-                )
-            extra_include_paths.append(cutlass_inc)
+        for dep in CUDA_DEPS.keys():
+            if _check_dependency(sources, dep):
+                inc_path = self._extra_include_paths.get(dep)
+                if not inc_path:
+                    raise BuildError(
+                        f"{dep} is not available in the current environment but referenced by {sol.name}"
+                    )
+                extra_include_paths.append(inc_path)
+                ldflags = self._extra_ldflags.get(dep)
+                if ldflags:
+                    extra_ldflags.extend(ldflags)
 
         closer = self._make_closer()
 
