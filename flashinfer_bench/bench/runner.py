@@ -239,6 +239,7 @@ class Runner:
                 with torch.no_grad():
                     out_t = solution_runnable(**impl_inputs[t])
             except Exception:
+                # TODO(shanli): redirect error to log file
                 return self._create_evaluation(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     log_file=log_file,
