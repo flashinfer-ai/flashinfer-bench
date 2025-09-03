@@ -117,7 +117,7 @@ def test_gen_inputs_requires_host_tensor_for_safetensors():
 
 
 def _mk_runnable(fn, name: str):
-    return Runnable(fn=fn, closer=lambda: None, meta={"name": name})
+    return Runnable(fn=fn, closer=lambda: None, meta={"solution": name})
 
 
 def _mk_baseline_cpu(ref_tensor: torch.Tensor):
