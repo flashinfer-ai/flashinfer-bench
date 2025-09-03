@@ -31,13 +31,13 @@ def test_correctness_performance_environment_validation():
     Performance(latency_ms=0.0, reference_latency_ms=0.0, speedup_factor=0.0)
     with pytest.raises(ValueError):
         Performance(latency_ms=-1.0)
-    Environment(device="cuda:0")
+    Environment(hardware="cuda:0")
     with pytest.raises(ValueError):
-        Environment(device="")
+        Environment(hardware="")
 
 
 def test_evaluation_status_requirements():
-    env = Environment(device="cuda")
+    env = Environment(hardware="cuda")
     # PASSED requires correctness and performance
     with pytest.raises(ValueError):
         Evaluation(status=EvaluationStatus.PASSED, log_file="a", environment=env, timestamp="t")
@@ -86,7 +86,7 @@ def test_trace_workload_and_regular():
     eval_ok = Evaluation(
         status=EvaluationStatus.PASSED,
         log_file="log",
-        environment=Environment(device="cuda"),
+        environment=Environment(hardware="cuda"),
         timestamp="t",
         correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
         performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
