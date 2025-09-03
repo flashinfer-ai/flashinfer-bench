@@ -11,12 +11,15 @@ from .solution import Solution
 from .trace import EvaluationStatus, Trace
 
 
+# TODO(shanli): TraceSet wide validation
 @dataclass
 class TraceSet:
     """A pure data warehouse for definitions, solutions, workloads, and traces.
 
     This class only handles data storage, loading, saving, querying, and statistics.
     """
+
+    root: Path
 
     # def_name -> Definition
     definitions: Dict[str, Definition] = field(default_factory=dict)
@@ -56,6 +59,7 @@ class TraceSet:
                 (workloads if t.is_workload() else traces)[t.definition].append(t)
 
         return cls(
+            root=base_path,
             definitions=definitions,
             solutions=solutions,
             workload=workloads,
