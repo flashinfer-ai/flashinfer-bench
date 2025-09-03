@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict, List, Tuple
@@ -12,7 +13,7 @@ from flashinfer_bench.bench.runner import BaselineHandle, Runner
 from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.json_codec import append_jsonl_line
+from flashinfer_bench.data.json_codec import append_jsonl_lines
 from flashinfer_bench.data.solution import Solution
 from flashinfer_bench.data.trace import (
     Evaluation,
@@ -207,10 +208,13 @@ class Benchmark:
             return
         self._ensure_archive()
 
-        while self._staging_traces:
-            trace = self._staging_traces.pop(0)
-            defn = self.trace_set.definitions.get(trace.definition)
+        buckets = defaultdict(list)
+        for tr in self._staging_traces:
+            defn = self.trace_set.definitions[tr.definition]
+            path = self.trace_set.root / defn.type / f"{defn.name}.jsonl"
+            buckets[path].append(tr)
 
-            trace_file = self.trace_set.root / defn.type / f"{defn.name}.jsonl"
+        self._staging_traces.clear()
 
-            append_jsonl_line(trace_file, trace)
+        for path, traces in buckets.items():
+            append_jsonl_lines(path, traces)

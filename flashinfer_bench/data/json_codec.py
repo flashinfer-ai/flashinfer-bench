@@ -364,3 +364,13 @@ def append_jsonl_line(path: Union[str, Path], obj: Any) -> None:
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(dataclass_to_dict(obj), ensure_ascii=False))
         f.write("\n")
+
+
+def append_jsonl_lines(path: Union[str, Path], objs: List[Any]) -> None:
+    """Append a list of dataclasses to a JSONL file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        for obj in objs:
+            f.write(json.dumps(dataclass_to_dict(obj), ensure_ascii=False))
+            f.write("\n")
