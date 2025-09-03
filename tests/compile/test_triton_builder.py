@@ -4,6 +4,7 @@ import pytest
 
 from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.builders import TritonBuilder
+from flashinfer_bench.compile.builders.python_builder import PythonBuilder
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 
@@ -24,7 +25,7 @@ def test_triton_builder_import_guard(monkeypatch, tmp_path):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
 
-    b = TritonBuilder()
+    b = TritonBuilder(PythonBuilder())
     d = minimal_def()
     spec = BuildSpec(
         language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="main.py::run"
@@ -50,11 +51,15 @@ def test_triton_builder_import_guard(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(importlib.util.find_spec("triton") is None, reason="Triton not available")
 def test_triton_builder_minimum(tmp_path, monkeypatch):
+    # Reset cached availability in case previous tests mocked imports
+    from flashinfer_bench.compile.builders import TritonBuilder as _TB
+
+    monkeypatch.setattr(_TB, "_triton_available", None, raising=False)
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
 
-    b = TritonBuilder()
+    b = TritonBuilder(PythonBuilder())
     d = minimal_def()
     spec = BuildSpec(
         language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="m/main.py::run"
@@ -70,6 +75,10 @@ def test_triton_builder_minimum(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(importlib.util.find_spec("triton") is None, reason="Triton not available")
 def test_triton_vector_add(tmp_path, monkeypatch):
+    # Reset cached availability in case previous tests mocked imports
+    from flashinfer_bench.compile.builders import TritonBuilder as _TB
+
+    monkeypatch.setattr(_TB, "_triton_available", None, raising=False)
     import torch
 
     if not torch.cuda.is_available():
@@ -124,7 +133,7 @@ def run(X, Y):
         name="triton_vec_add", definition="vec_add", author="tester", spec=spec, sources=srcs
     )
 
-    b = TritonBuilder()
+    b = TritonBuilder(PythonBuilder())
     r = b.build(defn, sol)
     X = torch.arange(256, dtype=torch.float32, device="cuda")
     Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")

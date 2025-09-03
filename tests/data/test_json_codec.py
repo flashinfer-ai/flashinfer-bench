@@ -27,7 +27,7 @@ from flashinfer_bench.data import (
     save_jsonl_file,
     to_json,
 )
-from flashinfer_bench.data.json_codec import dataclass_to_dict, dict_to_dataclass
+from flashinfer_bench.data.json_codec import dict_to_dataclass
 
 
 def make_minimal_objects():
@@ -49,7 +49,7 @@ def make_minimal_objects():
         ),
         sources=[SourceFile(path="main.py", content="def run():\n    pass\n")],
     )
-    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()})
+    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w1")
     ev = Evaluation(
         status=EvaluationStatus.PASSED,
         log_file="log",
@@ -74,7 +74,7 @@ def test_roundtrip_to_from_json():
 
 
 def test_preserve_null_fields_in_trace_json():
-    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()})
+    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w2")
     t = Trace(definition="d1", workload=wl)  # workload-only
     j = to_json(t)
     obj = json.loads(j)
@@ -95,7 +95,7 @@ def test_language_and_status_string_decoding():
     ev_data = {
         "status": "passed",
         "log_file": "log",
-        "environment": {"device": "cpu"},
+        "environment": {"hardware": "cpu"},
         "timestamp": "t",
         "correctness": {},
         "performance": {},
@@ -115,8 +115,14 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
     # JSONL file roundtrip
     pathl = tmp_path / "objs.jsonl"
     traces = [
-        Trace(definition="d1", workload=Workload(axes={"M": 1}, inputs={"A": RandomInput()})),
-        Trace(definition="d1", workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()})),
+        Trace(
+            definition="d1",
+            workload=Workload(axes={"M": 1}, inputs={"A": RandomInput()}, uuid="w3"),
+        ),
+        Trace(
+            definition="d1",
+            workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w4"),
+        ),
     ]
     save_jsonl_file(traces, pathl)
     loaded_list = load_jsonl_file(pathl, Trace)
