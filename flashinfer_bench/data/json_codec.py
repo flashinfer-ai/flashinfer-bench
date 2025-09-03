@@ -13,10 +13,10 @@ from .trace import (
     Environment,
     Evaluation,
     EvaluationStatus,
-    InputDesc,
     Performance,
     RandomInput,
     SafetensorsInput,
+    ScalarInput,
     Trace,
     Workload,
 )
@@ -27,6 +27,7 @@ T = TypeVar("T")
 _PRESERVE_NULL_FIELDS = {
     Trace: {"solution", "evaluation"},
     Evaluation: {"correctness", "performance"},
+    TensorSpec: {"shape"},
 }
 
 # Field output order for JSON serialization
@@ -85,6 +86,8 @@ def _decode_workload_inputs(v):
                 out[k] = dict_to_dataclass(x, RandomInput)
             elif t == "safetensors":
                 out[k] = dict_to_dataclass(x, SafetensorsInput)
+            elif t == "scalar":
+                out[k] = dict_to_dataclass(x, ScalarInput)
             else:
                 raise ValueError(f"Unsupported workload input type '{t}'")
         else:

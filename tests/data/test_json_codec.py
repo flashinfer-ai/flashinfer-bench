@@ -53,7 +53,7 @@ def make_minimal_objects():
     ev = Evaluation(
         status=EvaluationStatus.PASSED,
         log_file="log",
-        environment=Environment(device="cpu"),
+        environment=Environment(hardware="cpu"),
         timestamp="t",
         correctness=Correctness(),
         performance=Performance(),
