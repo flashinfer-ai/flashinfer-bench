@@ -12,6 +12,21 @@ class RandomInput:
     type: Literal["random"] = "random"
 
 
+ScalarValue = Union[int, float, bool]
+
+
+@dataclass
+class ScalarInput:
+    """Scalar literal."""
+
+    type: Literal["scalar"] = "scalar"
+    value: ScalarValue = 0
+
+    def __post_init__(self):
+        if not isinstance(self.value, (int, float, bool)):
+            raise ValueError(f"ScalarInput.value must be int/float/bool, got {type(self.value)}")
+
+
 @dataclass
 class SafetensorsInput:
     """Input loaded from a safetensors file."""
@@ -28,7 +43,7 @@ class SafetensorsInput:
 
 
 # Union type for input descriptors
-InputDesc = Union[RandomInput, SafetensorsInput]
+InputDesc = Union[RandomInput, SafetensorsInput, ScalarInput]
 
 
 @dataclass
@@ -37,6 +52,7 @@ class Workload:
 
     axes: Dict[str, int]
     inputs: Dict[str, InputDesc]
+    uuid: str
 
     def __post_init__(self):
         if not isinstance(self.axes, dict):
@@ -54,8 +70,13 @@ class Workload:
 
         # Validate inputs are proper types
         for input_name, input_desc in self.inputs.items():
-            if not isinstance(input_desc, (RandomInput, SafetensorsInput)):
-                raise ValueError(f"Input '{input_name}' must be RandomInput or SafetensorsInput")
+            if not isinstance(input_desc, (RandomInput, SafetensorsInput, ScalarInput)):
+                raise ValueError(
+                    f"Input '{input_name}' must be RandomInput, SafetensorsInput, or ScalarInput"
+                )
+
+        if not self.uuid:
+            raise ValueError("Workload uuid cannot be empty")
 
 
 @dataclass
@@ -99,12 +120,12 @@ class Performance:
 class Environment:
     """Environment information from evaluation."""
 
-    device: str
+    hardware: str
     libs: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
-        if not self.device:
-            raise ValueError("Environment device cannot be empty")
+        if not self.hardware:
+            raise ValueError("Environment hardware cannot be empty")
         if not isinstance(self.libs, dict):
             raise ValueError("Environment libs must be a dictionary")
 
