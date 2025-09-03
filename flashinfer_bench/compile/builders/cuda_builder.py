@@ -21,6 +21,16 @@ from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLangua
 CUDA_ALLOWED_EXTS = [".cu", ".cpp", ".cc", ".cxx", ".c"]
 
 
+def _verify_cuda() -> bool:
+    try:
+        import torch
+        import torch.utils.cpp_extension
+
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
 def _get_package_paths(pkg_name: str, lib_names: List[str] = None):
     include_path = None
     ldflags = []
@@ -111,6 +121,14 @@ def _check_dependency(sources: List[SourceFile], dep_name: str) -> bool:
 
 
 class CUDABuilder(Builder):
+    _cuda_available: bool = None
+
+    @classmethod
+    def _get_cuda_available(cls) -> bool:
+        if cls._cuda_available is None:
+            cls._cuda_available = _verify_cuda()
+        return cls._cuda_available
+
     def __init__(self) -> None:
         super().__init__()
         self._build_dirs: Dict[str, str] = {}
@@ -119,7 +137,7 @@ class CUDABuilder(Builder):
         _discover_cuda_deps(self._extra_include_paths, self._extra_ldflags)
 
     def can_build(self, sol: Solution) -> bool:
-        return sol.spec.language == SupportedLanguages.CUDA
+        return sol.spec.language == SupportedLanguages.CUDA and self._get_cuda_available()
 
     def _make_key(self, solution: Solution) -> str:
         return f"cuda::{create_pkg_name(solution)}"
@@ -137,11 +155,10 @@ class CUDABuilder(Builder):
                 f"Entry file type not recognized. Must be one of {CUDA_ALLOWED_EXTS}, got {entry_file_extension}."
             )
 
-        try:
-            import torch
-            from torch.utils.cpp_extension import load
-        except Exception as e:
-            raise BuildError("PyTorch is not available in the current environment") from e
+        if not self._get_cuda_available():
+            raise BuildError("PyTorch is not available in the current environment")
+
+        from torch.utils.cpp_extension import load
 
         symbol = sol.spec.entry_point.split("::")[-1]
         name = create_pkg_name(sol, "fib_cuda_")
