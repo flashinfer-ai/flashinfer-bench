@@ -78,7 +78,9 @@ class Workload:
         # Validate inputs are proper types
         for input_name, input_desc in self.inputs.items():
             if not isinstance(input_desc, (RandomInput, SafetensorsInput, ScalarInput)):
-                raise ValueError(f"Input '{input_name}' must be RandomInput or SafetensorsInput")
+                raise ValueError(
+                    f"Input '{input_name}' must be RandomInput, SafetensorsInput, or ScalarInput"
+                )
 
         if not self.uuid:
             raise ValueError("Workload uuid cannot be empty")
