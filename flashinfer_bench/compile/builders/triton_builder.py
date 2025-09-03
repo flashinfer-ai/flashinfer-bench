@@ -25,9 +25,9 @@ class TritonBuilder(Builder):
             cls._triton_available = _verify_triton()
         return cls._triton_available
 
-    def __init__(self) -> None:
+    def __init__(self, py_builder: PythonBuilder) -> None:
         super().__init__()
-        self._py_builder = PythonBuilder()
+        self._py_builder = py_builder
 
     def can_build(self, sol: Solution) -> bool:
         return sol.spec.language == SupportedLanguages.TRITON and self._get_triton_available()
