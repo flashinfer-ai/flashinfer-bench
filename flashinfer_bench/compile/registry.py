@@ -15,7 +15,7 @@ class BuilderRegistry:
     def __init__(self, builders: Tuple[Builder, ...]) -> None:
         if not builders:
             raise ValueError("BuilderRegistry requires at least one builder")
-        self._builders: Tuple[Builder, ...] = builder
+        self._builders: Tuple[Builder, ...] = builders
 
     def clear(self) -> None:
         for b in self._builders:

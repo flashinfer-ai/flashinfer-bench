@@ -46,5 +46,7 @@ class TritonBuilder(Builder):
 
         # Reuse Python builder for source layout and import
         runnable = self._py_builder._build(defn, sol)
-        runnable.meta.update({"language": "triton", "triton_version": triton.__version__})
+        runnable.meta.update(
+            {"language": "triton", "triton_version": getattr(triton, "__version__", None)}
+        )
         return runnable
