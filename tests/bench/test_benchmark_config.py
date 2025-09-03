@@ -1,6 +1,6 @@
 import pytest
 
-from flashinfer_bench.benchmark.config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 
 
 def test_benchmark_config_defaults_valid():
