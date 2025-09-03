@@ -223,14 +223,10 @@ class Runner:
         log_file = f"{solution_runnable.meta['solution']}.log"
 
         dev = torch.device(self.device)
-        impl_inputs: List[Dict[str, Any]] = []
-        for t in range(bl.num_trials):
-            impl_inputs.append(
-                {
-                    k: (v.clone() if isinstance(v, torch.Tensor) else v)
-                    for k, v in bl.inputs_dev[t].items()
-                }
-            )
+        impl_inputs: List[Dict[str, Any]] = [
+            {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in trial_inputs.items()}
+            for trial_inputs in bl.inputs_dev
+        ]
 
         max_abs = 0.0
         max_rel = 0.0
