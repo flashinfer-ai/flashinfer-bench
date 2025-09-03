@@ -43,18 +43,18 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     # Two traces: one workload-only, one passed
     tr_workload = {
         "definition": "min_gemm",
-        "workload": {"axes": {"M": 2}, "inputs": {"A": {"type": "random"}}},
+        "workload": {"axes": {"M": 2}, "inputs": {"A": {"type": "random"}}, "uuid": "wrt1"},
         "solution": None,
         "evaluation": None,
     }
     tr_passed = {
         "definition": "min_gemm",
-        "workload": {"axes": {"M": 2}, "inputs": {"A": {"type": "random"}}},
+        "workload": {"axes": {"M": 2}, "inputs": {"A": {"type": "random"}}, "uuid": "wrt2"},
         "solution": "torch_min_gemm",
         "evaluation": {
             "status": "passed",
             "log_file": "log",
-            "environment": {"device": "cpu"},
+            "environment": {"hardware": "cpu"},
             "timestamp": "t",
             "correctness": {},
             "performance": {},

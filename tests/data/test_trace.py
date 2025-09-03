@@ -15,13 +15,13 @@ from flashinfer_bench.data import (
 
 def test_workload_validation():
     # Valid
-    Workload(axes={"M": 4}, inputs={"A": RandomInput()})
+    Workload(axes={"M": 4}, inputs={"A": RandomInput()}, uuid="w1")
     # Invalid axis value
     with pytest.raises(ValueError):
-        Workload(axes={"M": 0}, inputs={"A": RandomInput()})
+        Workload(axes={"M": 0}, inputs={"A": RandomInput()}, uuid="w_bad")
     # Invalid input type
     with pytest.raises(ValueError):
-        Workload(axes={"M": 1}, inputs={"A": object()})  # type: ignore[dict-item]
+        Workload(axes={"M": 1}, inputs={"A": object()}, uuid="w_bad2")
 
 
 def test_correctness_performance_environment_validation():
@@ -77,7 +77,9 @@ def test_evaluation_status_requirements():
 
 def test_trace_workload_and_regular():
     wl = Workload(
-        axes={"M": 8}, inputs={"A": RandomInput(), "B": SafetensorsInput(path="p", tensor_key="k")}
+        axes={"M": 8},
+        inputs={"A": RandomInput(), "B": SafetensorsInput(path="p", tensor_key="k")},
+        uuid="w2",
     )
     # Workload-only
     t_wl = Trace(definition="def1", workload=wl)
