@@ -355,3 +355,12 @@ def load_jsonl_file(path: Union[str, Path], cls: Type[T]) -> List[T]:
             if line:
                 out.append(dict_to_dataclass(json.loads(line), cls))
     return out
+
+
+def append_jsonl_line(path: Union[str, Path], obj: Any) -> None:
+    """Append a dataclass to a JSONL file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(dataclass_to_dict(obj), ensure_ascii=False))
+        f.write("\n")

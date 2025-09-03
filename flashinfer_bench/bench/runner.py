@@ -149,7 +149,7 @@ class Runner:
             torch.cuda.synchronize(device=torch.device(self.device))
 
             return do_bench(
-                lambda: fn(*inputs),
+                lambda: fn(**inputs),
                 warmup=warmup,
                 rep=iters,
             )
@@ -222,7 +222,7 @@ class Runner:
         if baseline not in self._baselines:
             raise KeyError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
-        log_file = f"{solution_runnable.meta['name']}.log"
+        log_file = f"{solution_runnable.meta['solution']}.log"
 
         # First, run one trial for structural/numerical check
         dev = torch.device(self.device)
@@ -314,17 +314,14 @@ class Runner:
         correctness: Optional[Correctness] = None,
         performance: Optional[Performance] = None,
     ) -> Evaluation:
-        eval = Evaluation(
+        return Evaluation(
             status=status,
             log_file=log_file,
             environment=env_snapshot(self.device),
             timestamp=datetime.now().isoformat(),
+            correctness=correctness,
+            performance=performance,
         )
-        if correctness is not None:
-            eval.correctness = correctness
-        if performance is not None:
-            eval.performance = performance
-        return eval
 
     def release(self, baseline: BaselineHandle) -> None:
         self._baselines.pop(baseline, None)

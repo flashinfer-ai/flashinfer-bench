@@ -12,7 +12,7 @@ from flashinfer_bench.bench.runner import BaselineHandle, Runner
 from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.json_codec import save_jsonl_file
+from flashinfer_bench.data.json_codec import append_jsonl_line
 from flashinfer_bench.data.solution import Solution
 from flashinfer_bench.data.trace import (
     Evaluation,
@@ -83,7 +83,7 @@ class Benchmark:
         for def_name, defn in self.trace_set.definitions.items():
             sols = self.trace_set.solutions.get(def_name, [])
             if not sols:
-                print(f"No solutions found for definition: {def_name}, skipping")
+                print(f"No solutions found for def={def_name}, skipping definition")
                 continue
 
             runnable_ref = self._registry.build_reference(defn)
@@ -96,7 +96,7 @@ class Benchmark:
                     host_tensors = self._prefetch_safetensors(defn, wl)
                 except Exception as e:
                     print(
-                        f"Error loading safetensors for definition: {def_name} / workload: {wl.uuid}: {e}, skipping"
+                        f"Error loading safetensors for def={def_name} wl={wl.uuid}: {e}, skipping workload"
                     )
                     continue
 
@@ -107,7 +107,12 @@ class Benchmark:
                 with ThreadPoolExecutor(max_workers=K) as pool:
                     baseline_futs = {
                         pool.submit(
-                            r.run_reference, defn, wl, config, runnable_ref, host_tensors
+                            r.run_reference,
+                            defn,
+                            wl,
+                            config,
+                            runnable_ref,
+                            host_tensors=host_tensors,
                         ): r
                         for r in selected_runners
                     }
@@ -116,10 +121,10 @@ class Benchmark:
                     for fut, r in baseline_futs.items():
                         try:
                             h = fut.result()
-                        except Exception:
+                        except Exception as e:
                             failed_runners.append(r)
                             print(
-                                f"Error running reference for definition: {def_name} / workload: {wl.uuid}: {e}"
+                                f"Error running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -128,10 +133,16 @@ class Benchmark:
                 if failed_runners:
                     # remove failed runners
                     self._runners = [r for r in self._runners if r not in set(failed_runners)]
-                    if self._runners:
-                        self._curr_device_idx %= len(self._runners)
-                    else:
+                    if not self._runners:
                         raise RuntimeError("No healthy runners available")
+                    self._curr_device_idx %= len(self._runners)
+
+                selected_runners = [r for r in selected_runners if r in baselines]
+                if not selected_runners:
+                    print(
+                        f"All selected runners failed for def={def_name} wl={wl.uuid}, skipping workload"
+                    )
+                    continue
 
                 # Evaluate solutions round-robin across runners
                 with ThreadPoolExecutor(max_workers=K) as pool:
@@ -184,12 +195,16 @@ class Benchmark:
     def _ensure_archive(self) -> None:
         if self._did_archive:
             return
+
+        traces_dir = self.trace_set.root / "traces"
         backup = self.trace_set.root / f"traces_bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        backup.mkdir(parents=True, exist_ok=True)
-        for item in self.trace_set.root.iterdir():
-            if item.name == "workloads":
-                continue
-            shutil.move(str(item), str(backup / item.name))
+        shutil.move(str(traces_dir), str(backup))
+        traces_dir.mkdir(parents=True, exist_ok=True)
+
+        wk = backup / "workloads"
+        if wk.exists():
+            (traces_dir / "workloads").parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(wk), str(traces_dir / "workloads"))
         self._did_archive = True
 
     def flush(self) -> None:
@@ -203,4 +218,4 @@ class Benchmark:
 
             trace_file = self.trace_set.root / defn.type / f"{defn.name}.jsonl"
 
-            save_jsonl_file([trace], trace_file)
+            append_jsonl_line(trace_file, trace)
