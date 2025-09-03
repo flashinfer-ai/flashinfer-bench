@@ -1,40 +1,82 @@
-import json
 from pathlib import Path
 
 import pytest
+import safetensors.torch as st
+import torch
+
+from flashinfer_bench.bench.benchmark import Benchmark
+from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    RandomInput,
+    SafetensorsInput,
+    ScalarInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+    Trace,
+    TraceSet,
+    Workload,
+    save_json_file,
+    save_jsonl_file,
+)
+
+
+def test_benchmark_pick_runners_round_robin(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "flashinfer_bench.bench.benchmark.list_cuda_devices",
+        lambda: ["dev0", "dev1", "dev2"],
+    )
+    ts = TraceSet(root=tmp_path)
+    b = Benchmark(ts)
+
+    b._runners = [object(), object(), object()]
+    b._curr_device_idx = 0
+
+    sel1 = b._pick_runners(2)
+    assert sel1 == [b._runners[0], b._runners[1]]
+    sel2 = b._pick_runners(2)
+    assert sel2 == [b._runners[2], b._runners[0]]
+    sel3 = b._pick_runners(1)
+    assert sel3 == [b._runners[1]]
+    assert b._pick_runners(0) == []
+
+
+def test_prefetch_safetensors_happy_path(monkeypatch, tmp_path):
+    # Ensure non-empty device list
+    monkeypatch.setattr("flashinfer_bench.bench.benchmark.list_cuda_devices", lambda: ["dev0"])
+    ts = TraceSet(root=tmp_path)
+    bench = Benchmark(ts)
+
+    d = Definition(
+        name="d",
+        type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"O": TensorSpec(shape=["N"], dtype="float32")},
+        reference="def run(A):\n    return A\n",
+    )
+
+    data = {"x": torch.arange(4, dtype=torch.float32)}
+    sf = tmp_path / "a.safetensors"
+    st.save_file(data, str(sf))
+
+    wl = Workload(
+        axes={"N": 4}, inputs={"A": SafetensorsInput(path=str(sf), tensor_key="x")}, uuid="w"
+    )
+
+    host = bench._prefetch_safetensors(d, wl)
+    assert "A" in host
+    assert host["A"].shape == (4,) and host["A"].dtype == torch.float32
 
 
 @pytest.mark.skipif(
     __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
 )
 def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
-    import torch
-
-    try:
-        import safetensors.torch as st
-    except Exception:
-        pytest.skip("safetensors not available")
-
-    from flashinfer_bench.bench.benchmark import Benchmark
-    from flashinfer_bench.bench.config import BenchmarkConfig
-    from flashinfer_bench.data import (
-        AxisConst,
-        BuildSpec,
-        Definition,
-        RandomInput,
-        SafetensorsInput,
-        ScalarInput,
-        Solution,
-        SourceFile,
-        SupportedLanguages,
-        TensorSpec,
-        Trace,
-        Workload,
-        save_json_file,
-        save_jsonl_file,
-    )
-    from flashinfer_bench.data.traceset import TraceSet
-
     # Build dataset structure
     (tmp_path / "definitions").mkdir(parents=True)
     (tmp_path / "solutions").mkdir(parents=True)

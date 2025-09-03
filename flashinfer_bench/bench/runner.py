@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -160,7 +159,6 @@ class Runner:
         workload: Workload,
         cfg: BenchmarkConfig,
         runnable_ref: Runnable,
-        *,
         host_tensors: Optional[Dict[str, torch.Tensor]] = None,
     ) -> BaselineHandle:
         dev = torch.device(self.device)
@@ -222,7 +220,9 @@ class Runner:
         if baseline not in self._baselines:
             raise KeyError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
-        log_file = f"{solution_runnable.meta['solution']}.log"
+        meta = solution_runnable.meta or {}
+        name = meta.get("name") or meta.get("solution") or meta.get("entry_point") or "runnable"
+        log_file = f"{name}.log"
 
         # First, run one trial for structural/numerical check
         dev = torch.device(self.device)
@@ -233,7 +233,8 @@ class Runner:
             }
             with torch.no_grad():
                 out0 = solution_runnable(**inputs0)
-        except Exception:
+        except Exception as e:
+            # TODO(shanli): redirect error to log file
             return self._create_evaluation(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 log_file=log_file,

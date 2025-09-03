@@ -107,12 +107,7 @@ class Benchmark:
                 with ThreadPoolExecutor(max_workers=K) as pool:
                     baseline_futs = {
                         pool.submit(
-                            r.run_reference,
-                            defn,
-                            wl,
-                            config,
-                            runnable_ref,
-                            host_tensors=host_tensors,
+                            r.run_reference, defn, wl, config, runnable_ref, host_tensors
                         ): r
                         for r in selected_runners
                     }
@@ -188,7 +183,7 @@ class Benchmark:
         finally:
             try:
                 runnable_sol.close()
-            except:
+            except Exception:
                 pass
         return sol.name, ev
 
