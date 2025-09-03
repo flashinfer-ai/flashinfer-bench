@@ -1,5 +1,4 @@
-from flashinfer_bench.benchmark import Benchmark
-from flashinfer_bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,

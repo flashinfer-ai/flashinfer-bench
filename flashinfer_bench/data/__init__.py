@@ -19,6 +19,7 @@ from .trace import (
     Performance,
     RandomInput,
     SafetensorsInput,
+    ScalarInput,
     Trace,
     Workload,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "Solution",
     # Trace types
     "RandomInput",
+    "ScalarInput",
     "SafetensorsInput",
     "InputDesc",
     "Workload",
