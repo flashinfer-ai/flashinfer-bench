@@ -66,7 +66,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     # Traces JSONL
     t_pass = Trace(
         definition="d1",
-        workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}),
+        workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="tw1"),
         solution="s1",
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
@@ -79,7 +79,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     )
     t_fail = Trace(
         definition="d1",
-        workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}),
+        workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="tw2"),
         solution="s2",
         evaluation=Evaluation(
             status=EvaluationStatus.RUNTIME_ERROR,
@@ -90,7 +90,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     )
     t_workload_only = Trace(
         definition="d1",
-        workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}),
+        workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3"),
     )
     save_jsonl_file([t_pass, t_fail, t_workload_only], tmp_path / "traces" / "d1.jsonl")
 
