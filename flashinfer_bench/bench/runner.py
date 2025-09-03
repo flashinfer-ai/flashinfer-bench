@@ -129,7 +129,7 @@ class Runner:
                 out[name] = t_cpu.to(device=dev, non_blocking=True)
             elif name in wl.inputs and wl.inputs[name].type == "scalar":
                 out[name] = wl.inputs[name].value
-            else:
+            else:  # random
                 shape = shapes[name]
                 out[name] = _rand_tensor(shape, dtype, dev)
         return out
@@ -220,60 +220,58 @@ class Runner:
         if baseline not in self._baselines:
             raise KeyError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
-        meta = solution_runnable.meta or {}
-        name = meta.get("name") or meta.get("solution") or meta.get("entry_point") or "runnable"
-        log_file = f"{name}.log"
+        log_file = f"{solution_runnable.meta['solution']}.log"
 
-        # First, run one trial for structural/numerical check
         dev = torch.device(self.device)
-        try:
-            inputs0 = {
-                k: v.clone() if isinstance(v, torch.Tensor) else v
-                for k, v in bl.inputs_dev[0].items()
-            }
-            with torch.no_grad():
-                out0 = solution_runnable(**inputs0)
-        except Exception as e:
-            # TODO(shanli): redirect error to log file
-            return self._create_evaluation(
-                status=EvaluationStatus.RUNTIME_ERROR,
-                log_file=log_file,
-            )
-
-        out0_dict = _normalize_outputs(
-            out0,
-            device=dev,
-            output_names=bl.output_names,
-            output_dtypes=bl.output_dtypes,
-        )
-        ref0 = bl.ref_outputs_dev[0]
+        impl_inputs: List[Dict[str, Any]] = [
+            {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in trial_inputs.items()}
+            for trial_inputs in bl.inputs_dev
+        ]
 
         max_abs = 0.0
         max_rel = 0.0
-        for k in ref0.keys():
-            if k not in out0_dict:
+        for t in range(bl.num_trials):
+            try:
+                with torch.no_grad():
+                    out_t = solution_runnable(**impl_inputs[t])
+            except Exception:
+                # TODO(shanli): redirect error to log file
                 return self._create_evaluation(
-                    status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_file
-                )
-            if tuple(out0_dict[k].shape) != tuple(ref0[k].shape):
-                return self._create_evaluation(
-                    status=EvaluationStatus.INCORRECT_SHAPE,
-                    log_file=log_file,
-                )
-            if out0_dict[k].dtype != ref0[k].dtype:
-                return self._create_evaluation(
-                    status=EvaluationStatus.INCORRECT_DTYPE,
+                    status=EvaluationStatus.RUNTIME_ERROR,
                     log_file=log_file,
                 )
 
-            # Passed structural checks
-            diff = (out0_dict[k] - ref0[k]).abs()
-            abs_err = float(diff.max().item()) if diff.numel() > 0 else 0.0
-            denom = ref0[k].abs().max()
-            denom_v = float(denom.item()) if denom.numel() > 0 else 0.0
-            rel_err = abs_err / (denom_v + 1e-12)
-            max_abs = max(max_abs, abs_err)
-            max_rel = max(max_rel, rel_err)
+            out_t_dict = _normalize_outputs(
+                out_t,
+                device=dev,
+                output_names=bl.output_names,
+                output_dtypes=bl.output_dtypes,
+            )
+            ref_t = bl.ref_outputs_dev[t]
+
+            for k in ref_t.keys():
+                if k not in out_t_dict:
+                    return self._create_evaluation(
+                        status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_file
+                    )
+                if tuple(out_t_dict[k].shape) != tuple(ref_t[k].shape):
+                    return self._create_evaluation(
+                        status=EvaluationStatus.INCORRECT_SHAPE,
+                        log_file=log_file,
+                    )
+                if out_t_dict[k].dtype != ref_t[k].dtype:
+                    return self._create_evaluation(
+                        status=EvaluationStatus.INCORRECT_DTYPE,
+                        log_file=log_file,
+                    )
+
+                diff = (out_t_dict[k] - ref_t[k]).abs()
+                abs_err = float(diff.max().item()) if diff.numel() > 0 else 0.0
+                denom = ref_t[k].abs().max()
+                denom_v = float(denom.item()) if denom.numel() > 0 else 0.0
+                rel_err = abs_err / (denom_v + 1e-12)
+                max_abs = max(max_abs, abs_err)
+                max_rel = max(max_rel, rel_err)
 
         correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
         if max_abs > cfg.atol or max_rel > cfg.rtol:
@@ -286,12 +284,8 @@ class Runner:
         # Passed numerical checks; now measure implementation performance
         impl_lats: List[float] = []
         for t in range(bl.num_trials):
-            inputs = {
-                k: v.clone() if isinstance(v, torch.Tensor) else v
-                for k, v in bl.inputs_dev[t].items()
-            }
             mean_ms = self._time_runnable(
-                solution_runnable, inputs, cfg.warmup_runs, cfg.iterations
+                solution_runnable, impl_inputs[t], cfg.warmup_runs, cfg.iterations
             )
             impl_lats.append(mean_ms)
 
