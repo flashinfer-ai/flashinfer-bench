@@ -23,15 +23,8 @@ class ScalarInput:
     value: ScalarValue = 0
 
     def __post_init__(self):
-        v = self.value
-        # bool is a subclass of int, must check bool first
-        if isinstance(v, bool):
-            return
-        if isinstance(v, int):
-            return
-        if isinstance(v, float):
-            return
-        raise ValueError(f"ScalarInput.value must be int/float/bool, got {type(v)}")
+        if not isinstance(self.value, (int, float, bool)):
+            raise ValueError(f"ScalarInput.value must be int/float/bool, got {type(self.value)}")
 
 
 @dataclass
