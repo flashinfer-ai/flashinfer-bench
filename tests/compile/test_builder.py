@@ -1,5 +1,3 @@
-import types
-
 from flashinfer_bench.compile.builder import Builder
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
