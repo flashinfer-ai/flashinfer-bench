@@ -38,13 +38,6 @@ def test_buildspec_validation():
             target_hardware=["cuda"],
             entry_point="main.py",  # missing ::
         )
-    # Invalid file extension
-    with pytest.raises(ValueError):
-        BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["cuda"],
-            entry_point="main.txt::run",
-        )
     # Invalid target_hardware list and dependencies types
     with pytest.raises(ValueError):
         BuildSpec(

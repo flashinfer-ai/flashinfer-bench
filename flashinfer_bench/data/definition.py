@@ -47,7 +47,7 @@ ALLOWED_DTYPES = {
 class TensorSpec:
     """Specification for a tensor including shape and data type."""
 
-    shape: List[str]
+    shape: Optional[List[str]]
     dtype: Literal[
         "float32",
         "float16",
@@ -64,8 +64,8 @@ class TensorSpec:
     description: Optional[str] = None
 
     def __post_init__(self):
-        if not isinstance(self.shape, list):
-            raise ValueError(f"TensorSpec shape must be a list, got {type(self.shape)}")
+        if self.shape is not None and not isinstance(self.shape, list):
+            raise ValueError(f"TensorSpec shape must be a list or None, got {type(self.shape)}")
 
         # Validate dtype is one of the allowed values
         if self.dtype not in ALLOWED_DTYPES:
@@ -115,20 +115,22 @@ class Definition:
         for input_name, input_spec in self.inputs.items():
             if not isinstance(input_spec, TensorSpec):
                 raise ValueError(f"Input '{input_name}' must be a TensorSpec")
-            for axis_name in input_spec.shape:
-                if axis_name not in self.axes:
-                    raise ValueError(
-                        f"Input '{input_name}' references undefined axis '{axis_name}'"
-                    )
+            if input_spec.shape is not None:
+                for axis_name in input_spec.shape:
+                    if axis_name not in self.axes:
+                        raise ValueError(
+                            f"Input '{input_name}' references undefined axis '{axis_name}'"
+                        )
 
         for output_name, output_spec in self.outputs.items():
             if not isinstance(output_spec, TensorSpec):
                 raise ValueError(f"Output '{output_name}' must be a TensorSpec")
-            for axis_name in output_spec.shape:
-                if axis_name not in self.axes:
-                    raise ValueError(
-                        f"Output '{output_name}' references undefined axis '{axis_name}'"
-                    )
+            if output_spec.shape is not None:
+                for axis_name in output_spec.shape:
+                    if axis_name not in self.axes:
+                        raise ValueError(
+                            f"Output '{output_name}' references undefined axis '{axis_name}'"
+                        )
 
         # Validate reference code
         try:
@@ -181,8 +183,43 @@ class Definition:
         """
         bindings: Dict[str, Tuple[str, int]] = {}
         for inp_name, spec in self.inputs.items():
+            if spec.shape is None:  # scalar, no shape
+                continue
             for dim_idx, axis in enumerate(spec.shape):
                 ax_def = self.axes.get(axis)
                 if isinstance(ax_def, AxisVar) and axis not in bindings:
                     bindings[axis] = (inp_name, dim_idx)
         return bindings
+
+    def _get_shapes(
+        self, tensors: Dict[str, TensorSpec], var_values: Optional[Dict[str, int]] = None
+    ) -> Dict[str, List[int]]:
+        """Get concrete tensor shapes given variable axis values."""
+        var_values = var_values or {}
+        shapes = {}
+
+        for tensor_name, tensor_spec in tensors.items():
+            if tensor_spec.shape is None:  # scalar, no shape
+                continue
+            shape = []
+            for axis_name in tensor_spec.shape:
+                axis = self.axes[axis_name]
+                if isinstance(axis, AxisConst):
+                    shape.append(axis.value)
+                elif isinstance(axis, AxisVar):
+                    if axis_name not in var_values:
+                        raise ValueError(f"Missing value for variable axis '{axis_name}'")
+                    shape.append(var_values[axis_name])
+            shapes[tensor_name] = shape
+
+        return shapes
+
+    def get_input_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
+        """Get concrete input shapes given variable axis values."""
+        return self._get_shapes(self.inputs, var_values)
+
+    def get_output_shapes(
+        self, var_values: Optional[Dict[str, int]] = None
+    ) -> Dict[str, List[int]]:
+        """Get concrete output shapes given variable axis values."""
+        return self._get_shapes(self.outputs, var_values)
