@@ -52,10 +52,6 @@ class Runner(ABC):
         self._log_dir = log_dir
 
     @abstractmethod
-    def close(self) -> None:
-        """Release all resources."""
-
-    @abstractmethod
     def run_ref(
         self,
         defn: Definition,
@@ -73,4 +69,13 @@ class Runner(ABC):
         cfg: BenchmarkConfig,
     ) -> Evaluation:
         """Run a solution against the given baseline."""
+        ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release all resources."""
+
+    @abstractmethod
+    def release(self, baseline: BaselineHandle) -> None:
+        """Release a baseline."""
         ...
