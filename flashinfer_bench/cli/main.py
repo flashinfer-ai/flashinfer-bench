@@ -2,8 +2,9 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from flashinfer_bench import TraceSet, Benchmark, BenchmarkConfig
-from flashinfer_bench.utils.json_utils import save_jsonl
+from flashinfer_bench.data import TraceSet
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
+from flashinfer_bench.data.json_codec import save_jsonl_file, save_json_file
 
 
 def best(args: argparse.Namespace):
@@ -66,7 +67,6 @@ def merge_tracesets(trace_sets):
 
 def export_traceset(trace_set, output_dir):
     """Export a TraceSet to a directory in the expected structure."""
-    from flashinfer_bench.utils.json_utils import save_json, save_jsonl
     output_dir = Path(output_dir)
     (output_dir / "definitions").mkdir(parents=True, exist_ok=True)
     (output_dir / "solutions").mkdir(parents=True, exist_ok=True)
@@ -74,22 +74,22 @@ def export_traceset(trace_set, output_dir):
     # Save definitions
     for defn in trace_set.definitions.values():
         out_path = output_dir / "definitions" / f"{defn.name}.json"
-        save_json(defn, out_path)
+        save_json_file(defn, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
         for sol in solutions:
             out_path = output_dir / "solutions" / f"{sol.name}.json"
-            save_json(sol, out_path)
+            save_json_file(sol, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
         if workloads:
             out_path = output_dir / "traces" / f"{def_name}_workloads.jsonl"
-            save_jsonl(workloads, out_path)
+            save_jsonl_file(workloads, out_path)
     # Save regular traces
     for def_name, traces in trace_set.traces.items():
         if traces:
             out_path = output_dir / "traces" / f"{def_name}.jsonl"
-            save_jsonl(traces, out_path)
+            save_jsonl_file(traces, out_path)
 
 
 def merge(args: argparse.Namespace):
@@ -172,10 +172,12 @@ def run(args: argparse.Namespace):
         config = BenchmarkConfig(
             warmup_runs=args.warmup_runs,
             iterations=args.iterations,
-            device=args.device,
+            num_trials=args.num_trials,
+            rtol=args.rtol,
+            atol=args.atol,
             log_level=args.log_level,
         )
-        benchmark = Benchmark(trace_set)
+        benchmark = Benchmark(trace_set, log_level=args.log_level)
         print(f"Running benchmark for: {path}")
         benchmark.run(config)
         if args.save_results:
@@ -186,7 +188,7 @@ def run(args: argparse.Namespace):
                 if not traces:
                     continue
                 out_path = traces_dir / f"{def_name}.jsonl"
-                save_jsonl(traces, out_path)
+                save_jsonl_file(traces, out_path)
             print(f"Results saved to {traces_dir}")
         else:
             print("Benchmark run complete. Results not saved (use --save-results to enable saving).")
@@ -217,11 +219,19 @@ def cli():
     )
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
-    # TODO: Implement flashinfer-bench run
-    run_parser.add_argument("--warmup-runs", type=int, default=10)
-    run_parser.add_argument("--iterations", type=int, default=50)
-    run_parser.add_argument("--device", default="cuda:0")
-    run_parser.add_argument("--log-level", default="INFO")
+    run_parser.add_argument("--warmup-runs", type=int, default=10, 
+                           help="Number of warmup runs before measurement")
+    run_parser.add_argument("--iterations", type=int, default=50,
+                           help="Number of iterations for benchmarking")
+    run_parser.add_argument("--num-trials", type=int, default=3,
+                           help="Number of trials for each benchmark")
+    run_parser.add_argument("--rtol", type=float, default=1e-2,
+                           help="Relative tolerance for correctness checks")
+    run_parser.add_argument("--atol", type=float, default=1e-2,
+                           help="Absolute tolerance for correctness checks")
+    run_parser.add_argument("--log-level", default="INFO", 
+                           choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                           help="Logging level")
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument(
         "--local",

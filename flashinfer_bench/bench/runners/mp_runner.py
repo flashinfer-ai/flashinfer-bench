@@ -91,6 +91,11 @@ def _normalize_outputs(
         name = output_names[0]
         return {name: to_tensor(name, out)}
 
+    if isinstance(out, (tuple, list)):
+        if len(out) != len(output_names):
+            raise RuntimeError(f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected")
+        return {name: to_tensor(name, val) for name, val in zip(output_names, out)}
+
     raise RuntimeError(
         "Unexpected return type; must be Tensor, scalar, or dict[name -> Tensor/scalar]"
     )
