@@ -2,11 +2,9 @@
 
 This guide gives instructions on how to add Definitions, Solutions, capture Workloads, and record Evaluations by walking through each **component of the Trace**, with an end-to-end “apply at runtime” flow.
 
-# Trace
-
 A **Trace** is an atomic, immutable record of a single benchmark run. It links a specific `Solution` to a specific `Definition`, fixes the exact `workload` (shapes + data), and stores the complete `evaluation`. A folder of Definitions, Solutions, and Traces is your benchmark database.
 
-## JSON Schema (top level)
+## Trace Schema (top level)
 
 | Field        | Type   | Required | Description                                       |
 | ------------ | ------ | -------- | ------------------------------------------------- |
@@ -27,16 +25,9 @@ A **Trace** is an atomic, immutable record of a single benchmark run. It links a
 * Each axis has the **same role** (`const` vs `var`),
 * All `const` axes have the **same values**.
 
-**Naming.** Include the meaningful `const` axes in the name:
-
-```
-<type>_<stage>_<axis tokens>
-e.g. gqa_paged_decode_h32_kv4_d128_ps1
-```
-
 **How to add a new kernel Definition.**
 
-1. Refer to schema, choose a `name` and `type`; write a clear `description` and helpful `tags`.
+1. Refer to schema, choose a `name` (`<type>_<stage>_<axis tokens>`) and `type`; write a clear `description` and helpful `tags`.
 2. Specify `axes` with `type: const|var` (+ `value` for const).
 3. Add `constraints` that relate axes to inputs (e.g., CSR shapes).
 4. Specify `inputs`/`outputs` (names, shapes by axes, dtypes, optional layouts).
@@ -47,20 +38,17 @@ e.g. gqa_paged_decode_h32_kv4_d128_ps1
 
 ## Component 2: `solution`
 
-**What it is.** A concrete implementation of a Definition’s interface (Triton/CUDA/CUTLASS/PyTorch, etc.) plus metadata.
-
-**Name & metadata.**
-
-* Suggested: `<def_name>__<backend>__<author>__vX`
-* Include: target archs, toolchain, author (human or LLM), constraints/notes.
+**What it is.** A concrete implementation of a Definition’s interface (Triton/CUDA/CUTLASS/PyTorch, etc.) plus metadata including target archs, libraries, author (human or LLM).
 
 **Interface.** Your function must take the Definition’s `inputs` and **return** the tuple of `outputs`.
 
 **How to add a Solution.**
 
 1. Add the implementation of the kernel (matching signature).
-2. Add unit tests vs `reference` across a representative shapes.
-3. Provide metadata co-located with the code.
+2. Provide metadata co-located with the code, according to schema.
+3. Add unit tests vs `reference` across a representative shapes.
+
+See agent.md (to be added) for our methods to generate Solutions with LLMs.
 
 ---
 
@@ -68,14 +56,14 @@ e.g. gqa_paged_decode_h32_kv4_d128_ps1
 
 **What it is.** The concrete axes + input data that instantiate a Definition for one run.
 
-| Field    | Type   | Required | Description                                   |
-| -------- | ------ | -------- | --------------------------------------------- |
-| `axes`   | object | Yes      | Map of **var** axis → concrete int value.     |
-| `inputs` | object | Yes      | Map of **input name** → **actual input**.     |
+| Field    | Description                                   |
+| -------- | --------------------------------------------- |
+| `axes`   | Map of **var** axis → concrete int value.     |
+| `inputs` | Map of **input name** → **actual input**.     |
 
 **How to capture workloads.**
 
-* **Env-vars (zero-code):**
+#### **Env-vars (zero-code):**
 
 1. **Choose an output dataset root** (optional):
 
@@ -103,7 +91,7 @@ $FLASHINFER_BENCH_DATASET_PATH/
 
 Writing tensors to file is **async** (background thread) to reduce runtime overhead.
 
-* **Tracing in code (fine-grained control)**
+#### **Tracing in code (fine-grained control)**
 
 If you want to target a subset of kernels / customize policies:
 
@@ -141,20 +129,66 @@ with fb.enable_tracing(tracing_configs=configs, dataset_dir="/root/flashinfer-tr
 **What it is.** The result bundle for one `(definition, solution, workload)` run.
 
 **How to benchmark to produce Evaluations.**
-Run the benchmarker over your `(definition, solution, workload)` triples:
+Run the benchmarker over your `(definition, solution, workload)` triples in the dataset:
 
-  CLI:
-    ```bash
-    flashinfer-bench run --local ./flashinfer-trace --warmup-runs 10 --iterations 50 --save-results
-    ```
+CLI:
+  ```bash
+  flashinfer-bench run --local ./flashinfer-trace --warmup-runs 10 --iterations 50 --save-results
+  ```
 
-  Python:
-    ```python
-    from flashinfer_bench import Benchmark, TraceSet
-    trace_set = TraceSet.from_path("/dataset")
-    benchmark = Benchmark(trace_set, warmup_runs=10, iterations=50, save_results=True)
-    benchmark.run_all()  # scans dataset, runs all triples, appends traces
-    ```
+Use Python API:
+#### Prepare a `TraceSet` and Run the benchmark
+
+```python
+from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.bench.benchmark import Benchmark
+from flashinfer_bench.bench.config import BenchmarkConfig
+
+# 1) Build TraceSet (definitions, solutions, workloads)
+ts = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, workloads
+
+# 2) Run & persist
+bench = Benchmark(ts, log_level="INFO")
+bench.run(BenchmarkConfig())   # executes reference + solutions in parallel
+bench.flush()                  # writes JSONL results under root/<type>/<kernel_name>.jsonl
+```
+
+* **Device pool.** One `MultiProcessRunner` is created per CUDA device.
+* **Concurrency.** For each definition and workload, the benchmark:
+
+  * Picks up to `K = min(#devices, #solutions)` runners (round-robin).
+  * **Reference phase:** in parallel, calls `runner.run_ref(defn, wl, config)` to build a baseline on each selected runner.
+
+    * If a runner fails during reference, it is removed from the pool and the workload on that runner is skipped.
+  * **Solutions phase:** distributes solutions round-robin across the runners that succeeded in the reference phase, calling `runner.run_solution(sol, baseline_handle, config)` in parallel.
+* **Status mapping.**
+
+  * Successful run with numerics in tolerance → `PASSED`.
+  * Output shape/dtype mismatch → `INCORRECT_SHAPE` / `INCORRECT_DTYPE`.
+  * Numeric check fails → `INCORRECT_NUMERICAL`.
+  * Runtime fault → `RUNTIME_ERROR`.
+  * Build/compile fails → `COMPILE_ERROR`.
+
+Each solution run returns an `Evaluation`; the benchmark immediately stages a `Trace(def_name, workload, sol_name, evaluation)` in memory.
+
+#### Persist results
+
+Call `bench.flush()` to write staged traces:
+
+* On first flush, existing `trace_set.root / "traces"` is **archived** to `traces_bak_<timestamp>/`.
+* New results **per definition** are appended (JSONL) at:
+
+  ```
+  <trace_set.root>/<definition.type>/<definition.name>.jsonl
+  ```
+
+> This produces one line per `(definition, solution, workload)` run. After benchmarking is done, the results can be used to rank solutions, visualize leaderboards, and drive `apply` at runtime.
+
+#### Reproducibility
+
+* **`BenchmarkConfig`** controls iteration counts, warmup, tolerances, and timeouts (use your project’s defaults or tune per kernel).
+* **Environment snapshot**: runners capture hardware and library versions into `evaluation.environment`.
+* **Dead runner handling**: any runner failing the reference is dropped for subsequent work; if all runners fail, a `RuntimeError` is raised.
 
 ---
 
@@ -188,7 +222,7 @@ Run the benchmarker over your `(definition, solution, workload)` triples:
 
 # End-to-end “apply” (ties Trace back to serving)
 
-**Decorator form (preferred):**
+**Decorator form:**
 
 ```python
 import torch, torch.nn.functional as F
@@ -207,30 +241,3 @@ python serve_or_benchmark.py
 ```
 
 At call time, `apply` looks up the **Definition** (by name or via the lambda), matches the current **workload** (axes +, when required, data properties), and dispatches to the **best** `Solution` according to your recorded **Traces** (with correctness constraints and numeric tolerances enforced).
-
----
-
-### Quick checklists
-
-**Definition**
-
-* Axes names/roles/const values finalized (identity).
-* Inputs/outputs typed; constraints validate shapes.
-* Reference returns exact `{output_name: tensor}`.
-
-**Solution**
-
-* Signature matches Definition; tests vs reference.
-* Metadata (arch, toolchain, author, notes).
-* Benchmarked to produce Traces.
-
-**Workload**
-
-* Representative axis values.
-* Inputs saved (keep ragged/int tensors when relevant).
-* Use dedup + sensible dump policy.
-
-**Evaluation**
-
-* Status + logs + environment saved.
-* Correctness/performance filled per status rules.
