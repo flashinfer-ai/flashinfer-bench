@@ -187,16 +187,22 @@ export function DefinitionPageContent({
                           <TableCell>{tensor.dtype}</TableCell>
                           <TableCell>
                             <span className="font-mono text-sm">
-                              [{tensor.shape.map((s, i) => (
-                                <span key={i}>
-                                  {i > 0 && ", "}
-                                  <span className={cn(
-                                    hoveredAxis === s && "text-primary font-semibold"
-                                  )}>
-                                    {s}
-                                  </span>
-                                </span>
-                              ))}]
+                              {tensor.shape ? (
+                                <>
+                                  [{tensor.shape.map((s, i) => (
+                                    <span key={i}>
+                                      {i > 0 && ", "}
+                                      <span className={cn(
+                                        hoveredAxis === s && "text-primary font-semibold"
+                                      )}>
+                                        {s}
+                                      </span>
+                                    </span>
+                                  ))}]
+                                </>
+                              ) : (
+                                "Scalar"
+                              )}
                             </span>
                           </TableCell>
                         </TableRow>
@@ -248,16 +254,22 @@ export function DefinitionPageContent({
                           <TableCell>{tensor.dtype}</TableCell>
                           <TableCell>
                             <span className="font-mono text-sm">
-                              [{tensor.shape.map((s, i) => (
-                                <span key={i}>
-                                  {i > 0 && ", "}
-                                  <span className={cn(
-                                    hoveredAxis === s && "text-primary font-semibold"
-                                  )}>
-                                    {s}
-                                  </span>
-                                </span>
-                              ))}]
+                              {tensor.shape ? (
+                                <>
+                                  [{tensor.shape.map((s, i) => (
+                                    <span key={i}>
+                                      {i > 0 && ", "}
+                                      <span className={cn(
+                                        hoveredAxis === s && "text-primary font-semibold"
+                                      )}>
+                                        {s}
+                                      </span>
+                                    </span>
+                                  ))}]
+                                </>
+                              ) : (
+                                "scalar"
+                              )}
                             </span>
                           </TableCell>
                         </TableRow>

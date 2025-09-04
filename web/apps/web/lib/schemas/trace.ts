@@ -20,7 +20,7 @@ export const AxisSchema = z.union([
 
 // Tensor schema
 export const TensorSchema = z.object({
-  shape: z.array(z.string()), // Array of axis names
+  shape: z.array(z.string()).nullable(),
   dtype: z.enum([
     "float32", "float16", "bfloat16",
     "float8_e4m3", "float8_e5m2", "float4_e2m1",
@@ -82,19 +82,20 @@ export const WorkloadSchema = z.object({
 
 // Evaluation schema - matching flashinfer-bench
 export const EvaluationSchema = z.object({
-  status: z.enum(["PASSED", "INCORRECT", "RUNTIME_ERROR", "COMPILE_ERROR"]),
+  status: z.enum(["PASSED", "INCORRECT_SHAPE", "INCORRECT_NUMERICAL", "INCORRECT_DTYPE", "RUNTIME_ERROR", "COMPILE_ERROR"]),
   log_file: z.string(),
   correctness: z.object({
     max_relative_error: z.number(),
     max_absolute_error: z.number(),
-  }).optional(),
+  }).nullable(),
   performance: z.object({
     latency_ms: z.number(),
     reference_latency_ms: z.number(),
     speedup_factor: z.number(),
-  }).optional(),
+  }).nullable(),
   environment: z.object({
-    device: z.string(),
+    hardware: z.string().optional(),
+    device: z.string().optional(),
     libs: z.record(z.string(), z.string()), // Library versions
   }),
   timestamp: z.string(), // ISO 8601 timestamp
@@ -103,9 +104,9 @@ export const EvaluationSchema = z.object({
 // Trace schema - matching flashinfer-bench
 export const TraceSchema = z.object({
   definition: z.string(), // Name of the Definition
-  solution: z.string().optional(), // Name of the Solution (optional for workload-only traces)
+  solution: z.string().nullable(), // Name of the Solution (null for workload-only traces)
   workload: WorkloadSchema,
-  evaluation: EvaluationSchema.optional(), // Optional for workload-only traces
+  evaluation: EvaluationSchema.nullable(), // Null for workload-only traces
 })
 
 // Canonical workload schema for UI
