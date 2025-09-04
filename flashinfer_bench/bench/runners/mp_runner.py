@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import traceback
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -90,9 +91,14 @@ def _normalize_outputs(
             raise RuntimeError("Scalar returned but multiple outputs are defined")
         name = output_names[0]
         return {name: to_tensor(name, out)}
+    
+    if isinstance(out, (tuple, list)):
+        if len(out) != len(output_names):
+            raise RuntimeError(f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected")
+        return {name: to_tensor(name, val) for name, val in zip(output_names, out)}
 
     raise RuntimeError(
-        "Unexpected return type; must be Tensor, scalar, or dict[name -> Tensor/scalar]"
+        "Unexpected return type; must be Tensor, scalar, tuple/list, or dict[name -> Tensor/scalar]"
     )
 
 
@@ -256,6 +262,10 @@ class MultiProcessRunner(Runner):
                     break
 
                 elif cmd == "ERROR":
+                    error_msg = msg.get("msg", "Unknown error")
+                    print(f"[RUNTIME ERROR] Solution '{sol.name}' failed: {error_msg}")
+                    if "traceback" in msg:
+                        print(f"[TRACEBACK] {msg['traceback']}")
                     evaluation = Evaluation(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         log_file=log_path,
@@ -269,9 +279,12 @@ class MultiProcessRunner(Runner):
                     continue
 
         except EOFError as e:
-            print(f"Worker crashed (EOF) running {sol.name}: {e}")
+            print(f"[WORKER CRASH] Worker crashed (EOF) running solution '{sol.name}': {e}")
+            print(f"[WORKER CRASH] Check log file: {log_path}")
         except Exception as e:
-            print(f"Unknown error running {sol.name}: {e}")
+            print(f"[WORKER ERROR] Unknown error running solution '{sol.name}': {e}")
+            print(f"[WORKER ERROR] Check log file: {log_path}")
+            traceback.print_exc()
         finally:
             try:
                 parent_conn.close()
@@ -331,7 +344,11 @@ def _solution_worker_main(
         # Build impl
         try:
             runnable_sol: Runnable = registry.build(defn, sol)
-        except Exception:
+        except Exception as e:
+            error_msg = f"Failed to build solution '{sol.name}': {str(e)}"
+            tb = traceback.format_exc()
+            print(f"[COMPILE ERROR] {error_msg}")
+            print(f"[COMPILE ERROR] Traceback:\n{tb}")
             ev = Evaluation(
                 status=EvaluationStatus.COMPILE_ERROR,
                 log_file=log_path,
@@ -360,7 +377,11 @@ def _solution_worker_main(
                 with torch.no_grad():
                     out = runnable_sol(**inp)
                 torch.cuda.synchronize(device=device)
-            except Exception:
+            except Exception as e:
+                error_msg = f"Runtime error during trial {t} for solution '{sol.name}': {str(e)}"
+                tb = traceback.format_exc()
+                print(f"[RUNTIME ERROR] {error_msg}")
+                print(f"[RUNTIME ERROR] Traceback:\n{tb}")
                 ev = _make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
@@ -445,8 +466,12 @@ def _solution_worker_main(
         )
         conn.send({"cmd": "EVAL", "evaluation": ev})
     except Exception as e:
+        error_msg = f"Unexpected error in worker for solution '{sol.name}': {str(e)}"
+        tb = traceback.format_exc()
+        print(f"[WORKER EXCEPTION] {error_msg}")
+        print(f"[WORKER EXCEPTION] Traceback:\n{tb}")
         try:
-            conn.send({"cmd": "ERROR", "msg": str(e)})
+            conn.send({"cmd": "ERROR", "msg": error_msg, "traceback": tb})
         except Exception:
             pass
     finally:
