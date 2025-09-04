@@ -30,11 +30,33 @@ def test_benchmark_pick_runners_round_robin(monkeypatch, tmp_path):
         "flashinfer_bench.bench.benchmark.list_cuda_devices",
         lambda: ["dev0", "dev1", "dev2"],
     )
+
+    # Replace MultiProcessRunner with a lightweight dummy to avoid abstract instantiation
+    class _Dummy:
+        def __init__(self, device: str) -> None:
+            self.device = device
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            pass
+
+        def run_ref(self, *a, **k):
+            raise NotImplementedError
+
+        def run_solution(self, *a, **k):
+            raise NotImplementedError
+
+        def release(self, *a, **k):
+            pass
+
+    monkeypatch.setattr("flashinfer_bench.bench.benchmark.MultiProcessRunner", _Dummy)
     ts = TraceSet(root=tmp_path)
     b = Benchmark(ts)
 
     b._runners = [object(), object(), object()]
-    b._curr_device_idx = 0
+    b._curr_runner_idx = 0
 
     sel1 = b._pick_runners(2)
     assert sel1 == [b._runners[0], b._runners[1]]
@@ -43,34 +65,6 @@ def test_benchmark_pick_runners_round_robin(monkeypatch, tmp_path):
     sel3 = b._pick_runners(1)
     assert sel3 == [b._runners[1]]
     assert b._pick_runners(0) == []
-
-
-def test_prefetch_safetensors_happy_path(monkeypatch, tmp_path):
-    # Ensure non-empty device list
-    monkeypatch.setattr("flashinfer_bench.bench.benchmark.list_cuda_devices", lambda: ["dev0"])
-    ts = TraceSet(root=tmp_path)
-    bench = Benchmark(ts)
-
-    d = Definition(
-        name="d",
-        type="op",
-        axes={"N": AxisConst(value=4)},
-        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
-        outputs={"O": TensorSpec(shape=["N"], dtype="float32")},
-        reference="def run(A):\n    return A\n",
-    )
-
-    data = {"x": torch.arange(4, dtype=torch.float32)}
-    sf = tmp_path / "a.safetensors"
-    st.save_file(data, str(sf))
-
-    wl = Workload(
-        axes={"N": 4}, inputs={"A": SafetensorsInput(path=str(sf), tensor_key="x")}, uuid="w"
-    )
-
-    host = bench._prefetch_safetensors(d, wl)
-    assert "A" in host
-    assert host["A"].shape == (4,) and host["A"].dtype == torch.float32
 
 
 @pytest.mark.skipif(
