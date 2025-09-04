@@ -118,23 +118,39 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
       return []
     }
     
-    const files = await fs.readdir(tracesDir)
     const traces: Trace[] = []
     
-    for (const file of files) {
-      if (file.endsWith(".jsonl")) {
-        const content = await fs.readFile(path.join(tracesDir, file), "utf-8")
-        const lines = content.trim().split("\n")
+    // Read all subdirectories (gemm, gqa, mla, etc.)
+    const types = await fs.readdir(tracesDir)
+    
+    for (const type of types) {
+      if (type === "workload") {
+        continue
+      }
+      const typePath = path.join(tracesDir, type)
+      const stat = await fs.stat(typePath).catch(() => null)
+      
+      if (stat && stat.isDirectory()) {
+        // Look for JSONL files in this directory
+        const files = await fs.readdir(typePath)
         
-        for (const line of lines) {
-          if (line) {
-            try {
-              const trace = JSON.parse(line) as Trace
-              if (trace.definition === definitionName) {
-                traces.push(trace)
+        for (const file of files) {
+          // Check if this file matches our definition name
+          if (file === `${definitionName}.jsonl`) {
+            const content = await fs.readFile(path.join(typePath, file), "utf-8")
+            const lines = content.trim().split("\n")
+            
+            for (const line of lines) {
+              if (line) {
+                try {
+                  const trace = JSON.parse(line) as Trace
+                  if (trace.definition === definitionName) {
+                    traces.push(trace)
+                  }
+                } catch (e) {
+                  console.error(`Failed to parse trace line in ${file}:`, e)
+                }
               }
-            } catch (e) {
-              console.error(`Failed to parse trace line in ${file}:`, e)
             }
           }
         }
