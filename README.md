@@ -8,7 +8,7 @@ Install FlashInfer Bench with pip:
 
 ```bash
 pip install -v -e .
-``` 
+```
 
 ## Dataset Layout
 
@@ -92,4 +92,3 @@ Each of the core entities is modeled as a dataclass:
 * **Trace**: A benchmark result of a solution on a specific workload input.
 
 See [`schema/`](./schema/) for full documentation.
-
