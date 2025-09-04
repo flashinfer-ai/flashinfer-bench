@@ -1,4 +1,6 @@
+import os
 import platform
+import sys
 from typing import Dict, List
 
 import torch
@@ -74,3 +76,13 @@ def hardware_from_device(device: str) -> str:
         except Exception:
             return "Intel XPU"
     return d.type
+
+
+def redirect_stdio_to_file(log_path: str) -> None:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+    # Redirect stdout/stderr to log file
+    os.dup2(fd, 1)  # stdout -> fd
+    os.dup2(fd, 2)  # stderr -> fd
+    sys.stdout = open(1, "w", encoding="utf-8", buffering=1, closefd=False)
+    sys.stderr = open(2, "w", encoding="utf-8", buffering=1, closefd=False)
