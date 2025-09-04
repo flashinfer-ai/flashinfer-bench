@@ -10,6 +10,7 @@ import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner import BaselineHandle, Runner
+from flashinfer_bench.bench.runners.mp_runner import MultiProcessRunner
 from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.data.definition import Definition
@@ -32,8 +33,8 @@ class Benchmark:
         self._staging_traces: List[Trace] = []
         self._did_archive = False
 
-        self._runners = [Runner(d) for d in list_cuda_devices()]
-        self._curr_device_idx = 0
+        self._runners = [MultiProcessRunner(d) for d in list_cuda_devices()]
+        self._curr_runner_idx = 0
         self._registry = get_registry()
 
         if len(self._runners) == 0:
@@ -41,44 +42,13 @@ class Benchmark:
 
     def _pick_runners(self, K: int) -> list[Runner]:
         # K = min(len(self.runners), len(solutions))
-        if K <= 0:
+        if K <= 0 or not self._runners:
             return []
         D = len(self._runners)
-        start = self._curr_device_idx
-        sel = [self._runners[(start + i) % D] for i in range(K)]
-        self._curr_device_idx = (start + K) % D
+        start = self._curr_runner_idx
+        sel = [self._runners[(start + i) % D] for i in range(min(K, D))]
+        self._curr_runner_idx = (start + K) % D
         return sel
-
-    def _prefetch_safetensors(self, defn: Definition, wl: Workload) -> Dict[str, torch.Tensor]:
-        try:
-            import safetensors.torch as st
-        except Exception:
-            raise RuntimeError("safetensors is not available in the current environment")
-
-        expected = defn.get_input_shapes(wl.axes)
-        host_tensors: Dict[str, torch.Tensor] = {}
-        for name, desc in wl.inputs.items():
-            if desc.type != "safetensors":
-                continue
-
-            tensors = st.load_file(desc.path)
-            if desc.tensor_key not in tensors:
-                raise ValueError(f"Missing key '{desc.tensor_key}' in '{desc.path}'")
-            t = tensors[desc.tensor_key]
-            # shape check
-            if list(t.shape) != expected[name]:
-                raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
-            # dtype check
-            expect_dtype = torch_dtype_from_def(defn.inputs[name].dtype)
-            if t.dtype != expect_dtype:
-                raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
-
-            try:
-                t = t.contiguous().pin_memory()
-            except Exception:
-                t = t.contiguous()
-            host_tensors[name] = t
-        return host_tensors
 
     def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         for def_name, defn in self.trace_set.definitions.items():
@@ -87,33 +57,27 @@ class Benchmark:
                 print(f"No solutions found for def={def_name}, skipping definition")
                 continue
 
-            runnable_ref = self._registry.build_reference(defn)
-
             for wl_trace in self.trace_set.workload.get(def_name, []):
                 wl = wl_trace.workload
 
-                # Prefetch safetensors and validate structure
-                try:
-                    host_tensors = self._prefetch_safetensors(defn, wl)
-                except Exception as e:
-                    print(
-                        f"Error loading safetensors for def={def_name} wl={wl.uuid}: {e}, skipping workload"
-                    )
-                    continue
-
                 K = min(len(self._runners), len(sols))
-                selected_runners = self._pick_runners(K)
+                selected = self._pick_runners(K)
+                if not selected:
+                    raise RuntimeError("No healthy runners available")
 
                 # Build baselines on each runner
+                baselines: dict[Runner, BaselineHandle] = {}
+                failed_runners: list[Runner] = []
                 with ThreadPoolExecutor(max_workers=K) as pool:
                     baseline_futs = {
                         pool.submit(
-                            r.run_reference, defn, wl, config, runnable_ref, host_tensors
+                            r.run_ref,
+                            defn,
+                            wl,
+                            config,
                         ): r
-                        for r in selected_runners
+                        for r in selected
                     }
-                    baselines: dict[Runner, BaselineHandle] = {}
-                    failed_runners: list[Runner] = []
                     for fut, r in baseline_futs.items():
                         try:
                             h = fut.result()
@@ -125,68 +89,33 @@ class Benchmark:
                             continue
                         baselines[r] = h
 
-                # TODO(shanli): runner recovery, better failure handling
+                # If a runner fails to run reference, we should consider it dead
                 if failed_runners:
-                    # remove failed runners
                     self._runners = [r for r in self._runners if r not in set(failed_runners)]
                     if not self._runners:
                         raise RuntimeError("No healthy runners available")
-                    self._curr_device_idx %= len(self._runners)
+                    self._curr_runner_idx %= len(self._runners)
 
-                selected_runners = [r for r in selected_runners if r in baselines]
-                if not selected_runners:
-                    print(
-                        f"All selected runners failed for def={def_name} wl={wl.uuid}, skipping workload"
-                    )
-                    continue
+                selected = [r for r in selected if r in baselines]
+                if not selected:
+                    raise RuntimeError("No healthy runners available")
 
                 # Evaluate solutions round-robin across runners
-                with ThreadPoolExecutor(max_workers=K) as pool:
-                    sol_futs = []
+                with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+                    sol_futs: Dict[str, any] = {}
                     for i, sol in enumerate(sols):
-                        r = selected_runners[i % K]
-                        sol_futs.append(
-                            pool.submit(self._submit_one_sol, defn, sol, r, baselines[r], config)
-                        )
-                    results = [f.result() for f in sol_futs]
+                        r = selected[i % len(selected)]
+                        sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)
 
-                for sol_name, ev in results:
+                    results: Dict[str, Evaluation] = {
+                        name: fut.result() for name, fut in sol_futs.items()
+                    }
+
+                for sol_name, ev in results.items():
                     self._staging_traces.append(Trace(def_name, wl, sol_name, ev))
 
-                for r in selected_runners:
+                for r in selected:
                     r.release(baselines[r])
-
-            try:
-                runnable_ref.close()
-            except Exception:
-                pass
-
-    def _submit_one_sol(
-        self,
-        defn: Definition,
-        sol: Solution,
-        runner: Runner,
-        baseline_handle: BaselineHandle,
-        cfg: BenchmarkConfig,
-    ) -> Tuple[str, Evaluation]:
-        try:
-            runnable_sol = self._registry.build(defn, sol)
-        except BuildError:
-            ev = Evaluation(
-                status=EvaluationStatus.COMPILE_ERROR,
-                log_file="build.log",  # TODO(shanli): replace with a real log file
-                environment=env_snapshot(runner.device),
-                timestamp=datetime.now().isoformat(),
-            )
-            return sol.name, ev
-        try:
-            ev = runner.run_solution(runnable_sol, baseline_handle, cfg)
-        finally:
-            try:
-                runnable_sol.close()
-            except Exception:
-                pass
-        return sol.name, ev
 
     def _ensure_archive(self) -> None:
         if self._did_archive:
