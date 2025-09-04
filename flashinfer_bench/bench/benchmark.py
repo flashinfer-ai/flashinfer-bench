@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -27,8 +28,18 @@ from flashinfer_bench.utils import env_snapshot, list_cuda_devices, torch_dtype_
 
 
 class Benchmark:
-    def __init__(self, trace_set: TraceSet) -> None:
+    def __init__(self, trace_set: TraceSet, log_level: str = "INFO") -> None:
         self.trace_set = trace_set
+        
+        # Setup logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(getattr(logging, log_level.upper()))
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', 
+                                        datefmt='%H:%M:%S')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
 
         self._staging_traces: List[Trace] = []
         self._did_archive = False
@@ -39,6 +50,8 @@ class Benchmark:
 
         if len(self._runners) == 0:
             raise RuntimeError("No CUDA devices available")
+        
+        self.logger.info(f"Initialized benchmark with {len(self._runners)} CUDA devices")
 
     def _pick_runners(self, K: int) -> list[Runner]:
         # K = min(len(self.runners), len(solutions))
@@ -54,10 +67,14 @@ class Benchmark:
         for def_name, defn in self.trace_set.definitions.items():
             sols = self.trace_set.solutions.get(def_name, [])
             if not sols:
-                print(f"No solutions found for def={def_name}, skipping definition")
+                self.logger.warning(f"No solutions found for def={def_name}, skipping definition")
                 continue
 
-            for wl_trace in self.trace_set.workload.get(def_name, []):
+            self.logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
+            
+            workloads = self.trace_set.workload.get(def_name, [])
+            
+            for wl_trace in workloads:
                 wl = wl_trace.workload
 
                 K = min(len(self._runners), len(sols))
@@ -83,8 +100,8 @@ class Benchmark:
                             h = fut.result()
                         except Exception as e:
                             failed_runners.append(r)
-                            print(
-                                f"Error running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                            self.logger.error(
+                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -113,6 +130,11 @@ class Benchmark:
 
                 for sol_name, ev in results.items():
                     self._staging_traces.append(Trace(def_name, wl, sol_name, ev))
+                    
+                    if ev.status == EvaluationStatus.PASSED:
+                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED")
+                    else:
+                        self.logger.warning(f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}")
 
                 for r in selected:
                     r.release(baselines[r])

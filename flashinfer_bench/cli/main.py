@@ -177,7 +177,7 @@ def run(args: argparse.Namespace):
             atol=args.atol,
             log_level=args.log_level,
         )
-        benchmark = Benchmark(trace_set)
+        benchmark = Benchmark(trace_set, log_level=args.log_level)
         print(f"Running benchmark for: {path}")
         benchmark.run(config)
         if args.save_results:
