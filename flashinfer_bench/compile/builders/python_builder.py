@@ -7,15 +7,16 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from flashinfer_bench.compile.builder import (
+from flashinfer_bench.data.definition import Definition
+from flashinfer_bench.data.solution import Solution, SupportedLanguages
+
+from ..builder import (
     Builder,
     BuildError,
     create_pkg_name,
     write_sources_to_temp,
 )
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution, SupportedLanguages
+from ..runnable import Runnable
 
 
 class PythonBuilder(Builder):
@@ -60,7 +61,7 @@ class PythonBuilder(Builder):
         module_name = pkg + "." + ".".join(Path(entry_file).with_suffix("").parts)
         # $HOME/.cache/flashinfer_bench/python/<temp_dir>/<pkg>
         cache_root = os.environ.get(
-            "FLASHINFER_BENCH_CACHE_DIR",
+            "FIB_CACHE_DIR",
             os.path.join(os.path.expanduser("~"), ".cache", "flashinfer_bench"),
         )
         pkg_dir = write_sources_to_temp(

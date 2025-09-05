@@ -8,15 +8,16 @@ from importlib import resources
 from pathlib import Path
 from typing import Dict, List
 
-from flashinfer_bench.compile.builder import (
+from flashinfer_bench.data.definition import Definition
+from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLanguages
+
+from ..builder import (
     Builder,
     BuildError,
     create_pkg_name,
     write_sources_to_dir,
 )
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLanguages
+from ..runnable import Runnable
 
 CUDA_ALLOWED_EXTS = [".cu", ".cpp", ".cc", ".cxx", ".c"]
 
@@ -163,7 +164,7 @@ class CUDABuilder(Builder):
         symbol = sol.spec.entry_point.split("::")[-1]
         name = create_pkg_name(sol, "fib_cuda_")
         cache_root = os.environ.get(
-            "FLASHINFER_BENCH_CACHE_DIR",
+            "FIB_CACHE_DIR",
             os.path.join(os.path.expanduser("~"), ".cache", "flashinfer_bench"),
         )
         build_dir = os.path.join(cache_root, "cuda", name)

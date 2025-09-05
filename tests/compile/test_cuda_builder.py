@@ -7,7 +7,7 @@ from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, Supp
 def test_cuda_builder_minimum(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
 
     b = CUDABuilder()
     d = Definition(
@@ -43,7 +43,7 @@ def test_cuda_builder_minimum(tmp_path, monkeypatch):
 def test_cuda_vector_add(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
 
     defn = Definition(
         name="vec_add_cuda",
@@ -124,7 +124,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 def test_cuda_references_cublas(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FLASHINFER_BENCH_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
 
     defn = Definition(
         name="touch_cublas",

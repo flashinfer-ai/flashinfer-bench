@@ -4,8 +4,8 @@ import inspect
 import os
 from typing import Any, Callable, Dict, Mapping, Optional, Union, overload
 
-from flashinfer_bench.apply.config import ApplyConfig
-from flashinfer_bench.apply.runtime import ApplyRuntime, get_runtime, set_runtime
+from .config import ApplyConfig
+from .runtime import ApplyRuntime, get_runtime, set_runtime
 
 _SENTINEL = object()
 
