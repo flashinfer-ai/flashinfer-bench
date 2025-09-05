@@ -66,10 +66,6 @@ class TraceSet:
             traces=traces,
         )
 
-    def get_definition(self, name: str) -> Optional[Definition]:
-        """Get a definition by name."""
-        return self.definitions.get(name)
-
     def get_solution(self, name: str) -> Optional[Solution]:
         """Get a solution by name."""
         for solution_list in self.solutions.values():
@@ -78,26 +74,35 @@ class TraceSet:
                     return solution
         return None
 
-    def get_traces_for_definition(self, name: str) -> List[Trace]:
-        """Get all traces for a definition."""
-        return self.traces.get(name, [])
-
-    def get_workloads_for_definition(self, name: str) -> List[Trace]:
-        """Get all workload-only traces for a definition."""
-        return self.workload.get(name, [])
+    def filter_traces(
+        self,
+        def_name: str,
+        atol: float = 1e-2,
+        rtol: float = 1e-2,
+    ) -> List[Trace]:
+        """Filter traces for a definition based on error bounds."""
+        return [
+            t
+            for t in self.traces.get(def_name, [])
+            if t.evaluation
+            and t.evaluation.status == EvaluationStatus.PASSED
+            and t.evaluation.correctness
+            and t.evaluation.correctness.max_absolute_error <= atol
+            and t.evaluation.correctness.max_relative_error <= rtol
+        ]
 
     def get_best_trace(
         self,
         def_name: str,
         axes: Optional[Dict[str, int]] = None,
-        max_abs_error: float = 1e-5,
-        max_rel_error: float = 1e-5,
+        max_abs_error: float = 1e-2,
+        max_rel_error: float = 1e-2,
     ) -> Optional[Trace]:
         """Get the best trace for a definition based on performance.
 
         This returns the Trace object itself.
         """
-        candidates = self.get_traces_for_definition(def_name)
+        candidates = self.traces.get(def_name, [])
 
         # Axes exact match
         # TODO(shanli): advanced input filtering
