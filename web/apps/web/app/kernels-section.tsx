@@ -201,7 +201,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                         <div className="space-y-1">
                           {Object.entries(def.inputs).map(([name, input]) => (
                             <div key={name} className="text-sm text-muted-foreground">
-                              <span className="font-mono">{name}</span>: {input.dtype} [{input.shape.join(", ")}]
+                              <span className="font-mono">{name}</span>: {input.dtype} {input.shape ? `[${input.shape.join(", ")}]` : "Scalar"}
                             </div>
                           ))}
                         </div>
@@ -211,7 +211,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                         <div className="space-y-1">
                           {Object.entries(def.outputs).map(([name, output]) => (
                             <div key={name} className="text-sm text-muted-foreground">
-                              <span className="font-mono">{name}</span>: {output.dtype} [{output.shape.join(", ")}]
+                              <span className="font-mono">{name}</span>: {output.dtype} {output.shape ? `[${output.shape.join(", ")}]` : "Scalar"}
                             </div>
                           ))}
                         </div>
