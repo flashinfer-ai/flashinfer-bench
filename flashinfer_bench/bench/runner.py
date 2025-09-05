@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 import torch
 from triton.testing import do_bench
@@ -57,6 +58,7 @@ class Runner(ABC):
         defn: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
+        traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
         """Build a baseline for the given definition and workload."""
         ...

@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
 
 import torch
 from torch import multiprocessing as mp
@@ -101,7 +102,7 @@ def _normalize_outputs(
     )
 
 
-def _load_safetensors(defn: Definition, wl: Workload) -> Dict[str, torch.Tensor]:
+def _load_safetensors(defn: Definition, wl: Workload, traceset_root: Optional[Path] = None) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
     except Exception:
@@ -112,10 +113,14 @@ def _load_safetensors(defn: Definition, wl: Workload) -> Dict[str, torch.Tensor]
     for name, desc in wl.inputs.items():
         if desc.type != "safetensors":
             continue
+        
+        path = desc.path
+        if traceset_root is not None and not Path(path).is_absolute():
+            path = str(traceset_root / path)
 
-        tensors = st.load_file(desc.path)
+        tensors = st.load_file(path)
         if desc.tensor_key not in tensors:
-            raise ValueError(f"Missing key '{desc.tensor_key}' in '{desc.path}'")
+            raise ValueError(f"Missing key '{desc.tensor_key}' in '{path}'")
         t = tensors[desc.tensor_key]
         # shape check
         if list(t.shape) != expected[name]:
@@ -167,14 +172,14 @@ class MultiProcessRunner(Runner):
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
         self._registry = get_registry()
 
-    def run_ref(self, defn: Definition, workload: Workload, cfg: BenchmarkConfig) -> BaselineHandle:
+    def run_ref(self, defn: Definition, workload: Workload, cfg: BenchmarkConfig, traceset_root: Optional[Path] = None) -> BaselineHandle:
         torch.cuda.set_device(int(self.device.split(":")[1]))
         dev = torch.device(self.device)
 
         output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
         runnable_ref = self._registry.build_reference(defn)
         st_cpu = (
-            _load_safetensors(defn, workload)
+            _load_safetensors(defn, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
