@@ -32,12 +32,8 @@ def _maybe_init_from_env() -> None:
     enable_tracing = os.environ.get("FIB_ENABLE_TRACING")
     dataset = os.environ.get("FIB_DATASET_PATH")
 
-    if enable_apply is None and dataset is None:
+    if enable_apply is None or dataset is None:
         return
-    if (enable_apply and not dataset) or (not enable_apply and dataset):
-        raise RuntimeError(
-            "Invalid environment configuration: require both FIB_ENABLE_APPLY=1 and FIB_DATASET_PATH set at the same time."
-        )
 
     rt = ApplyRuntime(dataset, ApplyConfig())
 
@@ -70,6 +66,11 @@ class ApplyRuntime:
         self._table: ApplyTable = ApplyTable.load_or_build(self._traceset, self._config)
         # def_name -> callable: (runtime_kwargs) -> ApplyKey
         self._key_builders: Dict[str, ApplyKeyBuilder] = {}
+
+        # Install integrations
+        from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
+
+        install_flashinfer_integrations()
 
     def rebuild(
         self,
