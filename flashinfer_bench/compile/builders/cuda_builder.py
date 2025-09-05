@@ -8,15 +8,16 @@ from importlib import resources
 from pathlib import Path
 from typing import Dict, List
 
-from flashinfer_bench.compile.builder import (
+from flashinfer_bench.data.definition import Definition
+from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLanguages
+
+from ..builder import (
     Builder,
     BuildError,
     create_pkg_name,
     write_sources_to_dir,
 )
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution, SourceFile, SupportedLanguages
+from ..runnable import Runnable
 
 CUDA_ALLOWED_EXTS = [".cu", ".cpp", ".cc", ".cxx", ".c"]
 

@@ -7,9 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict, List
 
-from flashinfer_bench.bench.config import BenchmarkConfig
-from flashinfer_bench.bench.runner import BaselineHandle, Runner
-from flashinfer_bench.bench.runners.mp_runner import MultiProcessRunner
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.data.json_codec import append_jsonl_lines
 from flashinfer_bench.data.trace import (
@@ -19,6 +16,10 @@ from flashinfer_bench.data.trace import (
 )
 from flashinfer_bench.data.traceset import TraceSet
 from flashinfer_bench.utils import list_cuda_devices
+
+from .config import BenchmarkConfig
+from .runner import BaselineHandle, Runner
+from .runners.mp_runner import MultiProcessRunner
 
 
 class Benchmark:

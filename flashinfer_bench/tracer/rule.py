@@ -1,4 +1,4 @@
-from flashinfer_bench.tracer.presets import (
+from .presets import (
     gemm_rule,
     gqa_paged_decode_rule,
     gqa_paged_prefill_rule,

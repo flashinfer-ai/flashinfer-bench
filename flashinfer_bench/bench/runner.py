@@ -7,13 +7,14 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import Solution
 from flashinfer_bench.data.trace import (
     Evaluation,
     Workload,
 )
+
+from .config import BenchmarkConfig
 
 
 class RunnerError(RuntimeError): ...

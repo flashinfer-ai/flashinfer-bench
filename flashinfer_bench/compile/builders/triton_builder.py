@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from flashinfer_bench.compile.builder import Builder, BuildError, create_pkg_name
-from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import Solution, SupportedLanguages
 
+from ..builder import Builder, BuildError, create_pkg_name
+from ..runnable import Runnable
 from .python_builder import PythonBuilder
 
 
