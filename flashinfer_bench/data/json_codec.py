@@ -2,7 +2,7 @@
 
 import json
 import types
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar, Union, get_args, get_origin
 

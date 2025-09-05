@@ -284,5 +284,5 @@ def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
     # Flush for I/O path and check files created
     bench.flush()
     for d in (d_add, d_mul, d_adds):
-        out_file = tmp_path / d.type / f"{d.name}.jsonl"
+        out_file = tmp_path / "traces" / d.type / f"{d.name}.jsonl"
         assert out_file.exists()

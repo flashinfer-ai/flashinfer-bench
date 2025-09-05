@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from flashinfer_bench.compile import builder
-from flashinfer_bench.compile.builder import Builder, BuildError
-from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+
+from .builder import Builder, BuildError
+from .runnable import Runnable
 
 
 class BuilderRegistry:
@@ -53,7 +53,7 @@ _registry: BuilderRegistry | None = None
 def get_registry() -> BuilderRegistry:
     global _registry
     if _registry is None:
-        from flashinfer_bench.compile.builders import CUDABuilder, PythonBuilder, TritonBuilder
+        from .builders import CUDABuilder, PythonBuilder, TritonBuilder
 
         py = PythonBuilder()
         triton = TritonBuilder(py_builder=py)
