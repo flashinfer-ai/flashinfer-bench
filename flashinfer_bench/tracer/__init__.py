@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from .hook_impl import make_tracing_hook
-from .tracer import TraceEntry, Tracer, TracingRule, disable_tracing, enable_tracing, get_tracer
+from .tracer import Tracer, disable_tracing, enable_tracing, get_tracer
+from .types import TraceEntry, TracingRule
 
 __all__ = [
     "Tracer",

@@ -4,44 +4,19 @@ import logging
 import signal
 import threading
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Hashable, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Hashable, List, Optional, Set, Tuple
 
 import safetensors.torch
 import torch
 
 from flashinfer_bench.data.definition import Definition
 
+from .types import TraceEntry, TracingRule
+
 # Global singleton tracer instance
 _current_tracer: Optional["Tracer"] = None
 _tracer_lock = threading.Lock()
-
-
-@dataclass
-class TracingRule:
-    """Defines how to collect and deduplicate workloads for a definition."""
-
-    tensors_to_dump: Union[List[str], Callable[[Dict[str, Any]], List[str]]]
-    """Which inputs to persist. List[str] for static selection, Callable for dynamic."""
-
-    dedup_policy: Callable[[List["TraceEntry"]], List["TraceEntry"]]
-    """Final in-group deduplication decision. Returns True if duplicate."""
-
-    dedup_keys: Optional[Callable[["TraceEntry"], Hashable]] = None
-    """Blocking function for candidate partitioning during dedup."""
-
-
-@dataclass
-class TraceEntry:
-    """In-memory buffer entry for collected workloads."""
-
-    def_name: str
-    axes: Dict[str, int]
-    definition_input_names: Set[str]
-    picked: Dict[str, torch.Tensor]
-    order: int
-    cuda_graph_snapshot: Optional[Dict[str, torch.Tensor]] = None
 
 
 class Tracer:

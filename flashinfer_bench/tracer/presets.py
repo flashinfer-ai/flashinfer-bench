@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from flashinfer_bench.tracer import TraceEntry, TracingRule
+from .types import TraceEntry, TracingRule
 
 
 # ============================================================================
