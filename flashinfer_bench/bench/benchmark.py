@@ -5,39 +5,34 @@ import shutil
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Dict, List, Tuple
-
-import torch
+from typing import Dict, List
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner import BaselineHandle, Runner
 from flashinfer_bench.bench.runners.mp_runner import MultiProcessRunner
-from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.json_codec import append_jsonl_lines
-from flashinfer_bench.data.solution import Solution
 from flashinfer_bench.data.trace import (
     Evaluation,
     EvaluationStatus,
     Trace,
-    Workload,
 )
 from flashinfer_bench.data.traceset import TraceSet
-from flashinfer_bench.utils import env_snapshot, list_cuda_devices, torch_dtype_from_def
+from flashinfer_bench.utils import list_cuda_devices
 
 
 class Benchmark:
     def __init__(self, trace_set: TraceSet, log_level: str = "INFO") -> None:
         self.trace_set = trace_set
-        
+
         # Setup logger
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(getattr(logging, log_level.upper()))
         if not self.logger.handlers:
             handler = logging.StreamHandler()
-            formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', 
-                                        datefmt='%H:%M:%S')
+            formatter = logging.Formatter(
+                "[%(asctime)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S"
+            )
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
 
@@ -50,7 +45,7 @@ class Benchmark:
 
         if len(self._runners) == 0:
             raise RuntimeError("No CUDA devices available")
-        
+
         self.logger.info(f"Initialized benchmark with {len(self._runners)} CUDA devices")
 
     def _pick_runners(self, K: int) -> list[Runner]:
@@ -71,9 +66,9 @@ class Benchmark:
                 continue
 
             self.logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
-            
+
             workloads = self.trace_set.workload.get(def_name, [])
-            
+
             for wl_trace in workloads:
                 wl = wl_trace.workload
 
@@ -131,22 +126,26 @@ class Benchmark:
 
                 for sol_name, ev in results.items():
                     self._staging_traces.append(Trace(def_name, wl, sol_name, ev))
-                    
+
                     if ev.status == EvaluationStatus.PASSED:
-                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup")
+                        self.logger.info(
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                        )
                     else:
-                        self.logger.warning(f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}")
+                        self.logger.warning(
+                            f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
+                        )
 
                 for r in selected:
                     r.release(baselines[r])
 
     def evaluate(self, config: BenchmarkConfig = BenchmarkConfig()) -> TraceSet:
         """
-        Evaluate solutions and return a TraceSet with results immediately. 
+        Evaluate solutions and return a TraceSet with results immediately.
         Used for small TraceSets that need immediate feedback.
         """
         collected_traces: List[Trace] = []
-        
+
         for def_name, defn in self.trace_set.definitions.items():
             sols = self.trace_set.solutions.get(def_name, [])
             if not sols:
@@ -154,9 +153,9 @@ class Benchmark:
                 continue
 
             self.logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
-            
+
             workloads = self.trace_set.workload.get(def_name, [])
-            
+
             for wl_trace in workloads:
                 wl = wl_trace.workload
 
@@ -214,28 +213,32 @@ class Benchmark:
 
                 for sol_name, ev in results.items():
                     collected_traces.append(Trace(def_name, wl, sol_name, ev))
-                    
+
                     if ev.status == EvaluationStatus.PASSED:
-                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup")
+                        self.logger.info(
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                        )
                     else:
-                        self.logger.warning(f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}")
-                        
+                        self.logger.warning(
+                            f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
+                        )
+
                 for r in selected:
                     r.release(baselines[r])
-        
+
         traces_by_def = defaultdict(list)
         for trace in collected_traces:
             traces_by_def[trace.definition].append(trace)
-        
+
         # Create a new TraceSet with the results
         result_traceset = TraceSet(
             root=self.trace_set.root,
             definitions=self.trace_set.definitions.copy(),
             solutions=self.trace_set.solutions.copy(),
             workload=self.trace_set.workload.copy(),
-            traces=dict(traces_by_def)
+            traces=dict(traces_by_def),
         )
-        
+
         return result_traceset
 
     def _ensure_archive(self) -> None:

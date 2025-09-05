@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import os
-import threading
 import time
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import torch
 from torch import multiprocessing as mp
-from triton.testing import do_bench
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner import (
@@ -94,7 +91,9 @@ def _normalize_outputs(
 
     if isinstance(out, (tuple, list)):
         if len(out) != len(output_names):
-            raise RuntimeError(f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected")
+            raise RuntimeError(
+                f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected"
+            )
         return {name: to_tensor(name, val) for name, val in zip(output_names, out)}
 
     raise RuntimeError(
@@ -102,7 +101,9 @@ def _normalize_outputs(
     )
 
 
-def _load_safetensors(defn: Definition, wl: Workload, traceset_root: Optional[Path] = None) -> Dict[str, torch.Tensor]:
+def _load_safetensors(
+    defn: Definition, wl: Workload, traceset_root: Optional[Path] = None
+) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
     except Exception:
@@ -113,7 +114,7 @@ def _load_safetensors(defn: Definition, wl: Workload, traceset_root: Optional[Pa
     for name, desc in wl.inputs.items():
         if desc.type != "safetensors":
             continue
-        
+
         path = desc.path
         if traceset_root is not None and not Path(path).is_absolute():
             path = str(traceset_root / path)
@@ -136,7 +137,6 @@ def _load_safetensors(defn: Definition, wl: Workload, traceset_root: Optional[Pa
             t = t.contiguous()
         stensors[name] = t
     return stensors
-
 
 
 def _gen_inputs(
@@ -173,7 +173,13 @@ class MultiProcessRunner(Runner):
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
         self._registry = get_registry()
 
-    def run_ref(self, defn: Definition, workload: Workload, cfg: BenchmarkConfig, traceset_root: Optional[Path] = None) -> BaselineHandle:
+    def run_ref(
+        self,
+        defn: Definition,
+        workload: Workload,
+        cfg: BenchmarkConfig,
+        traceset_root: Optional[Path] = None,
+    ) -> BaselineHandle:
         torch.cuda.set_device(int(self.device.split(":")[1]))
         dev = torch.device(self.device)
 
@@ -374,6 +380,7 @@ def _solution_worker_main(
                 torch.cuda.synchronize(device=device)
             except Exception as e:
                 import traceback
+
                 error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
                 ev = _make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,

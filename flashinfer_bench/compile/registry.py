@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from flashinfer_bench.compile import builder
 from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition

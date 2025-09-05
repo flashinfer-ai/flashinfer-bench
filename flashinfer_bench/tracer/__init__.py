@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Optional
-
-from .tracer import TraceEntry, Tracer, TracingRule, enable_tracing, end_tracing, get_tracer
+from .hook_impl import make_tracing_hook
+from .tracer import TraceEntry, Tracer, TracingRule, disable_tracing, enable_tracing, get_tracer
 
 __all__ = [
     "Tracer",
@@ -11,5 +9,6 @@ __all__ = [
     "TraceEntry",
     "enable_tracing",
     "get_tracer",
-    "end_tracing",
+    "disable_tracing",
+    "make_tracing_hook",
 ]
