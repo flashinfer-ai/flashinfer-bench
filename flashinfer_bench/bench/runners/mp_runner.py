@@ -138,6 +138,7 @@ def _load_safetensors(defn: Definition, wl: Workload, traceset_root: Optional[Pa
     return stensors
 
 
+
 def _gen_inputs(
     defn: Definition,
     wl: Workload,
@@ -266,11 +267,12 @@ class MultiProcessRunner(Runner):
                     break
 
                 elif cmd == "ERROR":
-                    evaluation = Evaluation(
+                    error_msg = msg.get("msg", "Unknown error")
+                    evaluation = _make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
+                        device=self.device,
                         log_file=log_path,
-                        environment=env_snapshot(self.device),
-                        timestamp=datetime.now().isoformat(),
+                        error=error_msg,
                     )
                     break
 
@@ -298,11 +300,11 @@ class MultiProcessRunner(Runner):
                     pass
 
         if evaluation is None:
-            evaluation = Evaluation(
+            evaluation = _make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
+                device=self.device,
                 log_file=log_path,
-                environment=env_snapshot(self.device),
-                timestamp=datetime.now().isoformat(),
+                error="Worker process failed unexpectedly",
             )
 
         return evaluation
@@ -370,11 +372,14 @@ def _solution_worker_main(
                 with torch.no_grad():
                     out = runnable_sol(**inp)
                 torch.cuda.synchronize(device=device)
-            except Exception:
+            except Exception as e:
+                import traceback
+                error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
                 ev = _make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
                     log_file=log_path,
+                    error=error_msg,
                 )
                 conn.send({"cmd": "EVAL", "evaluation": ev})
                 return
@@ -472,6 +477,7 @@ def _make_eval(
     log_file: str,
     correctness: Optional[Correctness] = None,
     performance: Optional[Performance] = None,
+    error: Optional[str] = None,
 ) -> Evaluation:
     return Evaluation(
         status=status,
@@ -480,4 +486,5 @@ def _make_eval(
         timestamp=datetime.now().isoformat(),
         correctness=correctness,
         performance=performance,
+        error=error,
     )
