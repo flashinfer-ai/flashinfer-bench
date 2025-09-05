@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +19,7 @@ from .key import ApplyKey, ApplyKeyFactory
 
 
 def _cache_root() -> Path:
-    base = os.environ.get("FLASHINFER_BENCH_CACHE_DIR")
+    base = os.environ.get("FIB_CACHE_DIR")
     return Path(base) if base else Path.home() / ".cache" / "flashinfer_bench"
 
 
@@ -31,8 +32,8 @@ class ApplyTable:
     digest: str
     # def_name -> (key -> solution_name)
     index: Dict[str, Dict[ApplyKey, str]] = field(default_factory=dict)
-    # def_name -> best Runnable
-    def_best: Dict[str, Runnable] = field(default_factory=dict)
+    # def_name -> best solution_name
+    def_best: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load_or_build(cls, ts: TraceSet, config: ApplyConfig) -> "ApplyTable":
@@ -54,20 +55,20 @@ class ApplyTable:
                     bucket[key] = sol_name
                 index[def_name] = bucket
 
-            def_best: Dict[str, Runnable] = {}
+            def_best: Dict[str, str] = {}
             reg = get_registry()
 
-            if raw.get("def_best") and config.on_miss_policy == "use_def_best":
-                for def_name, sol_name in raw["def_best"].items():
-                    defn = ts.definitions.get(def_name)
-                    sol = ts.get_solution(sol_name)
-                    if defn and sol:
-                        def_best[def_name] = reg.build(defn, sol)
+            for def_name, sol_name in raw["def_best"].items():
+                defn = ts.definitions.get(def_name)
+                sol = ts.get_solution(sol_name)
+                if defn and sol:
+                    reg.build(defn, sol)
+                    def_best[def_name] = sol_name
 
             table = cls(digest=digest, index=index, def_best=def_best)
 
             if config.aot_ratio and config.aot_ratio > 0.0:
-                cls._prewarm_aot(ts, config)
+                cls._prewarm_aot(ts, config, table)
 
             return table
 
@@ -78,14 +79,16 @@ class ApplyTable:
         for def_name, bucket in table.index.items():
             for key, sol_name in bucket.items():
                 to_dump["index"].setdefault(def_name, {})[key.encode] = sol_name
-        if config.on_miss_policy == "use_def_best":
-            for def_name, runnable in table.def_best.items():
-                sol_name = runnable.meta.get("solution")
-                if sol_name:
-                    to_dump["def_best"][def_name] = sol_name
+        # Always compute and persist def_best
+        for def_name, sol_name in table.def_best.items():
+            to_dump["def_best"][def_name] = sol_name
 
         with open(index_path, "w") as f:
             json.dump(to_dump, f)
+
+        if config.aot_ratio and config.aot_ratio > 0.0:
+            cls._prewarm_aot(ts, config, table)
+
         return table
 
     @classmethod
@@ -99,14 +102,6 @@ class ApplyTable:
         for def_name, defn in ts.definitions.items():
             per_key, ranked = cls._sweep_def(ts, def_name, config.max_atol, config.max_rtol)
 
-            # AOT build top-ratio solutions
-            if ranked:
-                cutoff = max(1, int(len(ranked) * config.aot_ratio))
-                for sol_name, _ in ranked[:cutoff]:
-                    sol = ts.get_solution(sol_name)
-                    if sol:
-                        reg.build(defn, sol)
-
             # Build index
             for key, t in per_key.items():
                 if not t.solution:
@@ -115,12 +110,14 @@ class ApplyTable:
                 bucket[key] = t.solution
 
             # Build def_best
-            if ranked and config.on_miss_policy == "use_def_best":
+            if ranked:
                 best_sol_name = ranked[0][0]
                 sol = ts.get_solution(best_sol_name)
                 if sol:
-                    r = reg.build(defn, sol)
-                    def_best[def_name] = r
+                    if config.on_miss_policy == "use_def_best":
+                        # Only AOT if on_miss_policy is use_def_best
+                        reg.build(defn, sol)
+                    def_best[def_name] = best_sol_name
 
         return cls(digest=digest, index=index, def_best=def_best)
 
@@ -157,16 +154,32 @@ class ApplyTable:
         return per_key, ranked
 
     @classmethod
-    def _prewarm_aot(cls, ts: TraceSet, config: ApplyConfig) -> None:
+    def _prewarm_aot(cls, ts: TraceSet, config: ApplyConfig, table: "ApplyTable") -> None:
+        if not (config.aot_ratio and config.aot_ratio > 0.0):
+            return
         reg = get_registry()
-        for def_name, defn in ts.definitions.items():
-            _, ranked = cls._sweep_def(ts, def_name, config.max_atol, config.max_rtol)
-            if not ranked:
+
+        for def_name, bucket in table.index.items():
+            if not bucket:
                 continue
+
+            win_counts = Counter(bucket.values())
+            ranked = sorted(win_counts.items(), key=lambda kv: kv[1], reverse=True)
             cutoff = max(1, int(len(ranked) * config.aot_ratio))
+
+            defn = ts.definitions.get(def_name)
+            if not defn:
+                continue
             for sol_name, _ in ranked[:cutoff]:
                 sol = ts.get_solution(sol_name)
                 if sol:
+                    reg.build(defn, sol)
+
+        if config.on_miss_policy == "use_def_best":
+            for def_name, sol_name in table.def_best.items():
+                defn = ts.definitions.get(def_name)
+                sol_name = sol_name.meta.get("solution")
+                if sol_name:
                     reg.build(defn, sol)
 
     @classmethod

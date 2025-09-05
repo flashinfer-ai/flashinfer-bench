@@ -8,7 +8,7 @@ from flashinfer_bench.data.traceset import TraceSet
 
 from .config import ApplyConfig
 from .hook import get_apply_hook
-from .key import ApplyKey, ApplyKeyBuilder, ApplyKeyFactory
+from .key import ApplyKeyBuilder, ApplyKeyFactory
 from .table import ApplyTable
 
 _runtime: Optional["ApplyRuntime"] = None
@@ -122,9 +122,12 @@ class ApplyRuntime:
         # Miss policy
         if runnable is None:
             if self._config.on_miss_policy == "use_def_best":
-                best = self._table.def_best.get(def_name)
-                if best is not None:
-                    return best(**runtime_kwargs)
+                best_sol_name = self._table.def_best.get(def_name)
+                sol = self._traceset.get_solution(best_sol_name)
+                if defn and sol:
+                    runnable = get_registry().build(defn, sol)
+                if runnable is not None:
+                    return runnable(**runtime_kwargs)
             if fallback is None:
                 raise RuntimeError(f"Apply miss for '{def_name}' and no fallback provided")
             return fallback(**runtime_kwargs)

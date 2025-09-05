@@ -10,22 +10,6 @@ from flashinfer_bench.apply.runtime import ApplyRuntime, get_runtime, set_runtim
 _SENTINEL = object()
 
 
-def _merge_to_kwargs(
-    param_names: tuple[str, ...], args: tuple[Any, ...], kwargs: Mapping[str, Any]
-) -> Dict[str, Any]:
-    if len(args) > len(param_names):
-        raise TypeError("Too many positional arguments")
-    merged: Dict[str, Any] = {}
-    for i, val in enumerate(args):
-        merged[param_names[i]] = val
-    # Merge kwargs with conflict detection
-    for k, v in kwargs.items():
-        if k in merged:
-            raise TypeError(f"Multiple values for argument '{k}'")
-        merged[k] = v
-    return merged
-
-
 # Decorator
 @overload
 def apply(
@@ -71,15 +55,15 @@ def apply(
 
     # Decorator
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        rt = get_runtime()
-        if rt is None:
-            return fn
-
         # Inspect once
         sig = inspect.signature(fn)
         param_names = tuple(sig.parameters.keys())
 
         def wrapped(*args: Any, **kwargs: Any):
+            rt = get_runtime()
+            if rt is None:
+                return fn(*args, **kwargs)
+
             bound = _merge_to_kwargs(param_names, args, kwargs)
             def_name = (
                 def_name_or_resolver
@@ -94,6 +78,29 @@ def apply(
         return wrapped
 
     return decorator
+
+
+def enable_apply(
+    dataset_path: Optional[str] = None, apply_config: Optional[ApplyConfig] = None
+) -> _ApplyHandle:
+    """
+    Immediately enable global apply, and return a handle:
+      - Use as a function:imperative apply
+      - Use in a with block: contextually available, exiting restores the original state
+    Usage:
+      enable_apply("/path/to/traceset", cfg)
+      out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+
+      # Or
+      with enable_apply("/path/to/traceset", cfg) as apply:
+          out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    """
+    return _ApplyHandle(dataset_path, apply_config)
+
+
+def disable_apply() -> None:
+    """Silently disable: set the global runtime to None."""
+    set_runtime(None)
 
 
 class _ApplyHandle:
@@ -135,6 +142,22 @@ class _ApplyHandle:
         return False
 
 
+def _merge_to_kwargs(
+    param_names: tuple[str, ...], args: tuple[Any, ...], kwargs: Mapping[str, Any]
+) -> Dict[str, Any]:
+    if len(args) > len(param_names):
+        raise TypeError("Too many positional arguments")
+    merged: Dict[str, Any] = {}
+    for i, val in enumerate(args):
+        merged[param_names[i]] = val
+    # Merge kwargs with conflict detection
+    for k, v in kwargs.items():
+        if k in merged:
+            raise TypeError(f"Multiple values for argument '{k}'")
+        merged[k] = v
+    return merged
+
+
 def _resolve_dataset(dataset_path: Optional[str]) -> str:
     if dataset_path:
         return dataset_path
@@ -146,26 +169,3 @@ def _resolve_dataset(dataset_path: Optional[str]) -> str:
 
 def _resolve_cfg(cfg: Optional[ApplyConfig]) -> ApplyConfig:
     return cfg or ApplyConfig()
-
-
-def enable_apply(
-    dataset_path: Optional[str] = None, apply_config: Optional[ApplyConfig] = None
-) -> _ApplyHandle:
-    """
-    Immediately enable global apply, and return a handle:
-      - Use as a function:imperative apply
-      - Use in a with block: contextually available, exiting restores the original state
-    Usage:
-      enable_apply("/path/to/traceset", cfg)
-      out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
-
-      # Or
-      with enable_apply("/path/to/traceset", cfg) as apply:
-          out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
-    """
-    return _ApplyHandle(dataset_path, apply_config)
-
-
-def disable_apply() -> None:
-    """Silently disable: set the global runtime to None."""
-    set_runtime(None)
