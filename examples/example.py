@@ -16,7 +16,7 @@ load_dotenv()
 
 def main():
     """
-    Generate optimized solutions for all available definitions.
+    Generate optimized solutions for all definitions in the traceset.
     """
     model_name = "gpt-5-2025-08-07"  # choose model here
     language = "triton"
@@ -30,14 +30,7 @@ def main():
     
     all_definitions = list(traceset.definitions.keys())
     
-    available_definitions = [def_name for def_name in all_definitions 
-                           if def_name not in excluded_definitions]
-    
     print(f"All definitions found: {len(all_definitions)}")
-    
-    if not available_definitions:
-        print("No definitions found in the traceset!")
-        return
     
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("BASE_URL")
@@ -55,7 +48,7 @@ def main():
     )
     
     # Statistics tracking
-    total_definitions = len(available_definitions)
+    total_definitions = len(all_definitions)
     successful_generations = 0
     failed_generations = 0
     
@@ -63,7 +56,7 @@ def main():
     print(f"Generating solutions for {total_definitions} definitions...")
     print(f"{'='*60}")
     
-    for idx, definition_name in enumerate(available_definitions, 1):
+    for idx, definition_name in enumerate(all_definitions, 1):
         definition = traceset.definitions[definition_name]
         
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
@@ -103,7 +96,6 @@ def main():
                     failed_generations += 1
                     break
         
-        # Save solution if successful
         if solution:
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
@@ -114,7 +106,6 @@ def main():
                 solution_filename = f"{solution.name}.json"
                 solution_path = solutions_dir / solution_filename
                 
-                # Save solution as JSON using json_codec helper
                 save_json_file(solution, solution_path)
                 
                 print(f"Solution saved to: {solution_path}")
