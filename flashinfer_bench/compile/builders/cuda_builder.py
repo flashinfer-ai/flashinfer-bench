@@ -163,7 +163,7 @@ class CUDABuilder(Builder):
         symbol = sol.spec.entry_point.split("::")[-1]
         name = create_pkg_name(sol, "fib_cuda_")
         cache_root = os.environ.get(
-            "FLASHINFER_BENCH_CACHE_DIR",
+            "FIB_CACHE_DIR",
             os.path.join(os.path.expanduser("~"), ".cache", "flashinfer_bench"),
         )
         build_dir = os.path.join(cache_root, "cuda", name)
