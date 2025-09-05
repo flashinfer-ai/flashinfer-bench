@@ -178,8 +178,8 @@ class ApplyTable:
         if config.on_miss_policy == "use_def_best":
             for def_name, sol_name in table.def_best.items():
                 defn = ts.definitions.get(def_name)
-                sol_name = sol_name.meta.get("solution")
-                if sol_name:
+                sol = ts.get_solution(sol_name)
+                if defn and sol:
                     reg.build(defn, sol)
 
     @classmethod
