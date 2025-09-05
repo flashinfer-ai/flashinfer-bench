@@ -180,16 +180,10 @@ def run(args: argparse.Namespace):
         benchmark = Benchmark(trace_set, log_level=args.log_level)
         print(f"Running benchmark for: {path}")
         benchmark.run(config)
+        benchmark.flush()
         if args.save_results:
-            # Save updated traces back to the traces directory
-            traces_dir = Path(path) / "traces"
-            traces_dir.mkdir(parents=True, exist_ok=True)
-            for def_name, traces in trace_set.traces.items():
-                if not traces:
-                    continue
-                out_path = traces_dir / f"{def_name}.jsonl"
-                save_jsonl_file(traces, out_path)
-            print(f"Results saved to {traces_dir}")
+            benchmark.flush()
+            print(f"Results saved.")
         else:
             print("Benchmark run complete. Results not saved (use --save-results to enable saving).")
 

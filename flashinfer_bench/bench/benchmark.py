@@ -92,6 +92,7 @@ class Benchmark:
                             defn,
                             wl,
                             config,
+                            self.trace_set.root,
                         ): r
                         for r in selected
                     }
@@ -132,12 +133,110 @@ class Benchmark:
                     self._staging_traces.append(Trace(def_name, wl, sol_name, ev))
                     
                     if ev.status == EvaluationStatus.PASSED:
-                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED")
+                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup")
                     else:
                         self.logger.warning(f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}")
 
                 for r in selected:
                     r.release(baselines[r])
+
+    def evaluate(self, config: BenchmarkConfig = BenchmarkConfig()) -> TraceSet:
+        """
+        Evaluate solutions and return a TraceSet with results immediately. 
+        Used for small TraceSets that need immediate feedback.
+        """
+        collected_traces: List[Trace] = []
+        
+        for def_name, defn in self.trace_set.definitions.items():
+            sols = self.trace_set.solutions.get(def_name, [])
+            if not sols:
+                self.logger.warning(f"No solutions found for def={def_name}, skipping definition")
+                continue
+
+            self.logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
+            
+            workloads = self.trace_set.workload.get(def_name, [])
+            
+            for wl_trace in workloads:
+                wl = wl_trace.workload
+
+                K = min(len(self._runners), len(sols))
+                selected = self._pick_runners(K)
+                if not selected:
+                    raise RuntimeError("No healthy runners available")
+
+                # Build baselines on each runner
+                baselines: dict[Runner, BaselineHandle] = {}
+                failed_runners: list[Runner] = []
+                with ThreadPoolExecutor(max_workers=K) as pool:
+                    baseline_futs = {
+                        pool.submit(
+                            r.run_ref,
+                            defn,
+                            wl,
+                            config,
+                            self.trace_set.root,
+                        ): r
+                        for r in selected
+                    }
+                    for fut, r in baseline_futs.items():
+                        try:
+                            h = fut.result()
+                        except Exception as e:
+                            failed_runners.append(r)
+                            self.logger.error(
+                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                            )
+                            continue
+                        baselines[r] = h
+
+                # If a runner fails to run reference, we should consider it dead
+                if failed_runners:
+                    self._runners = [r for r in self._runners if r not in set(failed_runners)]
+                    if not self._runners:
+                        raise RuntimeError("No healthy runners available")
+                    self._curr_runner_idx %= len(self._runners)
+
+                selected = [r for r in selected if r in baselines]
+                if not selected:
+                    raise RuntimeError("No healthy runners available")
+
+                # Evaluate solutions round-robin across runners
+                with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+                    sol_futs: Dict[str, any] = {}
+                    for i, sol in enumerate(sols):
+                        r = selected[i % len(selected)]
+                        sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)
+
+                    results: Dict[str, Evaluation] = {
+                        name: fut.result() for name, fut in sol_futs.items()
+                    }
+
+                for sol_name, ev in results.items():
+                    collected_traces.append(Trace(def_name, wl, sol_name, ev))
+                    
+                    if ev.status == EvaluationStatus.PASSED:
+                        self.logger.info(f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup")
+                    else:
+                        self.logger.warning(f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}")
+                        
+                for r in selected:
+                    r.release(baselines[r])
+        
+        traces_by_def = defaultdict(list)
+        for trace in collected_traces:
+            traces_by_def[trace.definition].append(trace)
+        
+        # Create a new TraceSet with the results
+        result_traceset = TraceSet(
+            root=self.trace_set.root,
+            definitions=self.trace_set.definitions.copy(),
+            solutions=self.trace_set.solutions.copy(),
+            workload=self.trace_set.workload.copy(),
+            traces=dict(traces_by_def)
+        )
+        
+        return result_traceset
 
     def _ensure_archive(self) -> None:
         if self._did_archive:
@@ -162,7 +261,7 @@ class Benchmark:
         buckets = defaultdict(list)
         for tr in self._staging_traces:
             defn = self.trace_set.definitions[tr.definition]
-            path = self.trace_set.root / defn.type / f"{defn.name}.jsonl"
+            path = self.trace_set.root / "traces" / defn.type / f"{defn.name}.jsonl"
             buckets[path].append(tr)
 
         self._staging_traces.clear()
