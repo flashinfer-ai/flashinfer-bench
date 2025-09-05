@@ -35,7 +35,7 @@ class KernelGenerator:
         self.target_gpu = target_gpu
         
         if api_key is None:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = os.getenv("LLM_API_KEY")
             if api_key is None:
                 raise ValueError("API key must be provided or set in OPENAI_API_KEY environment variable")
         
