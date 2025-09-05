@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from dataclasses import cached_property, dataclass, field
-from typing import Any, Dict, Mapping, Optional, Tuple, Type
+from dataclasses import dataclass, field
+from typing import Any, Dict, Tuple, Type, Union
 
-from flashinfer_bench.data.definition import AxisVar, Definition, TensorSpec
+from flashinfer_bench.data.definition import AxisVar, Definition
 from flashinfer_bench.data.trace import Workload
 
 
@@ -13,19 +13,16 @@ from flashinfer_bench.data.trace import Workload
 class ApplyKey:
     axes: Tuple[Tuple[str, int], ...] = field(default_factory=tuple)
     # Features extracted from input tensors
-    feats: Tuple[Tuple[str, Any], ...] = field(default_factory=tuple)
+    feats: Tuple[Tuple[str, Union[int, Union[float, bool]]], ...] = field(default_factory=tuple)
 
-    def __post_init__(self) -> None:
-        self._enc = json.dumps(
+    @property
+    def encode(self) -> str:
+        return json.dumps(
             {"axes": list(self.axes), "feats": list(self.feats)},
             sort_keys=True,
             separators=(",", ":"),
             allow_nan=False,
         )
-
-    @property
-    def encode(self) -> str:
-        return self._enc
 
     @classmethod
     def from_encoded(cls, s: str) -> "ApplyKey":
@@ -35,7 +32,7 @@ class ApplyKey:
         return cls(axes=axes, feats=feats)
 
     def __hash__(self) -> int:
-        return hash(self.encode)
+        return hash((self.axes, self.feats))
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, ApplyKey):

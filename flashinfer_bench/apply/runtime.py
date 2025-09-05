@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.data.traceset import TraceSet
@@ -19,6 +19,11 @@ def get_runtime() -> "ApplyRuntime":
     if _runtime is None:
         _maybe_init_from_env()
     return _runtime
+
+
+def set_runtime(rt: Optional["ApplyRuntime"]) -> None:
+    global _runtime
+    _runtime = rt
 
 
 def _maybe_init_from_env() -> None:
@@ -39,8 +44,7 @@ def _maybe_init_from_env() -> None:
     # Optionally install tracing hook
     if enable_tracing:
         try:
-            from flashinfer_bench.tracer import enable_tracing, get_tracer
-            from flashinfer_bench.tracing.hook_impl import make_tracing_hook
+            from flashinfer_bench.tracer import enable_tracing, make_tracing_hook
 
             from .hook import set_apply_hook
 
@@ -54,6 +58,9 @@ def _maybe_init_from_env() -> None:
 
 class ApplyRuntime:
     def __init__(self, traceset: Union[TraceSet, str], config: ApplyConfig) -> None:
+        if not traceset:
+            raise ValueError("Dataset path is required for enabling apply")
+
         if isinstance(traceset, str):
             self._traceset = TraceSet.from_path(traceset)
         else:
@@ -86,7 +93,10 @@ class ApplyRuntime:
     ) -> Any:
         # Hook (no-op by default)
         hook = get_apply_hook()
-        hook(def_name, runtime_kwargs)
+        try:
+            hook(def_name, runtime_kwargs)
+        except Exception:
+            pass
 
         defn = self._traceset.definitions.get(def_name)
         if defn is None:

@@ -5,17 +5,16 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.json_codec import dataclass_to_dict
-from flashinfer_bench.data.trace import EvaluationStatus, Trace
+from flashinfer_bench.data.trace import Trace
 from flashinfer_bench.data.traceset import TraceSet
 
 from .config import ApplyConfig
-from .key import ApplyKey, ApplyKeyBuilder, ApplyKeyFactory
+from .key import ApplyKey, ApplyKeyFactory
 
 
 def _cache_root() -> Path:
