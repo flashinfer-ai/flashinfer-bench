@@ -107,7 +107,7 @@ def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
 
     r = MultiProcessRunner(device="cuda:0")
-    h = r.run_ref(d, wl, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1))
+    h = r.run_ref(d, wl, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None)
     ev = r.run_solution(s, h, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1))
     assert ev.status.value in {
         "PASSED",
