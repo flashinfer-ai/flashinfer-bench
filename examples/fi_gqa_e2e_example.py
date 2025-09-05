@@ -20,12 +20,12 @@ ts = TraceSet.from_path("../flashinfer-trace")  # path to your flashinfer-trace
 def_name = "gqa_paged_prefill_causal_h32_kv8_d128_ps1"
 if def_name in ts.definitions:
     pseudo_code = (
-        'print("Hello from FlashInfer Bench!")\n'
         "import torch\n\n"
         "def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):\n"
         "    total_q, num_qo_heads, head_dim = q.shape\n"
         "    out = torch.zeros((total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=q.device)\n"
         "    lse = torch.zeros((total_q, num_qo_heads), dtype=torch.float32, device=q.device)\n"
+        "    print('Hello from FlashInfer Bench!')\n"
         "    return out, lse\n"
     )
 
@@ -80,15 +80,12 @@ if def_name in ts.definitions:
     ts.solutions.setdefault(def_name, []).append(pseudo_sol)
     ts.traces.setdefault(def_name, []).append(pseudo_trace)
 
-# enable apply against the in-memory augmented trace set
+# Enable apply against the in-memory augmented trace set
 enable_apply(ts, ApplyConfig(on_miss_policy="use_def_best"))
-
-import os
-
-import flashinfer
 
 # FlashInfer official example
 import torch
+import flashinfer
 
 num_layers = 32
 num_qo_heads = 32
