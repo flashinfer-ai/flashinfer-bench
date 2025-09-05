@@ -98,10 +98,10 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     ts = TraceSet.from_path(str(tmp_path))
 
     # Queries
-    assert ts.get_definition("d1").name == "d1"
+    assert ts.definitions.get("d1").name == "d1"
     assert ts.get_solution("s1").name == "s1"
-    assert len(ts.get_traces_for_definition("d1")) == 2  # pass + fail
-    assert len(ts.get_workloads_for_definition("d1")) == 1
+    assert len(ts.traces.get("d1", [])) == 2  # pass + fail
+    assert len(ts.workload.get("d1", [])) == 1
 
     # Best trace should pick the passed one with higher speedup
     best = ts.get_best_trace("d1", axes={"M": 2})

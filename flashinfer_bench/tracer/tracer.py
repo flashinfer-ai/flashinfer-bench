@@ -89,25 +89,24 @@ class Tracer:
 
     def _validate(self):
         """Validate tracer configuration at enable-time."""
-        from flashinfer_bench.apply import _runtime
+        from flashinfer_bench.apply.runtime import get_runtime
 
-        # Ensure traceset is loaded
-        _runtime._ensure_traceset()
+        rt = get_runtime()
 
-        if not _runtime.traceset:
+        if not rt.traceset:
             raise ValueError("Dataset not available. Set FIB_DATASET_PATH environment variable.")
 
-        if self.out_dir is None:
-            self.out_dir = Path(_runtime.root) / "traces" / "workloads"
-        if self.blob_dir is None:
-            self.blob_dir = Path(_runtime.root) / "blob" / "workloads"
+        if self.out_dir is None and rt.root is not None:
+            self.out_dir = Path(rt.root) / "traces" / "workloads"
+        if self.blob_dir is None and rt.root is not None:
+            self.blob_dir = Path(rt.root) / "blob" / "workloads"
 
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.blob_dir.mkdir(parents=True, exist_ok=True)
 
         # Validate rule keys exist in definitions
         for def_name in self.rules:
-            if def_name not in _runtime.traceset.definitions:
+            if rt.traceset and def_name not in rt.traceset.definitions:
                 self._logger.warning(f"Rule found for unknown definition: {def_name}")
 
         self._logger.info(f"Tracer Initialized")
@@ -132,22 +131,21 @@ class Tracer:
             self._logger.error(f"Tracing rule not configured for {def_name}, skipping")
             return
 
-        from flashinfer_bench.apply import _runtime
+        from flashinfer_bench.apply.runtime import get_runtime
 
-        _runtime._ensure_traceset()
-
-        if def_name not in _runtime.traceset.definitions:
+        rt = get_runtime()
+        if not rt.traceset or def_name not in rt.traceset.definitions:
             self._logger.error(f"Definition {def_name} not found")
             return
 
         try:
-            axes = _runtime.infer_axes(def_name, runtime_args)
+            axes = rt.infer_axes(def_name, runtime_args)
         except ValueError as e:
             self._logger.error(f"Error inferring axes for {def_name}: {e}")
             return
 
         # Validate runtime arguments
-        definition = _runtime.traceset.definitions[def_name]
+        definition = rt.traceset.definitions[def_name]
         definition_input_names = set(definition.inputs.keys())
         runtime_input_names = set(runtime_args.keys())
 
