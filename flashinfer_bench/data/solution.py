@@ -139,3 +139,32 @@ class Solution:
     def requires_build(self) -> bool:
         """Check if the solution requires a build step."""
         return bool(self.spec.build_commands) or self.spec.language == SupportedLanguages.CUDA
+
+    def to_json(self) -> str:
+        """Serialize the Solution to JSON string."""
+        import json
+        
+        def serialize_obj(obj):
+            """Recursively serialize dataclass objects and enums."""
+            if hasattr(obj, '__dataclass_fields__'):
+                # Handle dataclass objects
+                result = {}
+                for field_name in obj.__dataclass_fields__:
+                    field_value = getattr(obj, field_name)
+                    result[field_name] = serialize_obj(field_value)
+                return result
+            elif isinstance(obj, Enum):
+                # Handle enum objects
+                return obj.value
+            elif isinstance(obj, list):
+                # Handle lists
+                return [serialize_obj(item) for item in obj]
+            elif isinstance(obj, dict):
+                # Handle dictionaries
+                return {key: serialize_obj(value) for key, value in obj.items()}
+            else:
+                # Handle primitive types
+                return obj
+        
+        serialized_data = serialize_obj(self)
+        return json.dumps(serialized_data, indent=2, ensure_ascii=False)

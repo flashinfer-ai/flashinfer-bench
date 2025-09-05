@@ -1,0 +1,138 @@
+"""
+Example script to generate optimized solutions with KernelGenerator module
+"""
+
+import os
+import json
+from pathlib import Path
+
+from flashinfer_bench import TraceSet
+from flashinfer_bench.data.json_codec import save_json_file
+from kernel_generator import KernelGenerator
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def main():
+    """
+    Generate optimized solutions for all available definitions.
+    """
+    model_name = "gpt-5-2025-08-07"  # choose model here
+    language = "triton"
+    target_gpu = "B200"
+    
+    # Path to your traceset
+    traceset_path = "/home/user/flashinfer-trace"  # Adjust to your traceset path
+    
+    print(f"Loading TraceSet from: {traceset_path}")
+    traceset = TraceSet.from_path(traceset_path)
+    
+    all_definitions = list(traceset.definitions.keys())
+    
+    available_definitions = [def_name for def_name in all_definitions 
+                           if def_name not in excluded_definitions]
+    
+    print(f"All definitions found: {len(all_definitions)}")
+    
+    if not available_definitions:
+        print("No definitions found in the traceset!")
+        return
+    
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = os.getenv("BASE_URL")
+    if not api_key:
+        print("Please set LLM_API_KEY environment variable or modify this script to pass api_key explicitly")
+        return
+
+    
+    generator = KernelGenerator(
+        model_name=model_name,
+        language=language,
+        target_gpu=target_gpu,
+        api_key=api_key,
+        base_url=base_url
+    )
+    
+    # Statistics tracking
+    total_definitions = len(available_definitions)
+    successful_generations = 0
+    failed_generations = 0
+    
+    print(f"\n{'='*60}")
+    print(f"Generating solutions for {total_definitions} definitions...")
+    print(f"{'='*60}")
+    
+    for idx, definition_name in enumerate(available_definitions, 1):
+        definition = traceset.definitions[definition_name]
+        
+        print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
+        print(f"Definition type: {definition.type}")
+        
+        # Check if we have workloads for this definition
+        workloads = traceset.workload.get(definition_name, [])
+        if not workloads:
+            print(f"No workloads found for definition '{definition_name}' - SKIPPING")
+            failed_generations += 1
+            continue
+        
+        print(f"Found {len(workloads)} workloads for this definition")
+        
+        solution = None
+        max_attempts = 2
+        
+        for attempt in range(1, max_attempts + 1):
+            try:
+                print(f"\nAttempt {attempt}/{max_attempts} for {definition_name}")
+                
+                solution = generator.optimized_generate(
+                    traceset=traceset,
+                    definition=definition,
+                    rounds=5  # Try up to 5 optimization rounds
+                )
+                
+                print(f"Successfully generated solution for {definition_name}")
+                break
+                
+            except Exception as e:
+                print(f"Attempt {attempt} failed for {definition_name}: {e}")
+                if attempt < max_attempts:
+                    print(f"Retrying... ({attempt + 1}/{max_attempts})")
+                else:
+                    print(f"All attempts failed for {definition_name} - SKIPPING")
+                    failed_generations += 1
+                    break
+        
+        # Save solution if successful
+        if solution:
+            try:
+                # Create directory structure: solutions/definition-type/definition-name/
+                solutions_dir = Path(traceset_path) / "solutions" / definition.type / definition_name
+                solutions_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create filename using solution name
+                solution_filename = f"{solution.name}.json"
+                solution_path = solutions_dir / solution_filename
+                
+                # Save solution as JSON using json_codec helper
+                save_json_file(solution, solution_path)
+                
+                print(f"Solution saved to: {solution_path}")
+                successful_generations += 1
+                
+            except Exception as e:
+                print(f"Failed to save solution for {definition_name}: {e}")
+                failed_generations += 1
+    
+    # Final summary
+    print(f"\n{'='*60}")
+    print(f"GENERATION COMPLETE")
+    print(f"{'='*60}")
+    print(f"Total definitions processed: {total_definitions}")
+    print(f"Successful generations: {successful_generations}")
+    print(f"Failed generations: {failed_generations}")
+    print(f"Success rate: {(successful_generations/total_definitions)*100:.1f}%")
+
+
+if __name__ == "__main__":
+    main() 
