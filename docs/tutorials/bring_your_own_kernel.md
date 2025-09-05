@@ -220,7 +220,7 @@ Call `bench.flush()` to write staged traces:
 
 ---
 
-# End-to-end “apply” (ties Trace back to serving)
+## End-to-end “apply” (ties Trace back to serving)
 
 **Decorator form:**
 
@@ -241,3 +241,112 @@ python serve_or_benchmark.py
 ```
 
 At call time, `apply` looks up the **Definition** (by name or via the lambda), matches the current **workload** (axes +, when required, data properties), and dispatches to the **best** `Solution` according to your recorded **Traces** (with correctness constraints and numeric tolerances enforced).
+
+### Advanced Usage: Supporting kernels that don’t align with the Definition
+
+Sometimes your production call site can’t be decorated directly—e.g., wrappers that keep internal state across `plan()`/`run()` like `BatchPrefillWithPagedKVCacheWrapper`. In these cases the function you call at runtime doesn’t match the kernel definition’s flat signature, so the decorator can’t attach cleanly. Use the imperative form instead.
+
+#### Imperative `apply(...)` API
+
+Use the function form of `apply` anywhere you call the kernel. It will (1) in **apply** mode: look up the best Solution for the current workload and call it; (2) in **tracing** mode: record the workload, then run the fallback; (3) otherwise: just call the fallback.
+
+```python
+import flashinfer
+
+result = flashinfer.apply(
+    name: Union[str, Callable[..., str]],
+    fallback_function: Callable[..., Any],
+    *args,       # All arguments must follow the **kernel definition’s interface
+    **kwargs,
+)
+```
+
+#### Example: stateful paged-attention wrapper → imperative `apply`
+
+In this example, the FlashInfer attention wrapper carries state from `plan()` into `run()`, while the FlashInfer-Bench definition exposes a single `attention(init_params, plan_params, run_params)` entry point. Bridge them with a small monkey-patch that reconstructs the original flow as the fallback:
+
+```python
+# Original wrapper shape (state lives across plan/run)
+class AttentionWrapper:
+    def __init__(self, init_params): ...
+    def plan(self, plan_params):
+        self.state = compute_state(plan_params)
+    def run(self, run_params):
+        return call_flashinfer_kernel(run_params, self.state)
+
+# FlashInfer-Bench-side definition interface we want to target:
+def attention(init_params, plan_params, run_params):
+    return attention_kernel(init_params, plan_params, run_params)
+# (covers Q, K, V, page_size, page_indptr, etc.)
+```
+
+```python
+# Monkey patch to route run() through flashinfer.apply
+old_init, old_plan, old_run = (
+    AttentionWrapper.__init__,
+    AttentionWrapper.plan,
+    AttentionWrapper.run,
+)
+
+def new_init(self: AttentionWrapper, init_params):
+    def fallback(init_params, plan_params, run_params):
+        w = AttentionWrapper.__new__(AttentionWrapper)
+        old_init(w, init_params)
+        old_plan(w, plan_params)
+        return old_run(w, run_params)
+    self.init_params = init_params
+    self._fallback = fallback
+
+def new_plan(self: AttentionWrapper, plan_params):
+    self.plan_params = plan_params
+
+def new_run(self: AttentionWrapper, run_params):
+    return flashinfer.apply(
+        "attention",              # or a lambda resolver if the def varies by shape
+        self._fallback,
+        self.init_params,
+        self.plan_params,
+        run_params,
+    )
+
+AttentionWrapper.__init__ = new_init
+AttentionWrapper.plan = new_plan
+AttentionWrapper.run = new_run
+```
+
+This preserves wrapper state while letting **apply** choose the best solution (and still trace workloads when enabled).
+
+#### Alternative: avoid monkey-patching (shim inside the class)
+
+If you can edit the wrapper, define a tiny adapter that flattens `(init, plan, run)` into the definition’s signature and call `flashinfer.apply(...)` directly inside `run()`. Same behavior, fewer moving parts.
+
+#### Scope & tips
+
+* Make sure your adapter/fallback **matches the Definition I/O** exactly.
+* Group `init_params`, `plan_params`, and `run_params` so they cover the definition’s required tensors (e.g., `Q, K, V, page_size, page_indptr`).
+* When definitions vary by shape, pass a **`name` lambda** (e.g., derive hidden size from weights) to resolve the correct Definition at call time.
+
+## Related customization you can enable
+
+* **Apply/trace only selected kernels** via configs (context managers or code APIs), if you don’t want blanket substitution/tracing:
+
+```python
+from flashinfer_bench import enable_apply, enable_tracing, ApplyConfig, TracingConfig
+
+apply_cfgs = {
+    "gemm_n_4096_k_14336": ApplyConfig(max_atol=1e-5, max_rtol=1e-5),
+    "gqa_paged_decode_h32_kv4_d128_ps1": ApplyConfig(),  # defaults OK
+}
+trace_cfgs = {
+    "gqa_paged_decode_h32_kv4_d128_ps1": TracingConfig(
+        tensor_dump_policy="dump_non_float",
+        dedup_policy="shape_only",
+    ),
+}
+
+with enable_apply(apply_configs=apply_cfgs):
+    with enable_tracing(tracing_configs=trace_cfgs):
+        run_engine()
+```
+
+  This limits substitution/tracing to kernels you care about and mirrors the env-var flow.
