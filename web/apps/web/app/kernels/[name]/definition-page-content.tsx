@@ -20,11 +20,11 @@ interface DefinitionPageContentProps {
   canonicalWorkloads: CanonicalWorkload[]
 }
 
-export function DefinitionPageContent({ 
-  definition, 
-  solutions, 
-  traces, 
-  canonicalWorkloads 
+export function DefinitionPageContent({
+  definition,
+  solutions,
+  traces,
+  canonicalWorkloads
 }: DefinitionPageContentProps) {
   const [copiedItem, setCopiedItem] = useState<string | null>(null)
   const [hoveredAxis, setHoveredAxis] = useState<string | null>(null)
@@ -43,12 +43,12 @@ export function DefinitionPageContent({
   const copyJSON = () => {
     // Preserve the exact order of fields as they appear in the original definition
     const orderedDefinition: any = {}
-    
+
     // Copy all fields in their original order
     Object.keys(definition).forEach(key => {
       orderedDefinition[key] = definition[key as keyof Definition]
     })
-    
+
     copyToClipboard(JSON.stringify(orderedDefinition, null, 2), "json")
   }
 
@@ -107,8 +107,8 @@ export function DefinitionPageContent({
               <CardContent className="pt-6">
                 <div className="space-y-2">
                   {Object.entries(definition.axes).map(([name, axis]) => (
-                    <div 
-                      key={name} 
+                    <div
+                      key={name}
                       className={cn(
                         "flex items-center justify-between p-2 rounded-md transition-colors",
                         hoveredAxis === name && "bg-muted"
@@ -130,8 +130,8 @@ export function DefinitionPageContent({
                         )}
                       </div>
                       <span className="text-sm text-muted-foreground">
-                        {axis.type === "const" && 'value' in axis 
-                          ? `const = ${axis.value}` 
+                        {axis.type === "const" && 'value' in axis
+                          ? `const = ${axis.value}`
                           : `variable${axis.parent ? ` (parent: ${axis.parent})` : ''}`}
                       </span>
                     </div>
@@ -160,7 +160,7 @@ export function DefinitionPageContent({
                     </TableHeader>
                     <TableBody>
                       {Object.entries(definition.inputs).map(([name, tensor]) => (
-                        <TableRow 
+                        <TableRow
                           key={name}
                           className={cn(
                             "transition-colors",
@@ -227,7 +227,7 @@ export function DefinitionPageContent({
                     </TableHeader>
                     <TableBody>
                       {Object.entries(definition.outputs).map(([name, tensor]) => (
-                        <TableRow 
+                        <TableRow
                           key={name}
                           className={cn(
                             "transition-colors",
@@ -358,7 +358,7 @@ export function DefinitionPageContent({
           {/* Traces Section */}
           <section id="traces">
             <h2 className="text-2xl font-semibold mb-4">Traces</h2>
-            <TracesTable 
+            <TracesTable
               traces={traces}
               solutions={solutions}
               canonicalWorkloads={canonicalWorkloads}

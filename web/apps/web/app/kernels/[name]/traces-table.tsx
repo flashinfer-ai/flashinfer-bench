@@ -16,14 +16,14 @@ interface TracesTableProps {
 export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTableProps) {
   const [selectedWorkload, setSelectedWorkload] = useState(canonicalWorkloads[0]?.name || "all")
   const [sortBy, setSortBy] = useState<"latency" | "speedup" | "name">("latency")
-  
+
   // Get unique workload configurations
   const workloadConfigs = Array.from(new Set(
     traces.map(t => JSON.stringify(t.workload.axes))
   )).map(s => JSON.parse(s))
-  
+
   // Filter traces based on selected workload
-  const filteredTraces = selectedWorkload === "all" 
+  const filteredTraces = selectedWorkload === "all"
     ? traces
     : traces.filter(t => {
         const workload = canonicalWorkloads.find(w => w.name === selectedWorkload)
@@ -32,7 +32,7 @@ export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTab
           ([k, v]) => t.workload.axes[k] === v
         )
       })
-  
+
   // Sort traces
   const sortedTraces = [...filteredTraces].sort((a, b) => {
     if (sortBy === "latency") {
@@ -43,15 +43,15 @@ export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTab
       return (a.solution || "").localeCompare(b.solution || "")
     }
   })
-  
+
   // Group by workload config if showing all
-  const groupedTraces = selectedWorkload === "all" 
+  const groupedTraces = selectedWorkload === "all"
     ? workloadConfigs.map(config => ({
         config,
         traces: sortedTraces.filter(t => JSON.stringify(t.workload.axes) === JSON.stringify(config))
       })).filter(g => g.traces.length > 0)
     : [{ config: null, traces: sortedTraces }]
-  
+
   return (
     <Card>
       <CardHeader>
@@ -78,7 +78,7 @@ export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTab
               </SelectContent>
             </Select>
           </div>
-          
+
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Sort by" />
@@ -90,7 +90,7 @@ export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTab
             </SelectContent>
           </Select>
         </div>
-        
+
         <div className="space-y-4">
           {groupedTraces.map(({ config, traces }, idx) => (
             <div key={idx} className="space-y-2">
@@ -127,7 +127,7 @@ export function TracesTable({ traces, solutions, canonicalWorkloads }: TracesTab
                           {trace.evaluation?.performance?.latency_ms?.toFixed(3) || "-"}
                         </TableCell>
                         <TableCell>
-                          {trace.evaluation?.performance?.speedup_factor 
+                          {trace.evaluation?.performance?.speedup_factor
                             ? `${trace.evaluation.performance.speedup_factor.toFixed(2)}x`
                             : "-"}
                         </TableCell>

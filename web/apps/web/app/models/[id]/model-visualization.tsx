@@ -11,15 +11,15 @@ import { getRootModules, getChildren } from "@/lib/model-utils"
 
 export function ModelVisualization({ model }: { model: Model }) {
   const [selectedPath, setSelectedPath] = useState<string[]>([])
-  
+
   // Build hierarchy from flat module structure
   function buildHierarchy(moduleName: string): ModelHierarchy {
     const moduleData = model.modules[moduleName]
     if (!moduleData) return { name: moduleName, type: "layer" }
-    
+
     const childNames = getChildren(model, moduleName)
     const children = childNames.map(childName => buildHierarchy(childName))
-    
+
     return {
       name: moduleName,
       type: moduleData.type,
@@ -27,15 +27,15 @@ export function ModelVisualization({ model }: { model: Model }) {
       children: children.length > 0 ? children : undefined
     }
   }
-  
+
   // Get root modules (no parent)
   const rootModuleNames = getRootModules(model)
   const rootModules = rootModuleNames.map(name => buildHierarchy(name))
-  
+
   // Get current view based on selected path
   function getCurrentModules(): ModelHierarchy[] {
     if (selectedPath.length === 0) return rootModules
-    
+
     let current = rootModules
     for (const pathItem of selectedPath) {
       const found = current.find(m => m.name === pathItem)
@@ -45,9 +45,9 @@ export function ModelVisualization({ model }: { model: Model }) {
     }
     return current
   }
-  
+
   const currentModules = getCurrentModules()
-  
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -74,15 +74,15 @@ export function ModelVisualization({ model }: { model: Model }) {
           </div>
         ))}
       </div>
-      
+
       {/* Current level visualization */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {currentModules.map((hierarchyNode) => {
           const moduleData = model.modules[hierarchyNode.name]
           const hasChildren = hierarchyNode.children && hierarchyNode.children.length > 0
-          
+
           return (
-            <Card 
+            <Card
               key={hierarchyNode.name}
               className={`transition-all ${hasChildren ? 'hover:shadow-lg cursor-pointer' : ''}`}
               onClick={() => {
@@ -118,7 +118,7 @@ export function ModelVisualization({ model }: { model: Model }) {
                 {hierarchyNode.definition && (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Kernel Definition</p>
-                    <Link 
+                    <Link
                       href={`/kernels/${hierarchyNode.definition}`}
                       className="text-sm font-mono text-primary hover:underline"
                       onClick={(e) => e.stopPropagation()}

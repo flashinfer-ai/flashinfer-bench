@@ -15,19 +15,19 @@ function getDataPath(subPath: string): string {
 
 export async function getAllDefinitions(): Promise<Definition[]> {
   const definitionsDir = getDataPath("definitions")
-  
+
   try {
     // Read all subdirectories (gemm, decode, prefill, etc.)
     const types = await fs.readdir(definitionsDir)
     const definitions: Definition[] = []
-    
+
     for (const type of types) {
       const typePath = path.join(definitionsDir, type)
       const stat = await fs.stat(typePath)
-      
+
       if (stat.isDirectory()) {
         const files = await fs.readdir(typePath)
-        
+
         for (const file of files) {
           if (file.endsWith(".json")) {
             const content = await fs.readFile(path.join(typePath, file), "utf-8")
@@ -41,7 +41,7 @@ export async function getAllDefinitions(): Promise<Definition[]> {
         }
       }
     }
-    
+
     return definitions.sort((a, b) => a.name.localeCompare(b.name))
   } catch (error) {
     console.error("Failed to load definitions:", error)
@@ -56,7 +56,7 @@ export async function getDefinition(name: string): Promise<Definition | null> {
 
 export async function getSolutionsForDefinition(definitionName: string): Promise<Solution[]> {
   const solutionsDir = getDataPath("solutions")
-  
+
   try {
     // Try to read the solutions directory
     const exists = await fs.access(solutionsDir).then(() => true).catch(() => false)
@@ -64,24 +64,24 @@ export async function getSolutionsForDefinition(definitionName: string): Promise
       console.log(`Solutions directory not found: ${solutionsDir}`)
       return []
     }
-    
+
     // Read all subdirectories (gemm, decode, prefill, etc.)
     const types = await fs.readdir(solutionsDir)
     const solutions: Solution[] = []
-    
+
     for (const type of types) {
       const typePath = path.join(solutionsDir, type)
       const stat = await fs.stat(typePath).catch(() => null)
-      
+
       if (stat && stat.isDirectory()) {
         // Check if there's a subdirectory with the definition name
         const definitionPath = path.join(typePath, definitionName)
         const definitionStat = await fs.stat(definitionPath).catch(() => null)
-        
+
         if (definitionStat && definitionStat.isDirectory()) {
           // Read solution files from the definition subdirectory
           const files = await fs.readdir(definitionPath)
-          
+
           for (const file of files) {
             if (file.endsWith(".json")) {
               const content = await fs.readFile(path.join(definitionPath, file), "utf-8")
@@ -98,7 +98,7 @@ export async function getSolutionsForDefinition(definitionName: string): Promise
         }
       }
     }
-    
+
     console.log(`Found ${solutions.length} solutions for ${definitionName}`)
     return solutions
   } catch (error) {
@@ -109,7 +109,7 @@ export async function getSolutionsForDefinition(definitionName: string): Promise
 
 export async function getTracesForDefinition(definitionName: string): Promise<Trace[]> {
   const tracesDir = getDataPath("traces")
-  
+
   try {
     // Check if traces directory exists
     const exists = await fs.access(tracesDir).then(() => true).catch(() => false)
@@ -117,29 +117,29 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
       console.log(`Traces directory not found: ${tracesDir}`)
       return []
     }
-    
+
     const traces: Trace[] = []
-    
+
     // Read all subdirectories (gemm, gqa, mla, etc.)
     const types = await fs.readdir(tracesDir)
-    
+
     for (const type of types) {
       if (type === "workload") {
         continue
       }
       const typePath = path.join(tracesDir, type)
       const stat = await fs.stat(typePath).catch(() => null)
-      
+
       if (stat && stat.isDirectory()) {
         // Look for JSONL files in this directory
         const files = await fs.readdir(typePath)
-        
+
         for (const file of files) {
           // Check if this file matches our definition name
           if (file === `${definitionName}.jsonl`) {
             const content = await fs.readFile(path.join(typePath, file), "utf-8")
             const lines = content.trim().split("\n")
-            
+
             for (const line of lines) {
               if (line) {
                 try {
@@ -156,7 +156,7 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
         }
       }
     }
-    
+
     console.log(`Found ${traces.length} traces for ${definitionName}`)
     return traces
   } catch (error) {
@@ -168,7 +168,7 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
 // Load models from local data (since these are UI-specific)
 export async function getAllModels(): Promise<Model[]> {
   const modelsDir = path.join(process.cwd(), MODELS_DATA_PATH)
-  
+
   try {
     const files = await fs.readdir(modelsDir)
     const models = await Promise.all(
@@ -179,7 +179,7 @@ export async function getAllModels(): Promise<Model[]> {
           return JSON.parse(content) as Model
         })
     )
-    
+
     return models
   } catch (error) {
     console.error("Failed to load models:", error)

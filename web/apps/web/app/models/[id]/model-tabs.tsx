@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 // Dynamic import for client-side only rendering
 const ModelFlowWrapper = dynamic(
   () => import("./model-flow-visualization").then(mod => mod.ModelFlowWrapper),
-  { 
+  {
     ssr: false,
     loading: () => <div className="h-[800px] flex items-center justify-center">Loading visualization...</div>
   }
@@ -26,17 +26,17 @@ export function ModelTabs({ model }: { model: Model }) {
             <TabsTrigger value="flow">Flow View</TabsTrigger>
             <TabsTrigger value="compute">Module Compute Contribution</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="flow" className="mt-6">
             <ModelFlowWrapper model={model} />
           </TabsContent>
-          
+
           <TabsContent value="compute" className="mt-6">
             <ModelBarChart model={model} />
           </TabsContent>
         </Tabs>
       </div>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Architecture Summary</CardTitle>
@@ -70,7 +70,7 @@ export function ModelTabs({ model }: { model: Model }) {
           </div>
         </CardContent>
       </Card>
-      
+
       <div>
         <h2 className="text-2xl font-semibold mb-4">Hierarchy View</h2>
         <ModelVisualization model={model} />

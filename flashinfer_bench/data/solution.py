@@ -143,10 +143,10 @@ class Solution:
     def to_json(self) -> str:
         """Serialize the Solution to JSON string."""
         import json
-        
+
         def serialize_obj(obj):
             """Recursively serialize dataclass objects and enums."""
-            if hasattr(obj, '__dataclass_fields__'):
+            if hasattr(obj, "__dataclass_fields__"):
                 # Handle dataclass objects
                 result = {}
                 for field_name in obj.__dataclass_fields__:
@@ -165,6 +165,6 @@ class Solution:
             else:
                 # Handle primitive types
                 return obj
-        
+
         serialized_data = serialize_obj(self)
         return json.dumps(serialized_data, indent=2, ensure_ascii=False)
