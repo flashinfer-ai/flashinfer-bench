@@ -213,7 +213,7 @@ The `reference` field is a string that contains the reference implementation of 
 	  "status:draft",
 	  "model:some_model",
     "quantization:float8_e4m3"
-	]
+	],
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
