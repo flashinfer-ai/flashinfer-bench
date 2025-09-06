@@ -46,7 +46,7 @@ class KernelGenerator:
             api_key = os.getenv("LLM_API_KEY")
             if api_key is None:
                 raise ValueError(
-                    "API key must be provided or set in OPENAI_API_KEY environment variable"
+                    "API key must be provided or set in LLM_API_KEY environment variable"
                 )
 
         client_kwargs = {"api_key": api_key}
