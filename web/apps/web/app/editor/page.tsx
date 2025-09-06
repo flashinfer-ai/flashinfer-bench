@@ -51,7 +51,7 @@ function EditorContent() {
       const data = JSON.parse(cleanedJson)
       setParsedData(data)
       setError(null)
-      
+
       window.history.pushState({ view: 'editor' }, '', window.location.href)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid JSON format. Please check your input.")
@@ -111,8 +111,8 @@ function EditorContent() {
         </Card>
       ) : (
         <div className="w-full -mx-4 px-4">
-          <Editor 
-            data={parsedData} 
+          <Editor
+            data={parsedData}
             onBack={() => {
               setParsedData(null)
             }}

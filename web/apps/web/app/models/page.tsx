@@ -4,7 +4,7 @@ import { getAllModels } from "@/lib/data-loader"
 
 export default async function ModelsPage() {
   const models = await getAllModels()
-  
+
   return (
     <div className="container py-8">
       <div className="space-y-6">
@@ -14,7 +14,7 @@ export default async function ModelsPage() {
             Explore model architectures and their kernel implementations
           </p>
         </div>
-        
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {models.map((model) => (
             <ModelCard
@@ -24,7 +24,7 @@ export default async function ModelsPage() {
             />
           ))}
         </div>
-        
+
         {models.length === 0 && (
           <div className="text-center py-12">
             <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />

@@ -27,7 +27,7 @@ function ModelNode({ data, selected }: NodeProps) {
   const [expanded, setExpanded] = useState(false)
   const hasChildren = data.children && data.children.length > 0
   const isBlock = data.moduleType === "block"
-  
+
   return (
     <Card className={`min-w-[200px] ${selected ? 'ring-2 ring-primary' : ''} ${data.highlighted ? 'ring-2 ring-yellow-500' : ''}`}>
       <CardContent className="p-3">
@@ -55,7 +55,7 @@ function ModelNode({ data, selected }: NodeProps) {
               </button>
             )}
           </div>
-          
+
           {/* Badges */}
           <div className="flex gap-1 flex-wrap">
             <Badge variant={isBlock ? "default" : "secondary"} className="text-xs">
@@ -65,7 +65,7 @@ function ModelNode({ data, selected }: NodeProps) {
               <Badge variant="outline" className="text-xs">×{data.count}</Badge>
             )}
           </div>
-          
+
           {/* Definition link */}
           {data.definition && (
             <div className="pt-1">
@@ -78,7 +78,7 @@ function ModelNode({ data, selected }: NodeProps) {
               </Link>
             </div>
           )}
-          
+
           {/* Stats if expanded */}
           {expanded && data.stats && (
             <div className="text-xs text-muted-foreground border-t pt-2 space-y-1">
@@ -87,22 +87,22 @@ function ModelNode({ data, selected }: NodeProps) {
             </div>
           )}
         </div>
-        
+
         {/* Connection handles */}
         {data.hasParent && (
-          <Handle 
-            type="target" 
-            position={Position.Top} 
+          <Handle
+            type="target"
+            position={Position.Top}
             id="target"
-            className="w-2 h-2" 
+            className="w-2 h-2"
           />
         )}
         {hasChildren && (
-          <Handle 
-            type="source" 
-            position={Position.Bottom} 
+          <Handle
+            type="source"
+            position={Position.Bottom}
             id="source"
-            className="w-2 h-2" 
+            className="w-2 h-2"
           />
         )}
       </CardContent>
@@ -120,27 +120,27 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
-  
+
   // Memoize nodeTypes to avoid React Flow warnings
   const nodeTypes = useMemo(() => ({
     modelNode: ModelNode,
   }), [])
-  
+
   // Build the graph structure
   useEffect(() => {
     const buildGraph = () => {
       const newNodes: Node[] = []
       const newEdges: Edge[] = []
       const nodePositions = new Map<string, { x: number; y: number }>()
-      
+
       // Helper to calculate subtree stats
       const getStats = (moduleName: string): { sublayers: number; kernels: number } => {
         const moduleData = model.modules[moduleName]
         if (!moduleData) return { sublayers: 0, kernels: 0 }
-        
+
         let sublayers = 0
         let kernels = moduleData.definition ? 1 : 0
-        
+
         // Count children
         const children = getChildren(model, moduleName)
         for (const childName of children) {
@@ -149,17 +149,17 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
           sublayers += childStats.sublayers
           kernels += childStats.kernels
         }
-        
+
         return { sublayers, kernels }
       }
-      
+
       // Get hierarchy levels
       const getLevel = (moduleName: string): number => {
         const moduleData = model.modules[moduleName]
         if (!moduleData || !moduleData.parent) return 0
         return 1 + getLevel(moduleData.parent)
       }
-      
+
       // Group modules by level
       const levels = new Map<number, string[]>()
       Object.entries(model.modules).forEach(([name, moduleData]) => {
@@ -167,29 +167,29 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
         if (!levels.has(level)) levels.set(level, [])
         levels.get(level)!.push(name)
       })
-      
+
       // Position nodes
       const levelHeight = 150
       const nodeWidth = 250
       const nodeSpacing = 50
-      
+
       levels.forEach((moduleNames, level) => {
         const levelWidth = moduleNames.length * (nodeWidth + nodeSpacing)
         const startX = -levelWidth / 2 + nodeWidth / 2
-        
+
         moduleNames.forEach((name, index) => {
           const x = startX + index * (nodeWidth + nodeSpacing)
           const y = level * levelHeight
           nodePositions.set(name, { x, y })
         })
       })
-      
+
       // Create nodes first
       Object.entries(model.modules).forEach(([name, moduleData]) => {
         const pos = nodePositions.get(name) || { x: 0, y: 0 }
         const stats = getStats(name)
         const children = getChildren(model, name)
-        
+
         newNodes.push({
           id: name,
           type: "modelNode",
@@ -206,14 +206,14 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
           },
         })
       })
-      
+
       // Create edges after all nodes are created
       Object.entries(model.modules).forEach(([name, moduleData]) => {
         if (moduleData.parent) {
           // Check if both source and target nodes exist
           const sourceExists = newNodes.some(n => n.id === moduleData.parent)
           const targetExists = newNodes.some(n => n.id === name)
-          
+
           if (sourceExists && targetExists) {
             newEdges.push({
               id: `${moduleData.parent}-${name}`,
@@ -231,18 +231,18 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
           }
         }
       })
-      
+
       setNodes(newNodes)
       setEdges(newEdges)
     }
-    
+
     buildGraph()
   }, [model, selectedModule, setNodes, setEdges])
-  
+
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     setSelectedModule(node.id)
   }, [])
-  
+
   return (
     <div className="h-[800px] w-full border rounded-lg overflow-hidden relative">
       <ReactFlow
@@ -257,7 +257,7 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
       >
         <Background variant={"dots" as any} gap={12} size={1} />
         <Controls />
-        <MiniMap 
+        <MiniMap
           nodeColor={(node) => {
             if (node.data?.definition) return "#3b82f6"
             if (node.data?.moduleType === "block") return "#10b981"

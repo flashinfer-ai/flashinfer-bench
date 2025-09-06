@@ -21,41 +21,29 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: check-case-conflict
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: check-merge-conflict
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: check-symlinks
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: end-of-file-fixer
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: mixed-line-ending
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: requirements-txt-fixer
-        files: ^(flashinfer_bench|examples|tests)/.*\.txt$
       - id: trailing-whitespace
-        files: ^(flashinfer_bench|examples|tests)/.*
 
   # Changes tabs to spaces
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:
       - id: remove-tabs
-        files: ^(flashinfer_bench|examples|tests)/.*
       - id: remove-crlf
-        files: ^(flashinfer_bench|examples|tests)/.*
 
   # Formatters
   - repo: https://github.com/psf/black-pre-commit-mirror
     rev: 25.1.0
     hooks:
       - id: black
-        files: ^(flashinfer_bench|examples|tests)/.*\.py$
 
   - repo: https://github.com/pycqa/isort
     rev: 6.0.1
     hooks:
       - id: isort
         args: ["--profile=black"]
-        files: ^(flashinfer_bench|examples|tests)/.*\.py$

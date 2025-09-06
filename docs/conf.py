@@ -29,7 +29,6 @@ with open("../pyproject.toml", "rb") as f:
 __version__ = pyproject_data["project"]["version"]
 
 
-
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
