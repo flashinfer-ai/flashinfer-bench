@@ -34,7 +34,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
   )).sort()
 
   // Filter definitions based on search
-  const filteredDefinitions = definitions.filter(d => 
+  const filteredDefinitions = definitions.filter(d =>
     d.name?.toLowerCase().includes(search.toLowerCase()) ||
     d.type?.toLowerCase().includes(search.toLowerCase()) ||
     (d.tags || []).some(tag => tag.toLowerCase().includes(search.toLowerCase()))
@@ -44,7 +44,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
   const typeGroups: Record<string, DefinitionWithCounts[]> = {
     all: filteredDefinitions
   }
-  
+
   // Create groups for each type
   types.forEach(type => {
     typeGroups[type] = filteredDefinitions.filter(d => d.type === type)
@@ -76,7 +76,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
   const renderDefinitionCard = (def: DefinitionWithCounts) => {
     const type = def.type || 'unknown'
-    
+
     const typeColor = {
       // Attention types - green shades
       mha: "bg-green-500",
@@ -125,7 +125,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                     </p>
                   </div>
                 </div>
-              
+
                 {/* Display tags */}
                 <div className="flex flex-wrap gap-1">
                   <span className={`text-xs px-2 py-1 rounded-full ${
@@ -188,8 +188,8 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                           {Object.entries(def.axes).map(([name, axis]) => (
                             <div key={name} className="text-sm text-muted-foreground">
                               <span className="font-mono">{name}</span>: {
-                                axis.type === "const" && 'value' in axis 
-                                  ? `const = ${axis.value}` 
+                                axis.type === "const" && 'value' in axis
+                                  ? `const = ${axis.value}`
                                   : `variable${axis.parent ? ` (parent: ${axis.parent})` : ''}`
                               }
                             </div>
@@ -229,7 +229,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
   const renderPagination = (totalItems: number) => {
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE)
-    
+
     if (totalPages <= 1) return null
 
     return (
@@ -280,7 +280,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
             </p>
           </div>
         </div>
-        
+
         {/* Search bar */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -292,7 +292,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
           />
         </div>
       </div>
-      
+
       <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="all">All ({typeGroups.all.length})</TabsTrigger>
@@ -302,7 +302,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
             </TabsTrigger>
           ))}
         </TabsList>
-        
+
         <TabsContent value="all" className="mt-6">
           {definitions.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No kernels found</p>
@@ -320,7 +320,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
             </>
           )}
         </TabsContent>
-        
+
         {types.map(type => (
           <TabsContent key={type} value={type} className="mt-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

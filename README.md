@@ -1,13 +1,19 @@
-# FlashInfer Bench
+# FlashInfer-Bench
 
-**FlashInfer Bench** is a lightweight, extensible benchmarking suite for evaluating low-level kernel implementations of model inference workloads. It is centered around the `Trace` artifact — a detailed record of a workload execution. It enables systematic comparison of kernel implementations with correctness and performance metrics.
+**FlashInfer-Bench** is a lightweight, extensible benchmarking suite for evaluating low-level kernel implementations of model inference workloads. It is centered around the `Trace` artifact — a detailed record of a workload execution. It enables systematic comparison of kernel implementations with correctness and performance metrics.
 
 ## Installation
 
-Install FlashInfer Bench with pip:
+Install FlashInfer-Bench with pip:
 
 ```bash
-pip install -v -e .
+pip install flashinfer-bench
+```
+
+Import FlashInfer-Bench:
+
+```python
+import flashinfer_bench as fib
 ```
 
 ## Dataset Layout
@@ -34,7 +40,7 @@ trace_set = TraceSet.from_path("/dataset")
 
 ## Command Line Interface (CLI)
 
-FlashInfer Bench provides a CLI for running benchmarks and analyzing results.
+FlashInfer-Bench provides a CLI for running benchmarks and analyzing results.
 
 ### Usage
 

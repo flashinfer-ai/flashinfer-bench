@@ -8,7 +8,7 @@ import { KernelsSection } from "./kernels-section"
 
 export default async function HomePage() {
   const [allDefinitions, models] = await Promise.all([getAllDefinitions(), getAllModels()])
-  
+
   // Load counts for each definition
   const definitionsWithCounts = await Promise.all(
     allDefinitions.map(async (def) => {
@@ -23,7 +23,7 @@ export default async function HomePage() {
       }
     })
   )
-  
+
   return (
     <div className="flex flex-col">
       {/* Models Section */}
@@ -43,9 +43,9 @@ export default async function HomePage() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {models.map((model) => (
-            <ModelCard 
-              key={model.id} 
-              model={model} 
+            <ModelCard
+              key={model.id}
+              model={model}
               href={`/models/${model.id}`}
             />
           ))}

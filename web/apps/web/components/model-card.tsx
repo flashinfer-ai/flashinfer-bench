@@ -17,11 +17,11 @@ interface ModelCardProps {
 export function ModelCard({ model, href }: ModelCardProps) {
   const router = useRouter()
   const [copied, setCopied] = React.useState(false)
-  
+
   // Count only layers (kernels)
   const totalKernels = Object.values(model.modules).filter(m => m.type === "layer").length
   const tracedKernels = Object.values(model.modules).filter(m => m.type === "layer" && m.definition).length
-  
+
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -29,13 +29,13 @@ export function ModelCard({ model, href }: ModelCardProps) {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
-  
+
   const handleFilter = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     router.push(`/?kernel_search=${encodeURIComponent(`model:${model.id}`)}`)
   }
-  
+
   return (
     <Link href={href}>
       <Card className="hover:shadow-lg hover:border-primary transition-all cursor-pointer h-full">
@@ -78,8 +78,8 @@ export function ModelCard({ model, href }: ModelCardProps) {
               <span className="text-sm text-muted-foreground">
                 {tracedKernels}/{totalKernels} traced
               </span>
-              <ProgressCircle 
-                value={tracedKernels} 
+              <ProgressCircle
+                value={tracedKernels}
                 max={totalKernels}
                 size={24}
                 strokeWidth={2.5}

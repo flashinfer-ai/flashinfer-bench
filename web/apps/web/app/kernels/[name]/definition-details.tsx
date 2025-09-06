@@ -8,7 +8,7 @@ import dynamic from "next/dynamic"
 
 const MonacoEditor = dynamic(
   () => import("@monaco-editor/react"),
-  { 
+  {
     ssr: false,
     loading: () => <div className="h-[300px] flex items-center justify-center">Loading editor...</div>
   }
@@ -22,14 +22,14 @@ export function DefinitionDetails({ definition }: { definition: Definition }) {
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor
-    
+
     // Check if content needs scrolling
     const checkScrollNeeded = () => {
       const contentHeight = editor.getContentHeight()
       const containerHeight = 300 // Default height
       setShowExpandButton(contentHeight > containerHeight)
     }
-    
+
     checkScrollNeeded()
     editor.onDidChangeModelContent(checkScrollNeeded)
   }
@@ -43,7 +43,7 @@ export function DefinitionDetails({ definition }: { definition: Definition }) {
       console.error("Failed to copy:", err)
     }
   }
-  
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2">

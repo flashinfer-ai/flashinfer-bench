@@ -36,11 +36,13 @@ import io
 import json
 import os
 import sys
-import matplotlib
 from collections import defaultdict
-from typing import Dict, Iterable, List, Tuple, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+
+import matplotlib
 
 # ---------- Parsing helpers ----------
+
 
 def load_author_map(path: Optional[str]) -> Dict[str, str]:
     if not path:
@@ -50,6 +52,7 @@ def load_author_map(path: Optional[str]) -> Dict[str, str]:
     if not isinstance(m, dict):
         raise ValueError("author map must be a JSON object of {solution_name: author}")
     return {str(k): str(v) for k, v in m.items()}
+
 
 def infer_author_from_solution(solution: str) -> str:
     """
@@ -61,24 +64,31 @@ def infer_author_from_solution(solution: str) -> str:
         return s.split("_", 1)[0]
     return s
 
+
 def get_author(solution: str, sol2author: Dict[str, str]) -> str:
     return sol2author.get(solution) or infer_author_from_solution(solution)
 
+
 # ---------- Data model ----------
+
 
 class Run:
     __slots__ = ("definition", "workload_uuid", "solution", "author", "latency_ms")
-    def __init__(self, definition: str, workload_uuid: str,
-                 solution: str, author: str, latency_ms: float):
+
+    def __init__(
+        self, definition: str, workload_uuid: str, solution: str, author: str, latency_ms: float
+    ):
         self.definition = definition
         self.workload_uuid = workload_uuid
         self.solution = solution
         self.author = author
         self.latency_ms = float(latency_ms) if latency_ms is not None else None
 
+
 GroupKey = Tuple[str, str]  # (definition, workload_uuid)
 
 # ---------- I/O ----------
+
 
 def iter_trace_lines(paths: Iterable[str]) -> Iterable[dict]:
     for p in paths:
@@ -92,6 +102,7 @@ def iter_trace_lines(paths: Iterable[str]) -> Iterable[dict]:
                 except Exception as e:
                     raise RuntimeError(f"Failed to parse JSON in {p}:{ln}: {e}")
                 yield obj
+
 
 def collect_runs(paths: Iterable[str], author_map: Dict[str, str]) -> List[Run]:
     runs: List[Run] = []
@@ -108,22 +119,25 @@ def collect_runs(paths: Iterable[str], author_map: Dict[str, str]) -> List[Run]:
             # Skip malformed records
             sys.stderr.write(f"WARNING: skipping record missing key {e}\n")
             continue
-        
+
         latency = None
         if status == "PASSED" and perf and perf.get("latency_ms") is not None:
             latency = perf["latency_ms"]
-            
+
         author = get_author(solution, author_map)
         runs.append(Run(definition, uuid, solution, author, latency))
     return runs
 
+
 # ---------- Grouping & baseline ----------
+
 
 def group_runs_by_workload(runs: List[Run]) -> Dict[GroupKey, List[Run]]:
     groups: Dict[GroupKey, List[Run]] = defaultdict(list)
     for r in runs:
         groups[(r.definition, r.workload_uuid)].append(r)
     return groups
+
 
 def select_min_latency_per_author(runs: List[Run]) -> Dict[str, Run]:
     """Within a group, keep the best (min latency) run per author."""
@@ -136,8 +150,8 @@ def select_min_latency_per_author(runs: List[Run]) -> Dict[str, Run]:
             best[r.author] = r
     return best
 
-def choose_baseline(best_by_author: Dict[str, Run],
-                    baseline_author: str) -> Tuple[str, float]:
+
+def choose_baseline(best_by_author: Dict[str, Run], baseline_author: str) -> Tuple[str, float]:
     """
     Returns (baseline_author_effective, baseline_latency).
     Prefer provided baseline_author if present; else fall back to fastest run.
@@ -157,7 +171,9 @@ def choose_baseline(best_by_author: Dict[str, Run],
     fastest_author = min(best_by_author.items(), key=lambda kv: kv[1].latency_ms)[0]
     return (fastest_author, best_by_author[fastest_author].latency_ms)
 
+
 # ---------- win@p computation ----------
+
 
 def compute_ratios_by_author(
     groups: Dict[GroupKey, List[Run]],
@@ -195,12 +211,14 @@ def compute_ratios_by_author(
 
     return ratios_by_author, totals_by_author
 
+
 def build_p_grid(ratios_by_author: Dict[str, List[float]]) -> List[float]:
     """Union of all r's across authors, sorted ascending, unique."""
     s: Set[float] = set()
     for arr in ratios_by_author.values():
         s.update(arr)
     return sorted(s)
+
 
 def win_curve_for_author(r_values: List[float], p_grid: List[float]) -> List[Tuple[float, int]]:
     """
@@ -224,7 +242,9 @@ def win_curve_for_author(r_values: List[float], p_grid: List[float]) -> List[Tup
         out.append((p, wins))
     return out
 
+
 # ---------- Baseline inclusion (optional) ----------
+
 
 def add_baseline_author_curve(
     groups: Dict[GroupKey, List[Run]],
@@ -248,7 +268,9 @@ def add_baseline_author_curve(
     totals_by_author[include_name] = count
     ratios_by_author[include_name] = [1.0] * count  # r = 1 each group
 
+
 # ---------- CSV output ----------
+
 
 def write_curves_csv(
     out_path: str,
@@ -287,6 +309,7 @@ def win_curve_ratio_for_author(
         out.append((p, win_ratio, n_wins))
     return out
 
+
 def select_authors_for_plot(
     ratios_by_author: Dict[str, List[float]],
     totals_by_author: Dict[str, int],
@@ -314,6 +337,7 @@ def select_authors_for_plot(
         return eligible[:top_k]
     return eligible  # show all eligible by default
 
+
 def make_win_at_p_plot(
     out_path: Optional[str],
     p_grid: List[float],
@@ -338,16 +362,17 @@ def make_win_at_p_plot(
     # We keep the default style and colors (no explicit colors).
     for author in authors_to_plot:
         rvals = ratios_by_author.get(author, [])
-        curve = win_curve_ratio_for_author(rvals, p_grid, totals_by_author.get(author,0))  # (p, ratio, n_wins)
+        curve = win_curve_ratio_for_author(
+            rvals, p_grid, totals_by_author.get(author, 0)
+        )  # (p, ratio, n_wins)
         xs = [p for (p, _, _) in curve]
         ys = [ratio for (_, ratio, _) in curve]
         # step plot conveys the strict threshold r > p nicely
         ax.step(xs, ys, where="post", label=f"{author}")
-        
 
     ax.set_xlabel("p  (speedup over baseline)", fontsize=14)
     ax.set_ylabel("win@p  (fraction of workloads with r > p)", fontsize=14)
-    ax.tick_params(axis='both', which='major', labelsize=12)
+    ax.tick_params(axis="both", which="major", labelsize=12)
     # title = "Win@p Curves by Author" if title is None else title
     # ax.set_title(title)
     # ax.set_ylim(0.0, 1.0)
@@ -369,37 +394,67 @@ def make_win_at_p_plot(
     else:
         plt.show()
 
+
 def main():
-    ap = argparse.ArgumentParser(description="Compute win@p curves for authors from Trace JSONL files.")
-    ap.add_argument("inputs", nargs="+",
-                    help="Input JSONL files or globs (e.g., logs/*.jsonl)")
-    ap.add_argument("-o", "--output", required=True,
-                    help="Output CSV path for win@p curves.")
-    ap.add_argument("--author-map", default=None,
-                    help="Optional JSON file mapping solution->author.")
-    ap.add_argument("--baseline-author", default="flashinfer",
-                    help="Baseline author name to prefer when present (default: flashinfer).")
-    ap.add_argument("--include-baseline", action="store_true",
-                    help="Include a curve for the baseline author itself.")
+    ap = argparse.ArgumentParser(
+        description="Compute win@p curves for authors from Trace JSONL files."
+    )
+    ap.add_argument("inputs", nargs="+", help="Input JSONL files or globs (e.g., logs/*.jsonl)")
+    ap.add_argument("-o", "--output", required=True, help="Output CSV path for win@p curves.")
+    ap.add_argument(
+        "--author-map", default=None, help="Optional JSON file mapping solution->author."
+    )
+    ap.add_argument(
+        "--baseline-author",
+        default="flashinfer",
+        help="Baseline author name to prefer when present (default: flashinfer).",
+    )
+    ap.add_argument(
+        "--include-baseline",
+        action="store_true",
+        help="Include a curve for the baseline author itself.",
+    )
 
     # ---- plotting options ----
-    ap.add_argument("--plot", metavar="FIG_PATH", default=None,
-                    help="If set, save a Win@p figure to this path (e.g., win_at_p.png or .pdf).")
-    ap.add_argument("--plot-show", action="store_true",
-                    help="Show the plot interactively instead of saving. If both --plot and --plot-show "
-                         "are given, the figure is saved AND shown.")
-    ap.add_argument("--plot-authors", nargs="+", default=None,
-                    help="Explicit list of authors to include on the figure (default: auto-select).")
-    ap.add_argument("--plot-top", type=int, default=10,
-                    help="Max number of authors to show if --plot-authors not provided (default: 10).")
-    ap.add_argument("--plot-min-groups", type=int, default=3,
-                    help="Only plot authors with at least this many comparable groups (default: 3).")
-    ap.add_argument("--plot-title", type=str, default=None,
-                    help="Optional figure title.")
-    ap.add_argument("--plot-xmax", type=float, default=None,
-                    help="Optional x-axis max for p (e.g., 1.5).")
-    ap.add_argument("--plot-legend-inside", action="store_true",
-                    help="Place legend inside the axes (default: outside).")
+    ap.add_argument(
+        "--plot",
+        metavar="FIG_PATH",
+        default=None,
+        help="If set, save a Win@p figure to this path (e.g., win_at_p.png or .pdf).",
+    )
+    ap.add_argument(
+        "--plot-show",
+        action="store_true",
+        help="Show the plot interactively instead of saving. If both --plot and --plot-show "
+        "are given, the figure is saved AND shown.",
+    )
+    ap.add_argument(
+        "--plot-authors",
+        nargs="+",
+        default=None,
+        help="Explicit list of authors to include on the figure (default: auto-select).",
+    )
+    ap.add_argument(
+        "--plot-top",
+        type=int,
+        default=10,
+        help="Max number of authors to show if --plot-authors not provided (default: 10).",
+    )
+    ap.add_argument(
+        "--plot-min-groups",
+        type=int,
+        default=3,
+        help="Only plot authors with at least this many comparable groups (default: 3).",
+    )
+    ap.add_argument("--plot-title", type=str, default=None, help="Optional figure title.")
+    ap.add_argument(
+        "--plot-xmax", type=float, default=None, help="Optional x-axis max for p (e.g., 1.5)."
+    )
+    ap.add_argument(
+        "--plot-legend-inside",
+        action="store_true",
+        help="Place legend inside the axes (default: outside).",
+    )
     args = ap.parse_args()
 
     # Expand globs
@@ -446,12 +501,10 @@ def main():
             return 0.0
         xs = sorted(x)
         m = len(xs) // 2
-        return (xs[m] if len(xs) % 2 else 0.5 * (xs[m-1] + xs[m]))
+        return xs[m] if len(xs) % 2 else 0.5 * (xs[m - 1] + xs[m])
 
     authors_order = sorted(
-        ratios_by_author.keys(),
-        key=lambda a: median(ratios_by_author[a]),
-        reverse=True
+        ratios_by_author.keys(), key=lambda a: median(ratios_by_author[a]), reverse=True
     )
 
     write_curves_csv(args.output, p_grid, ratios_by_author, totals_by_author, authors_order)
@@ -494,6 +547,7 @@ def main():
         f"Processed {len(paths)} files, {len(groups)} workload groups; "
         f"wrote curves for {len(ratios_by_author)} authors to {args.output}\n"
     )
+
 
 if __name__ == "__main__":
     main()
