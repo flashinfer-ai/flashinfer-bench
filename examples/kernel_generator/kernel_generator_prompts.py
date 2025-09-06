@@ -1,19 +1,21 @@
 """
 This file contains the prompts for baseline agent generation.
 """
-from flashinfer_bench import Definition, Trace, EvaluationStatus
+
+from flashinfer_bench import Definition, EvaluationStatus, Trace
+
 
 def _format_definition(definition: Definition) -> str:
     axes_str = "\nAxes:\n"
     for name, axis in definition.axes.items():
-        if hasattr(axis, 'value'):
+        if hasattr(axis, "value"):
             axes_str += f"  {name}: constant = {axis.value}"
         else:
             axes_str += f"  {name}: variable"
         if axis.description:
             axes_str += f" ({axis.description})"
         axes_str += "\n"
-    
+
     # Format inputs
     inputs_str = "\nInputs:\n"
     for name, spec in definition.inputs.items():
@@ -22,7 +24,7 @@ def _format_definition(definition: Definition) -> str:
         if spec.description:
             inputs_str += f" - {spec.description}"
         inputs_str += "\n"
-    
+
     outputs_str = "\nOutputs:\n"
     for name, spec in definition.outputs.items():
         shape_str = "scalar" if spec.shape is None else f"[{', '.join(spec.shape)}]"
@@ -30,13 +32,13 @@ def _format_definition(definition: Definition) -> str:
         if spec.description:
             outputs_str += f" - {spec.description}"
         outputs_str += "\n"
-    
+
     constraints_str = ""
     if definition.constraints:
         constraints_str = "\nConstraints:\n"
         for constraint in definition.constraints:
             constraints_str += f"  - {constraint}\n"
-    
+
     return f"""Name: {definition.name}
 Type: {definition.type}
 {axes_str}{inputs_str}{outputs_str}{constraints_str}
@@ -48,24 +50,24 @@ Reference Implementation:
 def _format_trace_logs(trace: Trace) -> str:
     if trace.is_workload() or not trace.evaluation:
         return "No evaluation logs available (workload-only trace)"
-    
+
     eval_info = f"Status: {trace.evaluation.status.value}\n"
     eval_info += f"Timestamp: {trace.evaluation.timestamp}\n"
-    
+
     if trace.evaluation.error:
         eval_info += f"\nDetailed Error Information:\n{trace.evaluation.error}\n"
     elif trace.evaluation.log_file:
         eval_info += f"Log file: {trace.evaluation.log_file}\n"
-    
+
     if trace.evaluation.correctness:
         eval_info += f"Max relative error: {trace.evaluation.correctness.max_relative_error}\n"
         eval_info += f"Max absolute error: {trace.evaluation.correctness.max_absolute_error}\n"
-    
+
     if trace.evaluation.performance:
         eval_info += f"Latency: {trace.evaluation.performance.latency_ms}ms\n"
         eval_info += f"Reference latency: {trace.evaluation.performance.reference_latency_ms}ms\n"
         eval_info += f"Speedup factor: {trace.evaluation.performance.speedup_factor}x\n"
-    
+
     return eval_info
 
 
@@ -121,7 +123,7 @@ Optimization Strategy:
    - Analyze compilation errors and fix syntax/API usage
    - Fix runtime errors like shape mismatches, memory access violations
    - Ensure numerical correctness matches the reference implementation
-   
+
 2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
    - Optimize memory access patterns for {target_gpu}
    - Tune block sizes and grid dimensions
@@ -186,35 +188,28 @@ Requirements:
 
 Generate the implementation:"""
 
+
 def get_prompt(language: str, definition: Definition, target_gpu: str = "H100") -> str:
-    prompts = {
-        "triton": TRITON_PROMPT,
-        "python": PYTHON_PROMPT,
-        "cuda": CUDA_PROMPT
-    }
-    
+    prompts = {"triton": TRITON_PROMPT, "python": PYTHON_PROMPT, "cuda": CUDA_PROMPT}
+
     if language not in prompts:
         raise ValueError(f"Unsupported language: {language}")
-    
+
     definition_str = _format_definition(definition)
-    
+
     return prompts[language].format(definition=definition_str, target_gpu=target_gpu)
 
 
 def get_optimization_prompt(
-    definition, 
-    trace: Trace, 
-    current_code: str, 
-    target_gpu: str = "H100"
+    definition, trace: Trace, current_code: str, target_gpu: str = "H100"
 ) -> str:
     definition_str = _format_definition(definition)
-    
+
     trace_logs = _format_trace_logs(trace)
-    
+
     return TRITON_OPTIMIZATION_PROMPT.format(
         definition=definition_str,
         trace_logs=trace_logs,
         current_code=current_code,
-        target_gpu=target_gpu
+        target_gpu=target_gpu,
     )
-

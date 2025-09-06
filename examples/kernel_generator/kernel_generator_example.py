@@ -2,17 +2,18 @@
 Example script to generate optimized solutions with KernelGenerator module
 """
 
-import os
 import json
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
+from kernel_generator import KernelGenerator
 
 from flashinfer_bench import TraceSet
 from flashinfer_bench.data.json_codec import save_json_file
-from kernel_generator import KernelGenerator
-
-from dotenv import load_dotenv
 
 load_dotenv()
+
 
 def main():
     """
@@ -35,16 +36,17 @@ def main():
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("BASE_URL")
     if not api_key:
-        print("Please set LLM_API_KEY environment variable or modify this script to pass api_key explicitly")
+        print(
+            "Please set LLM_API_KEY environment variable or modify this script to pass api_key explicitly"
+        )
         return
-
 
     generator = KernelGenerator(
         model_name=model_name,
         language=language,
         target_gpu=target_gpu,
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,
     )
 
     # Statistics tracking
@@ -81,7 +83,7 @@ def main():
                 solution = generator.optimized_generate(
                     traceset=traceset,
                     definition=definition,
-                    rounds=5  # Try up to 5 optimization rounds
+                    rounds=5,  # Try up to 5 optimization rounds
                 )
 
                 print(f"Successfully generated solution for {definition_name}")
@@ -99,7 +101,9 @@ def main():
         if solution:
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
-                solutions_dir = Path(traceset_path) / "solutions" / definition.type / definition_name
+                solutions_dir = (
+                    Path(traceset_path) / "solutions" / definition.type / definition_name
+                )
                 solutions_dir.mkdir(parents=True, exist_ok=True)
 
                 # Create filename using solution name

@@ -2,9 +2,9 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from flashinfer_bench.data import TraceSet
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
-from flashinfer_bench.data.json_codec import save_jsonl_file, save_json_file
+from flashinfer_bench.data import TraceSet
+from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
 
 
 def best(args: argparse.Namespace):
@@ -38,6 +38,7 @@ def merge_tracesets(trace_sets):
         raise ValueError("No TraceSets to merge.")
     # Start with a deep copy of the first TraceSet
     from copy import deepcopy
+
     merged = deepcopy(trace_sets[0])
     for ts in trace_sets[1:]:
         # Merge definitions
@@ -105,47 +106,51 @@ def merge(args: argparse.Namespace):
 def visualize(args: argparse.Namespace):
     """Visualize benchmark results as a console table."""
     trace_sets = _load_traces(args)
-    
+
     print("FlashInfer Bench Results Visualization")
     print("=" * 80)
-    
+
     for i, trace_set in enumerate(trace_sets):
         if len(trace_sets) > 1:
             print(f"\nDataset {i+1}:")
             print("-" * 40)
-        
+
         # Print summary statistics
         summary = trace_set.summary()
         print(f"Summary: {summary['passed']}/{summary['total']} traces passed")
-        if summary['avg_latency_ms']:
+        if summary["avg_latency_ms"]:
             print(f"Average latency: {summary['avg_latency_ms']:.3f}ms")
-        
+
         # Print detailed results table
         print("\nDetailed Results:")
         print("-" * 80)
-        print(f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}")
+        print(
+            f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}"
+        )
         print("-" * 80)
-        
+
         for def_name, traces in trace_set.traces.items():
             for trace in traces:
                 status = trace.evaluation.get("status", "UNKNOWN")
                 perf = trace.evaluation.get("performance", {})
                 corr = trace.evaluation.get("correctness", {})
-                
+
                 speedup = perf.get("speedup_factor", "N/A")
                 if isinstance(speedup, (int, float)):
                     speedup = f"{speedup:.2f}×"
-                
+
                 latency = perf.get("latency_ms", "N/A")
                 if isinstance(latency, (int, float)):
                     latency = f"{latency:.3f}"
-                
+
                 max_error = corr.get("max_absolute_error", "N/A")
                 if isinstance(max_error, (int, float)):
                     max_error = f"{max_error:.2e}"
-                
-                print(f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}")
-        
+
+                print(
+                    f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}"
+                )
+
         # Print best solutions
         print("\nBest Solutions:")
         print("-" * 80)
@@ -185,7 +190,9 @@ def run(args: argparse.Namespace):
             benchmark.flush()
             print(f"Results saved.")
         else:
-            print("Benchmark run complete. Results not saved (use --save-results to enable saving).")
+            print(
+                "Benchmark run complete. Results not saved (use --save-results to enable saving)."
+            )
 
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
@@ -213,19 +220,27 @@ def cli():
     )
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
-    run_parser.add_argument("--warmup-runs", type=int, default=10, 
-                           help="Number of warmup runs before measurement")
-    run_parser.add_argument("--iterations", type=int, default=50,
-                           help="Number of iterations for benchmarking")
-    run_parser.add_argument("--num-trials", type=int, default=3,
-                           help="Number of trials for each benchmark")
-    run_parser.add_argument("--rtol", type=float, default=1e-2,
-                           help="Relative tolerance for correctness checks")
-    run_parser.add_argument("--atol", type=float, default=1e-2,
-                           help="Absolute tolerance for correctness checks")
-    run_parser.add_argument("--log-level", default="INFO", 
-                           choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-                           help="Logging level")
+    run_parser.add_argument(
+        "--warmup-runs", type=int, default=10, help="Number of warmup runs before measurement"
+    )
+    run_parser.add_argument(
+        "--iterations", type=int, default=50, help="Number of iterations for benchmarking"
+    )
+    run_parser.add_argument(
+        "--num-trials", type=int, default=3, help="Number of trials for each benchmark"
+    )
+    run_parser.add_argument(
+        "--rtol", type=float, default=1e-2, help="Relative tolerance for correctness checks"
+    )
+    run_parser.add_argument(
+        "--atol", type=float, default=1e-2, help="Absolute tolerance for correctness checks"
+    )
+    run_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level",
+    )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument(
         "--local",
