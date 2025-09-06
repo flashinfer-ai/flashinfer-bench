@@ -14,17 +14,18 @@ _SENTINEL = object()
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    ...
 
 
-# Imperative
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
     *,
     runtime_kwargs: Dict[str, Any],
     fallback: Optional[Callable[..., Any]],
-) -> Any: ...
+) -> Any:
+    ...
 
 
 def apply(
@@ -33,9 +34,57 @@ def apply(
     fallback: Optional[Callable[..., Any]] = _SENTINEL,
 ):
     """
-    Unified apply API:
-    - Decorator: @apply(resolver)
-    - Imperative: apply(def_name_or_resolver, runtime_kwargs=..., fallback=...)
+    Decorator/function for routing to the best-performing kernel recorded in the
+    FlashInfer Trace database.
+
+    This API can be used in two modes:
+
+    1) **Decorator mode** (only ``def_name_or_resolver`` provided): returns a decorator
+       that wraps a kernel function with a router. The router selects the best-performing
+       candidate according to the function's runtime arguments.
+    2) **Function mode** (``runtime_kwargs`` provided, optionally ``fallback``):
+       immediately resolves and calls the best-performing kernel and returns its result.
+
+    Parameters
+    ----------
+    def_name_or_resolver : Union[str, Callable[..., str]]
+        The kernel name, or a resolver ``fn(*args, **kwargs) -> str`` that maps runtime
+        arguments to a kernel name (definition name).
+    runtime_kwargs : Dict[str, Any], optional
+        Only used in **function mode**. The runtime arguments to feed into the selected
+        kernel. Use this to call the kernel immediately instead of returning a decorator.
+    fallback : Optional[Callable[..., Any]], optional
+        Only used in **function mode**. A fallback function to invoke when no matching
+        kernel is found in the Trace database.
+
+    Returns
+    -------
+    Union[Callable[[Callable[..., Any]], Callable[..., Any]], Any]
+        - **Decorator mode**: a decorator that transforms the target kernel function into
+          a routed version.
+        - **Function mode**: the return value produced by the selected (or fallback) kernel.
+
+    Examples
+    --------
+    Decorator mode with a fixed name
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    >>> @apply("gemm_bf16")
+    ... def gemm_bf16(A, B, bias=None):
+    ...     return torch.nn.functional.linear(A, B, bias)
+
+    Decorator mode with a resolver
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    >>> @apply(lambda A, B: f"gemm_n_{B.shape[0]}_k_{B.shape[1]}")
+    ... def gemm_bf16(A, B, bias=None):
+    ...     return torch.nn.functional.linear(A, B, bias)
+
+    Function mode
+    ~~~~~~~~~~~~~
+    >>> out = apply(
+    ...     "gemm_bf16",
+    ...     runtime_kwargs={"A": A, "B": B, "bias": None},
+    ...     fallback=lambda **kw: torch.nn.functional.linear(**kw),
+    ... )
     """
     # Imperative
     if runtime_kwargs is not _SENTINEL:

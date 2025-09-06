@@ -1,4 +1,4 @@
-# Bring Your Own Kernel
+# Bring Your Own Kernel to FlashInfer-Bench
 
 This guide gives instructions on how to add Definitions, Solutions, capture Workloads, and record Evaluations by walking through each **component of the Trace**, with an end-to-end “apply at runtime” flow.
 
@@ -12,8 +12,6 @@ A **Trace** is an atomic, immutable record of a single benchmark run. It links a
 | `solution`   | string | Yes      | The `name` of the `Solution` tested.              |
 | `workload`   | object | Yes      | Concrete shapes and input data used for this run. |
 | `evaluation` | object | Yes      | Results, logs, and environment snapshot.          |
-
----
 
 ## Component 1: `definition`
 
@@ -34,8 +32,6 @@ A **Trace** is an atomic, immutable record of a single benchmark run. It links a
 5. Provide a correct Python `reference` returning a tuple of outputs.
 6. (Optional) Provide minimal tests that run the `reference` on tiny shapes.
 
----
-
 ## Component 2: `solution`
 
 **What it is.** A concrete implementation of a Definition’s interface (Triton/CUDA/CUTLASS/PyTorch, etc.) plus metadata including target archs, libraries, author (human or LLM).
@@ -50,8 +46,6 @@ A **Trace** is an atomic, immutable record of a single benchmark run. It links a
 
 See agent.md (to be added) for our methods to generate Solutions with LLMs.
 
----
-
 ## Component 3: `workload`
 
 **What it is.** The concrete axes + input data that instantiate a Definition for one run.
@@ -63,7 +57,7 @@ See agent.md (to be added) for our methods to generate Solutions with LLMs.
 
 **How to capture workloads.**
 
-#### **Env-vars (zero-code):**
+### **Env-vars (zero-code):**
 
 1. **Choose an output dataset root** (optional):
 
@@ -91,7 +85,7 @@ $FLASHINFER_BENCH_DATASET_PATH/
 
 Writing tensors to file is **async** (background thread) to reduce runtime overhead.
 
-#### **Tracing in code (fine-grained control)**
+### **Tracing in code (fine-grained control)**
 
 If you want to target a subset of kernels / customize policies:
 
@@ -122,8 +116,6 @@ with fb.enable_tracing(tracing_configs=configs, dataset_dir="/root/flashinfer-tr
 * `dedup_policy`: `"keep_all"`, `"shape_only"`, `"keep_first_k"` (e.g., first k calls), or a custom callable `Workload -> key`.
   These reduce disk/time while keeping representative samples.
 
----
-
 ## Component 4: `evaluation`
 
 **What it is.** The result bundle for one `(definition, solution, workload)` run.
@@ -137,7 +129,7 @@ CLI:
   ```
 
 Use Python API:
-#### Prepare a `TraceSet` and Run the benchmark
+### Prepare a `TraceSet` and Run the benchmark
 
 ```python
 from flashinfer_bench.data.traceset import TraceSet
@@ -171,7 +163,7 @@ bench.flush()                  # writes JSONL results under root/<type>/<kernel_
 
 Each solution run returns an `Evaluation`; the benchmark immediately stages a `Trace(def_name, workload, sol_name, evaluation)` in memory.
 
-#### Persist results
+### Persist results
 
 Call `bench.flush()` to write staged traces:
 
@@ -184,13 +176,11 @@ Call `bench.flush()` to write staged traces:
 
 > This produces one line per `(definition, solution, workload)` run. After benchmarking is done, the results can be used to rank solutions, visualize leaderboards, and drive `apply` at runtime.
 
-#### Reproducibility
+### Reproducibility
 
 * **`BenchmarkConfig`** controls iteration counts, warmup, tolerances, and timeouts (use your project’s defaults or tune per kernel).
 * **Environment snapshot**: runners capture hardware and library versions into `evaluation.environment`.
 * **Dead runner handling**: any runner failing the reference is dropped for subsequent work; if all runners fail, a `RuntimeError` is raised.
-
----
 
 ## Putting it together: Trace lifecycle
 
@@ -218,7 +208,6 @@ Call `bench.flush()` to write staged traces:
 
    * Use runtime substitution to dispatch to the **best** ranked Solution for the current shapes.
 
----
 
 ## End-to-end “apply” (ties Trace back to serving)
 

@@ -38,5 +38,5 @@ tutorials/bring_your_own_kernel
 :maxdepth: 2
 :caption: API Reference
 
-api/apply
+api/api_apply
 ```
