@@ -259,7 +259,7 @@ The `reference` field is a string that contains the reference implementation of 
   "tags": [
     "status:draft",
     "model:some_model"
-  ]
+  ],
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var", "parent": "G" },
