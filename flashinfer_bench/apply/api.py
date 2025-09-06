@@ -14,8 +14,7 @@ _SENTINEL = object()
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    ...
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
 
 
 @overload
@@ -24,8 +23,7 @@ def apply(
     *,
     runtime_kwargs: Dict[str, Any],
     fallback: Optional[Callable[..., Any]],
-) -> Any:
-    ...
+) -> Any: ...
 
 
 def apply(

@@ -37,7 +37,7 @@ export function Editor({ data, onBack }: EditorProps) {
         setActiveSourceFile(data.sources[0].path)
       }
     }
-    
+
     // Initialize JSON preview
     setJsonText(JSON.stringify(data, null, 2))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +47,7 @@ export function Editor({ data, onBack }: EditorProps) {
   const updateJsonPreview = useCallback((baseData?: any) => {
     const dataToUse = baseData || data
     let jsonData = { ...dataToUse }
-    
+
     if (isDefinition) {
       jsonData.reference = referenceCode || dataToUse.reference || ""
     } else if (isSolution) {
@@ -57,7 +57,7 @@ export function Editor({ data, onBack }: EditorProps) {
       }))
       jsonData.sources = sources.length > 0 ? sources : dataToUse.sources || []
     }
-    
+
     setJsonText(JSON.stringify(jsonData, null, 2))
   }, [data, isDefinition, isSolution, referenceCode, sourceCode])
 
@@ -94,7 +94,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.axes) data.axes = {}
     data.axes[`new_axis_${Object.keys(data.axes || {}).length + 1}`] = {
       type: "const",
@@ -109,7 +109,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.inputs) data.inputs = {}
     data.inputs[`new_input_${Object.keys(data.inputs || {}).length + 1}`] = {
       shape: ["M", "N"],
@@ -124,7 +124,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.outputs) data.outputs = {}
     data.outputs[`new_output_${Object.keys(data.outputs || {}).length + 1}`] = {
       shape: ["M", "N"],
@@ -139,7 +139,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.constraints) data.constraints = []
     data.constraints.push("// Add constraint expression here")
     setJsonText(JSON.stringify(data, null, 2))
@@ -151,7 +151,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.spec) data.spec = {}
     if (!data.spec.dependencies) data.spec.dependencies = []
     data.spec.dependencies.push("new-dependency")
@@ -164,7 +164,7 @@ export function Editor({ data, onBack }: EditorProps) {
       toast({ description: "Please fix JSON errors first.", variant: "destructive" })
       return
     }
-    
+
     if (!data.spec) data.spec = {}
     if (!data.spec.target_hardware) data.spec.target_hardware = []
     data.spec.target_hardware.push("cuda:90")
@@ -184,7 +184,7 @@ export function Editor({ data, onBack }: EditorProps) {
     const newSourceCode = { ...sourceCode }
     delete newSourceCode[path]
     setSourceCode(newSourceCode)
-    
+
     // Switch to another file if the active one was removed
     if (path === activeSourceFile) {
       const remaining = Object.keys(newSourceCode)
@@ -269,7 +269,7 @@ export function Editor({ data, onBack }: EditorProps) {
               </Button>
             )}
           </div>
-          
+
           <div className="flex-1 flex flex-col min-h-0">
             {isDefinition ? (
               <div className="border rounded-lg overflow-hidden h-full">
@@ -350,7 +350,7 @@ export function Editor({ data, onBack }: EditorProps) {
               <FileText className="h-5 w-5" />
               JSON Configuration (Live Preview)
             </h3>
-            
+
             {/* Quick Action Buttons */}
             <div className="flex flex-wrap gap-2 mb-4">
               {isDefinition ? (

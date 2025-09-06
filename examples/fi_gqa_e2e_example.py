@@ -83,9 +83,10 @@ if def_name in ts.definitions:
 # Enable apply against the in-memory augmented trace set
 enable_apply(ts, ApplyConfig(on_miss_policy="use_def_best"))
 
+import flashinfer
+
 # FlashInfer official example
 import torch
-import flashinfer
 
 num_layers = 32
 num_qo_heads = 32
