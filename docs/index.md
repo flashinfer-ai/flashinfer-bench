@@ -28,7 +28,7 @@ flashinfer_trace/flashinfer_trace
 ```
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 :caption: Tutorials
 
 tutorials/bring_your_own_kernel
