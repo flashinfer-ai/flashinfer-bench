@@ -297,7 +297,7 @@ The `reference` field is a string that contains the reference implementation of 
     "status:draft",
     "quantization:float8_e4m3",
     "model:some_model"
-  ]
+  ],
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var", "parent": "G" },
