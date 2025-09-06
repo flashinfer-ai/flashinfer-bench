@@ -30,7 +30,7 @@ Note that a `Definition` does not contain specific input *data* for its variable
 
 ### `type`: Compute Category
 
-`type` is a `string` field used for grouping and filtering kernels. It represents the genral compute characteristic.
+`type` is a `string` field used for grouping and filtering kernels. It represents the general compute characteristic.
 
 Current supported `type`s are:
 
