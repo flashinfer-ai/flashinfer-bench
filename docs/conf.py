@@ -18,15 +18,6 @@ import tomli
 root = Path(__file__).parents[1].resolve()
 sys.path.insert(0, str(root))
 os.environ["BUILD_DOC"] = "1"
-autodoc_mock_imports = [
-    "torch",
-    "triton",
-    "flashinfer._build_meta",
-    "cuda",
-    "numpy",
-    "einops",
-    "mpi4py",
-]
 
 project = "FlashInfer-Bench"
 author = "FlashInfer-Bench Contributors"
@@ -51,7 +42,18 @@ extensions = [
     "sphinx.ext.mathjax",
 ]
 
+autodoc_mock_imports = [
+    "torch",
+    "triton",
+    "flashinfer._build_meta",
+    "cuda",
+    "numpy",
+    "einops",
+    "mpi4py",
+    "safetensors",
+]
 autodoc_default_flags = ["members"]
+
 autosummary_generate = True
 
 source_suffix = [".rst"]

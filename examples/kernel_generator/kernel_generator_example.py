@@ -21,24 +21,24 @@ def main():
     model_name = "gpt-5-2025-08-07"  # choose model here
     language = "triton"
     target_gpu = "B200"
-    
+
     # Path to your traceset
     traceset_path = "/home/user/flashinfer-trace"  # Adjust to your traceset path
-    
+
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
-    
+
     all_definitions = list(traceset.definitions.keys())
-    
+
     print(f"All definitions found: {len(all_definitions)}")
-    
+
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("BASE_URL")
     if not api_key:
         print("Please set LLM_API_KEY environment variable or modify this script to pass api_key explicitly")
         return
 
-    
+
     generator = KernelGenerator(
         model_name=model_name,
         language=language,
@@ -46,47 +46,47 @@ def main():
         api_key=api_key,
         base_url=base_url
     )
-    
+
     # Statistics tracking
     total_definitions = len(all_definitions)
     successful_generations = 0
     failed_generations = 0
-    
+
     print(f"\n{'='*60}")
     print(f"Generating solutions for {total_definitions} definitions...")
     print(f"{'='*60}")
-    
+
     for idx, definition_name in enumerate(all_definitions, 1):
         definition = traceset.definitions[definition_name]
-        
+
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
         print(f"Definition type: {definition.type}")
-        
+
         # Check if we have workloads for this definition
         workloads = traceset.workload.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
             failed_generations += 1
             continue
-        
+
         print(f"Found {len(workloads)} workloads for this definition")
-        
+
         solution = None
         max_attempts = 2
-        
+
         for attempt in range(1, max_attempts + 1):
             try:
                 print(f"\nAttempt {attempt}/{max_attempts} for {definition_name}")
-                
+
                 solution = generator.optimized_generate(
                     traceset=traceset,
                     definition=definition,
                     rounds=5  # Try up to 5 optimization rounds
                 )
-                
+
                 print(f"Successfully generated solution for {definition_name}")
                 break
-                
+
             except Exception as e:
                 print(f"Attempt {attempt} failed for {definition_name}: {e}")
                 if attempt < max_attempts:
@@ -95,26 +95,26 @@ def main():
                     print(f"All attempts failed for {definition_name} - SKIPPING")
                     failed_generations += 1
                     break
-        
+
         if solution:
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
                 solutions_dir = Path(traceset_path) / "solutions" / definition.type / definition_name
                 solutions_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Create filename using solution name
                 solution_filename = f"{solution.name}.json"
                 solution_path = solutions_dir / solution_filename
-                
+
                 save_json_file(solution, solution_path)
-                
+
                 print(f"Solution saved to: {solution_path}")
                 successful_generations += 1
-                
+
             except Exception as e:
                 print(f"Failed to save solution for {definition_name}: {e}")
                 failed_generations += 1
-    
+
     # Final summary
     print(f"\n{'='*60}")
     print(f"GENERATION COMPLETE")
@@ -126,4 +126,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
