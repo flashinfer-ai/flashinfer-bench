@@ -130,23 +130,51 @@ def apply(
 def enable_apply(
     dataset_path: Optional[str] = None, apply_config: Optional[ApplyConfig] = None
 ) -> _ApplyHandle:
-    """
-    Immediately enable global apply, and return a handle:
-      - Use as a function:imperative apply
-      - Use in a with block: contextually available, exiting restores the original state
-    Usage:
-      enable_apply("/path/to/traceset", cfg)
-      out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    """Immediately enable global apply and return a handle.
 
-      # Or
-      with enable_apply("/path/to/traceset", cfg) as apply:
-          out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    The returned handle can be used in two ways:
+    - As a function for imperative apply calls
+    - In a with block for contextual availability, exiting restores the original state
+
+    Parameters
+    ----------
+    dataset_path : str, optional
+        Path to the dataset/traceset directory
+    apply_config : ApplyConfig, optional
+        Configuration for the apply runtime
+
+    Returns
+    -------
+    _ApplyHandle
+        Handle that can be used for imperative apply or as context manager
+
+    Examples
+    --------
+    >>> # Direct usage
+    >>> handle = enable_apply("/path/to/traceset", cfg)
+    >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+
+    >>> # Context manager usage
+    >>> with enable_apply("/path/to/traceset", cfg) as apply_fn:
+    ...     out = apply_fn("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     """
     return _ApplyHandle(dataset_path, apply_config)
 
 
 def disable_apply() -> None:
-    """Silently disable: set the global runtime to None."""
+    """Disable global apply functionality.
+
+    This function silently disables the global apply runtime by setting it to None.
+    After calling this function, any subsequent calls to apply() will use fallback
+    functions instead of the apply runtime.
+
+    Examples
+    --------
+    >>> enable_apply("/path/to/traceset")
+    >>> # apply is now enabled
+    >>> disable_apply()
+    >>> # apply is now disabled, fallback functions will be used
+    """
     set_runtime(None)
 
 
