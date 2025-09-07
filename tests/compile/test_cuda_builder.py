@@ -1,4 +1,3 @@
-from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.builders import CUDABuilder
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages

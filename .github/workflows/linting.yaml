@@ -1,0 +1,22 @@
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  linting:
+    name: Pre-check on Ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Pre-commit
+        uses: pre-commit/action@v3.0.1
+
+      - name: Ruff check
+        uses: astral-sh/ruff-action@v3

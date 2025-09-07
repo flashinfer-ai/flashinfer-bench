@@ -188,7 +188,7 @@ def run(args: argparse.Namespace):
         benchmark.flush()
         if args.save_results:
             benchmark.flush()
-            print(f"Results saved.")
+            print("Results saved.")
         else:
             print(
                 "Benchmark run complete. Results not saved (use --save-results to enable saving)."

@@ -114,15 +114,15 @@ class PrefillGqaPagedAdapter:
 
                 # Assemble runtime kwargs (explicit keys)
                 sm_scale = pick_sm_scale(head_dim, ctx.get("sm_scale"))
-                rk: Dict[str, Any] = dict(
-                    q=q,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    qo_indptr=ctx["qo_indptr"],
-                    kv_indptr=ctx["kv_indptr"],
-                    kv_indices=ctx["kv_indices"],
-                    sm_scale=sm_scale,
-                )
+                rk: Dict[str, Any] = {
+                    "q": q,
+                    "k_cache": k_cache,
+                    "v_cache": v_cache,
+                    "qo_indptr": ctx["qo_indptr"],
+                    "kv_indptr": ctx["kv_indptr"],
+                    "kv_indices": ctx["kv_indices"],
+                    "sm_scale": sm_scale,
+                }
 
                 # Fallback
                 def _fb(**_rk):
