@@ -210,10 +210,10 @@ The `reference` field is a string that contains the reference implementation of 
   "description": "A GEMM operation with per-tensor quantized inputs and per-group scaling factors.",
   "type": "gemm",
   "tags": [
-	  "status:draft",
-	  "model:some_model",
+    "status:draft",
+    "model:some_model",
     "quantization:float8_e4m3"
-	],
+  ],
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },

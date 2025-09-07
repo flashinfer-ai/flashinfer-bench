@@ -9,30 +9,20 @@ description = "FlashInfer Bench - A benchmarking framework for GPU kernel implem
 readme = "README.md"
 requires-python = ">=3.8,<4.0"
 license = { text = "Apache License 2.0" }
-authors = [
-    {name = "FlashInfer team"}
-]
-dependencies = [
-    "torch>=2.4.0",
-    "pydantic>=2.0.0",
-    "safetensors>=0.5.0",
-    "flashinfer-python>=0.2.1"
-]
+authors = [{ name = "FlashInfer team" }]
+dependencies = ["torch>=2.4.0", "pydantic>=2.0.0", "safetensors>=0.5.0", "flashinfer-python>=0.2.1"]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=22.0.0",
-    "isort>=5.0.0",
-    "mypy>=1.0.0",
-    "ruff>=0.1.0",
-    "pre-commit>=3.0.0",
+  "pytest>=7.0.0",
+  "pytest-cov>=4.0.0",
+  "black>=22.0.0",
+  "isort>=5.0.0",
+  "mypy>=1.0.0",
+  "ruff>=0.1.0",
+  "pre-commit>=3.0.0",
 ]
-cuda12 = [
-  "nvidia-cublas-cu12>=12.3",
-  "nvidia-cudnn-cu12>=9.0",
-]
+cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
 [project.scripts]
 flashinfer-bench = "flashinfer_bench.cli.main:cli"
@@ -52,8 +42,19 @@ profile = "black"
 line_length = 100
 
 [tool.ruff]
+include = ["flashinfer_bench/**/*.py", "tests/**/*.py"]
 line-length = 100
 target-version = "py38"
+
+[tool.ruff.lint]
+# Never enforce `E501` (line length violations).
+ignore = ["C901", "E501", "E741", "F402", "F823", "E731"]
+select = ["C", "E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["E741"]
+"flashinfer_bench/compile/builders/triton_builder.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.8"

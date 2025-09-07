@@ -84,7 +84,7 @@ class Tracer:
             if rt.traceset and def_name not in rt.traceset.definitions:
                 self._logger.warning(f"Rule found for unknown definition: {def_name}")
 
-        self._logger.info(f"Tracer Initialized")
+        self._logger.info("Tracer Initialized")
         self._logger.info(f"  Output dir: {self.out_dir} / Blob dir: {self.blob_dir}")
         self._logger.info(f"  Rules: {len(self.rules)} definitions configured")
 
@@ -537,7 +537,7 @@ def _axis_value(definition, axes: Dict[str, Any], axis_name: str) -> int:
 
 def _materialize_shape(definition: Definition, axes: Dict[str, Any], shape_spec) -> Tuple[int, ...]:
     if not shape_spec:
-        raise ValueError(f"Input shape specification is None")
+        raise ValueError("Input shape specification is None")
     if shape_spec == []:
         return ()
     dims: List[int] = []

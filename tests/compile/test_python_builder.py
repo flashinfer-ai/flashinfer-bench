@@ -1,11 +1,11 @@
+import torch
+
 from flashinfer_bench.compile.builders import PythonBuilder
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 
 
 def test_python_builder_minimum(tmp_path, monkeypatch):
-    import torch
-
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
@@ -44,8 +44,6 @@ def test_python_builder_minimum(tmp_path, monkeypatch):
 
 
 def test_python_builder_add(tmp_path, monkeypatch):
-    import torch
-
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))

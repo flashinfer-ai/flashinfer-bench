@@ -246,7 +246,7 @@ def test_end_to_end_apply_substitution(tmp_path, monkeypatch):
     _make_dataset(ds_root)
 
     # Enable apply using dataset path
-    with enable_apply(str(ds_root)) as ap:
+    with enable_apply(str(ds_root)):
         # Decorated functions for two definitions
         @apply_api("add")
         def add_fn(X, Y):
