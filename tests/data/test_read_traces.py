@@ -6,7 +6,6 @@ from flashinfer_bench.data import (
     Solution,
     Trace,
     TraceSet,
-    from_json,
     load_json_file,
     load_jsonl_file,
     save_json_file,
