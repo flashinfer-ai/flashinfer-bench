@@ -1,10 +1,10 @@
 ## **mla_ragged_prefill**
 
-**Axes (6 dimensions):**
+**Axes (5 dimensions):**
 - `total_tokens`, `len_indptr`: variable
 - `num_qo_heads`, `head_dim_qk`, `head_dim_vo`: constant
 
-**Inputs (5 tensors + 1 scalar):**
+**Inputs (4 tensors + 1 scalar):**
 - `q`: query tensor [total_tokens, num_qo_heads, head_dim_qk]
 - `k`, `v`: key-value tensors [total_tokens, num_qo_heads, head_dim_vo]
 - `seq_indptr`: sequence offsets

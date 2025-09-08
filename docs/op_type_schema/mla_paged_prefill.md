@@ -4,7 +4,7 @@
 - `total_q`, `num_pages`, `len_indptr`, `num_kv_indices`: variable
 - `num_qo_heads`, `head_dim_ckv`, `head_dim_kpe`, `page_size`: constant
 
-**Inputs (6 tensors + 1 scalar):**
+**Inputs (7 tensors + 1 scalar):**
 - `q_nope`: query tensor without positional encoding [total_q, num_qo_heads, head_dim_ckv]
 - `q_pe`: query positional encoding component [total_q, num_qo_heads, head_dim_kpe]
 - `ckv_cache`: compressed key-value cache [num_pages, page_size, head_dim_ckv]
