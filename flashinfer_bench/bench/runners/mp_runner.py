@@ -350,12 +350,16 @@ def _solution_worker_main(
         # Build impl
         try:
             runnable_sol: Runnable = registry.build(defn, sol)
-        except Exception:
+        except Exception as e:
+            import traceback
+            
+            error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             ev = Evaluation(
                 status=EvaluationStatus.COMPILE_ERROR,
                 log_file=log_path,
                 environment=env_snapshot(device),
                 timestamp=datetime.now().isoformat(),
+                error=error_msg,
             )
             conn.send({"cmd": "EVAL", "evaluation": ev})
             return

@@ -1,7 +1,7 @@
 import os
 import random
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import openai
 from kernel_generator_prompts import get_optimization_prompt, get_prompt
@@ -29,6 +29,7 @@ class KernelGenerator:
         target_gpu: str = "H100",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        reasoning_effort: str = "high", #only set for openai reasoning models
     ):
         """
         Args:
@@ -37,10 +38,12 @@ class KernelGenerator:
             target_gpu: Target GPU architecture (e.g., "H100", "A100", "V100", "RTX4090", default: "H100")
             api_key: API key (if None, uses OPENAI_API_KEY environment variable)
             base_url: Base URL for the API (if None, uses OpenAI's default)
+            reasoning_effort: Reasoning effort for GPT-5 models ("low", "medium", "high", default: "medium")
         """
         self.model_name = model_name
         self.language = language
         self.target_gpu = target_gpu
+        self.reasoning_effort = reasoning_effort
 
         if api_key is None:
             api_key = os.getenv("LLM_API_KEY")
@@ -67,56 +70,8 @@ class KernelGenerator:
             # Default to Python if unknown language
             return SupportedLanguages.PYTHON
 
-    def generate(self, definition: Definition, pass_k: int = 1) -> List[Solution]:
-        """
-        Args:
-            definition: The workload definition to implement
-            pass_k: Number of independent solutions to generate
-        """
-        solutions = []
-
-        prompt = get_prompt(self.language, definition, self.target_gpu)
-
-        for i in range(pass_k):
-            print(f"Generating solution at round {i+1}")
-            try:
-                if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
-                    response = self.client.responses.create(model=self.model_name, input=prompt)
-                    generated_code = response.output_text.strip()
-                else:
-                    response = self.client.chat.completions.create(
-                        model=self.model_name, messages=[{"role": "user", "content": prompt}]
-                    )
-                    generated_code = response.choices[0].message.content.strip()
-
-                # print(f"Generated code: {generated_code}")
-                generated_code = self._clean_generated_code(generated_code)
-
-                entry_point = "main.py::run"
-
-                solution = Solution(
-                    name=f"{self.model_name}_optimized_{definition.name}_{self.language}_solution_{i+1}",
-                    definition=definition.name,
-                    author=self.model_name,
-                    spec=BuildSpec(
-                        language=self._get_supported_language(),
-                        target_hardware=[self.target_gpu],
-                        entry_point=entry_point,
-                    ),
-                    sources=[SourceFile(path="main.py", content=generated_code)],
-                    description=f"{self.model_name} generated kernel for {definition.name}",
-                )
-
-                solutions.append(solution)
-
-            except Exception as e:
-                print(f"Error while generating solution at round {i+1}: {e}")
-                continue
-
-        return solutions
-
-    def optimized_generate(
-        self, traceset: TraceSet, definition: Definition, rounds: int = 3
+    def generate(
+        self, traceset: TraceSet, definition: Definition, max_opt_rounds: int = 3
     ) -> Solution:
         """
         Generate an optimized solution through iterative improvement using benchmark feedback.
@@ -124,7 +79,7 @@ class KernelGenerator:
         Args:
             traceset: The TraceSet containing workloads for evaluation
             definition: The workload definition to implement
-            rounds: Maximum number of optimization rounds (default: 3)
+            max_opt_rounds: Maximum number of optimization rounds (default: 3)
 
         Returns:
             Solution: an optimized solution
@@ -140,10 +95,12 @@ class KernelGenerator:
         print(f"Generating optimized solution for {definition.name}")
         print(f"Using workload {selected_workload.workload.uuid} for optimization feedback")
         prompt = get_prompt(self.language, definition, self.target_gpu)
-        current_code = self._generate_code_from_prompt(prompt)
+        code_result = self._generate_code_from_prompt(prompt)
+        current_code = code_result['cleaned']
+        current_raw_code = code_result['raw']
 
-        for round_num in range(1, rounds + 1):
-            print(f"\n=== Optimization Round {round_num}/{rounds} ===")
+        for round_num in range(1, max_opt_rounds + 1):
+            print(f"\n=== Optimization Round {round_num}/{max_opt_rounds} ===")
 
             solution = self._create_solution_from_code(current_code, definition, round_num)
 
@@ -156,7 +113,7 @@ class KernelGenerator:
             )
 
             print(f"Evaluating solution...")
-            benchmark = Benchmark(temp_traceset, log_level="WARNING")  # Reduce log verbosity
+            benchmark = Benchmark(temp_traceset, log_level="WARNING")
             result_traceset = benchmark.evaluate(BenchmarkConfig())
 
             traces = result_traceset.traces.get(definition.name, [])
@@ -173,8 +130,8 @@ class KernelGenerator:
                 print(f"Solution PASSED! Speedup: {evaluation.performance.speedup_factor:.2f}x")
                 return solution
 
-            if round_num == rounds:
-                print(f"Reached maximum rounds ({rounds}), returning current solution")
+            if round_num == max_opt_rounds:
+                print(f"Reached maximum rounds ({max_opt_rounds}), returning current solution")
                 return solution
 
             print(
@@ -183,20 +140,41 @@ class KernelGenerator:
             if evaluation.error:
                 print(f"Error details: {evaluation.error}")
 
-            # Generate optimization prompt
             optimization_prompt = get_optimization_prompt(
-                definition, trace, current_code, self.target_gpu
+                self.language, definition, trace, current_raw_code, self.target_gpu
             )
 
-            # Generate improved code
             print(f"Generating optimized code for round {round_num + 1}...")
-            current_code = self._generate_code_from_prompt(optimization_prompt)
+            code_result = self._generate_code_from_prompt(optimization_prompt)
+            current_code = code_result['cleaned']
+            current_raw_code = code_result['raw']
 
-        # This should not be reached due to the return in the last round
-        return solution
+
+    def _parse_xml_files(self, code: str) -> Dict[str, str]:
+        files = {}
+        
+        patterns = {
+            'kernel.h': r'<header_file name="kernel\.h">(.*?)</header_file>',
+            'kernel.cu': r'<cuda_file name="kernel\.cu">(.*?)</cuda_file>',
+            'main.cpp': r'<cpp_file name="main\.cpp">(.*?)</cpp_file>'
+        }
+        
+        for filename, pattern in patterns.items():
+            match = re.search(pattern, code, re.DOTALL)
+            if match:
+                content = match.group(1).strip()
+                files[filename] = content
+            else:
+                print(f"Warning: Could not find {filename} in generated code")
+        
+        return files
 
     def _clean_generated_code(self, code: str) -> str:
-        """Clean up generated code to ensure valid Python syntax."""
+        """Clean up generated code. For CUDA, parse XML and return dict. For others, clean Python syntax."""
+        if self.language.lower() == "cuda":
+            return self._parse_xml_files(code)
+        
+        # For non-CUDA languages (triton, python), clean up markdown and hex floats
         if code.startswith("```"):
             lines = code.split("\n")
             if lines[0].startswith("```"):
@@ -226,38 +204,69 @@ class KernelGenerator:
 
         return code
 
-    def _generate_code_from_prompt(self, prompt: str) -> str:
+    def _generate_code_from_prompt(self, prompt: str):
         try:
             if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
-                response = self.client.responses.create(model=self.model_name, input=prompt)
+                response = self.client.responses.create(
+                    model=self.model_name, 
+                    input=prompt,
+                    reasoning={"effort": self.reasoning_effort}
+                )
                 generated_code = response.output_text.strip()
-            else:
+            else: # We retain the completions api for OpenAI SDK compatible models
                 response = self.client.chat.completions.create(
                     model=self.model_name, messages=[{"role": "user", "content": prompt}]
                 )
                 generated_code = response.choices[0].message.content.strip()
 
-            generated_code = self._clean_generated_code(generated_code)
+            cleaned_code = self._clean_generated_code(generated_code)
 
-            return generated_code
+            return {
+                'raw': generated_code,
+                'cleaned': cleaned_code
+            }
 
         except Exception as e:
             print(f"Error while generating code: {e}")
             raise
 
     def _create_solution_from_code(
-        self, code: str, definition: Definition, round_num: int
+        self, code, definition: Definition, round_num: int
     ) -> Solution:
+        # Include reasoning effort in name and description for GPT-5 models
+        if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
+            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_{self.reasoning_effort}"
+            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, reasoning effort: {self.reasoning_effort})"
+        else:
+            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}"
+            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num})"
+
+        # Handle different code formats based on language
+        if self.language.lower() == "cuda" and isinstance(code, dict):
+            # For CUDA, we have multiple files
+            sources = []
+            for filename, content in code.items():
+                sources.append(SourceFile(path=filename, content=content))
+            
+            entry_point = "main.cpp::run"
+        else:
+            # For single-file languages (triton, python)
+            if isinstance(code, dict):
+                code = next(iter(code.values()))
+            
+            sources = [SourceFile(path="main.py", content=code)]
+            entry_point = "main.py::run"
+
         solution = Solution(
-            name=f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}",
+            name=solution_name,
             definition=definition.name,
             author=self.model_name,
             spec=BuildSpec(
                 language=self._get_supported_language(),
                 target_hardware=[self.target_gpu],
-                entry_point="main.py::run",
+                entry_point=entry_point,
             ),
-            sources=[SourceFile(path="main.py", content=code)],
-            description=f"{self.model_name} optimized kernel for {definition.name} (round {round_num})",
+            sources=sources,
+            description=solution_description,
         )
         return solution
