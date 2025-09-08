@@ -40,7 +40,13 @@ class Benchmark:
         self._staging_traces: List[Trace] = []
         self._did_archive = False
 
-        self._runners = [MultiProcessRunner(d) for d in list_cuda_devices()]
+        # Track retry attempts for each device
+        self._device_retry_counts: Dict[str, int] = {}
+        self._runner_max_retries = 3
+        
+        # Initialize runners for all available CUDA devices
+        self._available_devices = list_cuda_devices()
+        self._runners = [MultiProcessRunner(d) for d in self._available_devices]
         self._curr_runner_idx = 0
         self._registry = get_registry()
 
@@ -58,6 +64,48 @@ class Benchmark:
         sel = [self._runners[(start + i) % D] for i in range(min(K, D))]
         self._curr_runner_idx = (start + K) % D
         return sel
+
+    def _relaunch_runner(self, device: str) -> Runner:
+        self.logger.info(f"Relaunching runner for device {device}")
+        return MultiProcessRunner(device)
+
+    def _handle_failed_runners(self, failed_runners: List[Runner]) -> None:
+        runners_to_remove = []
+        runners_to_add = []
+        
+        for failed_runner in failed_runners:
+            device = failed_runner.device
+            retry_count = self._device_retry_counts.get(device, 0)
+            
+            if retry_count < self._runner_max_retries:
+                self._device_retry_counts[device] = retry_count + 1
+                try:
+                    new_runner = self._relaunch_runner(device)
+                    runners_to_add.append(new_runner)
+                    self.logger.info(
+                        f"Successfully relaunched runner for device {device} "
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to relaunch runner for device {device} "
+                    )
+                    if retry_count + 1 >= self._runner_max_retries:
+                        runners_to_remove.append(failed_runner)
+                        self.logger.warning(
+                            f"Removing device {device} after {self._runner_max_retries} failed attempts"
+                        )
+            else:
+                runners_to_remove.append(failed_runner)
+                self.logger.warning(
+                    f"Removing device {device} after {self._runner_max_retries} failed attempts"
+                )        
+        if runners_to_remove:
+            self._runners = [r for r in self._runners if r not in runners_to_remove]
+        
+        self._runners.extend(runners_to_add)
+        
+        if self._runners:
+            self._curr_runner_idx %= len(self._runners)
 
     def run(self, config: BenchmarkConfig = BenchmarkConfig()) -> None:
         for def_name, defn in self.trace_set.definitions.items():
@@ -105,10 +153,9 @@ class Benchmark:
 
                 # If a runner fails to run reference, we should consider it dead
                 if failed_runners:
-                    self._runners = [r for r in self._runners if r not in set(failed_runners)]
+                    self._handle_failed_runners(failed_runners)
                     if not self._runners:
                         raise RuntimeError("No healthy runners available")
-                    self._curr_runner_idx %= len(self._runners)
 
                 selected = [r for r in selected if r in baselines]
                 if not selected:
@@ -192,10 +239,9 @@ class Benchmark:
 
                 # If a runner fails to run reference, we should consider it dead
                 if failed_runners:
-                    self._runners = [r for r in self._runners if r not in set(failed_runners)]
+                    self._handle_failed_runners(failed_runners)
                     if not self._runners:
                         raise RuntimeError("No healthy runners available")
-                    self._curr_runner_idx %= len(self._runners)
 
                 selected = [r for r in selected if r in baselines]
                 if not selected:

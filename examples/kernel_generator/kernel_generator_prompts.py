@@ -172,7 +172,7 @@ Requirements:
 
 Generate the implementation:"""
 
-# CUDA prompt - for future use
+# CUDA prompt
 CUDA_PROMPT = """You are a code generator. Generate a CUDA kernel implementation optimized for {target_gpu} GPU for the following specification.
 
 Specification:
@@ -181,12 +181,132 @@ Specification:
 Requirements:
 - Write clean, efficient CUDA C++ code optimized for {target_gpu} architecture
 - Use proper CUDA syntax and memory management optimized for {target_gpu}
-- Include necessary headers
 - Implement the exact functionality described in the specification
+- The reference code provides the mathematical specification but is unoptimized - your CUDA implementation should match its computational accuracy while delivering high performance
+- Use the definition's tensor shapes, dtypes, and axes information to guide memory access patterns and optimization strategies
 - Optimize for {target_gpu} GPU characteristics (memory hierarchy, compute units, etc.)
-- Return only the code, no explanations or markdown formatting
+- For fixed axis values, optimize specifically for those constants rather than general cases
+- You may use 3rd party libraries (cuBLAS, cuDNN, CUTLASS) when beneficial, but custom implementations often perform better for specialized kernels with known axis constraints
+
+IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
+
+<header_file name="kernel.h">
+- All CUDA kernel function declarations
+- Host function declarations
+- Any necessary struct/type definitions
+- Include guards and necessary headers
+</header_file>
+
+<cuda_file name="kernel.cu">
+- All __global__ kernel implementations
+- All __device__ helper functions
+- CUDA-specific optimizations and memory patterns
+- Proper error checking and memory management
+</cuda_file>
+
+<cpp_file name="main.cpp">
+- Host function that launches kernels
+- Memory allocation and data transfer management
+- Device management and error handling
+- Entry point function named "run" that can be called to execute the implementation
+- Handle both args and kwargs properly
+- Move CPU data to GPU, execute kernels, and return results to CPU
+- Include PyTorch C++ extension bindings using PYBIND11_MODULE
+- The "run" function must be exposed to Python through the binding
+- Include proper tensor type conversion between PyTorch tensors and CUDA pointers
+- Include all necessary PyTorch headers: #include <torch/extension.h>
+</cpp_file>
+
+Code Generation Guidelines:
+- Use modern CUDA features appropriate for {target_gpu}
+- Optimize memory coalescing and reduce bank conflicts
+- Utilize shared memory effectively for data reuse
+- Consider occupancy and register usage
+- Implement proper error checking with cudaGetLastError()
+- Use appropriate grid and block dimensions for the problem size
+- Leverage constant memory for frequently accessed read-only data
+- Use PyTorch tensor API (torch::Tensor) for all tensor arguments in the "run" function
+- Convert PyTorch tensors to CUDA pointers using .data_ptr<float>() or similar methods
+- Ensure proper CUDA stream synchronization and error handling
 
 Generate the implementation:"""
+
+CUDA_OPTIMIZATION_PROMPT = """You are optimizing a CUDA kernel for {target_gpu} GPU. The current implementation has issues that need to be fixed.
+
+Original Specification:
+{definition}
+
+Current Implementation Status:
+{trace_logs}
+
+Current Implementation:
+{current_code}
+
+Optimization Strategy:
+1. ENSURE CORRECTNESS: If there are compile errors, runtime errors, or incorrect outputs, focus entirely on fixing these issues
+   - Analyze compilation errors and fix syntax/API usage
+   - Fix runtime errors like shape mismatches, memory access violations, kernel launch failures
+   - Ensure numerical correctness matches the reference implementation
+   - Verify proper CUDA memory management and synchronization
+
+2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
+   - Optimize memory access patterns and coalescing for {target_gpu}
+   - Tune block sizes and grid dimensions for maximum occupancy
+   - Utilize shared memory effectively to reduce global memory transactions
+   - Optimize register usage and minimize divergent branches
+   - Consider using specialized libraries (cuBLAS, cuDNN, CUTLASS) where beneficial
+   - Leverage constant axis values for compile-time optimizations
+
+Requirements for the optimized implementation:
+- Write clean, efficient CUDA C++ code optimized for {target_gpu} architecture
+- Use proper CUDA syntax and modern features appropriate for {target_gpu}
+- Fix all identified issues from the feedback
+- Maintain or improve computational accuracy
+- Preserve the same function signatures and device handling as specified
+- For fixed axis values, optimize specifically for those constants rather than general cases
+
+IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
+
+<header_file name="kernel.h">
+- All CUDA kernel function declarations
+- Host function declarations
+- Any necessary struct/type definitions
+- Include guards and necessary headers
+</header_file>
+
+<cuda_file name="kernel.cu">
+- All __global__ kernel implementations
+- All __device__ helper functions
+- CUDA-specific optimizations and memory patterns
+- Proper error checking and memory management
+</cuda_file>
+
+<cpp_file name="main.cpp">
+- Host function that launches kernels
+- Memory allocation and data transfer management
+- Device management and error handling
+- Entry point function named "run" that can be called to execute the implementation
+- Handle both args and kwargs properly
+- Move CPU data to GPU, execute kernels, and return results to CPU
+- MUST include PyTorch C++ extension bindings using PYBIND11_MODULE
+- The "run" function must be exposed to Python through the binding
+- Include proper tensor type conversion between PyTorch tensors and CUDA pointers
+- Include all necessary PyTorch headers: #include <torch/extension.h>
+</cpp_file>
+
+Code Generation Guidelines:
+- Use modern CUDA features appropriate for {target_gpu}
+- Optimize memory coalescing and reduce bank conflicts
+- Utilize shared memory effectively for data reuse
+- Consider occupancy and register usage
+- Implement proper error checking with cudaGetLastError()
+- Use appropriate grid and block dimensions for the problem size
+- Leverage constant memory for frequently accessed read-only data
+- Use PyTorch tensor API (torch::Tensor) for all tensor arguments in the "run" function
+- Convert PyTorch tensors to CUDA pointers using .data_ptr<float>() or similar methods
+- Ensure proper CUDA stream synchronization and error handling
+
+Generate the corrected and optimized implementation:"""
 
 
 def get_prompt(language: str, definition: Definition, target_gpu: str = "H100") -> str:
@@ -201,13 +321,17 @@ def get_prompt(language: str, definition: Definition, target_gpu: str = "H100") 
 
 
 def get_optimization_prompt(
-    definition, trace: Trace, current_code: str, target_gpu: str = "H100"
+    language: str, definition, trace: Trace, current_code: str, target_gpu: str = "H100"
 ) -> str:
+    optimization_prompts = {"triton": TRITON_OPTIMIZATION_PROMPT, "cuda": CUDA_OPTIMIZATION_PROMPT}
+    
+    if language not in optimization_prompts:
+        raise ValueError(f"Unsupported language for optimization: {language}")
+    
     definition_str = _format_definition(definition)
-
     trace_logs = _format_trace_logs(trace)
 
-    return TRITON_OPTIMIZATION_PROMPT.format(
+    return optimization_prompts[language].format(
         definition=definition_str,
         trace_logs=trace_logs,
         current_code=current_code,
