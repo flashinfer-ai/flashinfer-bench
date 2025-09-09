@@ -324,10 +324,10 @@ def get_optimization_prompt(
     language: str, definition, trace: Trace, current_code: str, target_gpu: str = "H100"
 ) -> str:
     optimization_prompts = {"triton": TRITON_OPTIMIZATION_PROMPT, "cuda": CUDA_OPTIMIZATION_PROMPT}
-    
+
     if language not in optimization_prompts:
         raise ValueError(f"Unsupported language for optimization: {language}")
-    
+
     definition_str = _format_definition(definition)
     trace_logs = _format_trace_logs(trace)
 

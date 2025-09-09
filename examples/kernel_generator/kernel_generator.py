@@ -29,7 +29,7 @@ class KernelGenerator:
         target_gpu: str = "H100",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        reasoning_effort: str = "high", #only set for openai reasoning models
+        reasoning_effort: str = "high",  # only set for openai reasoning models
     ):
         """
         Args:
@@ -96,8 +96,8 @@ class KernelGenerator:
         print(f"Using workload {selected_workload.workload.uuid} for optimization feedback")
         prompt = get_prompt(self.language, definition, self.target_gpu)
         code_result = self._generate_code_from_prompt(prompt)
-        current_code = code_result['cleaned']
-        current_raw_code = code_result['raw']
+        current_code = code_result["cleaned"]
+        current_raw_code = code_result["raw"]
 
         for round_num in range(1, max_opt_rounds + 1):
             print(f"\n=== Optimization Round {round_num}/{max_opt_rounds} ===")
@@ -146,19 +146,18 @@ class KernelGenerator:
 
             print(f"Generating optimized code for round {round_num + 1}...")
             code_result = self._generate_code_from_prompt(optimization_prompt)
-            current_code = code_result['cleaned']
-            current_raw_code = code_result['raw']
-
+            current_code = code_result["cleaned"]
+            current_raw_code = code_result["raw"]
 
     def _parse_xml_files(self, code: str) -> Dict[str, str]:
         files = {}
-        
+
         patterns = {
-            'kernel.h': r'<header_file name="kernel\.h">(.*?)</header_file>',
-            'kernel.cu': r'<cuda_file name="kernel\.cu">(.*?)</cuda_file>',
-            'main.cpp': r'<cpp_file name="main\.cpp">(.*?)</cpp_file>'
+            "kernel.h": r'<header_file name="kernel\.h">(.*?)</header_file>',
+            "kernel.cu": r'<cuda_file name="kernel\.cu">(.*?)</cuda_file>',
+            "main.cpp": r'<cpp_file name="main\.cpp">(.*?)</cpp_file>',
         }
-        
+
         for filename, pattern in patterns.items():
             match = re.search(pattern, code, re.DOTALL)
             if match:
@@ -166,14 +165,14 @@ class KernelGenerator:
                 files[filename] = content
             else:
                 print(f"Warning: Could not find {filename} in generated code")
-        
+
         return files
 
     def _clean_generated_code(self, code: str) -> str:
         """Clean up generated code. For CUDA, parse XML and return dict. For others, clean Python syntax."""
         if self.language.lower() == "cuda":
             return self._parse_xml_files(code)
-        
+
         # For non-CUDA languages (triton, python), clean up markdown and hex floats
         if code.startswith("```"):
             lines = code.split("\n")
@@ -208,12 +207,10 @@ class KernelGenerator:
         try:
             if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
                 response = self.client.responses.create(
-                    model=self.model_name, 
-                    input=prompt,
-                    reasoning={"effort": self.reasoning_effort}
+                    model=self.model_name, input=prompt, reasoning={"effort": self.reasoning_effort}
                 )
                 generated_code = response.output_text.strip()
-            else: # We retain the completions api for OpenAI SDK compatible models
+            else:  # We retain the completions api for OpenAI SDK compatible models
                 response = self.client.chat.completions.create(
                     model=self.model_name, messages=[{"role": "user", "content": prompt}]
                 )
@@ -221,25 +218,24 @@ class KernelGenerator:
 
             cleaned_code = self._clean_generated_code(generated_code)
 
-            return {
-                'raw': generated_code,
-                'cleaned': cleaned_code
-            }
+            return {"raw": generated_code, "cleaned": cleaned_code}
 
         except Exception as e:
             print(f"Error while generating code: {e}")
             raise
 
-    def _create_solution_from_code(
-        self, code, definition: Definition, round_num: int
-    ) -> Solution:
+    def _create_solution_from_code(self, code, definition: Definition, round_num: int) -> Solution:
         # Include reasoning effort in name and description for GPT-5 models
         if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
             solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_{self.reasoning_effort}"
             solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, reasoning effort: {self.reasoning_effort})"
         else:
-            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}"
-            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num})"
+            solution_name = (
+                f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}"
+            )
+            solution_description = (
+                f"{self.model_name} optimized kernel for {definition.name} (round {round_num})"
+            )
 
         # Handle different code formats based on language
         if self.language.lower() == "cuda" and isinstance(code, dict):
@@ -247,13 +243,13 @@ class KernelGenerator:
             sources = []
             for filename, content in code.items():
                 sources.append(SourceFile(path=filename, content=content))
-            
+
             entry_point = "main.cpp::run"
         else:
             # For single-file languages (triton, python)
             if isinstance(code, dict):
                 code = next(iter(code.values()))
-            
+
             sources = [SourceFile(path="main.py", content=code)]
             entry_point = "main.py::run"
 
