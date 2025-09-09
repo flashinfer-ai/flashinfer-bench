@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from flashinfer_bench.compile.runnable import Runnable
 
 
@@ -17,3 +21,7 @@ def test_runnable_single_tuple_unpack_and_close_idempotent():
     r.close()
     r.close()
     assert calls["closed"] == 1
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

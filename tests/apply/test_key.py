@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 
@@ -55,3 +56,7 @@ def test_axes_only_key_builder_materializes_axes_and_errors():
     # Rank too small: X is expected to have at least 1 dim at index 0; providing 0-dim tensor causes error
     with pytest.raises(ValueError):
         builder.build_from_runtime({"X": FakeTensor(()), "Y": FakeTensor((4, 2))})
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

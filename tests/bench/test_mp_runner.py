@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 
@@ -114,3 +116,7 @@ def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
         "RUNTIME_ERROR",
     }  # runtime may fail on env, but no shape/dtype errors
     r.release(h)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

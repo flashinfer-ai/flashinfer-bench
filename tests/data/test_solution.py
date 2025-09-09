@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from flashinfer_bench.data import (
@@ -105,3 +107,7 @@ def test_solution_validation_and_helpers():
             spec=spec,
             sources=[s2],
         )
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
