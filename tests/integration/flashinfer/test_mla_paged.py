@@ -13,14 +13,15 @@ from flashinfer_bench.data.trace import (
     Evaluation,
     EvaluationStatus,
     Performance,
-    RandomInput,
     Trace,
     Workload,
 )
 from flashinfer_bench.data.traceset import TraceSet
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA-capable PyTorch")
+@pytest.mark.skipif(
+    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
+)
 def test_mla_paged_decode_and_prefill(tmp_path, monkeypatch):
     import flashinfer  # type: ignore
 
@@ -63,7 +64,6 @@ def test_mla_paged_decode_and_prefill(tmp_path, monkeypatch):
         q_data_type=q_nope_decode.dtype,
         kv_data_type=ckv.dtype,
     )
-    out_decode_direct = mla.run(q_nope_decode, q_pe_decode, ckv, kpe)
 
     # Minimal MLA decode Definition matching canonical JSON
     def_name_decode = "mla_paged_decode_h16_ckv512_kpe64_ps1"
@@ -149,7 +149,6 @@ def test_mla_paged_decode_and_prefill(tmp_path, monkeypatch):
         q_data_type=q_nope_prefill.dtype,
         kv_data_type=ckv.dtype,
     )
-    out_prefill_direct = mla2.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
 
     def_name_prefill = "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1"
     def_prefill = Definition(
