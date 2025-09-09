@@ -9,10 +9,10 @@ Kind = Literal["function", "method", "callable"]
 
 @dataclass
 class PatchSpec:
-    path: str  # e.g. "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.plan"
-    kind: Kind  # "function" | "method" | "callable"
-    name: str  # "prefill_plan" | "prefill_run"
-    ctx_key: Optional[str] = None  # adapter-specific context bucket
+    path: str
+    kind: Kind
+    name: str
+    ctx_key: Optional[str] = None
 
 
 class PatchManager:
