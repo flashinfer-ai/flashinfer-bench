@@ -7,6 +7,9 @@ from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 
 
+@pytest.mark.skipif(
+    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
+)
 def test_cuda_builder_minimum(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -43,6 +46,9 @@ def test_cuda_builder_minimum(tmp_path, monkeypatch):
     assert out == [1, 2, 3]
 
 
+@pytest.mark.skipif(
+    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
+)
 def test_cuda_vector_add(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -124,6 +130,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     assert torch.allclose(Z, X + Y)
 
 
+@pytest.mark.skipif(
+    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
+)
 def test_cuda_references_cublas(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
