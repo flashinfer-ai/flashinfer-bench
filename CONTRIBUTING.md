@@ -1,4 +1,4 @@
-# **Contributing to FlashInfer-bench**
+# Contributing to FlashInfer-bench
 
 We welcome contributions of all kinds, including new features, bug fixes, documentation improvements, and more. To ensure a smooth process, here is a general guide to contributing.
 
