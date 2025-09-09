@@ -35,7 +35,7 @@ You can load the full dataset using:
 
 ```python
 from flashinfer_bench import TraceSet
-trace_set = TraceSet.from_path("/dataset")
+trace_set = TraceSet.from_path("./dataset")
 ```
 
 ## Command Line Interface (CLI)
