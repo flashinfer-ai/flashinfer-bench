@@ -205,17 +205,15 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     assert raw.get("def_best", {}).get("add") in {"add_fast", "add_slow"}
 
     # Ensure second call uses persisted file rather than _build
-    import flashinfer_bench.apply.table as table_mod
-
     def fail_build(*args, **kwargs):
         raise AssertionError("_build should not be called on cache hit")
 
-    orig_build = table_mod.ApplyTable._build
+    orig_build = ApplyTable._build
     try:
-        table_mod.ApplyTable._build = fail_build  # type: ignore[assignment]
+        ApplyTable._build = fail_build  # type: ignore[assignment]
         table2 = ApplyTable.load_or_build(ts, cfg)
     finally:
-        table_mod.ApplyTable._build = orig_build  # type: ignore[assignment]
+        ApplyTable._build = orig_build  # type: ignore[assignment]
 
     assert table2.digest == table1.digest
 
