@@ -1,3 +1,4 @@
+import sys
 import types
 from pathlib import Path
 
@@ -263,3 +264,7 @@ def test_end_to_end_apply_substitution(tmp_path, monkeypatch):
         # mul: M=8 -> mul_fast, M=16 -> mul_slow
         assert mul_fn(FakeTensor((8, 2)), FakeTensor((8, 2))) == "mulfast"
         assert mul_fn(FakeTensor((16, 2)), FakeTensor((16, 2))) == "mulslow"
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

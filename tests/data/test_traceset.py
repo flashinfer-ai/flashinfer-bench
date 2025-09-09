@@ -1,4 +1,7 @@
+import sys
 from pathlib import Path
+
+import pytest
 
 from flashinfer_bench.data import (
     AxisConst,
@@ -115,3 +118,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     assert summary["min_latency_ms"] == 1.0
     assert summary["avg_latency_ms"] == 1.0
     assert summary["max_latency_ms"] == 1.0
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

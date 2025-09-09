@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -286,3 +287,7 @@ def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
     for d in (d_add, d_mul, d_adds):
         out_file = tmp_path / "traces" / d.type / f"{d.name}.jsonl"
         assert out_file.exists()
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

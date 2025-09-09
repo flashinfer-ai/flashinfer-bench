@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from flashinfer_bench.bench.config import BenchmarkConfig
@@ -26,3 +28,7 @@ def test_benchmark_config_validation(field, value):
     kwargs[field] = value
     with pytest.raises(ValueError):
         BenchmarkConfig(**kwargs)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

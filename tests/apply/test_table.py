@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
+
+import pytest
 
 from flashinfer_bench.apply.config import ApplyConfig
 from flashinfer_bench.apply.key import ApplyKeyFactory
@@ -215,3 +218,7 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
         table_mod.ApplyTable._build = orig_build  # type: ignore[assignment]
 
     assert table2.digest == table1.digest
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
