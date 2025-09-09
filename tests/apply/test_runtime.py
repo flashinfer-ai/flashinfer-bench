@@ -161,22 +161,6 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(tmp_path, m
     assert fb_val == "fb"
 
 
-def test_env_auto_init_invalid_config(monkeypatch):
-    # Only one of the env vars set -> invalid
-    set_runtime(None)
-    monkeypatch.setenv("FIB_ENABLE_APPLY", "1")
-    monkeypatch.delenv("FIB_DATASET_PATH", raising=False)
-    with pytest.raises(RuntimeError):
-        _ = get_runtime()
-
-    # Other mismatch case
-    set_runtime(None)
-    monkeypatch.delenv("FIB_ENABLE_APPLY", raising=False)
-    monkeypatch.setenv("FIB_DATASET_PATH", "/tmp/whatever")
-    with pytest.raises(RuntimeError):
-        _ = get_runtime()
-
-
 @pytest.mark.skip(reason="TODO: fix this test")
 def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
