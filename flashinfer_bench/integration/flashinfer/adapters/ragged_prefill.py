@@ -144,12 +144,7 @@ class RaggedPrefillAdapter:
                     elif len(ret) == 1:
                         output = ret[0]
                 else:
-                    # Support both dict and tensor outputs from runtime
-                    if isinstance(ret, dict):
-                        output = ret.get("output", None)
-                        lse = ret.get("lse", None)
-                    else:
-                        output = ret
+                    output = ret
 
                 return write_back_outputs(
                     output=output, lse=lse, want_lse=return_lse, out_buf=out_buf, lse_buf=lse_buf
