@@ -1,3 +1,4 @@
+import flashinfer
 import pytest
 import torch
 
@@ -22,8 +23,6 @@ from flashinfer_bench.data.traceset import TraceSet
     __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
 )
 def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
-    import flashinfer  # type: ignore
-
     device = torch.device("cuda")
 
     # Shapes following canonical definition constants (GQA decode h32 kv4 d128 ps1)

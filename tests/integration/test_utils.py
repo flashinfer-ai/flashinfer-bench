@@ -1,5 +1,3 @@
-import inspect
-
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 

@@ -45,7 +45,6 @@ def test_infer_paged_kv_layout_from_tensors_tuple_and_5d():
 def test_infer_ragged_kv_layout_and_normalize():
     total, H, D = 5, 3, 4
     k_nhd = torch.randn(total, H, D)
-    v_nhd = torch.randn(total, H, D)
     assert infer_ragged_kv_layout_from_tensors(k_nhd, H) == "NHD"
     # HND layout via [H, total, D]
     k_hnd = k_nhd.permute(1, 0, 2)
