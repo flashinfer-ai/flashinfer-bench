@@ -1,3 +1,6 @@
+import sys
+
+import pytest
 import torch
 
 from flashinfer_bench.compile.builders import PythonBuilder
@@ -79,3 +82,7 @@ def test_python_builder_add(tmp_path, monkeypatch):
     expected = torch.tensor([[6, 8], [10, 12]], dtype=torch.float32)
     assert torch.allclose(out, expected)
     b.clear_cache()
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

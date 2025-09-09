@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from flashinfer_bench.data import (
@@ -113,3 +115,7 @@ def test_definition_tags_and_constraints(sample_reference_code):
             reference=sample_reference_code,
             constraints=["M >"],  # invalid python expression
         )
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

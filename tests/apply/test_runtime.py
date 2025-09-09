@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from flashinfer_bench.apply.config import ApplyConfig
@@ -286,3 +288,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
     finally:
         PythonBuilder._build = orig_build  # type: ignore[assignment]
         set_runtime(None)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

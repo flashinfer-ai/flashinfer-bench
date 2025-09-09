@@ -1,4 +1,5 @@
 import importlib
+import sys
 
 import pytest
 
@@ -139,3 +140,7 @@ def run(X, Y):
     Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
     Z = r(X=X, Y=Y)
     assert torch.allclose(Z, X + Y)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

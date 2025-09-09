@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from flashinfer_bench.compile.builders import CUDABuilder
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
@@ -183,3 +187,7 @@ extern "C" __global__ void _fi_dummy_kernel__() {}
     X = torch.ones(1, dtype=torch.float32, device="cuda")
     Y = r(X=X)
     assert Y.is_cuda and Y.numel() == 1 and Y.item() == 1.0
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

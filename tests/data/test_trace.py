@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from flashinfer_bench.data import (
@@ -99,3 +101,7 @@ def test_trace_workload_and_regular():
     # Regular missing fields
     with pytest.raises(ValueError):
         Trace(definition="def1", workload=wl, solution="sol1")  # type: ignore[call-arg]
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
