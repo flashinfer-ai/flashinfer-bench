@@ -7,7 +7,7 @@ For significant changes, such as adding a major new feature or refactoring core 
 The general workflow for submitting a change is:
 
 1. **Fork the repository** and create a new branch for your work.
-2. Make your changes, including adding tests if applicable. Please refer to the [`README.md`](https://github.com/flashinfer-ai/flashinfer-bench/blob/main/README.md) for project-specific setup and testing instructions.
+2. Make your changes, including adding tests if applicable. Please refer to the [`README.md`](README.md) for project-specific setup and testing instructions.
 3. Push your changes to your fork and **open a pull request** to the main repository. Please provide a clear description of your changes and link to the relevant issue if one exists.
 4. **Iterate on the pull request** by responding to feedback from reviewers until the change is ready to be merged.
 
