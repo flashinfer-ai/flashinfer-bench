@@ -352,7 +352,7 @@ def _solution_worker_main(
             runnable_sol: Runnable = registry.build(defn, sol)
         except Exception as e:
             import traceback
-            
+
             error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             ev = Evaluation(
                 status=EvaluationStatus.COMPILE_ERROR,
