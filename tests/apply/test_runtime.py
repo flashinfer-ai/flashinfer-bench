@@ -6,7 +6,7 @@ import pytest
 
 from flashinfer_bench.apply.config import ApplyConfig
 from flashinfer_bench.apply.hook import set_apply_hook
-from flashinfer_bench.apply.runtime import ApplyRuntime, get_runtime, set_runtime
+from flashinfer_bench.apply.runtime import ApplyRuntime, set_runtime
 from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from flashinfer_bench.data.trace import (
