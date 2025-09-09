@@ -83,7 +83,7 @@ class Benchmark:
                     new_runner = self._relaunch_runner(device)
                     runners_to_add.append(new_runner)
                     self.logger.info(f"Successfully relaunched runner for device {device} ")
-                except Exception as e:
+                except Exception:
                     self.logger.error(f"Failed to relaunch runner for device {device} ")
                     if retry_count + 1 >= self._runner_max_retries:
                         runners_to_remove.append(failed_runner)
