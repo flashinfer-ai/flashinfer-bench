@@ -1,6 +1,5 @@
 import math
 
-import flashinfer
 import pytest
 import torch
 
@@ -21,10 +20,10 @@ from flashinfer_bench.data.trace import (
 from flashinfer_bench.data.traceset import TraceSet
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_gqa_paged_prefill_adapter_substitution(tmp_path, monkeypatch):
+    import flashinfer  # type: ignore
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 

@@ -1,6 +1,5 @@
 import math
 
-import flashinfer
 import pytest
 import torch
 
@@ -22,6 +21,8 @@ from flashinfer_bench.data.traceset import TraceSet
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
+    import flashinfer  # type: ignore
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 
@@ -190,6 +191,8 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
+    import flashinfer  # type: ignore
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 
