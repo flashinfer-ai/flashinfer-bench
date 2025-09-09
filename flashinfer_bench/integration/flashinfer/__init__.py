@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from ..patch_manager import get_manager
-from .adapters.prefill_gqa import PrefillGqaPagedAdapter
+from .adapters.gqa_paged_decode import GQAPagedDecodeAdapter
+from .adapters.gqa_paged_prefill import GQAPagedPrefillAdapter
+from .adapters.mla_paged import MLAPagedAdapter
+from .adapters.ragged_prefill import RaggedPrefillAdapter
 
 
 def install_flashinfer_integrations() -> None:
@@ -11,7 +14,12 @@ def install_flashinfer_integrations() -> None:
     """
     mgr = get_manager()
 
-    adapters = [PrefillGqaPagedAdapter()]
+    adapters = [
+        GQAPagedPrefillAdapter(),
+        RaggedPrefillAdapter(),
+        GQAPagedDecodeAdapter(),
+        MLAPagedAdapter(),
+    ]
 
     for adp in adapters:
         try:
