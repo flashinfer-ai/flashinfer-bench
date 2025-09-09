@@ -12,18 +12,18 @@ def best(args: argparse.Namespace):
     for trace_set in trace_sets:
         definitions = trace_set.definitions.keys()
         for definition in definitions:
-            trace = trace_set.get_best_op(definition)
+            trace = trace_set.get_best_trace(definition)
             if not trace:
                 print(f"No valid solution found for {definition}.")
                 continue
             print(f"Best solution for {definition}:")
             print(f"- Solution: {trace.solution}")
-            print(f"- Speedup:  {trace.evaluation['performance']['speedup_factor']:.2f}×")
+            print(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
             print(
-                f"- Errors:   abs={trace.evaluation['correctness']['max_absolute_error']:.2e}, "
-                f"rel={trace.evaluation['correctness']['max_relative_error']:.2e}"
+                f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
+                f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            print(f"- Log:      {trace.evaluation['log_file']}")
+            print(f"- Log:      {trace.evaluation.log_file}")
 
 
 def summary(args: argparse.Namespace):
