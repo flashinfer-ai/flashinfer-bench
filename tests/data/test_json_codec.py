@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,3 +143,7 @@ def test_dict_to_dataclass_with_invalid_fields():
     }
     with pytest.raises(ValueError):
         dict_to_dataclass(bad_def, Definition)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

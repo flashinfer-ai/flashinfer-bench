@@ -13,7 +13,7 @@ The `Solution` provides a concrete, high-performance implementation for a given 
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
 | `name` | string | Yes | A unique, human-readable name for this specific solution (e.g.,`rmsnorm_triton_v1_h100`). |
-| `definition` | string | Yes | The`name`of the `Definition`this implementation solves. |
+| `definition` | string | Yes | The `name` of the `Definition` this implementation solves. |
 | `description` | string | No | A human-readable brief description of the solution's technique or agent policy. |
 | `author` | string | Yes | The name of the author or agent system. |
 | `spec` | object | Yes | An object containing detailed technical specifications for the implementation. |

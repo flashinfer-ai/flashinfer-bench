@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from flashinfer_bench.compile.builder import Builder
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
@@ -37,3 +41,7 @@ def test_builder_cache_and_key():
     r2 = b.build(d, s)
     assert r1 is r2  # cache hit via _make_key
     b.clear_cache()
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
