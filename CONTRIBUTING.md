@@ -16,7 +16,7 @@ The general workflow for submitting a change is:
 Once you've opened a pull request, the review process begins:
 
 * **Community Review:** We encourage everyone to participate in the review process. All feedback on pull requests is welcome and valued.
-* **Approval:** For a pull request to be merged, it must receive at least **one approval** from designated code owners for the files you've changed, or from a project lead. The `CODEOWNERS` file in the root of the repository lists the members responsible for different parts of the codebase.
+* **Approval:** For a pull request to be merged, it must receive at least **one approval** from designated code owners for the files you've changed, or from a project lead. The [`CODEOWNERS`](./CODEOWNERS) file in the root of the repository lists the members responsible for different parts of the codebase.
 
 We hope this collaborative approach will maintain high code quality and ensure knowledge is shared effectively among contributors.
 
