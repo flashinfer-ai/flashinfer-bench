@@ -19,12 +19,12 @@ def main():
     """
     Generate optimized solutions for all definitions in the traceset.
     """
-    model_name = "gpt-5-2025-08-07"  # choose model here
+    model_name = "gpt-5-2025-08-07"  # Choose model here
     language = "triton"
     target_gpu = "B200"
 
-    # Path to your traceset
-    traceset_path = "/home/user/flashinfer-trace"  # Adjust to your traceset path
+    # TODO: adjust local path to traceset
+    traceset_path = "/home/user/flashinfer-trace"
 
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
@@ -49,7 +49,6 @@ def main():
         base_url=base_url,
     )
 
-    # Statistics tracking
     total_definitions = len(all_definitions)
     successful_generations = 0
     failed_generations = 0
@@ -64,7 +63,6 @@ def main():
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
         print(f"Definition type: {definition.type}")
 
-        # Check if we have workloads for this definition
         workloads = traceset.workload.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
@@ -83,7 +81,7 @@ def main():
                 solution = generator.optimized_generate(
                     traceset=traceset,
                     definition=definition,
-                    rounds=5,  # Try up to 5 optimization rounds
+                    max_opt_rounds=10,  # For our baseline, we used 10 rounds
                 )
 
                 print(f"Successfully generated solution for {definition_name}")
