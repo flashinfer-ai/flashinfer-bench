@@ -53,6 +53,19 @@ autodoc_mock_imports = [
     "safetensors",
 ]
 autodoc_default_flags = ["members"]
+autodoc_class_signature = "separated"
+autodoc_member_order = "bysource"
+autodoc_default_options = {
+    "exclude-members": "model_config",
+}
+autodoc_typehints = "both"
+
+autodoc_pydantic_model_show_validator_summary = False
+autodoc_pydantic_model_show_validator_members = False
+autodoc_pydantic_model_show_config_summary = False
+autodoc_pydantic_field_list_validators = False
+autodoc_pydantic_model_summary_list_order = "bysource"
+autodoc_pydantic_model_member_order = "bysource"
 
 autosummary_generate = True
 
@@ -79,20 +92,9 @@ myst_enable_extensions = [
     "substitution",
 ]
 
-autodoc_default_options = {
-    "exclude-members": "model_config",
-}
-
 myst_heading_anchors = 3
 myst_ref_domains = ["std", "py"]
 myst_all_links_external = False
-
-autodoc_pydantic_model_show_validator_summary = False
-autodoc_pydantic_model_show_validator_members = False
-autodoc_pydantic_model_show_config_summary = False
-autodoc_pydantic_field_list_validators = False
-autodoc_pydantic_model_summary_list_order = "bysource"
-autodoc_pydantic_model_member_order = "bysource"
 
 # -- Options for HTML output ----------------------------------------------
 
