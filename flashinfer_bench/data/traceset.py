@@ -26,7 +26,6 @@ class TraceSet:
 
     root: Path
     """The root path of the TraceSet."""
-
     definitions: Dict[str, Definition] = field(default_factory=dict)
     """The definitions in the database. Map from definition name to Definition object."""
     solutions: Dict[str, List[Solution]] = field(default_factory=dict)
