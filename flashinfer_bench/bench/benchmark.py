@@ -169,7 +169,9 @@ class Benchmark:
                     }
 
                 for sol_name, ev in results.items():
-                    self._staging_traces.append(Trace(def_name, wl, sol_name, ev))
+                    self._staging_traces.append(
+                        Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev)
+                    )
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
