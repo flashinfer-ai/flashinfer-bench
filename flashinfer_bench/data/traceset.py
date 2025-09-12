@@ -100,6 +100,13 @@ class TraceSet:
         )
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert the TraceSet to a Python dict.
+
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary representation of the TraceSet.
+        """
         return {
             "definitions": {
                 name: definition.model_dump(mode="json")
