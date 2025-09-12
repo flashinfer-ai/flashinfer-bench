@@ -38,3 +38,4 @@ MANIFEST
 !web/**/lib/**
 
 .claude
+.vscode

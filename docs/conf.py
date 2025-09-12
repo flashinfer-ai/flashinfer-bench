@@ -39,6 +39,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.autosummary",
     "sphinx.ext.mathjax",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 autodoc_mock_imports = [
@@ -78,9 +79,18 @@ myst_enable_extensions = [
     "substitution",
 ]
 
+autodoc_default_options = {
+    "exclude-members": "model_config",
+}
+
 myst_heading_anchors = 3
 myst_ref_domains = ["std", "py"]
 myst_all_links_external = False
+
+autodoc_pydantic_model_show_validator_summary = False
+autodoc_pydantic_model_show_validator_members = False
+autodoc_pydantic_model_show_config_summary = False
+autodoc_pydantic_model_summary_list_order = "bysource"
 
 # -- Options for HTML output ----------------------------------------------
 
