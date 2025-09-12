@@ -121,7 +121,7 @@ class Definition(BaseModelWithDocstrings):
     """Optional list of constraint expressions describing relationships between axes."""
 
     @model_validator(mode="after")
-    def _validate_reference_code(self) -> str:
+    def _validate_reference_code(self) -> "Definition":
         """Validate that reference contains valid Python code with a 'run' function.
 
         Raises
