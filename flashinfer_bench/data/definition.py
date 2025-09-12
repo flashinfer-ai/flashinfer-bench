@@ -1,24 +1,16 @@
-"""Strong-typed data definitions for workload specifications."""
+"""The definition of kernels in the FlashInfer Trace schema."""
 
 import ast
 from enum import Enum
 from functools import cached_property
-from typing import Annotated, Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, Field, model_validator
 
-_NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
-"""Type alias for non-empty strings with minimum length of 1."""
+from .utils import BaseModelWithDocstrings, NonEmptyString
 
 
-class AxisConst(BaseModel):
+class AxisConst(BaseModelWithDocstrings):
     """Constant axis with a fixed value.
 
     A constant axis represents a dimension that has a fixed, compile-time known value.
@@ -26,12 +18,10 @@ class AxisConst(BaseModel):
     same kernel definition, such as embedding dimensions or hidden layer sizes.
     """
 
-    model_config = ConfigDict(use_attribute_docstrings=True)
-
     type: Literal["const"] = "const"
     """The type identifier for constant axes."""
-    value: int = Field(gt=0)
-    """The constant positive integer value of this axis dimension."""
+    value: int = Field(ge=0)
+    """The constant integer value of this axis dimension."""
     description: Optional[str] = None
     """An optional human-readable description explaining the purpose of this axis."""
 
@@ -40,24 +30,12 @@ class AxisVar(BaseModel):
     """Variable axis that can be specified at runtime.
 
     A variable axis represents a dimension whose value is determined at runtime
-    based on the actual input data. This allows kernels to handle inputs of
-    varying sizes while maintaining type safety.
-
-    Attributes
-    ----------
-    type : Literal["var"]
-        The type identifier for variable axes. Always set to "var".
-    parent : Optional[str]
-        Optional name of parent axis for hierarchical relationships. Used to
-        indicate when this axis depends on or is nested within another axis.
-    description : Optional[str]
-        An optional human-readable description explaining the purpose of this axis.
+    based on the actual input data. Its value will be bound to the input tensor
+    dimension at runtime.
     """
 
     type: Literal["var"] = "var"
     """The type identifier for variable axes."""
-    parent: Optional[str] = None
-    """Optional name of parent axis for hierarchical relationships."""
     description: Optional[str] = None
     """An optional human-readable description explaining the purpose of this axis."""
 
@@ -73,36 +51,36 @@ class DType(str, Enum):
     FLOAT32 = "float32"
     """32-bit IEEE 754 floating point."""
     FLOAT16 = "float16"
+    """16-bit IEEE 754 half-precision floating point."""
     BFLOAT16 = "bfloat16"
+    """16-bit Brain Floating Point format."""
     FLOAT8_E4M3 = "float8_e4m3"
+    """8-bit floating point with 4 exponent bits and 3 mantissa bits."""
     FLOAT8_E5M2 = "float8_e5m2"
+    """8-bit floating point with 5 exponent bits and 2 mantissa bits."""
     FLOAT4_E2M1 = "float4_e2m1"
+    """4-bit floating point with 2 exponent bits and 1 mantissa bit."""
     INT64 = "int64"
+    """64-bit signed integer."""
     INT32 = "int32"
+    """32-bit signed integer."""
     INT16 = "int16"
+    """16-bit signed integer."""
     INT8 = "int8"
+    """8-bit signed integer."""
     BOOL = "bool"
+    """Boolean type."""
 
 
-class TensorSpec(BaseModel):
-    """Specification for a tensor including shape and data type.
+class TensorSpec(BaseModelWithDocstrings):
+    """Specification for a tensor including shape and data type, to use as input or output of a
+    kernel.
 
-    Defines the complete specification of a tensor used in a computational kernel.
     This includes the symbolic shape (referencing defined axes) and the data type.
     Scalars are represented with a None shape.
-
-    Attributes
-    ----------
-    shape : Optional[List[str]]
-        List of axis names defining the tensor shape. Each axis name must be
-        defined in the parent Definition's axes dictionary. Use None for scalar values.
-    dtype : DType
-        The data type of all elements in this tensor.
-    description : Optional[str]
-        An optional human-readable description of this tensor's purpose and usage.
     """
 
-    shape: Optional[List[_NonEmptyString]] = None
+    shape: Optional[List[NonEmptyString]] = None
     """List of axis names defining the tensor shape. None for scalar values."""
     dtype: DType
     """The data type of all elements in this tensor."""
@@ -110,7 +88,7 @@ class TensorSpec(BaseModel):
     """An optional human-readable description of this tensor's purpose and usage."""
 
 
-class Definition(BaseModel):
+class Definition(BaseModelWithDocstrings):
     """Complete definition of a computational workload.
 
     A Definition provides a formal, machine-readable specification for a computational
@@ -119,46 +97,32 @@ class Definition(BaseModel):
     truth for kernel development and optimization.
     """
 
-    model_config = ConfigDict(use_attribute_docstrings=True)
-
-    name: _NonEmptyString
+    name: NonEmptyString
     """A unique, human-readable name for the kernel definition."""
-    type: _NonEmptyString = Field(description="Operator type of the kernel definition")
+    type: NonEmptyString
     """The general compute category (e.g., 'gemm', 'gqa', 'mha')."""
-    axes: Dict[str, Union[AxisConst, AxisVar]] = Field(
-        min_length=1, description="Axes that will be used in the shape of inputs and outputs"
-    )
-    """Dictionary of symbolic dimensions used in tensor shapes."""
-    inputs: Dict[str, TensorSpec] = Field(min_length=1, description="Inputs of the kernel")
+    axes: Dict[NonEmptyString, Union[AxisConst, AxisVar]]
+    """Dictionary of symbolic dimensions used in tensor shapes. The axes will be bound to the
+    input tensor dimensions at runtime."""
+    inputs: Dict[NonEmptyString, TensorSpec]
     """Named input tensors required by this kernel."""
-    outputs: Dict[str, TensorSpec] = Field(min_length=1, description="Outputs of the kernel")
+    outputs: Dict[NonEmptyString, TensorSpec]
     """Named output tensors produced by this kernel."""
-    reference: str = Field(description="Reference implementation code in Python")
-    """Reference implementation code containing a 'run' function."""
-    tags: Optional[List[_NonEmptyString]] = Field(
-        default=None, description="List of tags that will be used in the kernel"
-    )
-    """Optional list of tags for grouping and filtering kernels."""
-    description: Optional[str] = Field(default=None, description="Description of the kernel")
+    reference: NonEmptyString
+    """Reference implementation code. It defines the compute logic of the kernel. Must be a valid
+    Python code with a 'run' function that takes the input tensors and returns the output tensors.
+    """
+    tags: Optional[List[NonEmptyString]] = Field(default=None)
+    """Optional list of tags for grouping and filtering kernels. It's used in the FlashInfer-Bench
+    website."""
+    description: Optional[str] = Field(default=None)
     """Optional human-readable description of the kernel's purpose."""
-    constraints: Optional[List[_NonEmptyString]] = Field(
-        default=None, description="List of constraint expressions"
-    )
+    constraints: Optional[List[NonEmptyString]] = Field(default=None)
     """Optional list of constraint expressions describing relationships between axes."""
 
     @model_validator(mode="after")
     def _validate_reference_code(self) -> str:
         """Validate that reference contains valid Python code with a 'run' function.
-
-        Parameters
-        ----------
-        v : str
-            The reference implementation code to validate.
-
-        Returns
-        -------
-        str
-            The validated reference code.
 
         Raises
         ------
@@ -183,16 +147,6 @@ class Definition(BaseModel):
     def _validate_constraints_syntax(self) -> "Definition":
         """Validate that constraints are valid Python expressions.
 
-        Parameters
-        ----------
-        v : Optional[List[str]]
-            List of constraint expressions to validate. Can be None.
-
-        Returns
-        -------
-        Optional[List[str]]
-            The validated list of constraints.
-
         Raises
         ------
         ValueError
@@ -212,11 +166,6 @@ class Definition(BaseModel):
 
         Ensures that all axis names used in input and output tensor shapes
         are properly defined in the axes dictionary.
-
-        Returns
-        -------
-        Definition
-            The validated Definition instance.
 
         Raises
         ------
@@ -363,8 +312,3 @@ class Definition(BaseModel):
             If a required variable axis value is missing from var_values.
         """
         return self._get_shapes(self.outputs, var_values)
-
-
-import json
-
-print(json.dumps(Definition.model_json_schema(), indent=2))

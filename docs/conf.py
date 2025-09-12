@@ -90,7 +90,9 @@ myst_all_links_external = False
 autodoc_pydantic_model_show_validator_summary = False
 autodoc_pydantic_model_show_validator_members = False
 autodoc_pydantic_model_show_config_summary = False
+autodoc_pydantic_field_list_validators = False
 autodoc_pydantic_model_summary_list_order = "bysource"
+autodoc_pydantic_model_member_order = "bysource"
 
 # -- Options for HTML output ----------------------------------------------
 

@@ -1,23 +1,16 @@
-FlashInfer-Bench Schema
-======================
+FlashInfer Trace Schema Python API
+==================================
 
-.. currentmodule:: flashinfer_bench.data
+FlashInfer-Bench provides a schema for the FlashInfer Trace database. This document includes
+the Python API for the schema, including
 
-FlashInfer-Bench provides a schema for the FlashInfer Trace database.
+- The :class:`Definition` class, which defines the kernel specification.
+- The :class:`Solution` class, which defines the kernel solution.
+- The :class:`Trace` class, which defines the kernel execution trace.
+- The :class:`TraceSet` class, which defines a set of kernel execution traces.
 
-.. autopydantic_model:: Definition
+.. toctree::
+    :maxdepth: 2
 
-.. autoclass:: AxisConst
-    :members:
-
-.. autoclass:: flashinfer_bench.data.definition.AxisVar
-    :members:
-
-.. autoclass:: flashinfer_bench.data.definition.DType
-    :members:
-
-.. autoclass:: flashinfer_bench.data.trace.Trace
-    :members:
-
-.. autoclass:: flashinfer_bench.data.trace.TraceSet
-    :members:
+    api_schema_definition
+    api_schema_solution
