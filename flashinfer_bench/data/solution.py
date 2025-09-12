@@ -126,7 +126,7 @@ class Solution(BaseModelWithDocstrings):
             sources.
         """
         seen_paths = set()
-        for i, source in enumerate(self.sources):
+        for source in self.sources:
             if source.path in seen_paths:
                 raise ValueError(f"Duplicate source path '{source.path}'")
             seen_paths.add(source.path)

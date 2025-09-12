@@ -39,3 +39,5 @@ MANIFEST
 
 .claude
 .vscode
+
+tmp/

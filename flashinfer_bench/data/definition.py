@@ -80,7 +80,7 @@ class TensorSpec(BaseModelWithDocstrings):
     Scalars are represented with a None shape.
     """
 
-    shape: Optional[List[NonEmptyString]] = None
+    shape: Optional[List[NonEmptyString]]
     """List of axis names defining the tensor shape. None for scalar values."""
     dtype: DType
     """The data type of all elements in this tensor."""

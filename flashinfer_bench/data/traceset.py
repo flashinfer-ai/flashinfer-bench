@@ -3,7 +3,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .definition import Definition
 from .json_codec import load_json_file, load_jsonl_file
@@ -98,6 +98,26 @@ class TraceSet:
             workload=workloads,
             traces=traces,
         )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "definitions": {
+                name: definition.model_dump(mode="json")
+                for name, definition in self.definitions.items()
+            },
+            "solutions": {
+                name: [solution.model_dump(mode="json") for solution in solutions]
+                for name, solutions in self.solutions.items()
+            },
+            "workload": {
+                name: [workload.model_dump(mode="json") for workload in workloads]
+                for name, workloads in self.workload.items()
+            },
+            "traces": {
+                name: [trace.model_dump(mode="json") for trace in traces]
+                for name, traces in self.traces.items()
+            },
+        }
 
     def get_solution(self, name: str) -> Optional[Solution]:
         """Get a solution by name from all loaded solutions.

@@ -28,7 +28,6 @@ from flashinfer_bench.data import (
     save_jsonl_file,
     to_json,
 )
-from flashinfer_bench.data.json_codec import dict_to_dataclass
 
 
 def make_minimal_objects():
@@ -90,7 +89,7 @@ def test_language_and_status_string_decoding():
         "target_hardware": ["cuda"],
         "entry_point": "main.py::run",
     }
-    bs = dict_to_dataclass(data, BuildSpec)
+    bs = BuildSpec.model_validate(data, strict=True)
     assert bs.language == SupportedLanguages.TRITON
 
     ev_data = {
@@ -101,7 +100,7 @@ def test_language_and_status_string_decoding():
         "correctness": {},
         "performance": {},
     }
-    ev = dict_to_dataclass(ev_data, Evaluation)
+    ev = Evaluation.model_validate(ev_data, strict=True)
     assert ev.status == EvaluationStatus.PASSED
 
 
@@ -142,7 +141,7 @@ def test_dict_to_dataclass_with_invalid_fields():
         "reference": "def run():\n    pass\n",
     }
     with pytest.raises(ValueError):
-        dict_to_dataclass(bad_def, Definition)
+        Definition.model_validate(bad_def, strict=True)
 
 
 if __name__ == "__main__":
