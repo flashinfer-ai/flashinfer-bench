@@ -17,13 +17,19 @@
       "esnext"
     ],
     "incremental": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
   "include": [
+    "**/*.md",
+    "**/*.mdx",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.md",
-    "**/*.mdx"
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
