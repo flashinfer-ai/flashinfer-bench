@@ -105,7 +105,7 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
     # JSON file roundtrip
     path = tmp_path / "obj.json"
     save_json_file(d, path)
-    loaded = load_json_file(path, Definition)
+    loaded = load_json_file(Definition, path)
     assert loaded.name == d.name
 
     # JSONL file roundtrip
@@ -121,7 +121,7 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
         ),
     ]
     save_jsonl_file(traces, pathl)
-    loaded_list = load_jsonl_file(pathl, Trace)
+    loaded_list = load_jsonl_file(Trace, pathl)
     assert len(loaded_list) == 2
     assert loaded_list[0].is_workload_trace()
 

@@ -315,4 +315,4 @@ class Benchmark:
         self._staging_traces.clear()
 
         for path, traces in buckets.items():
-            append_jsonl_file(path, traces)
+            append_jsonl_file(traces, path)

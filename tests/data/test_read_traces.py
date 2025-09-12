@@ -78,10 +78,10 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     (tdir / "min_gemm.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Load via our codecs/TraceSet
-    d = load_json_file(ddir / "min_gemm.json", Definition)
-    s = load_json_file(sdir / "torch_min_gemm.json", Solution)
+    d = load_json_file(Definition, ddir / "min_gemm.json")
+    s = load_json_file(Solution, sdir / "torch_min_gemm.json")
     print("min_gemm.jsonl: ", (tdir / "min_gemm.jsonl").read_text(encoding="utf-8"))
-    traces = load_jsonl_file(tdir / "min_gemm.jsonl", Trace)
+    traces = load_jsonl_file(Trace, tdir / "min_gemm.jsonl")
 
     assert d.name == "min_gemm"
     assert s.definition == d.name
@@ -95,9 +95,9 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     save_jsonl_file(traces, out_dir / "tr.jsonl")
 
     # Reload and validate basic invariants
-    d2 = load_json_file(out_dir / "def.json", Definition)
-    s2 = load_json_file(out_dir / "sol.json", Solution)
-    t2 = load_jsonl_file(out_dir / "tr.jsonl", Trace)
+    d2 = load_json_file(Definition, out_dir / "def.json")
+    s2 = load_json_file(Solution, out_dir / "sol.json")
+    t2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
 
     assert d2.name == d.name
     assert s2.name == s.name

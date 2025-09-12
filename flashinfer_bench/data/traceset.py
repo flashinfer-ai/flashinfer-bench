@@ -68,7 +68,7 @@ class TraceSet:
         # Load json files from all subdirectories
         definitions = {}
         for p in sorted((base_path / "definitions").rglob("*.json")):
-            d = load_json_file(p, Definition)
+            d = load_json_file(Definition, p)
             if d.name in definitions:
                 raise ValueError(f"Duplicate definition name: {d.name}")
             definitions[d.name] = d
@@ -76,7 +76,7 @@ class TraceSet:
         seen_solutions = set()
         solutions = defaultdict(list)
         for p in sorted((base_path / "solutions").rglob("*.json")):
-            s = load_json_file(p, Solution)
+            s = load_json_file(Solution, p)
             if s.name in seen_solutions:
                 raise ValueError(f"Duplicate solution name: {s.name}")
             seen_solutions.add(s.name)
@@ -85,7 +85,7 @@ class TraceSet:
         workloads = defaultdict(list)
         traces = defaultdict(list)
         for p in sorted((base_path / "traces").rglob("*.jsonl")):
-            for t in load_jsonl_file(p, Trace):
+            for t in load_jsonl_file(Trace, p):
                 if t.is_workload_trace():
                     workloads[t.definition].append(t)
                 else:
