@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List
 
 from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.json_codec import append_jsonl_lines
+from flashinfer_bench.data.json_utils import append_jsonl_lines
 from flashinfer_bench.data.trace import (
     Evaluation,
     EvaluationStatus,

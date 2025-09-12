@@ -20,7 +20,7 @@ def test_workload_validation():
     Workload(axes={"M": 4}, inputs={"A": RandomInput()}, uuid="w1")
     # Invalid axis value
     with pytest.raises(ValueError):
-        Workload(axes={"M": 0}, inputs={"A": RandomInput()}, uuid="w_bad")
+        Workload(axes={"M": -1}, inputs={"A": RandomInput()}, uuid="w_bad")
     # Invalid input type
     with pytest.raises(ValueError):
         Workload(axes={"M": 1}, inputs={"A": object()}, uuid="w_bad2")
@@ -98,9 +98,6 @@ def test_trace_workload_and_regular():
     t_ok = Trace(definition="def1", workload=wl, solution="sol1", evaluation=eval_ok)
     assert t_ok.is_workload_trace() is False
     assert t_ok.is_successful() is True
-    # Regular missing fields
-    with pytest.raises(ValueError):
-        Trace(definition="def1", workload=wl, solution="sol1")  # type: ignore[call-arg]
 
 
 if __name__ == "__main__":

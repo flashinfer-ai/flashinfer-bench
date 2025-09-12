@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .definition import Definition
-from .json_codec import load_json_file, load_jsonl_file
+from .json_utils import load_json_file, load_jsonl_file
 from .solution import Solution
 from .trace import EvaluationStatus, Trace
 

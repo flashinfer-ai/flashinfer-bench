@@ -8,7 +8,7 @@ from flashinfer_bench.apply import apply as apply_api
 from flashinfer_bench.apply import disable_apply, enable_apply
 from flashinfer_bench.apply.runtime import set_runtime
 from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+from flashinfer_bench.data.json_utils import save_json_file, save_jsonl_file
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from flashinfer_bench.data.trace import (
     Correctness,

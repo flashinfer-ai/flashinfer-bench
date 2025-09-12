@@ -5,7 +5,7 @@ from typing import Dict, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
 
-from .utils import BaseModelWithDocstrings, NonEmptyString
+from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
 
 
 class RandomInput(BaseModel):
@@ -59,7 +59,7 @@ class Workload(BaseModelWithDocstrings):
     This represents an executable configuration that can be benchmarked.
     """
 
-    axes: Dict[str, int]
+    axes: Dict[str, NonNegativeInt]
     """Dictionary mapping axis names to their concrete integer values. All values must be
     positive."""
     inputs: Dict[str, InputSpec]
@@ -75,9 +75,9 @@ class Correctness(BaseModelWithDocstrings):
     a reference implementation to assess numerical accuracy.
     """
 
-    max_relative_error: float = Field(ge=0.0)
+    max_relative_error: float = Field(default=0.0, ge=0.0)
     """Maximum relative error observed across all output elements."""
-    max_absolute_error: float = Field(ge=0.0)
+    max_absolute_error: float = Field(default=0.0, ge=0.0)
     """Maximum absolute error observed across all output elements."""
 
 
@@ -88,11 +88,11 @@ class Performance(BaseModelWithDocstrings):
     benchmarking the solution against reference implementations.
     """
 
-    latency_ms: float = Field(ge=0.0)
+    latency_ms: float = Field(default=0.0, ge=0.0)
     """Solution execution latency in milliseconds."""
-    reference_latency_ms: float = Field(ge=0.0)
+    reference_latency_ms: float = Field(default=0.0, ge=0.0)
     """Reference implementation latency in milliseconds for comparison."""
-    speedup_factor: float = Field(ge=0.0)
+    speedup_factor: float = Field(default=0.0, ge=0.0)
     """Performance speedup factor compared to reference (reference_time / solution_time)."""
 
 

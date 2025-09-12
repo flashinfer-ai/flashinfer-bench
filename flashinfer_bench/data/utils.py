@@ -1,9 +1,12 @@
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field
 
-NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
+NonEmptyString = Annotated[str, Field(min_length=1)]
 """Type alias for non-empty strings with minimum length of 1."""
+
+NonNegativeInt = Annotated[int, Field(ge=0)]
+"""Type alias for non-negative integers."""
 
 
 class BaseModelWithDocstrings(BaseModel):

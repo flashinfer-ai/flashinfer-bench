@@ -7,7 +7,7 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, model_validator
 
-from .utils import BaseModelWithDocstrings, NonEmptyString
+from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
 
 
 class AxisConst(BaseModelWithDocstrings):
@@ -20,7 +20,7 @@ class AxisConst(BaseModelWithDocstrings):
 
     type: Literal["const"] = "const"
     """The type identifier for constant axes."""
-    value: int = Field(ge=0)
+    value: NonNegativeInt
     """The constant integer value of this axis dimension."""
     description: Optional[str] = None
     """An optional human-readable description explaining the purpose of this axis."""

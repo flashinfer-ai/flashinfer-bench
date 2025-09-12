@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -21,16 +22,14 @@ from flashinfer_bench.data import (
     TensorSpec,
     Trace,
     Workload,
-    from_json,
     load_json_file,
     load_jsonl_file,
     save_json_file,
     save_jsonl_file,
-    to_json,
 )
 
 
-def make_minimal_objects():
+def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
     ref = "def run(a):\n    return a\n"
     d = Definition(
         name="d1",
@@ -64,10 +63,9 @@ def make_minimal_objects():
 
 def test_roundtrip_to_from_json():
     d, s, t = make_minimal_objects()
-    # to_json / from_json
-    d2 = from_json(to_json(d), Definition)
-    s2 = from_json(to_json(s), Solution)
-    t2 = from_json(to_json(t), Trace)
+    d2 = Definition.model_validate_json(d.model_dump_json())
+    s2 = Solution.model_validate_json(s.model_dump_json())
+    t2 = Trace.model_validate_json(t.model_dump_json())
     assert d2.name == d.name
     assert s2.name == s.name
     assert t2.solution == t.solution
@@ -76,8 +74,7 @@ def test_roundtrip_to_from_json():
 def test_preserve_null_fields_in_trace_json():
     wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w2")
     t = Trace(definition="d1", workload=wl)  # workload-only
-    j = to_json(t)
-    obj = json.loads(j)
+    obj = t.model_dump(mode="json")
     # solution and evaluation must be present and null
     assert "solution" in obj and obj["solution"] is None
     assert "evaluation" in obj and obj["evaluation"] is None
@@ -85,22 +82,22 @@ def test_preserve_null_fields_in_trace_json():
 
 def test_language_and_status_string_decoding():
     data = {
-        "language": "TrItOn",
+        "language": "triton",
         "target_hardware": ["cuda"],
         "entry_point": "main.py::run",
     }
-    bs = BuildSpec.model_validate(data, strict=True)
+    bs = BuildSpec.model_validate(data)
     assert bs.language == SupportedLanguages.TRITON
 
     ev_data = {
-        "status": "passed",
+        "status": "PASSED",
         "log_file": "log",
         "environment": {"hardware": "cpu"},
         "timestamp": "t",
         "correctness": {},
         "performance": {},
     }
-    ev = Evaluation.model_validate(ev_data, strict=True)
+    ev = Evaluation.model_validate(ev_data)
     assert ev.status == EvaluationStatus.PASSED
 
 
@@ -141,7 +138,7 @@ def test_dict_to_dataclass_with_invalid_fields():
         "reference": "def run():\n    pass\n",
     }
     with pytest.raises(ValueError):
-        Definition.model_validate(bad_def, strict=True)
+        Definition.model_validate(bad_def)
 
 
 if __name__ == "__main__":

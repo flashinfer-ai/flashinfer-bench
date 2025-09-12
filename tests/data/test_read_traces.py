@@ -54,12 +54,12 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
         "workload": {"axes": {"M": 2}, "inputs": {"A": {"type": "random"}}, "uuid": "wrt2"},
         "solution": "torch_min_gemm",
         "evaluation": {
-            "status": "passed",
+            "status": "PASSED",
             "log_file": "log",
             "environment": {"hardware": "cpu"},
             "timestamp": "t",
-            "correctness": {},
-            "performance": {},
+            "correctness": {"max_relative_error": 0.0, "max_absolute_error": 0.0},
+            "performance": {"latency_ms": 1.0, "reference_latency_ms": 2.0, "speedup_factor": 2.0},
         },
     }
 
@@ -80,6 +80,7 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     # Load via our codecs/TraceSet
     d = load_json_file(ddir / "min_gemm.json", Definition)
     s = load_json_file(sdir / "torch_min_gemm.json", Solution)
+    print("min_gemm.jsonl: ", (tdir / "min_gemm.jsonl").read_text(encoding="utf-8"))
     traces = load_jsonl_file(tdir / "min_gemm.jsonl", Trace)
 
     assert d.name == "min_gemm"
