@@ -1,0 +1,17 @@
+{
+  "index": {
+    "title": "Home"
+  },
+  "start": {
+    "title": "Get Started"
+  },
+  "flashinfer_trace": {
+    "title": "Schema"
+  },
+  "tutorials": {
+    "title": "Tutorials"
+  },
+  "api": {
+    "title": "API Reference"
+  }
+}

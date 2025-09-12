@@ -1,0 +1,21 @@
+{
+  "name": "@flashinfer-bench/docs",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "next dev -p 3030",
+    "build": "next build",
+    "start": "next start -p 3030",
+    "api-docs": "bash ./gen_api_docs.sh"
+  },
+  "dependencies": {
+    "next": "^15.3.4",
+    "nextra": "^3.3.0",
+    "nextra-theme-docs": "^3.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

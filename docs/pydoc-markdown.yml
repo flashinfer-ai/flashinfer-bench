@@ -1,0 +1,14 @@
+loaders:
+  - type: python
+    search_path: [".."]
+    modules: ["flashinfer_bench"]
+
+processors:
+  - type: filter
+    skip_empty_modules: true
+  - type: smart
+
+renderer:
+  type: markdown
+  render_toc: false
+  filename: docs/api/reference.md
