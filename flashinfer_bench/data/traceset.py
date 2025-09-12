@@ -14,25 +14,56 @@ from .trace import EvaluationStatus, Trace
 # TODO(shanli): TraceSet wide validation
 @dataclass
 class TraceSet:
-    """A pure data warehouse for definitions, solutions, workloads, and traces.
+    """Stores a FlashInfer Trace dataset containing definitions, solutions, workloads, and traces.
 
-    This class only handles data storage, loading, saving, querying, and statistics.
+    TraceSet serves as a centralized data warehouse for managing FlashInfer benchmark data.
+    It provides efficient lookup and filtering capabilities for definitions, solutions, and
+    execution traces organized by definition names.
+
+    The data structure is optimized for fast lookups with dictionary-based storage where
+    keys are definition names and values are lists of associated objects.
     """
 
     root: Path
+    """The root path of the TraceSet."""
 
-    # def_name -> Definition
     definitions: Dict[str, Definition] = field(default_factory=dict)
-    # def_name -> List[Solution]
+    """The definitions in the database. Map from definition name to Definition object."""
     solutions: Dict[str, List[Solution]] = field(default_factory=dict)
-    # def_name -> List[Trace] (workload traces)
+    """The solutions in the database. Map from definition name to all the solutions for that
+    definition."""
     workload: Dict[str, List[Trace]] = field(default_factory=dict)
-    # def_name -> List[Trace]
+    """The workload traces in the database. Map from definition name to all workload traces for that
+    definition."""
     traces: Dict[str, List[Trace]] = field(default_factory=dict)
+    """The traces in the database. Map from definition name to all traces for that definition."""
 
     @classmethod
     def from_path(cls, path: str) -> "TraceSet":
-        """Load a TraceSet from a directory structure."""
+        """Load a TraceSet from a directory structure.
+
+        Loads a complete TraceSet by scanning the directory structure for:
+        - definitions/: JSON files containing Definition objects
+        - solutions/: JSON files containing Solution objects
+        - traces/: JSONL files containing Trace objects (both workload and execution traces)
+
+        Parameters
+        ----------
+        path : str
+            Root directory path containing the dataset structure.
+
+        Returns
+        -------
+        TraceSet
+            A new TraceSet instance populated with data from the directory.
+
+        Raises
+        ------
+        ValueError
+            If duplicate definition names or solution names are found.
+        FileNotFoundError
+            If the specified path doesn't exist.
+        """
         base_path = Path(path)
 
         # Load json files from all subdirectories
@@ -56,7 +87,10 @@ class TraceSet:
         traces = defaultdict(list)
         for p in sorted((base_path / "traces").rglob("*.jsonl")):
             for t in load_jsonl_file(p, Trace):
-                (workloads if t.is_workload_trace() else traces)[t.definition].append(t)
+                if t.is_workload_trace():
+                    workloads[t.definition].append(t)
+                else:
+                    traces[t.definition].append(t)
 
         return cls(
             root=base_path,
@@ -67,7 +101,22 @@ class TraceSet:
         )
 
     def get_solution(self, name: str) -> Optional[Solution]:
-        """Get a solution by name."""
+        """Get a solution by name from all loaded solutions.
+
+        Searches across all solutions in the TraceSet to find one with the specified name.
+        Since solution names are unique across the entire dataset, this returns at most
+        one solution.
+
+        Parameters
+        ----------
+        name : str
+            The name of the solution to retrieve.
+
+        Returns
+        -------
+        Optional[Solution]
+            The solution with the given name, or None if not found.
+        """
         for solution_list in self.solutions.values():
             for solution in solution_list:
                 if solution.name == name:
@@ -80,7 +129,27 @@ class TraceSet:
         atol: float = 1e-2,
         rtol: float = 1e-2,
     ) -> List[Trace]:
-        """Filter traces for a definition based on error bounds."""
+        """Filter traces for a definition based on error bounds.
+
+        Returns only successful traces that meet the specified absolute and relative
+        error tolerance criteria. This is useful for finding high-quality implementations
+        that produce numerically accurate results.
+
+        Parameters
+        ----------
+        def_name : str
+            Name of the definition to filter traces for.
+        atol : float, optional
+            Maximum absolute error tolerance, by default 1e-2.
+        rtol : float, optional
+            Maximum relative error tolerance, by default 1e-2.
+
+        Returns
+        -------
+        List[Trace]
+            List of traces that passed evaluation and meet error criteria.
+            Empty list if no traces match the criteria.
+        """
         return [
             t
             for t in self.traces.get(def_name, [])
@@ -98,9 +167,29 @@ class TraceSet:
         max_abs_error: float = 1e-2,
         max_rel_error: float = 1e-2,
     ) -> Optional[Trace]:
-        """Get the best trace for a definition based on performance.
+        """Get the best performing trace for a definition based on speedup factor.
 
-        This returns the Trace object itself.
+        Finds the trace with the highest speedup factor among those that meet the
+        specified criteria including axis constraints and error tolerances.
+
+        Parameters
+        ----------
+        def_name : str
+            Name of the definition to find the best trace for.
+        axes : Optional[Dict[str, int]], optional
+            Dictionary of axis name to value pairs for exact matching.
+            Only traces with exactly matching axis values will be considered.
+            If None, all axis configurations are considered.
+        max_abs_error : float, optional
+            Maximum absolute error tolerance, by default 1e-2.
+        max_rel_error : float, optional
+            Maximum relative error tolerance, by default 1e-2.
+
+        Returns
+        -------
+        Optional[Trace]
+            The best performing trace meeting all criteria, or None if no traces
+            match the requirements.
         """
         candidates = self.traces.get(def_name, [])
 
@@ -136,7 +225,22 @@ class TraceSet:
         return None
 
     def summary(self) -> Dict[str, any]:
-        """Get a summary of all traces."""
+        """Get a comprehensive summary of all traces in the TraceSet.
+
+        Computes aggregate statistics across all execution traces including success rates,
+        latency statistics, and overall dataset size metrics.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing the following keys:
+            - total: Total number of traces
+            - passed: Number of traces with successful evaluation
+            - failed: Number of traces with failed evaluation
+            - min_latency_ms: Minimum latency among successful traces (None if no successful traces)
+            - max_latency_ms: Maximum latency among successful traces (None if no successful traces)
+            - avg_latency_ms: Average latency among successful traces (None if no successful traces)
+        """
         all_traces = [t for traces in self.traces.values() for t in traces]
 
         if not all_traces:
