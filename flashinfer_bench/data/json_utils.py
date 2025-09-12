@@ -41,7 +41,7 @@ def load_jsonl_file(path: Union[str, Path], type: Type[BaseModel]) -> List[BaseM
     return out
 
 
-def append_jsonl_lines(path: Union[str, Path], objs: List[BaseModel]) -> None:
+def append_jsonl_file(path: Union[str, Path], objs: List[BaseModel]) -> None:
     """Append a list of dataclasses to a JSONL file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

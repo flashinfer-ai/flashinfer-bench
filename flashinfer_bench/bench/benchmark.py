@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List
 
 from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.json_utils import append_jsonl_lines
+from flashinfer_bench.data.json_utils import append_jsonl_file
 from flashinfer_bench.data.trace import (
     Evaluation,
     EvaluationStatus,
@@ -315,4 +315,4 @@ class Benchmark:
         self._staging_traces.clear()
 
         for path, traces in buckets.items():
-            append_jsonl_lines(path, traces)
+            append_jsonl_file(path, traces)
