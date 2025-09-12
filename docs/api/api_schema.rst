@@ -14,3 +14,5 @@ the Python API for the schema, including
 
     api_schema_definition
     api_schema_solution
+    api_schema_trace
+    api_schema_traceset
