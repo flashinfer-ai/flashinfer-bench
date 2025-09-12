@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Button } from "@/components/ui/button"
+import { Button } from "@flashinfer-bench/ui"
 import { Maximize2, Minimize2, Copy, Check } from "lucide-react"
 import { Definition } from "@/lib/schemas"
 import dynamic from "next/dynamic"

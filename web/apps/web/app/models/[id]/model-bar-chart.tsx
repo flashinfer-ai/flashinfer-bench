@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import * as d3 from "d3"
 import { Model } from "@/lib/schemas"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@flashinfer-bench/ui"
 
 interface ModuleData {
   name: string

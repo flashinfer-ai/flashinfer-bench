@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const DOCS_ORIGIN = process.env.DOCS_ORIGIN || 'http://localhost:3030'
 const nextConfig = {
+  transpilePackages: [
+    '@flashinfer-bench/ui',
+    '@flashinfer-bench/utils',
+    '@flashinfer-bench/config',
+  ],
   async rewrites() {
     return [
       { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },

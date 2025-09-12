@@ -1,20 +1,21 @@
 import React from 'react'
 import type { DocsThemeConfig } from 'nextra-theme-docs'
+import { Logo } from '@flashinfer-bench/ui/brand/Logo'
+import { links, siteName } from '@flashinfer-bench/config'
 
 const config: DocsThemeConfig = {
-  logo: <span>FlashInfer Bench Docs</span>,
+  logo: <Logo />,
   project: {
-    link: 'https://github.com/flashinfer-ai/flashinfer-bench',
+    link: links.siteRepo,
   },
-  docsRepositoryBase:
-    'https://github.com/flashinfer-ai/flashinfer-bench/tree/main/docs',
+  docsRepositoryBase: links.docsRepositoryBase,
   useNextSeoProps() {
     return {
-      titleTemplate: '%s – FlashInfer Bench',
+      titleTemplate: `%s – ${siteName}`,
     }
   },
   footer: {
-    text: 'FlashInfer Bench Documentation',
+    text: `${siteName} Documentation`,
   },
   sidebar: {
     defaultMenuCollapseLevel: 1,

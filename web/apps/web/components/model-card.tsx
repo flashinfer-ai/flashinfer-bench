@@ -4,9 +4,7 @@ import React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Cpu, Copy, Check, Filter } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ProgressCircle } from "@/components/ui/progress-circle"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressCircle, Button } from "@flashinfer-bench/ui"
 import { Model } from "@/lib/schemas"
 
 interface ModelCardProps {

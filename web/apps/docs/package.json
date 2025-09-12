@@ -9,6 +9,8 @@
     "api-docs": "bash ./gen_api_docs.sh"
   },
   "dependencies": {
+    "@flashinfer-bench/config": "workspace:*",
+    "@flashinfer-bench/ui": "workspace:*",
     "next": "^15.5.0",
     "nextra": "^4.4.0",
     "nextra-theme-docs": "^4.4.0",

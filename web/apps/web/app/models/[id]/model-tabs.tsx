@@ -1,11 +1,11 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@flashinfer-bench/ui"
 import { ModelVisualization } from "./model-visualization"
 import { ModelBarChart } from "./model-bar-chart"
 import { Model } from "@/lib/schemas"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@flashinfer-bench/ui"
 
 // Dynamic import for client-side only rendering
 const ModelFlowWrapper = dynamic(

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Github } from "lucide-react"
+import { links } from "@flashinfer-bench/config"
 
 export function Footer() {
   return (
@@ -12,7 +13,7 @@ export function Footer() {
         </div>
         <div className="flex items-center space-x-1">
           <Link
-            href="https://github.com/flashinfer-ai"
+            href={links.org}
             target="_blank"
             rel="noreferrer"
           >

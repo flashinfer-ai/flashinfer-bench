@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "preserve",
+    "target": "ES2022",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*"]
+}

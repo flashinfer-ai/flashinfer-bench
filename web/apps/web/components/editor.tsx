@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Editor as MonacoEditor } from "@monaco-editor/react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Button, Card, toast } from "@flashinfer-bench/ui"
 import { ArrowLeft, Copy, Download, Check, Plus, FileText, Code } from "lucide-react"
-import { toast } from "@/components/ui/toaster"
 
 interface EditorProps {
   data: any

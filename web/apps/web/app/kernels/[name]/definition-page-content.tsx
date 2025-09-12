@@ -2,16 +2,12 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Copy, Check, ArrowLeft, ExternalLink, Info, Code2 } from "lucide-react"
 import { Definition, Solution, Trace, CanonicalWorkload } from "@/lib/schemas"
 import { DefinitionDetails } from "./definition-details"
 import { TracesTable } from "./traces-table"
-import { cn } from "@/lib/utils"
+import { cn } from "@flashinfer-bench/utils"
 
 interface DefinitionPageContentProps {
   definition: Definition

@@ -2,9 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Badge } from "@flashinfer-bench/ui"
 import { ChevronRight, Package, Layers } from "lucide-react"
 import { Model, ModelHierarchy } from "@/lib/schemas"
 import { getRootModules, getChildren } from "@/lib/model-utils"

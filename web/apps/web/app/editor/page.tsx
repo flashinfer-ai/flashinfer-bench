@@ -4,11 +4,9 @@ import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import stripJsonComments from "strip-json-comments"
 import { Editor } from "@/components/editor"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Card } from "@/components/ui/card"
+import { Button, Textarea, Card } from "@flashinfer-bench/ui"
 import { AlertCircle } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "@flashinfer-bench/ui"
 
 function EditorContent() {
   const [jsonInput, setJsonInput] = useState("")
