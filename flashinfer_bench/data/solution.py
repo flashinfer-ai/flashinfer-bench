@@ -32,7 +32,9 @@ class SourceFile(BaseModelWithDocstrings):
     """
 
     path: NonEmptyString
-    """The relative path of the file, including its name and extension (e.g., 'src/kernel.cu', 'main.py')."""
+    """The relative path of the file, including its name and extension (e.g., 'src/kernel.cu',
+    'main.py'). When compiling the solution, a temporary solution source directory will be
+    created, and the file will be placed according to this path."""
     content: NonEmptyString
     """The complete text content of the source file."""
 
