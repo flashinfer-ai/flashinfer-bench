@@ -60,19 +60,21 @@ class SourceFile(BaseModelWithDocstrings):
 class BuildSpec(BaseModelWithDocstrings):
     """Build specification for a solution implementation.
 
-    Contains all technical specifications required to build and execute
-    a solution, including language, hardware targets, dependencies,
-    entry point, and build commands.
+    Contains all technical specifications required to build and execute a solution, including
+    language, hardware targets, dependencies, entry point, and build commands.
     """
 
     language: SupportedLanguages
     """The primary programming language (e.g., 'triton', 'cuda', 'python')."""
     target_hardware: List[str] = Field(min_length=1)
-    """List of hardware architectures this solution is compatible with (e.g., 'NVIDIA_H100', 'NVIDIA_B200')."""
+    """List of hardware architectures this solution is compatible with (e.g., 'NVIDIA_H100',
+    'NVIDIA_B200')."""
     entry_point: NonEmptyString
-    """The exact path to the function to be called. Format: '{file_path}::{function_name}' (e.g., 'main.py::run')."""
+    """The exact path to the function to be called. Format: '{file_path}::{function_name}'
+    (e.g., 'main.py::run')."""
     dependencies: Optional[List[NonEmptyString]] = Field(default=None)
-    """Optional list of required libraries or toolchains (e.g., 'CUDA >= 12.0', 'triton >= 2.2')."""
+    """Optional list of required libraries or toolchains (e.g., 'CUDA >= 12.0',
+    'triton >= 2.2')."""
     build_commands: Optional[List[str]] = Field(default=None)
     """Optional list of shell commands required to build the source code."""
 
