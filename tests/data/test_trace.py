@@ -85,7 +85,7 @@ def test_trace_workload_and_regular():
     )
     # Workload-only
     t_wl = Trace(definition="def1", workload=wl)
-    assert t_wl.is_workload() is True
+    assert t_wl.is_workload_trace() is True
     # Regular successful trace
     eval_ok = Evaluation(
         status=EvaluationStatus.PASSED,
@@ -96,7 +96,7 @@ def test_trace_workload_and_regular():
         performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
     )
     t_ok = Trace(definition="def1", workload=wl, solution="sol1", evaluation=eval_ok)
-    assert t_ok.is_workload() is False
+    assert t_ok.is_workload_trace() is False
     assert t_ok.is_successful() is True
     # Regular missing fields
     with pytest.raises(ValueError):

@@ -84,8 +84,8 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
 
     assert d.name == "min_gemm"
     assert s.definition == d.name
-    assert any(t.is_workload() for t in traces)
-    assert any((not t.is_workload()) for t in traces)
+    assert any(t.is_workload_trace() for t in traces)
+    assert any((not t.is_workload_trace()) for t in traces)
 
     # Roundtrip save new copies
     out_dir = tmp_path / "roundtrip"

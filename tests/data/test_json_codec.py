@@ -128,7 +128,7 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
     save_jsonl_file(traces, pathl)
     loaded_list = load_jsonl_file(pathl, Trace)
     assert len(loaded_list) == 2
-    assert loaded_list[0].is_workload()
+    assert loaded_list[0].is_workload_trace()
 
 
 def test_dict_to_dataclass_with_invalid_fields():
