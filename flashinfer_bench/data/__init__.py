@@ -1,13 +1,11 @@
 """Data layer with strongly-typed dataclasses for FlashInfer Bench."""
 
 from .definition import AxisConst, AxisVar, Definition, TensorSpec
-from .json_codec import (
-    from_json,
+from .json_utils import (
     load_json_file,
     load_jsonl_file,
     save_json_file,
     save_jsonl_file,
-    to_json,
 )
 from .solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from .trace import (
@@ -15,7 +13,7 @@ from .trace import (
     Environment,
     Evaluation,
     EvaluationStatus,
-    InputDesc,
+    InputSpec,
     Performance,
     RandomInput,
     SafetensorsInput,
@@ -40,7 +38,7 @@ __all__ = [
     "RandomInput",
     "ScalarInput",
     "SafetensorsInput",
-    "InputDesc",
+    "InputSpec",
     "Workload",
     "Correctness",
     "Performance",
@@ -51,8 +49,6 @@ __all__ = [
     # TraceSet
     "TraceSet",
     # JSON functions
-    "to_json",
-    "from_json",
     "save_json_file",
     "load_json_file",
     "save_jsonl_file",

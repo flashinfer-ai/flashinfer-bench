@@ -48,7 +48,7 @@ Reference Implementation:
 
 
 def _format_trace_logs(trace: Trace) -> str:
-    if trace.is_workload() or not trace.evaluation:
+    if trace.is_workload_trace() or not trace.evaluation:
         return "No evaluation logs available (workload-only trace)"
 
     eval_info = f"Status: {trace.evaluation.status.value}\n"
