@@ -182,7 +182,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+    from flashinfer_bench.data.json_utils import save_json_file, save_jsonl_file
 
     (ds / "definitions").mkdir(parents=True, exist_ok=True)
     (ds / "solutions").mkdir(parents=True, exist_ok=True)

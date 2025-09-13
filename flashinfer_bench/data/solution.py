@@ -1,30 +1,52 @@
 """Strong-typed data definitions for solution implementations."""
 
 import ast
-from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
+from pydantic import Field, model_validator
 
-class SupportedLanguages(Enum):
+from .utils import BaseModelWithDocstrings, NonEmptyString
+
+
+class SupportedLanguages(str, Enum):
+    """Supported programming languages for solution implementations.
+
+    Enumeration of programming languages that can be used to implement
+    solutions for computational workloads.
+    """
+
     PYTHON = "python"
+    """Python programming language."""
     TRITON = "triton"
+    """Triton GPU programming language."""
     CUDA = "cuda"
+    """CUDA C++ programming language."""
 
 
-@dataclass
-class SourceFile:
-    """A single source code file."""
+class SourceFile(BaseModelWithDocstrings):
+    """A single source code file in a solution implementation.
 
-    path: str
-    content: str
+    Represents a source code file with its relative path and complete content.
+    The file content is validated for syntax correctness based on the file extension.
+    """
 
-    def __post_init__(self):
-        if not self.path:
-            raise ValueError("SourceFile path cannot be empty")
-        if not isinstance(self.content, str):
-            raise ValueError("SourceFile content must be a string")
+    path: NonEmptyString
+    """The relative path of the file, including its name and extension (e.g., 'src/kernel.cu',
+    'main.py'). When compiling the solution, a temporary solution source directory will be
+    created, and the file will be placed according to this path."""
+    content: NonEmptyString
+    """The complete text content of the source file."""
 
+    @model_validator(mode="after")
+    def _validate_python_syntax(self) -> "SourceFile":
+        """Validate Python syntax for .py files.
+
+        Raises
+        ------
+        ValueError
+            If the file is a Python file and contains invalid syntax.
+        """
         if self.path.endswith(".py"):
             try:
                 ast.parse(self.content, mode="exec")
@@ -32,139 +54,112 @@ class SourceFile:
                 raise ValueError(f"SourceFile content must be valid Python code: {e}") from e
 
         # TODO(shanli): syntax validation for other languages
+        return self
 
 
-@dataclass
-class BuildSpec:
-    """Build specification for a solution."""
+class BuildSpec(BaseModelWithDocstrings):
+    """Build specification for a solution implementation.
+
+    Contains all technical specifications required to build and execute a solution, including
+    language, hardware targets, dependencies, entry point, and build commands.
+    """
 
     language: SupportedLanguages
-    target_hardware: List[str]
-    entry_point: str
-    dependencies: Optional[List[str]] = None
-    build_commands: Optional[List[str]] = None
+    """The primary programming language (e.g., 'triton', 'cuda', 'python')."""
+    target_hardware: List[str] = Field(min_length=1)
+    """List of hardware architectures this solution is compatible with (e.g., 'NVIDIA_H100',
+    'NVIDIA_B200')."""
+    entry_point: NonEmptyString
+    """The exact path to the function to be called. Format: '{file_path}::{function_name}'
+    (e.g., 'main.py::run')."""
+    dependencies: Optional[List[NonEmptyString]] = Field(default=None)
+    """Optional list of required libraries or toolchains (e.g., 'CUDA >= 12.0',
+    'triton >= 2.2')."""
+    build_commands: Optional[List[str]] = Field(default=None)
+    """Optional list of shell commands required to build the source code."""
 
-    def __post_init__(self):
-        if not isinstance(self.language, SupportedLanguages):
-            raise ValueError("language must be of SupportedLanguages type")
+    @model_validator(mode="after")
+    def _validate_entry_point(self) -> "BuildSpec":
+        """Validate entry_point format.
 
-        # Validate target_hardware
-        if not isinstance(self.target_hardware, list):
-            raise ValueError("target_hardware must be a list")
-        if not self.target_hardware:
-            raise ValueError("target_hardware cannot be empty")
-        for hw in self.target_hardware:
-            if not isinstance(hw, str) or not hw:
-                raise ValueError("Each target hardware must be a non-empty string")
-
-        # Validate entry_point
-        if not self.entry_point:
-            raise ValueError("entry_point cannot be empty")
+        Raises
+        ------
+        ValueError
+            If entry_point doesn't follow the required format.
+        """
         if "::" not in self.entry_point:
             raise ValueError("spec.entry_point must be '<relative_file.py>::<function_name>'")
         # TODO(shanli): validations against entry file existence and function existence
-
-        # Validate dependencies if present
-        if self.dependencies is not None:
-            if not isinstance(self.dependencies, list):
-                raise ValueError("dependencies must be a list")
-            for dep in self.dependencies:
-                if not isinstance(dep, str) or not dep:
-                    raise ValueError("Each dependency must be a non-empty string")
-        # TODO(shanli): more structured dependency specification and validation
-
-        # Validate build_commands if present
-        if self.build_commands is not None:
-            if not isinstance(self.build_commands, list):
-                raise ValueError("build_commands must be a list")
-            for cmd in self.build_commands:
-                if not isinstance(cmd, str):
-                    raise ValueError("Each build command must be a string")
+        return self
 
 
-@dataclass
-class Solution:
-    """A concrete implementation for a given Definition."""
+class Solution(BaseModelWithDocstrings):
+    """A concrete implementation for a given Definition.
 
-    name: str
-    definition: str  # Name of the Definition this solves
-    author: str
+    Represents a complete solution that provides a high-performance implementation
+    for a computational workload defined by a Definition. Contains all source code,
+    build specifications, and metadata required for building, interfacing, and
+    benchmarking the implementation.
+    """
+
+    name: NonEmptyString
+    """A unique, human-readable name for this specific solution (e.g., 'rmsnorm_triton_v1_h100')."""
+    definition: NonEmptyString
+    """The name of the Definition this implementation solves."""
+    author: NonEmptyString
+    """The name of the author or agent system that created this solution."""
     spec: BuildSpec
-    sources: List[SourceFile]
-    description: Optional[str] = None
+    """Technical specifications for building and executing this solution."""
+    sources: List[SourceFile] = Field(min_length=1)
+    """Array of source code files representing the complete implementation."""
+    description: Optional[str] = Field(default=None)
+    """Optional human-readable description of the solution's technique or approach."""
 
-    def __post_init__(self):
-        # Basic validation
-        if not self.name:
-            raise ValueError("Solution name cannot be empty")
+    @model_validator(mode="after")
+    def _validate_source_path_entry_point(self) -> "Solution":
+        """Validate that all source file paths are unique.
 
-        if not self.definition:
-            raise ValueError("Solution must reference a definition")
-
-        if not self.author:
-            raise ValueError("Solution must have an author")
-
-        if not isinstance(self.spec, BuildSpec):
-            raise ValueError("Solution spec must be a BuildSpec")
-
-        if not isinstance(self.sources, list):
-            raise ValueError("Solution sources must be a list of source files")
-
-        if not self.sources:
-            raise ValueError("Solution must have at least one source file")
-
-        # Validate sources
-        entry_file = self.spec.entry_point.split("::")[0]
-
+        Raises
+        ------
+        ValueError
+            If duplicate source file paths are found, or the entry point file is not found in the
+            sources.
+        """
         seen_paths = set()
-        for i, source in enumerate(self.sources):
-            if not isinstance(source, SourceFile):
-                raise ValueError(f"Source {i} must be a SourceFile")
-
+        for source in self.sources:
             if source.path in seen_paths:
                 raise ValueError(f"Duplicate source path '{source.path}'")
             seen_paths.add(source.path)
 
-        # TODO(shanli): stronger validation for entry file and function
+        entry_file = self.spec.entry_point.split("::")[0]
+
         if entry_file not in seen_paths:
             raise ValueError(f"Entry source file '{entry_file}' not found in sources")
+        # TODO(shanli): stronger validation for entry file and function
+
+        return self
 
     def get_entry_source(self) -> Optional[SourceFile]:
-        """Get the entry source file."""
-        path = self.spec.entry_point.split("::")[0]
+        """Get the entry source file specified in the build spec.
+
+        Returns
+        -------
+        Optional[SourceFile]
+            The SourceFile object containing the entry point, or None if not found.
+        """
+        entry_path = self.spec.entry_point.split("::")[0]
         for source in self.sources:
-            if source.path == path:
+            if source.path == entry_path:
                 return source
+        return None
 
     def requires_build(self) -> bool:
-        """Check if the solution requires a build step."""
+        """Check if the solution requires a build step.
+
+        Returns
+        -------
+        bool
+            True if the solution requires building (has build commands or uses CUDA),
+            False otherwise.
+        """
         return bool(self.spec.build_commands) or self.spec.language == SupportedLanguages.CUDA
-
-    def to_json(self) -> str:
-        """Serialize the Solution to JSON string."""
-        import json
-
-        def serialize_obj(obj):
-            """Recursively serialize dataclass objects and enums."""
-            if hasattr(obj, "__dataclass_fields__"):
-                # Handle dataclass objects
-                result = {}
-                for field_name in obj.__dataclass_fields__:
-                    field_value = getattr(obj, field_name)
-                    result[field_name] = serialize_obj(field_value)
-                return result
-            elif isinstance(obj, Enum):
-                # Handle enum objects
-                return obj.value
-            elif isinstance(obj, list):
-                # Handle lists
-                return [serialize_obj(item) for item in obj]
-            elif isinstance(obj, dict):
-                # Handle dictionaries
-                return {key: serialize_obj(value) for key, value in obj.items()}
-            else:
-                # Handle primitive types
-                return obj
-
-        serialized_data = serialize_obj(self)
-        return json.dumps(serialized_data, indent=2, ensure_ascii=False)
