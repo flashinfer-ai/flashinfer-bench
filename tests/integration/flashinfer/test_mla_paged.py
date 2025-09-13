@@ -153,7 +153,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
                         log_file="/dev/null",
                         environment=Environment(hardware="gpu", libs={}),
                         timestamp="now",
-                        correctness=Correctness(0.0, 0.0),
+                        correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
                         performance=Performance(
                             latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0
                         ),
@@ -312,7 +312,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
                         log_file="/dev/null",
                         environment=Environment(hardware="gpu", libs={}),
                         timestamp="now",
-                        correctness=Correctness(0.0, 0.0),
+                        correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
                         performance=Performance(
                             latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0
                         ),
