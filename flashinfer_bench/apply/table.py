@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flashinfer_bench.compile.registry import get_registry
 from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.json_codec import dataclass_to_dict
 from flashinfer_bench.data.trace import Trace
 from flashinfer_bench.data.traceset import TraceSet
 
@@ -184,7 +183,7 @@ class ApplyTable:
 
     @classmethod
     def _digest(cls, ts: TraceSet, config: ApplyConfig) -> str:
-        d = dataclass_to_dict(ts)
+        d = ts.to_dict()
         for defn in d["definitions"].values():
             for drop in ("description", "tags", "reference", "constraints"):
                 defn.pop(drop, None)

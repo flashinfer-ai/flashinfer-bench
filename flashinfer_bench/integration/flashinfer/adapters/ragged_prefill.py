@@ -8,24 +8,23 @@ from flashinfer_bench.apply.api import apply
 from flashinfer_bench.apply.runtime import get_runtime
 
 from ...patch_manager import PatchSpec
-from ...utils import (
-    ArgBinder,
-    ContextStore,
-    infer_kv_layout,
-    pick_sm_scale,
-    split_paged_kv_to_nhd,
+from ...utils import ArgBinder, ContextStore
+from ..common import (
+    infer_kv_layout_from_args,
+    infer_ragged_kv_layout_from_tensors,
+    normalize_ragged_kv_to_nhd,
+    pick_sm_scale_gqa,
     write_back_outputs,
 )
 
-def_name_resolver = (
-    lambda q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale: f"gqa_paged_prefill_causal_h{q.shape[1]}_kv{k_cache.shape[2]}_d{q.shape[2]}_ps1"
-)
+
+def _def_name_resolver(q, k, v, qo_indptr, kv_indptr, sm_scale):
+    return f"gqa_ragged_prefill_causal_h{q.shape[1]}_kv{k.shape[1]}_d{q.shape[2]}"
 
 
-class PrefillGqaPagedAdapter:
-    """
-    Adapter for flashinfer BatchPrefillWithPagedKVCacheWrapper(plan+run).
-    Only covers causal=True and page_size=1.
+class RaggedPrefillAdapter:
+    """Adapter for flashinfer BatchPrefillWithRaggedKVCacheWrapper(plan+run).
+    Only covers causal=True. Used by both GQA and MLA ragged prefill.
     """
 
     def __init__(self) -> None:
@@ -34,21 +33,21 @@ class PrefillGqaPagedAdapter:
     def targets(self) -> List[PatchSpec]:
         return [
             PatchSpec(
-                path="flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.plan",
+                path="flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper.plan",
                 kind="method",
-                name="prefill_plan",
-                ctx_key="prefill",
+                name="ragged_prefill_plan",
+                ctx_key="prefill_ragged",
             ),
             PatchSpec(
-                path="flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.run",
+                path="flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper.run",
                 kind="method",
-                name="prefill_run",
-                ctx_key="prefill",
+                name="ragged_prefill_run",
+                ctx_key="prefill_ragged",
             ),
         ]
 
     def make_wrapper(self, spec: PatchSpec, orig: Callable[..., Any]) -> Callable[..., Any]:
-        if spec.name == "prefill_plan":
+        if spec.name == "ragged_prefill_plan":
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
@@ -59,23 +58,20 @@ class PrefillGqaPagedAdapter:
                 ctx = self._store.get(inst)
 
                 ctx["qo_indptr"] = bound["qo_indptr"]
-                ctx["kv_indptr"] = bound["paged_kv_indptr"]
-                ctx["kv_indices"] = bound["paged_kv_indices"]
+                ctx["kv_indptr"] = bound["kv_indptr"]
                 ctx["num_qo_heads"] = int(bound["num_qo_heads"])
                 ctx["num_kv_heads"] = int(bound["num_kv_heads"])
                 ctx["head_dim"] = int(bound["head_dim_qk"])
-                ctx["page_size"] = int(bound["page_size"])
                 ctx["causal"] = bool(bound.get("causal", False))
-                ctx["kv_layout"] = infer_kv_layout(inst)
-                ctx["sm_scale"] = bound.get("sm_scale", None)
+                ctx["kv_layout"] = infer_kv_layout_from_args(inst)
+                ctx["sm_scale"] = pick_sm_scale_gqa(ctx["head_dim"], bound.get("sm_scale", None))
 
                 # Needs to call original anyways in case of run fallback
                 return orig(inst, *args, **kwargs)
 
             return plan_wrapper
 
-        elif spec.name == "prefill_run":
-            # run
+        elif spec.name == "ragged_prefill_run":
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
@@ -83,52 +79,62 @@ class PrefillGqaPagedAdapter:
                     return orig(inst, *args, **kwargs)
 
                 ctx = self._store.get(inst)
-                # No plan context; fall back immediately
                 if not ctx:
                     return orig(inst, *args, **kwargs)
 
                 bound = binder.bind((inst, *args), kwargs)
                 q: torch.Tensor = bound["q"]
-                paged_kv_cache = bound["paged_kv_cache"]
+                k: torch.Tensor = bound["k"]
+                v: torch.Tensor = bound["v"]
+
                 return_lse: bool = bool(bound.get("return_lse", False))
                 out_buf = bound.get("out", None)
                 lse_buf = bound.get("lse", None)
 
-                # Compatibility checks (const axes & causal & page_size=1)
+                # Only causal supported by captured kernels
                 if not ctx.get("causal", False):
-                    return orig(inst, *args, **kwargs)
-                if ctx.get("page_size", None) != 1:
                     return orig(inst, *args, **kwargs)
 
                 num_qo_heads = ctx.get("num_qo_heads", None)
                 num_kv_heads = ctx.get("num_kv_heads", None)
                 head_dim = ctx.get("head_dim", None)
-                if (num_qo_heads, num_kv_heads, head_dim) not in {(32, 8, 128), (32, 4, 128)}:
-                    return orig(inst, *args, **kwargs)
+
+                # Validate shapes
                 if q.dim() != 3 or q.shape[1] != num_qo_heads or q.shape[2] != head_dim:
                     return orig(inst, *args, **kwargs)
 
-                # Normalize KV layout to NHD 4D views (no copy)
-                kv_layout = ctx.get("kv_layout", "NHD")
-                k_cache, v_cache = split_paged_kv_to_nhd(paged_kv_cache, kv_layout)
+                kv_layout = ctx.get("kv_layout", None)
+                if not kv_layout:
+                    kv_layout = infer_ragged_kv_layout_from_tensors(k, num_kv_heads)
+                if not kv_layout:
+                    return orig(inst, *args, **kwargs)
 
-                # Assemble runtime kwargs (explicit keys)
-                sm_scale = pick_sm_scale(head_dim, ctx.get("sm_scale"))
+                k_nhd = normalize_ragged_kv_to_nhd(k, kv_layout)
+                v_nhd = normalize_ragged_kv_to_nhd(v, kv_layout)
+
+                sm_scale = ctx.get("sm_scale")
+
+                # Fallback if no definition found
+                def_name = _def_name_resolver(
+                    q, k_nhd, v_nhd, ctx["qo_indptr"], ctx["kv_indptr"], sm_scale
+                )
+                rt = get_runtime()
+                if rt is None or def_name not in rt._traceset.definitions:
+                    return orig(inst, *args, **kwargs)
+
                 rk: Dict[str, Any] = {
                     "q": q,
-                    "k_cache": k_cache,
-                    "v_cache": v_cache,
+                    "k": k_nhd,
+                    "v": v_nhd,
                     "qo_indptr": ctx["qo_indptr"],
                     "kv_indptr": ctx["kv_indptr"],
-                    "kv_indices": ctx["kv_indices"],
                     "sm_scale": sm_scale,
                 }
 
-                # Fallback
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(def_name_resolver, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
 
                 output = None
                 lse = None

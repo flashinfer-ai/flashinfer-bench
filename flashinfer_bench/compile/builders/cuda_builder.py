@@ -157,7 +157,7 @@ class CUDABuilder(Builder):
             )
 
         if not self._get_cuda_available():
-            raise BuildError("PyTorch is not available in the current environment")
+            raise BuildError("torch.cuda is not available in the current environment")
 
         from torch.utils.cpp_extension import load
 

@@ -39,4 +39,5 @@ tutorials/bring_your_own_kernel
 :caption: API Reference
 
 api/api_apply
+api/api_schema
 ```

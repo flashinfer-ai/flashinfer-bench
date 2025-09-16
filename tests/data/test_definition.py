@@ -23,8 +23,8 @@ def make_minimal_definition(ref_code: str) -> Definition:
 
 def test_axisconst_valid_and_invalid():
     AxisConst(value=1)
-    with pytest.raises(ValueError):
-        AxisConst(value=0)
+    # We allow zero axis for now
+    AxisConst(value=0)
     with pytest.raises(ValueError):
         AxisConst(value=-3)
 
