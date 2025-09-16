@@ -14,7 +14,7 @@ const MonacoEditor = dynamic(
   }
 )
 
-export function DefinitionDetails({ definition }: { definition: Definition }) {
+export function DefinitionReference({ definition }: { definition: Definition }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [showExpandButton, setShowExpandButton] = useState(false)
   const [copied, setCopied] = useState(false)
