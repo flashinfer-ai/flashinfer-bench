@@ -83,13 +83,16 @@ class TraceSet:
             solutions[s.definition].append(s)
 
         workloads = defaultdict(list)
+        for p in sorted((base_path / "workloads").rglob("*.jsonl")):
+            for t in load_jsonl_file(Trace, p):
+                assert t.is_workload_trace()
+                workloads[t.definition].append(t)
+
         traces = defaultdict(list)
         for p in sorted((base_path / "traces").rglob("*.jsonl")):
             for t in load_jsonl_file(Trace, p):
-                if t.is_workload_trace():
-                    workloads[t.definition].append(t)
-                else:
-                    traces[t.definition].append(t)
+                assert not t.is_workload_trace()
+                traces[t.definition].append(t)
 
         return cls(
             root=base_path,
