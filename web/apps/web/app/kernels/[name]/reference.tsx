@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@flashinfer-bench/ui"
 import { Maximize2, Minimize2, Copy, Check } from "lucide-react"
 import { Definition } from "@/lib/schemas"
@@ -18,21 +18,43 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
   const [isExpanded, setIsExpanded] = useState(false)
   const [showExpandButton, setShowExpandButton] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [editorHeight, setEditorHeight] = useState<number>(300)
   const editorRef = useRef<any>(null)
+
+  // Max heights for collapsed and expanded states
+  const COLLAPSED_MAX = 600
+  const EXPANDED_MAX = 1080
+
+  const updateHeights = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const contentHeight = editor.getContentHeight?.() || 300
+    setShowExpandButton(contentHeight > COLLAPSED_MAX)
+    setEditorHeight(
+      isExpanded
+        ? Math.min(contentHeight, EXPANDED_MAX)
+        : Math.min(contentHeight, COLLAPSED_MAX)
+    )
+  }
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor
 
     // Check if content needs scrolling
     const checkScrollNeeded = () => {
-      const contentHeight = editor.getContentHeight()
-      const containerHeight = 300 // Default height
-      setShowExpandButton(contentHeight > containerHeight)
+      updateHeights()
     }
 
     checkScrollNeeded()
     editor.onDidChangeModelContent(checkScrollNeeded)
+    editor.onDidContentSizeChange?.(checkScrollNeeded)
   }
+
+  useEffect(() => {
+    // Recompute when toggling expanded/collapsed
+    updateHeights()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpanded])
 
   const copyToClipboard = async () => {
     try {
@@ -90,7 +112,7 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
       </div>
       <div className="border rounded-md overflow-hidden">
         <MonacoEditor
-          height={isExpanded ? "1080px" : "600px"}
+          height={`${editorHeight}px`}
           language="python"
           theme="vs-dark"
           value={definition.reference}
@@ -108,6 +130,7 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
             renderLineHighlight: "none",
             overviewRulerLanes: 0,
             hideCursorInOverviewRuler: true,
+            automaticLayout: true,
             scrollbar: {
               vertical: "visible",
               horizontal: "visible",
