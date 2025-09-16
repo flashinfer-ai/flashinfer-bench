@@ -32,138 +32,7 @@ from ..runner import (
     RunnerFatalError,
 )
 from ..timing import time_runnable
-
-
-def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
-    if dtype in (torch.float32, torch.float16, torch.bfloat16):
-        return torch.randn(shape, dtype=dtype, device=device)
-
-    # low-precision floats
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2, torch.float4_e2m1fn_x2):
-        t = torch.randn(shape, dtype=torch.float32, device=device).clamp_(-2.0, 2.0)
-        return t.to(dtype)
-
-    # booleans
-    if dtype is torch.bool:
-        return torch.randint(0, 2, shape, dtype=torch.bool, device=device)
-
-    # integers
-    if dtype in (torch.int8, torch.int16, torch.int32, torch.int64):
-        ranges = {
-            torch.int8: (-128, 128),
-            torch.int16: (-1024, 1024),
-            torch.int32: (-1024, 1024),
-            torch.int64: (-1024, 1024),
-        }
-        low, high = ranges[dtype]
-        return torch.randint(low, high, shape, device=device, dtype=dtype)
-
-    raise ValueError(f"Unsupported random dtype: {dtype}")
-
-
-def _normalize_outputs(
-    out: Any,
-    *,
-    device: torch.device,
-    output_names: List[str],
-    output_dtypes: Dict[str, torch.dtype],
-) -> Dict[str, torch.Tensor]:
-    def to_tensor(name: str, v: Any) -> torch.Tensor:
-        if isinstance(v, torch.Tensor):
-            return v.to(device) if v.device != device else v
-        dtype = output_dtypes[name]
-        # Python scalar -> 0-D tensor for comparison
-        return torch.tensor(v, dtype=dtype, device=device)
-
-    if isinstance(out, dict):
-        return {k: to_tensor(k, v) for k, v in out.items() if k in output_dtypes}
-
-    if isinstance(out, torch.Tensor):
-        if len(output_names) != 1:
-            raise RuntimeError("Single Tensor returned but multiple outputs are defined")
-        name = output_names[0]
-        return {name: to_tensor(name, out)}
-
-    if isinstance(out, (int, float, bool)):
-        if len(output_names) != 1:
-            raise RuntimeError("Scalar returned but multiple outputs are defined")
-        name = output_names[0]
-        return {name: to_tensor(name, out)}
-
-    if isinstance(out, (tuple, list)):
-        if len(out) != len(output_names):
-            raise RuntimeError(
-                f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected"
-            )
-        return {name: to_tensor(name, val) for name, val in zip(output_names, out)}
-
-    raise RuntimeError(
-        "Unexpected return type; must be Tensor, scalar, or dict[name -> Tensor/scalar]"
-    )
-
-
-def _load_safetensors(
-    defn: Definition, wl: Workload, traceset_root: Optional[Path] = None
-) -> Dict[str, torch.Tensor]:
-    try:
-        import safetensors.torch as st
-    except Exception:
-        raise RuntimeError("safetensors is not available in the current environment")
-
-    expected = defn.get_input_shapes(wl.axes)
-    stensors: Dict[str, torch.Tensor] = {}
-    for name, desc in wl.inputs.items():
-        if desc.type != "safetensors":
-            continue
-
-        path = desc.path
-        if traceset_root is not None and not Path(path).is_absolute():
-            path = str(traceset_root / path)
-
-        tensors = st.load_file(path)
-        if desc.tensor_key not in tensors:
-            raise ValueError(f"Missing key '{desc.tensor_key}' in '{path}'")
-        t = tensors[desc.tensor_key]
-        # shape check
-        if list(t.shape) != expected[name]:
-            raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
-        # dtype check
-        expect_dtype = torch_dtype_from_def(defn.inputs[name].dtype)
-        if t.dtype != expect_dtype:
-            raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
-
-        try:
-            t = t.contiguous().pin_memory()
-        except Exception:
-            t = t.contiguous()
-        stensors[name] = t
-    return stensors
-
-
-def _gen_inputs(
-    defn: Definition,
-    wl: Workload,
-    device: str,
-    stensors: Optional[Dict[str, torch.Tensor]] = None,
-) -> Dict[str, Any]:
-    shapes = defn.get_input_shapes(wl.axes)
-    dev = torch.device(device)
-    out: Dict[str, Any] = {}
-
-    for name, spec in defn.inputs.items():
-        dtype = torch_dtype_from_def(spec.dtype)
-
-        if name in wl.inputs and wl.inputs[name].type == "safetensors":
-            if stensors is None or name not in stensors:
-                raise RuntimeError(f"Missing required safetensors input '{name}'")
-            t_cpu = stensors[name]
-            out[name] = t_cpu.to(device=dev, non_blocking=True)
-        elif name in wl.inputs and wl.inputs[name].type == "scalar":
-            out[name] = wl.inputs[name].value
-        else:  # random
-            shape = shapes[name]
-            out[name] = _rand_tensor(shape, dtype, dev)
-    return out
+from .runner_utils import gen_inputs, load_safetensors, make_eval, normalize_outputs, rand_tensor
 
 
 class MultiProcessRunner(Runner):
@@ -187,7 +56,7 @@ class MultiProcessRunner(Runner):
         output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
         runnable_ref = self._registry.build_reference(defn)
         st_cpu = (
-            _load_safetensors(defn, workload, traceset_root)
+            load_safetensors(defn, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
@@ -195,13 +64,13 @@ class MultiProcessRunner(Runner):
         inputs_all: List[Dict[str, Any]] = []
         ref_out_all: List[Dict[str, torch.Tensor]] = []
         for _ in range(cfg.num_trials):
-            inp = _gen_inputs(defn, workload, device=self.device, stensors=st_cpu)
+            inp = gen_inputs(defn, workload, device=self.device, stensors=st_cpu)
             inputs_all.append(inp)
 
             with torch.no_grad():
                 out = runnable_ref(**inp)
             torch.cuda.synchronize(device=dev)
-            ref_out = _normalize_outputs(
+            ref_out = normalize_outputs(
                 out,
                 device=dev,
                 output_names=list(defn.outputs.keys()),
@@ -275,7 +144,7 @@ class MultiProcessRunner(Runner):
 
                 elif cmd == "ERROR":
                     error_msg = msg.get("msg", "Unknown error")
-                    evaluation = _make_eval(
+                    evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self.device,
                         log_file=log_path,
@@ -307,7 +176,7 @@ class MultiProcessRunner(Runner):
                     pass
 
         if evaluation is None:
-            evaluation = _make_eval(
+            evaluation = make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self.device,
                 log_file=log_path,
@@ -387,7 +256,7 @@ def _solution_worker_main(
                 import traceback
 
                 error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                ev = _make_eval(
+                ev = make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
                     log_file=log_path,
@@ -396,7 +265,7 @@ def _solution_worker_main(
                 conn.send({"cmd": "EVAL", "evaluation": ev})
                 return
 
-            out_t = _normalize_outputs(
+            out_t = normalize_outputs(
                 out,
                 device=torch.device(device),
                 output_names=output_names,
@@ -405,7 +274,7 @@ def _solution_worker_main(
             ref_t = ref_outputs_bl[t]
             for k in ref_t.keys():
                 if k not in out_t:
-                    ev = _make_eval(
+                    ev = make_eval(
                         status=EvaluationStatus.INCORRECT_SHAPE,
                         device=device,
                         log_file=log_path,
@@ -413,7 +282,7 @@ def _solution_worker_main(
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
-                    ev = _make_eval(
+                    ev = make_eval(
                         status=EvaluationStatus.INCORRECT_SHAPE,
                         log_file=log_path,
                         device=device,
@@ -421,7 +290,7 @@ def _solution_worker_main(
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if out_t[k].dtype != ref_t[k].dtype:
-                    ev = _make_eval(
+                    ev = make_eval(
                         status=EvaluationStatus.INCORRECT_DTYPE,
                         log_file=log_path,
                         device=device,
@@ -439,7 +308,7 @@ def _solution_worker_main(
 
         correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
         if max_abs > cfg.atol or max_rel > cfg.rtol:
-            ev = _make_eval(
+            ev = make_eval(
                 status=EvaluationStatus.INCORRECT_NUMERICAL,
                 log_file=log_path,
                 correctness=correctness,
@@ -463,7 +332,7 @@ def _solution_worker_main(
             reference_latency_ms=ref_mean_latency_ms,
             speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
         )
-        ev = _make_eval(
+        ev = make_eval(
             status=EvaluationStatus.PASSED,
             device=device,
             log_file=log_path,
@@ -481,22 +350,3 @@ def _solution_worker_main(
             conn.close()
         except Exception:
             pass
-
-
-def _make_eval(
-    status: EvaluationStatus,
-    device: str,
-    log_file: str,
-    correctness: Optional[Correctness] = None,
-    performance: Optional[Performance] = None,
-    error: Optional[str] = None,
-) -> Evaluation:
-    return Evaluation(
-        status=status,
-        log_file=log_file,
-        environment=env_snapshot(device),
-        timestamp=datetime.now().isoformat(),
-        correctness=correctness,
-        performance=performance,
-        error=error,
-    )

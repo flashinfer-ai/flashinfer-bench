@@ -17,6 +17,7 @@ class BenchmarkConfig:
     rtol: float = field(default=1e-2)
     atol: float = field(default=1e-2)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = field(default="INFO")
+    auto_flush: bool = field(default=False) # if enabled, benchmark will store results per definition
 
     def __post_init__(self):
         if self.warmup_runs < 0:

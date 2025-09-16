@@ -181,13 +181,12 @@ def run(args: argparse.Namespace):
             rtol=args.rtol,
             atol=args.atol,
             log_level=args.log_level,
+            auto_flush=args.save_results,
         )
-        benchmark = Benchmark(trace_set, log_level=args.log_level)
+        benchmark = Benchmark(trace_set, log_level=args.log_level, fast_benchmarking=args.fast-benchmarking)
         print(f"Running benchmark for: {path}")
         benchmark.run(config)
-        benchmark.flush()
         if args.save_results:
-            benchmark.flush()
             print("Results saved.")
         else:
             print(
@@ -250,6 +249,9 @@ def cli():
     )
     run_parser.add_argument(
         "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
+    run_parser.add_argument(
+        "--fast-benchmarking", action="store_true", default=False, help="Use the persistent runner for faster benchmarking."
     )
     run_parser.set_defaults(func=run)
 

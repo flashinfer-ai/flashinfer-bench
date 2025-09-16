@@ -20,10 +20,11 @@ from flashinfer_bench.utils import list_cuda_devices
 from .config import BenchmarkConfig
 from .runner import BaselineHandle, Runner
 from .runners.mp_runner import MultiProcessRunner
+from .runners.persistent_runner import PersistentRunner
 
 
 class Benchmark:
-    def __init__(self, trace_set: TraceSet, log_level: str = "INFO") -> None:
+    def __init__(self, trace_set: TraceSet, log_level: str = "INFO", fast_benchmarking: bool = False) -> None:
         self.trace_set = trace_set
 
         # Setup logger
@@ -46,14 +47,16 @@ class Benchmark:
 
         # Initialize runners for all available CUDA devices
         self._available_devices = list_cuda_devices()
-        self._runners = [MultiProcessRunner(d) for d in self._available_devices]
+        runner_class = PersistentRunner if fast_benchmarking else MultiProcessRunner
+        self._runners = [runner_class(d) for d in self._available_devices]
         self._curr_runner_idx = 0
         self._registry = get_registry()
 
         if len(self._runners) == 0:
             raise RuntimeError("No CUDA devices available")
 
-        self.logger.info(f"Initialized benchmark with {len(self._runners)} CUDA devices")
+        runner_type = "PersistentRunner" if fast_benchmarking else "MultiProcessRunner"
+        self.logger.info(f"Initialized benchmark with {len(self._runners)} CUDA devices using {runner_type}")
 
     def _pick_runners(self, K: int) -> list[Runner]:
         # K = min(len(self.runners), len(solutions))
@@ -182,6 +185,9 @@ class Benchmark:
 
                 for r in selected:
                     r.release(baselines[r])
+
+            if config.auto_flush:
+                self.flush()
 
     def evaluate(self, config: BenchmarkConfig = BenchmarkConfig()) -> TraceSet:
         """
