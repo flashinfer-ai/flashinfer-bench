@@ -13,7 +13,7 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
 
 def configure_logging(
-    level: int | str = "INFO",
+    level: Union[int, str] = "INFO",
     *,
     handler: Optional[logging.Handler] = None,
     formatter: Optional[logging.Formatter] = None,
