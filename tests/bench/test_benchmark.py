@@ -5,8 +5,7 @@ import pytest
 import safetensors.torch as st
 import torch
 
-from flashinfer_bench.bench.benchmark import Benchmark
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import (
     AxisConst,
     BuildSpec,
@@ -80,7 +79,7 @@ def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
     def make_def(name: str, axes: dict, inputs: dict, outputs: dict, body: str) -> Definition:
         return Definition(
             name=name,
-            type="op",
+            op_type="op",
             axes=axes,
             inputs=inputs,
             outputs=outputs,
@@ -285,7 +284,7 @@ def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
     # Flush for I/O path and check files created
     bench.flush()
     for d in (d_add, d_mul, d_adds):
-        out_file = tmp_path / "traces" / d.type / f"{d.name}.jsonl"
+        out_file = tmp_path / "traces" / d.op_type / f"{d.name}.jsonl"
         assert out_file.exists()
 
 

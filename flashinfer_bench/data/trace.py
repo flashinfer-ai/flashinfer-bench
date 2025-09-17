@@ -225,6 +225,7 @@ class Trace(BaseModelWithDocstrings):
         bool
             True if this is a workload trace without solution/evaluation data.
         """
+        print(f"self.solution: {self.solution}, self.evaluation: {self.evaluation}")
         return self.solution is None and self.evaluation is None
 
     def is_successful(self) -> bool:

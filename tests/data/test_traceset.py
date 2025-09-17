@@ -36,7 +36,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     ref = "def run(a):\n    return a\n"
     d = Definition(
         name="d1",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={"A": TensorSpec(shape=["M", "N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},

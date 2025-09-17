@@ -178,7 +178,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "gemm_n_4096_k_4096",
   "description": "General matrix multiply (GEMM) C = A @ B.T.",
-  "type": "gemm",
+  "op_type": "gemm",
   "tags": [
     "status:verified",
     "model:llama-3.1-8b"
@@ -206,7 +206,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "quantized_gemm_n4096_k4096_ng128_kg128",
   "description": "A GEMM operation with per-tensor quantized inputs and per-group scaling factors.",
-  "type": "gemm",
+  "op_type": "gemm",
   "tags": [
     "status:draft",
     "model:some_model",
@@ -253,7 +253,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "grouped_gemm_n4096_k4096",
   "description": "A batch of independent GEMM operations, grouped along a 'G' dimension.",
-  "type": "grouped_gemm",
+  "op_type": "grouped_gemm",
   "tags": [
     "status:draft",
     "model:some_model"
@@ -290,7 +290,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "quantized_grouped_gemm_n4096_k4096_kg128",
   "description": "A batched GEMM operation where the inputs are quantized, with per-group scaling factors.",
-  "type": "grouped_gemm",
+  "op_type": "grouped_gemm",
   "tags": [
     "status:draft",
     "quantization:float8_e4m3",
@@ -376,7 +376,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "gqa_hr4_dqk128_dvo128",
   "description": "Grouped-Query Attention with a query-to-key-value head ratio of 4.",
-  "type": "gqa",
+  "op_type": "gqa",
   "tags": [
     "status:draft",
     "model:some_model"

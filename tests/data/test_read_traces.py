@@ -20,7 +20,7 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     # Minimal definition JSON
     def_json = {
         "name": "min_gemm",
-        "type": "gemm",
+        "op_type": "gemm",
         "axes": {"M": {"type": "var"}, "N": {"type": "const", "value": 4}},
         "inputs": {"A": {"shape": ["M", "N"], "dtype": "float32"}},
         "outputs": {"C": {"shape": ["M", "N"], "dtype": "float32"}},
@@ -66,16 +66,18 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     # Write into temp structured dataset
     ddir = tmp_path / "definitions"
     sdir = tmp_path / "solutions"
+    wdir = tmp_path / "workloads"
     tdir = tmp_path / "traces"
     ddir.mkdir(parents=True)
     sdir.mkdir(parents=True)
+    wdir.mkdir(parents=True)
     tdir.mkdir(parents=True)
 
     (ddir / "min_gemm.json").write_text(json.dumps(def_json), encoding="utf-8")
     (sdir / "torch_min_gemm.json").write_text(json.dumps(sol_json), encoding="utf-8")
     # JSONL
     lines = [json.dumps(tr_workload), json.dumps(tr_passed)]
-    (tdir / "min_gemm.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (wdir / "min_gemm.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Load via our codecs/TraceSet
     d = load_json_file(Definition, ddir / "min_gemm.json")

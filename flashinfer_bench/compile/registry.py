@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, SupportedLanguages
 
 from .builder import Builder, BuildError
 from .runnable import Runnable

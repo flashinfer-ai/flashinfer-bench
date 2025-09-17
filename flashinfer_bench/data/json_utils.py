@@ -68,9 +68,8 @@ def save_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        output_str = "\n".join(obj.model_dump_json(indent=None) for obj in objects) + "\n"
+        f.write(output_str)
 
 
 def load_jsonl_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> List[BaseModel]:
@@ -124,6 +123,5 @@ def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        output_str = "\n".join(obj.model_dump_json(indent=None) for obj in objects) + "\n"
+        f.write(output_str)

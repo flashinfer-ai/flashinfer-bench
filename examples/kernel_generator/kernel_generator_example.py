@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from kernel_generator import KernelGenerator
 
 from flashinfer_bench import TraceSet
-from flashinfer_bench.data.json_utils import save_json_file
+from flashinfer_bench.data import save_json_file
 
 load_dotenv()
 

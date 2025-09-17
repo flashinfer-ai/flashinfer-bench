@@ -7,14 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict, List
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.json_utils import append_jsonl_file
-from flashinfer_bench.data.trace import (
-    Evaluation,
-    EvaluationStatus,
-    Trace,
-)
-from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.compile import get_registry
+from flashinfer_bench.data import Evaluation, EvaluationStatus, Trace, TraceSet, append_jsonl_file
 from flashinfer_bench.utils import list_cuda_devices
 
 from .config import BenchmarkConfig
