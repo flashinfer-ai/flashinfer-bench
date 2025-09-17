@@ -29,16 +29,16 @@ class KernelGenerator:
         target_gpu: str = "H100",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        reasoning_effort: str = "high",  # only set for openai reasoning models
+        reasoning_effort: str = "high",  # only used for openai reasoning models
     ):
         """
         Args:
-            model_name: Name of the model to use (e.g., "gpt-5", "claude-4", "llama-4", "gemini-2.5")
+            model_name: Name of the model to use (e.g., "gpt-5")
             language: Programming language for code generation (default: "triton")
-            target_gpu: Target GPU architecture (e.g., "H100", "A100", "V100", "RTX4090", default: "H100")
-            api_key: API key (if None, uses OPENAI_API_KEY environment variable)
-            base_url: Base URL for the API (if None, uses OpenAI's default)
-            reasoning_effort: Reasoning effort for GPT-5 models ("low", "medium", "high", default: "medium")
+            target_gpu: Target GPU architecture (e.g., "H100", "B200", "RTX4090", default: "H100")
+            api_key: API key (if None, uses LLM_API_KEY environment variable)
+            base_url: Base URL for the API (need to provide for non-openai api models)
+            reasoning_effort: Reasoning effort for OpenAI reasoning models ("low", "medium", "high", default: "medium")
         """
         self.model_name = model_name
         self.language = language
@@ -67,22 +67,22 @@ class KernelGenerator:
         if self.language.lower() in language_map:
             return language_map[self.language.lower()]
         else:
-            # Default to Python if unknown language
+            # Default Python
             return SupportedLanguages.PYTHON
 
     def generate(
-        self, traceset: TraceSet, definition: Definition, max_opt_rounds: int = 3
+        self, traceset: TraceSet, definition: Definition, max_opt_rounds: int = 10
     ) -> Solution:
         """
-        Generate an optimized solution through iterative improvement using benchmark feedback.
+        Generate an optimized solution through iterative improvement using flashinfer-bench feedback.
 
         Args:
             traceset: The TraceSet containing workloads for evaluation
-            definition: The workload definition to implement
-            max_opt_rounds: Maximum number of optimization rounds (default: 3)
+            definition: The workload definition to implement kernel for
+            max_opt_rounds: Maximum number of optimization rounds (default: 10)
 
         Returns:
-            Solution: an optimized solution
+            Solution: a solution dataclass containing the optimized kernel code
         """
         workloads = traceset.workload.get(definition.name, [])
         if not workloads:
@@ -210,7 +210,7 @@ class KernelGenerator:
                     model=self.model_name, input=prompt, reasoning={"effort": self.reasoning_effort}
                 )
                 generated_code = response.output_text.strip()
-            else:  # We retain the completions api for OpenAI SDK compatible models
+            else:  # We use the completions api for OpenAI SDK compatible models
                 response = self.client.chat.completions.create(
                     model=self.model_name, messages=[{"role": "user", "content": prompt}]
                 )
