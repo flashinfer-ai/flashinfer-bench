@@ -75,35 +75,41 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
 
     (ddir / "min_gemm.json").write_text(json.dumps(def_json), encoding="utf-8")
     (sdir / "torch_min_gemm.json").write_text(json.dumps(sol_json), encoding="utf-8")
-    # JSONL
-    lines = [json.dumps(tr_workload), json.dumps(tr_passed)]
-    (wdir / "min_gemm.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (wdir / "min_gemm.jsonl").write_text(
+        json.dumps(tr_workload, indent=None) + "\n", encoding="utf-8"
+    )
+    (tdir / "min_gemm.jsonl").write_text(
+        json.dumps(tr_passed, indent=None) + "\n", encoding="utf-8"
+    )
 
     # Load via our codecs/TraceSet
-    d = load_json_file(Definition, ddir / "min_gemm.json")
-    s = load_json_file(Solution, sdir / "torch_min_gemm.json")
-    print("min_gemm.jsonl: ", (tdir / "min_gemm.jsonl").read_text(encoding="utf-8"))
-    traces = load_jsonl_file(Trace, tdir / "min_gemm.jsonl")
+    loaded_def = load_json_file(Definition, ddir / "min_gemm.json")
+    loaded_sol = load_json_file(Solution, sdir / "torch_min_gemm.json")
+    loaded_workload = load_jsonl_file(Trace, wdir / "min_gemm.jsonl")
+    loaded_traces = load_jsonl_file(Trace, tdir / "min_gemm.jsonl")
 
-    assert d.name == "min_gemm"
-    assert s.definition == d.name
-    assert any(t.is_workload_trace() for t in traces)
-    assert any((not t.is_workload_trace()) for t in traces)
+    assert loaded_def.name == "min_gemm"
+    assert loaded_sol.definition == loaded_def.name
+    assert all(t.is_workload_trace() for t in loaded_workload)
+    assert all((not t.is_workload_trace()) for t in loaded_traces)
 
     # Roundtrip save new copies
     out_dir = tmp_path / "roundtrip"
-    save_json_file(d, out_dir / "def.json")
-    save_json_file(s, out_dir / "sol.json")
-    save_jsonl_file(traces, out_dir / "tr.jsonl")
+    save_json_file(loaded_def, out_dir / "def.json")
+    save_json_file(loaded_sol, out_dir / "sol.json")
+    save_jsonl_file(loaded_workload, out_dir / "tr.jsonl")
+    save_jsonl_file(loaded_traces, out_dir / "tr.jsonl")
 
     # Reload and validate basic invariants
-    d2 = load_json_file(Definition, out_dir / "def.json")
-    s2 = load_json_file(Solution, out_dir / "sol.json")
-    t2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
+    loaded_def2 = load_json_file(Definition, out_dir / "def.json")
+    loaded_sol2 = load_json_file(Solution, out_dir / "sol.json")
+    loaded_workload2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
+    loaded_traces2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
 
-    assert d2.name == d.name
-    assert s2.name == s.name
-    assert len(t2) == 2
+    assert loaded_def2.name == loaded_def.name
+    assert loaded_sol2.name == loaded_sol.name
+    assert len(loaded_workload2) == 1
+    assert len(loaded_traces2) == 1
 
     # End-to-end via TraceSet
     ts = TraceSet.from_path(str(tmp_path))

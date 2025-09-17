@@ -263,7 +263,7 @@ def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
     for defn_name, wls in wl_matrix.items():
         save_jsonl_file(
             [Trace(definition=defn_name, workload=w) for w in wls],
-            tmp_path / "traces" / "workloads" / f"{defn_name}.jsonl",
+            tmp_path / "workloads" / f"{defn_name}.jsonl",
         )
 
     ts = TraceSet.from_path(str(tmp_path))
