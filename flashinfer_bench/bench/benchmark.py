@@ -257,7 +257,7 @@ class Benchmark:
                     }
 
                 for sol_name, ev in results.items():
-                    collected_traces.append(Trace(def_name, wl, sol_name, ev))
+                    collected_traces.append(Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev))
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
@@ -309,7 +309,7 @@ class Benchmark:
         buckets = defaultdict(list)
         for tr in self._staging_traces:
             defn = self.trace_set.definitions[tr.definition]
-            path = self.trace_set.root / "traces" / defn.type / f"{defn.name}.jsonl"
+            path = self.trace_set.root / "traces" / defn.op_type / f"{defn.name}.jsonl"
             buckets[path].append(tr)
 
         self._staging_traces.clear()
