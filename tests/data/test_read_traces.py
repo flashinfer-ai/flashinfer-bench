@@ -97,19 +97,21 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     out_dir = tmp_path / "roundtrip"
     save_json_file(loaded_def, out_dir / "def.json")
     save_json_file(loaded_sol, out_dir / "sol.json")
-    save_jsonl_file(loaded_workload, out_dir / "tr.jsonl")
-    save_jsonl_file(loaded_traces, out_dir / "tr.jsonl")
+    save_jsonl_file(loaded_workload, out_dir / "workloads.jsonl")
+    save_jsonl_file(loaded_traces, out_dir / "traces.jsonl")
 
     # Reload and validate basic invariants
     loaded_def2 = load_json_file(Definition, out_dir / "def.json")
     loaded_sol2 = load_json_file(Solution, out_dir / "sol.json")
-    loaded_workload2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
-    loaded_traces2 = load_jsonl_file(Trace, out_dir / "tr.jsonl")
+    loaded_workload2 = load_jsonl_file(Trace, out_dir / "workloads.jsonl")
+    loaded_traces2 = load_jsonl_file(Trace, out_dir / "traces.jsonl")
 
     assert loaded_def2.name == loaded_def.name
     assert loaded_sol2.name == loaded_sol.name
     assert len(loaded_workload2) == 1
+    assert loaded_workload2[0].is_workload_trace()
     assert len(loaded_traces2) == 1
+    assert not loaded_traces2[0].is_workload_trace()
 
     # End-to-end via TraceSet
     ts = TraceSet.from_path(str(tmp_path))
