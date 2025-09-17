@@ -7,14 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict, List
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.json_utils import append_jsonl_file
-from flashinfer_bench.data.trace import (
-    Evaluation,
-    EvaluationStatus,
-    Trace,
-)
-from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.compile import get_registry
+from flashinfer_bench.data import Evaluation, EvaluationStatus, Trace, TraceSet, append_jsonl_file
 from flashinfer_bench.utils import list_cuda_devices
 
 from .config import BenchmarkConfig
@@ -142,7 +136,8 @@ class Benchmark:
                         except Exception as e:
                             failed_runners.append(r)
                             self.logger.error(
-                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                                f"Runner {r.device} failed while running reference for "
+                                f"def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -175,7 +170,8 @@ class Benchmark:
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         self.logger.warning(
@@ -230,7 +226,8 @@ class Benchmark:
                         except Exception as e:
                             failed_runners.append(r)
                             self.logger.error(
-                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                                f"Runner {r.device} failed while running reference for "
+                                f"def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -257,11 +254,14 @@ class Benchmark:
                     }
 
                 for sol_name, ev in results.items():
-                    collected_traces.append(Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev))
+                    collected_traces.append(
+                        Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev)
+                    )
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         self.logger.warning(

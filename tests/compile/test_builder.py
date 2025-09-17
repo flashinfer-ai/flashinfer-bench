@@ -2,10 +2,16 @@ import sys
 
 import pytest
 
-from flashinfer_bench.compile.builder import Builder
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.compile import Builder, Runnable
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+)
 
 
 class DummyBuilder(Builder):
@@ -26,7 +32,7 @@ def test_builder_cache_and_key():
     b = DummyBuilder()
     d = Definition(
         name="test_def",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=1)},
         inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M"], dtype="float32")},

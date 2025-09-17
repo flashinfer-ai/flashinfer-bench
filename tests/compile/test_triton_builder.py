@@ -6,14 +6,21 @@ import pytest
 from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.builders import TritonBuilder
 from flashinfer_bench.compile.builders.python_builder import PythonBuilder
-from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+)
 
 
 def minimal_def():
     return Definition(
         name="d",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=1)},
         inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -65,9 +72,7 @@ def test_triton_builder_minimum(tmp_path, monkeypatch):
     spec = BuildSpec(
         language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="m/main.py::run"
     )
-    srcs = [
-        SourceFile(path="m/main.py", content="import torch\n\ndef run(A):\n    return A"),
-    ]
+    srcs = [SourceFile(path="m/main.py", content="import torch\n\ndef run(A):\n    return A")]
     s = Solution(name="tri_ok", definition="d", author="a", spec=spec, sources=srcs)
     r = b.build(d, s)
     out = r(A=[1, 2, 3])
@@ -91,7 +96,7 @@ def test_triton_vector_add(tmp_path, monkeypatch):
 
     defn = Definition(
         name="vec_add",
-        type="op",
+        op_type="op",
         axes={"N": AxisConst(value=256)},
         inputs={
             "X": TensorSpec(shape=["N"], dtype="float32"),
@@ -127,9 +132,7 @@ def run(X, Y):
     spec = BuildSpec(
         language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="m/main.py::run"
     )
-    srcs = [
-        SourceFile(path="m/main.py", content=triton_code),
-    ]
+    srcs = [SourceFile(path="m/main.py", content=triton_code)]
     sol = Solution(
         name="triton_vec_add", definition="vec_add", author="tester", spec=spec, sources=srcs
     )

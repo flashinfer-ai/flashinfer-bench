@@ -8,8 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Callable, Dict, Optional
 
 from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution, SourceFile
+from flashinfer_bench.data import Definition, Solution, SourceFile
 
 
 def write_sources_to_dir(dir: str, sources: list[SourceFile]) -> None:

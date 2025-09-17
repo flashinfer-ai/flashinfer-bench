@@ -3,8 +3,7 @@ from pathlib import Path
 from typing import List
 
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
-from flashinfer_bench.data import TraceSet
-from flashinfer_bench.data.json_utils import save_json_file, save_jsonl_file
+from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
 
 
 def best(args: argparse.Namespace):
