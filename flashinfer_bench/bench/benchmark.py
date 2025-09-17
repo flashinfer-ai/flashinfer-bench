@@ -15,6 +15,7 @@ from flashinfer_bench.data.trace import (
     Trace,
 )
 from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import list_cuda_devices
 
 from .config import BenchmarkConfig
@@ -27,15 +28,8 @@ class Benchmark:
         self.trace_set = trace_set
 
         # Setup logger
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger("Benchmark")
         self.logger.setLevel(getattr(logging, log_level.upper()))
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "[%(asctime)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S"
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
 
         self._staging_traces: List[Trace] = []
         self._did_archive = False
@@ -257,7 +251,9 @@ class Benchmark:
                     }
 
                 for sol_name, ev in results.items():
-                    collected_traces.append(Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev))
+                    collected_traces.append(
+                        Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev)
+                    )
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(

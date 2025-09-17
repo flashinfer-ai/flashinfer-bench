@@ -20,6 +20,7 @@ from flashinfer_bench.data import (
     TraceSet,
     Workload,
 )
+from flashinfer_bench.logging import configure_logging, get_logger
 from flashinfer_bench.tracer import (
     TracingRule,
     disable_tracing,
@@ -63,4 +64,6 @@ __all__ = [
     "Environment",
     "Evaluation",
     "EvaluationStatus",
+    "configure_logging",
+    "get_logger",
 ]
