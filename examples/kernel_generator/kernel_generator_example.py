@@ -61,7 +61,7 @@ def main():
         definition = traceset.definitions[definition_name]
 
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
-        print(f"Definition type: {definition.type}")
+        print(f"Definition type: {definition.op_type}")
 
         workloads = traceset.workload.get(definition_name, [])
         if not workloads:
@@ -100,7 +100,7 @@ def main():
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
                 solutions_dir = (
-                    Path(traceset_path) / "solutions" / definition.type / definition_name
+                    Path(traceset_path) / "solutions" / definition.op_type / definition_name
                 )
                 solutions_dir.mkdir(parents=True, exist_ok=True)
 
