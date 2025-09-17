@@ -40,7 +40,7 @@ def _format_definition(definition: Definition) -> str:
             constraints_str += f"  - {constraint}\n"
 
     return f"""Name: {definition.name}
-Type: {definition.type}
+Type: {definition.op_type}
 {axes_str}{inputs_str}{outputs_str}{constraints_str}
 
 Reference Implementation:
