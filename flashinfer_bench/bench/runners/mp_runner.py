@@ -139,10 +139,7 @@ def _load_safetensors(
 
 
 def _gen_inputs(
-    defn: Definition,
-    wl: Workload,
-    device: str,
-    stensors: Optional[Dict[str, torch.Tensor]] = None,
+    defn: Definition, wl: Workload, device: str, stensors: Optional[Dict[str, torch.Tensor]] = None
 ) -> Dict[str, Any]:
     shapes = defn.get_input_shapes(wl.axes)
     dev = torch.device(device)
@@ -200,10 +197,7 @@ class MultiProcessRunner(Runner):
                 out = runnable_ref(**inp)
             torch.cuda.synchronize(device=dev)
             ref_out = _normalize_outputs(
-                out,
-                device=dev,
-                output_names=list(defn.outputs.keys()),
-                output_dtypes=output_dtypes,
+                out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
             )
             ref_out_all.append(ref_out)
 
@@ -404,25 +398,19 @@ def _solution_worker_main(
             for k in ref_t.keys():
                 if k not in out_t:
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE,
-                        device=device,
-                        log_file=log_path,
+                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE,
-                        log_file=log_path,
-                        device=device,
+                        status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_path, device=device
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if out_t[k].dtype != ref_t[k].dtype:
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_DTYPE,
-                        log_file=log_path,
-                        device=device,
+                        status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return

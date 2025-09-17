@@ -32,14 +32,8 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
         "name": "torch_min_gemm",
         "definition": "min_gemm",
         "author": "tester",
-        "spec": {
-            "language": "python",
-            "target_hardware": ["cpu"],
-            "entry_point": "main.py::run",
-        },
-        "sources": [
-            {"path": "main.py", "content": "def run():\n    pass\n"},
-        ],
+        "spec": {"language": "python", "target_hardware": ["cpu"], "entry_point": "main.py::run"},
+        "sources": [{"path": "main.py", "content": "def run():\n    pass\n"}],
     }
 
     # Two traces: one workload-only, one passed

@@ -80,11 +80,7 @@ def test_preserve_null_fields_in_trace_json():
 
 
 def test_language_and_status_string_decoding():
-    data = {
-        "language": "triton",
-        "target_hardware": ["cuda"],
-        "entry_point": "main.py::run",
-    }
+    data = {"language": "triton", "target_hardware": ["cuda"], "entry_point": "main.py::run"}
     bs = BuildSpec.model_validate(data)
     assert bs.language == SupportedLanguages.TRITON
 

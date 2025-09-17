@@ -2,12 +2,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.data import (
-    BuildSpec,
-    Solution,
-    SourceFile,
-    SupportedLanguages,
-)
+from flashinfer_bench.data import BuildSpec, Solution, SourceFile, SupportedLanguages
 
 
 def test_sourcefile_validation_python():
@@ -43,9 +38,7 @@ def test_buildspec_validation():
     # Invalid target_hardware list and dependencies types
     with pytest.raises(ValueError):
         BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=[],
-            entry_point="main.py::run",
+            language=SupportedLanguages.PYTHON, target_hardware=[], entry_point="main.py::run"
         )
     with pytest.raises(ValueError):
         BuildSpec(
@@ -58,55 +51,27 @@ def test_buildspec_validation():
 
 def test_solution_validation_and_helpers():
     spec = BuildSpec(
-        language=SupportedLanguages.TRITON,
-        target_hardware=["cuda"],
-        entry_point="main.py::run",
+        language=SupportedLanguages.TRITON, target_hardware=["cuda"], entry_point="main.py::run"
     )
     s1 = SourceFile(path="main.py", content="def run():\n    pass\n")
     s2 = SourceFile(path="util.py", content="x=1\n")
-    sol = Solution(
-        name="sol1",
-        definition="def1",
-        author="me",
-        spec=spec,
-        sources=[s1, s2],
-    )
+    sol = Solution(name="sol1", definition="def1", author="me", spec=spec, sources=[s1, s2])
     assert sol.get_entry_source() is s1
     assert sol.requires_build() is False
 
     # CUDA requires build
     cuda_spec = BuildSpec(
-        language=SupportedLanguages.CUDA,
-        target_hardware=["cuda"],
-        entry_point="main.py::run",
+        language=SupportedLanguages.CUDA, target_hardware=["cuda"], entry_point="main.py::run"
     )
-    sol2 = Solution(
-        name="sol2",
-        definition="def1",
-        author="you",
-        spec=cuda_spec,
-        sources=[s1],
-    )
+    sol2 = Solution(name="sol2", definition="def1", author="you", spec=cuda_spec, sources=[s1])
     assert sol2.requires_build() is True
 
     # Duplicate source paths
     with pytest.raises(ValueError):
-        Solution(
-            name="dup",
-            definition="def1",
-            author="x",
-            spec=spec,
-            sources=[s1, s1],
-        )
+        Solution(name="dup", definition="def1", author="x", spec=spec, sources=[s1, s1])
     # Entry not present
     with pytest.raises(ValueError):
-        Solution(
-            name="missing_entry",
-            definition="def1",
-            author="x",
-            spec=spec,
-            sources=[s2],
-        )
+        Solution(name="missing_entry", definition="def1", author="x", spec=spec, sources=[s2])
 
 
 if __name__ == "__main__":
