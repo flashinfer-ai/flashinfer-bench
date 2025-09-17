@@ -8,10 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.trace import Trace
-from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.data import Trace, TraceSet
 
 from .config import ApplyConfig
 from .key import ApplyKey, ApplyKeyFactory
@@ -122,11 +120,7 @@ class ApplyTable:
 
     @classmethod
     def _sweep_def(
-        cls,
-        ts: TraceSet,
-        def_name: str,
-        max_atol: float,
-        max_rtol: float,
+        cls, ts: TraceSet, def_name: str, max_atol: float, max_rtol: float
     ) -> Tuple[Dict[ApplyKey, Trace], List[Tuple[str, int]]]:
         traces = ts.filter_traces(def_name, max_atol, max_rtol)
         builder = ApplyKeyFactory.specialize(ts.definitions[def_name])

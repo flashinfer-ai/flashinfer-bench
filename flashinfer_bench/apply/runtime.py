@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.compile import get_registry
+from flashinfer_bench.data import TraceSet
 
 from .config import ApplyConfig
 from .hook import get_apply_hook
@@ -73,9 +73,7 @@ class ApplyRuntime:
         install_flashinfer_integrations()
 
     def rebuild(
-        self,
-        traceset: Optional[Union[TraceSet, str]] = None,
-        config: Optional[ApplyConfig] = None,
+        self, traceset: Optional[Union[TraceSet, str]] = None, config: Optional[ApplyConfig] = None
     ) -> None:
         if traceset is not None:
             if isinstance(traceset, str):

@@ -2,6 +2,7 @@
 
 from .definition import AxisConst, AxisVar, Definition, TensorSpec
 from .json_utils import (
+    append_jsonl_file,
     load_json_file,
     load_jsonl_file,
     save_json_file,
@@ -53,4 +54,5 @@ __all__ = [
     "load_json_file",
     "save_jsonl_file",
     "load_jsonl_file",
+    "append_jsonl_file",
 ]
