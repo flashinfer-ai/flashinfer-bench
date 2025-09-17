@@ -176,8 +176,7 @@ def choose_baseline(best_by_author: Dict[str, Run], baseline_author: str) -> Tup
 
 
 def compute_ratios_by_author(
-    groups: Dict[GroupKey, List[Run]],
-    baseline_author: str,
+    groups: Dict[GroupKey, List[Run]], baseline_author: str
 ) -> Tuple[Dict[str, List[float]], Dict[str, int]]:
     """
     For each author, compute list of r = baseline_latency / author_latency
