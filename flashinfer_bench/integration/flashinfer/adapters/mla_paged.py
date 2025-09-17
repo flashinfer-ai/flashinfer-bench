@@ -4,12 +4,10 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply.api import apply
-from flashinfer_bench.apply.runtime import get_runtime
-
-from ...patch_manager import PatchSpec
-from ...utils import ArgBinder, ContextStore
-from ..common import pick_sm_scale_mla, write_back_outputs
+from flashinfer_bench.apply import apply, get_runtime
+from flashinfer_bench.integration.flashinfer.common import pick_sm_scale_mla, write_back_outputs
+from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 
 def _decode_def_name(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):

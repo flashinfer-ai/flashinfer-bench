@@ -2,18 +2,13 @@ import sys
 
 import pytest
 
-from flashinfer_bench.data import (
-    AxisConst,
-    AxisVar,
-    Definition,
-    TensorSpec,
-)
+from flashinfer_bench.data import AxisConst, AxisVar, Definition, TensorSpec
 
 
 def make_minimal_definition(ref_code: str) -> Definition:
     return Definition(
         name="def1",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=16)},
         inputs={"A": TensorSpec(shape=["M", "N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
@@ -54,7 +49,7 @@ def test_definition_axis_reference_checks(sample_reference_code):
     with pytest.raises(ValueError):
         Definition(
             name="bad",
-            type="op",
+            op_type="op",
             axes={"M": AxisVar()},
             inputs={"A": TensorSpec(shape=["X"], dtype="float32")},
             outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -73,7 +68,7 @@ def test_definition_tags_and_constraints(sample_reference_code):
     # Valid
     Definition(
         name="d",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar()},
         inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -86,7 +81,7 @@ def test_definition_tags_and_constraints(sample_reference_code):
     with pytest.raises(ValueError):
         Definition(
             name="d",
-            type="op",
+            op_type="op",
             axes={"M": AxisVar()},
             inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
             outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -98,7 +93,7 @@ def test_definition_tags_and_constraints(sample_reference_code):
     with pytest.raises(ValueError):
         Definition(
             name="d",
-            type="op",
+            op_type="op",
             axes={"M": AxisVar()},
             inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
             outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -108,7 +103,7 @@ def test_definition_tags_and_constraints(sample_reference_code):
     with pytest.raises(ValueError):
         Definition(
             name="d",
-            type="op",
+            op_type="op",
             axes={"M": AxisVar()},
             inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
             outputs={"B": TensorSpec(shape=["M"], dtype="float32")},

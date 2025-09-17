@@ -32,7 +32,7 @@ def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
     ref = "def run(a):\n    return a\n"
     d = Definition(
         name="d1",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=4)},
         inputs={"A": TensorSpec(shape=["M", "N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
@@ -80,11 +80,7 @@ def test_preserve_null_fields_in_trace_json():
 
 
 def test_language_and_status_string_decoding():
-    data = {
-        "language": "triton",
-        "target_hardware": ["cuda"],
-        "entry_point": "main.py::run",
-    }
+    data = {"language": "triton", "target_hardware": ["cuda"], "entry_point": "main.py::run"}
     bs = BuildSpec.model_validate(data)
     assert bs.language == SupportedLanguages.TRITON
 
@@ -130,7 +126,7 @@ def test_dict_to_dataclass_with_invalid_fields():
     # Unsupported axis type
     bad_def = {
         "name": "d",
-        "type": "op",
+        "op_type": "op",
         "axes": {"M": {"type": "unknown"}},
         "inputs": {"A": {"shape": ["M"], "dtype": "float32"}},
         "outputs": {"B": {"shape": ["M"], "dtype": "float32"}},

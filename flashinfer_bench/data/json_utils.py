@@ -1,12 +1,15 @@
 """Unified JSON encoding/decoding utilities for Pydantic BaseModel objects."""
 
+import json
 from pathlib import Path
-from typing import List, Type, Union
+from typing import Any, Dict, List, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
+T = TypeVar("T", bound=BaseModel)
 
-def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
+
+def save_json_file(object: Union[BaseModel, Dict[str, Any], str], path: Union[str, Path]) -> None:
     """
     Save a Pydantic BaseModel object to a JSON file.
 
@@ -21,10 +24,15 @@ def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(object.model_dump_json(indent=2))
+        if isinstance(object, BaseModel):
+            f.write(object.model_dump_json(indent=2))
+        elif isinstance(object, dict):
+            f.write(json.dumps(object, indent=2))
+        elif isinstance(object, str):
+            f.write(object)
 
 
-def load_json_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> BaseModel:
+def load_json_file(model_cls: Type[T], path: Union[str, Path]) -> T:
     """
     Load a Pydantic BaseModel object from a JSON file.
 
@@ -52,7 +60,9 @@ def load_json_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> BaseMo
         return model_cls.model_validate_json(f.read())
 
 
-def save_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
+def save_jsonl_file(
+    objects: List[Union[BaseModel, Dict[str, Any], str]], path: Union[str, Path]
+) -> None:
     """
     Save a list of Pydantic BaseModel objects to a JSONL file. Each object is serialized as a
     separate JSON object on its own line.
@@ -68,12 +78,19 @@ def save_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        object_strs = [
+            (
+                obj.model_dump_json(indent=None)
+                if isinstance(obj, BaseModel)
+                else json.dumps(obj) if isinstance(obj, dict) else obj
+            )
+            for obj in objects
+        ]
+        output_str = "\n".join(object_strs) + "\n"
+        f.write(output_str)
 
 
-def load_jsonl_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> List[BaseModel]:
+def load_jsonl_file(model_cls: Type[T], path: Union[str, Path]) -> List[T]:
     """
     Load a list of Pydantic BaseModel objects from a JSONL file. Each line in the JSONL file should
     contain a valid JSON object that can be deserialized into the specified BaseModel class. Empty
@@ -108,7 +125,9 @@ def load_jsonl_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> List[
     return out
 
 
-def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
+def append_jsonl_file(
+    objects: List[Union[BaseModel, Dict[str, Any], str]], path: Union[str, Path]
+) -> None:
     """
     Append a list of Pydantic BaseModel objects to a JSONL file. Each object is serialized as a
     separate JSON object and appended to the end of the file, one per line.
@@ -124,6 +143,13 @@ def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        object_strs = [
+            (
+                obj.model_dump_json(indent=None)
+                if isinstance(obj, BaseModel)
+                else json.dumps(obj) if isinstance(obj, dict) else obj
+            )
+            for obj in objects
+        ]
+        output_str = "\n".join(object_strs) + "\n"
+        f.write(output_str)

@@ -3,7 +3,7 @@ import sys
 import pytest
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.bench.runners.mp_runner import (
     MultiProcessRunner,
     _gen_inputs,
@@ -11,15 +11,25 @@ from flashinfer_bench.bench.runners.mp_runner import (
     _normalize_outputs,
     _rand_tensor,
 )
-from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import RandomInput, SafetensorsInput, ScalarInput, Workload
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    RandomInput,
+    SafetensorsInput,
+    ScalarInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+    Workload,
+)
 
 
 def _def2d():
     return Definition(
         name="d",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=2), "N": AxisConst(value=3)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -92,7 +102,7 @@ def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
     # Dataset
     d = Definition(
         name="dmp",
-        type="op",
+        op_type="op",
         axes={"N": AxisConst(value=4)},
         inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
@@ -101,9 +111,7 @@ def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
     wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
 
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON,
-        target_hardware=["gpu"],
-        entry_point="pkg/main.py::run",
+        language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="pkg/main.py::run"
     )
     srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)

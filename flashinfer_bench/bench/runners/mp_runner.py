@@ -10,32 +10,29 @@ from typing import Any, Dict, List, Optional
 import torch
 from torch import multiprocessing as mp
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution
-from flashinfer_bench.data.trace import (
-    Correctness,
-    Evaluation,
-    EvaluationStatus,
-    Performance,
-    Workload,
-)
-from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
-
-from ..config import BenchmarkConfig
-from ..runner import (
+from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.runner import (
     BaselineHandle,
     DeviceBaseline,
     Runner,
     RunnerError,
     RunnerFatalError,
 )
-from ..timing import time_runnable
+from flashinfer_bench.bench.timing import time_runnable
+from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.data import (
+    Correctness,
+    Definition,
+    Evaluation,
+    EvaluationStatus,
+    Performance,
+    Solution,
+    Workload,
+)
+from flashinfer_bench.logging import get_logger
+from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
 
 LOGGER = get_logger("MPRunner")
-
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     if dtype in (torch.float32, torch.float16, torch.bfloat16):
@@ -144,10 +141,7 @@ def _load_safetensors(
 
 
 def _gen_inputs(
-    defn: Definition,
-    wl: Workload,
-    device: str,
-    stensors: Optional[Dict[str, torch.Tensor]] = None,
+    defn: Definition, wl: Workload, device: str, stensors: Optional[Dict[str, torch.Tensor]] = None
 ) -> Dict[str, Any]:
     shapes = defn.get_input_shapes(wl.axes)
     dev = torch.device(device)
@@ -205,10 +199,7 @@ class MultiProcessRunner(Runner):
                 out = runnable_ref(**inp)
             torch.cuda.synchronize(device=dev)
             ref_out = _normalize_outputs(
-                out,
-                device=dev,
-                output_names=list(defn.outputs.keys()),
-                output_dtypes=output_dtypes,
+                out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
             )
             ref_out_all.append(ref_out)
 
@@ -409,25 +400,19 @@ def _solution_worker_main(
             for k in ref_t.keys():
                 if k not in out_t:
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE,
-                        device=device,
-                        log_file=log_path,
+                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE,
-                        log_file=log_path,
-                        device=device,
+                        status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_path, device=device
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
                 if out_t[k].dtype != ref_t[k].dtype:
                     ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_DTYPE,
-                        log_file=log_path,
-                        device=device,
+                        status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return

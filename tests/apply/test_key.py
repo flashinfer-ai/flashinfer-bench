@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from flashinfer_bench.apply.key import ApplyKey, ApplyKeyFactory
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
+from flashinfer_bench.data import AxisConst, AxisVar, Definition, TensorSpec
 
 
 class FakeTensor:
@@ -17,7 +17,7 @@ class FakeTensor:
 def make_minimal_def() -> Definition:
     return Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),

@@ -132,9 +132,9 @@ Use Python API:
 ### Prepare a `TraceSet` and Run the benchmark
 
 ```python
-from flashinfer_bench.data.traceset import TraceSet
-from flashinfer_bench.bench.benchmark import Benchmark
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.data import TraceSet
+from flashinfer_bench.bench import Benchmark
+from flashinfer_bench.bench import BenchmarkConfig
 
 # 1) Build TraceSet (definitions, solutions, workloads)
 ts = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, workloads

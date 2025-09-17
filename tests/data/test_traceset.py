@@ -36,7 +36,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     ref = "def run(a):\n    return a\n"
     d = Definition(
         name="d1",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={"A": TensorSpec(shape=["M", "N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
@@ -91,11 +91,11 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
             timestamp="t",
         ),
     )
-    t_workload_only = Trace(
-        definition="d1",
-        workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3"),
+    t_workload = Trace(
+        definition="d1", workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3")
     )
-    save_jsonl_file([t_pass, t_fail, t_workload_only], tmp_path / "traces" / "d1.jsonl")
+    save_jsonl_file([t_workload], tmp_path / "workloads" / "d1.jsonl")
+    save_jsonl_file([t_pass, t_fail], tmp_path / "traces" / "d1.jsonl")
 
     # Load
     ts = TraceSet.from_path(str(tmp_path))
@@ -103,8 +103,8 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     # Queries
     assert ts.definitions.get("d1").name == "d1"
     assert ts.get_solution("s1").name == "s1"
-    assert len(ts.traces.get("d1", [])) == 2  # pass + fail
     assert len(ts.workload.get("d1", [])) == 1
+    assert len(ts.traces.get("d1", [])) == 2  # pass + fail
 
     # Best trace should pick the passed one with higher speedup
     best = ts.get_best_trace("d1", axes={"M": 2})

@@ -4,18 +4,16 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply.api import apply
-from flashinfer_bench.apply.runtime import get_runtime
-
-from ...patch_manager import PatchSpec
-from ...utils import ArgBinder, ContextStore
-from ..common import (
+from flashinfer_bench.apply import apply, get_runtime
+from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_paged_kv_layout_from_tensors,
     normalize_paged_kv_to_nhd,
     pick_sm_scale_gqa,
     write_back_outputs,
 )
+from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 
 def _def_name_resolver(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):

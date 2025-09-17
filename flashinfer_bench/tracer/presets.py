@@ -188,7 +188,4 @@ gqa_paged_decode_rule = TracingRule(
 
 all_dump_rule = TracingRule(tensors_to_dump=DUMP_ALL, dedup_policy=KEEP_ALL)
 
-axes_only_rule = TracingRule(
-    tensors_to_dump=DUMP_NONE,
-    dedup_policy=DEDUP_BY_AXES,
-)
+axes_only_rule = TracingRule(tensors_to_dump=DUMP_NONE, dedup_policy=DEDUP_BY_AXES)
