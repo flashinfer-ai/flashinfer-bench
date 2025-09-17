@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from flashinfer_bench.apply.runtime import get_runtime
+from flashinfer_bench.apply import get_runtime
 
 
 def make_tracing_hook(tracer):

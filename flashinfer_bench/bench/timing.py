@@ -5,7 +5,7 @@ import threading
 import torch
 from triton.testing import do_bench
 
-from flashinfer_bench.compile.runnable import Runnable
+from flashinfer_bench.compile import Runnable
 
 # device -> lock registry
 _device_locks: dict[str, threading.Lock] = {}

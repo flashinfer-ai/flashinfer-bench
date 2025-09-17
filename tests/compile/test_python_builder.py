@@ -4,8 +4,15 @@ import pytest
 import torch
 
 from flashinfer_bench.compile.builders import PythonBuilder
-from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+)
 
 
 def test_python_builder_minimum(tmp_path, monkeypatch):
@@ -15,7 +22,7 @@ def test_python_builder_minimum(tmp_path, monkeypatch):
 
     d = Definition(
         name="mm",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=2), "N": AxisConst(value=2)},
         inputs={
             "A": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -27,9 +34,7 @@ def test_python_builder_minimum(tmp_path, monkeypatch):
     spec = BuildSpec(
         language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="pkg/main.py::run"
     )
-    srcs = [
-        SourceFile(path="pkg/main.py", content="def run(A, B):\n    return A"),
-    ]
+    srcs = [SourceFile(path="pkg/main.py", content="def run(A, B):\n    return A")]
     s = Solution(name="py_sol", definition="mm", author="me", spec=spec, sources=srcs)
 
     b = PythonBuilder()
@@ -53,7 +58,7 @@ def test_python_builder_add(tmp_path, monkeypatch):
 
     defn = Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=2), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),

@@ -10,28 +10,26 @@ from typing import Any, Dict, List, Optional
 import torch
 from torch import multiprocessing as mp
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.solution import Solution
-from flashinfer_bench.data.trace import (
-    Correctness,
-    Evaluation,
-    EvaluationStatus,
-    Performance,
-    Workload,
-)
-from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
-
-from ..config import BenchmarkConfig
-from ..runner import (
+from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.runner import (
     BaselineHandle,
     DeviceBaseline,
     Runner,
     RunnerError,
     RunnerFatalError,
 )
-from ..timing import time_runnable
+from flashinfer_bench.bench.timing import time_runnable
+from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.data import (
+    Correctness,
+    Definition,
+    Evaluation,
+    EvaluationStatus,
+    Performance,
+    Solution,
+    Workload,
+)
+from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:

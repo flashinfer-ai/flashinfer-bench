@@ -20,12 +20,7 @@ from flashinfer_bench.data import (
     TraceSet,
     Workload,
 )
-from flashinfer_bench.tracer import (
-    TracingRule,
-    disable_tracing,
-    enable_tracing,
-    get_tracer,
-)
+from flashinfer_bench.tracer import TracingRule, disable_tracing, enable_tracing, get_tracer
 
 __version__ = "0.0.1"
 
