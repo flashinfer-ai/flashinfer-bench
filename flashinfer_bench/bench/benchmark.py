@@ -136,7 +136,8 @@ class Benchmark:
                         except Exception as e:
                             failed_runners.append(r)
                             self.logger.error(
-                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                                f"Runner {r.device} failed while running reference for "
+                                f"def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -169,7 +170,8 @@ class Benchmark:
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         self.logger.warning(
@@ -224,7 +226,8 @@ class Benchmark:
                         except Exception as e:
                             failed_runners.append(r)
                             self.logger.error(
-                                f"Runner {r.device} failed while running reference for def={def_name} wl={wl.uuid}: {e}, skipping workload"
+                                f"Runner {r.device} failed while running reference for "
+                                f"def={def_name} wl={wl.uuid}: {e}, skipping workload"
                             )
                             continue
                         baselines[r] = h
@@ -251,11 +254,14 @@ class Benchmark:
                     }
 
                 for sol_name, ev in results.items():
-                    collected_traces.append(Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev))
+                    collected_traces.append(
+                        Trace(definition=def_name, workload=wl, solution=sol_name, evaluation=ev)
+                    )
 
                     if ev.status == EvaluationStatus.PASSED:
                         self.logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with {ev.performance.speedup_factor:.2f}x speedup"
+                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         self.logger.warning(
