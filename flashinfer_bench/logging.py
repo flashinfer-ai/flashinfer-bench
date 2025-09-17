@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 _PACKAGE_LOGGER_NAME = "flashinfer-bench"
 
