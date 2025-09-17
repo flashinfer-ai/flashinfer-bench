@@ -9,10 +9,7 @@ import torch
 
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import Solution
-from flashinfer_bench.data.trace import (
-    Evaluation,
-    Workload,
-)
+from flashinfer_bench.data.trace import Evaluation, Workload
 
 from .config import BenchmarkConfig
 
@@ -57,10 +54,7 @@ class Runner(ABC):
 
     @abstractmethod
     def run_solution(
-        self,
-        sol: Solution,
-        baseline: BaselineHandle,
-        cfg: BenchmarkConfig,
+        self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
         """Run a solution against the given baseline."""
         ...

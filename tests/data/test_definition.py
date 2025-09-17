@@ -2,12 +2,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.data import (
-    AxisConst,
-    AxisVar,
-    Definition,
-    TensorSpec,
-)
+from flashinfer_bench.data import AxisConst, AxisVar, Definition, TensorSpec
 
 
 def make_minimal_definition(ref_code: str) -> Definition:

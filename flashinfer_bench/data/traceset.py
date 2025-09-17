@@ -152,12 +152,7 @@ class TraceSet:
                     return solution
         return None
 
-    def filter_traces(
-        self,
-        def_name: str,
-        atol: float = 1e-2,
-        rtol: float = 1e-2,
-    ) -> List[Trace]:
+    def filter_traces(self, def_name: str, atol: float = 1e-2, rtol: float = 1e-2) -> List[Trace]:
         """Filter traces for a definition based on error bounds.
 
         Returns only successful traces that meet the specified absolute and relative

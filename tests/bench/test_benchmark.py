@@ -27,8 +27,7 @@ from flashinfer_bench.data import (
 
 def test_benchmark_pick_runners_round_robin(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "flashinfer_bench.bench.benchmark.list_cuda_devices",
-        lambda: ["dev0", "dev1", "dev2"],
+        "flashinfer_bench.bench.benchmark.list_cuda_devices", lambda: ["dev0", "dev1", "dev2"]
     )
 
     # Replace MultiProcessRunner with a lightweight dummy to avoid abstract instantiation
