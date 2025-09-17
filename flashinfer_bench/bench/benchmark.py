@@ -121,13 +121,7 @@ class Benchmark:
                 failed_runners: list[Runner] = []
                 with ThreadPoolExecutor(max_workers=K) as pool:
                     baseline_futs = {
-                        pool.submit(
-                            r.run_ref,
-                            defn,
-                            wl,
-                            config,
-                            self.trace_set.root,
-                        ): r
+                        pool.submit(r.run_ref, defn, wl, config, self.trace_set.root): r
                         for r in selected
                     }
                     for fut, r in baseline_futs.items():
@@ -211,13 +205,7 @@ class Benchmark:
                 failed_runners: list[Runner] = []
                 with ThreadPoolExecutor(max_workers=K) as pool:
                     baseline_futs = {
-                        pool.submit(
-                            r.run_ref,
-                            defn,
-                            wl,
-                            config,
-                            self.trace_set.root,
-                        ): r
+                        pool.submit(r.run_ref, defn, wl, config, self.trace_set.root): r
                         for r in selected
                     }
                     for fut, r in baseline_futs.items():

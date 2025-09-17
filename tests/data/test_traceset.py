@@ -92,8 +92,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
         ),
     )
     t_workload = Trace(
-        definition="d1",
-        workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3"),
+        definition="d1", workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3")
     )
     save_jsonl_file([t_workload], tmp_path / "workloads" / "d1.jsonl")
     save_jsonl_file([t_pass, t_fail], tmp_path / "traces" / "d1.jsonl")

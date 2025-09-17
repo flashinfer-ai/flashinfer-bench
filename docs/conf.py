@@ -55,9 +55,7 @@ autodoc_mock_imports = [
 autodoc_default_flags = ["members"]
 autodoc_class_signature = "separated"
 autodoc_member_order = "bysource"
-autodoc_default_options = {
-    "exclude-members": "model_config",
-}
+autodoc_default_options = {"exclude-members": "model_config"}
 autodoc_typehints = "both"
 
 autodoc_pydantic_model_show_validator_summary = False
