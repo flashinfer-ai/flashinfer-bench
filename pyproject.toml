@@ -63,3 +63,8 @@ select = ["C", "E", "F", "W", "TID252"]
 python_version = "3.8"
 ignore_missing_imports = true
 strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
