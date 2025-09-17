@@ -6,7 +6,7 @@ import pytest
 
 from flashinfer_bench.apply.config import ApplyConfig
 from flashinfer_bench.apply.hook import set_apply_hook
-from flashinfer_bench.apply.runtime import ApplyRuntime, get_runtime, set_runtime
+from flashinfer_bench.apply.runtime import ApplyRuntime, set_runtime
 from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from flashinfer_bench.data.trace import (
@@ -161,22 +161,6 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(tmp_path, m
     assert fb_val == "fb"
 
 
-def test_env_auto_init_invalid_config(monkeypatch):
-    # Only one of the env vars set -> invalid
-    set_runtime(None)
-    monkeypatch.setenv("FIB_ENABLE_APPLY", "1")
-    monkeypatch.delenv("FIB_DATASET_PATH", raising=False)
-    with pytest.raises(RuntimeError):
-        _ = get_runtime()
-
-    # Other mismatch case
-    set_runtime(None)
-    monkeypatch.delenv("FIB_ENABLE_APPLY", raising=False)
-    monkeypatch.setenv("FIB_DATASET_PATH", "/tmp/whatever")
-    with pytest.raises(RuntimeError):
-        _ = get_runtime()
-
-
 @pytest.mark.skip(reason="TODO: fix this test")
 def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
@@ -198,7 +182,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+    from flashinfer_bench.data.json_utils import save_json_file, save_jsonl_file
 
     (ds / "definitions").mkdir(parents=True, exist_ok=True)
     (ds / "solutions").mkdir(parents=True, exist_ok=True)

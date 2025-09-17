@@ -93,12 +93,11 @@ Example:
 
 ### `type`: `var`
 
-Represents a variable axis whose value will be determined by the input data. The `parent` field can be used to indicate hierarchical axis relationships, such as a grouped dimension structure.
+Represents a variable axis whose value will be determined by the input data.
 
 | Field | Type | Required | Description | Default |
 | --- | --- | --- | --- | --- |
 | `type` | string | Yes | Must be `"var"` | — |
-| `parent` | string | No | (Optional) name of parent axis for nesting | `null` |
 | `description` | string | No | Brief description |  |
 
 Example:
@@ -106,7 +105,6 @@ Example:
 ```json
 "sequence_length": {
   "type": "var",
-  "parent": "batch_size"
 }
 
 ```
@@ -262,7 +260,7 @@ The `reference` field is a string that contains the reference implementation of 
   ],
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var", "parent": "G" },
+    "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
@@ -300,7 +298,7 @@ The `reference` field is a string that contains the reference implementation of 
   ],
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var", "parent": "G" },
+    "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 },
     "K_group": { "type": "const", "value": 128 }
@@ -385,8 +383,8 @@ The `reference` field is a string that contains the reference implementation of 
   ],
   "axes": {
     "B": { "type": "var" },
-    "Q": { "type": "var", "parent": "B" },
-    "KV": { "type": "var", "parent": "B" },
+    "Q": { "type": "var" },
+    "KV": { "type": "var" },
     "H_qo": { "type": "var" },
     "H_kv": { "type": "var" },
     "H_r": { "type": "const", "value": 4 },

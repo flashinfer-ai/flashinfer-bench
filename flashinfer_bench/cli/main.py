@@ -4,7 +4,7 @@ from typing import List
 
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import TraceSet
-from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+from flashinfer_bench.data.json_utils import save_json_file, save_jsonl_file
 
 
 def best(args: argparse.Namespace):
@@ -12,18 +12,18 @@ def best(args: argparse.Namespace):
     for trace_set in trace_sets:
         definitions = trace_set.definitions.keys()
         for definition in definitions:
-            trace = trace_set.get_best_op(definition)
+            trace = trace_set.get_best_trace(definition)
             if not trace:
                 print(f"No valid solution found for {definition}.")
                 continue
             print(f"Best solution for {definition}:")
             print(f"- Solution: {trace.solution}")
-            print(f"- Speedup:  {trace.evaluation['performance']['speedup_factor']:.2f}×")
+            print(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
             print(
-                f"- Errors:   abs={trace.evaluation['correctness']['max_absolute_error']:.2e}, "
-                f"rel={trace.evaluation['correctness']['max_relative_error']:.2e}"
+                f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
+                f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            print(f"- Log:      {trace.evaluation['log_file']}")
+            print(f"- Log:      {trace.evaluation.log_file}")
 
 
 def summary(args: argparse.Namespace):
