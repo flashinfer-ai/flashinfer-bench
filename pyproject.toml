@@ -31,6 +31,7 @@ flashinfer-bench = "flashinfer_bench.cli.main:cli"
 where = ["."]
 include = ["flashinfer_bench*"]
 [tool.setuptools.package-data]
+"flashinfer_bench" = ["py.typed"]
 "flashinfer_bench._deps.cutlass" = ["include/**"]
 
 [tool.black]
