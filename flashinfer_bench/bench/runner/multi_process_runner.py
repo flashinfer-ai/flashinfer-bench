@@ -376,6 +376,7 @@ def _solution_worker_main(
 
         max_abs = 0.0
         max_rel = 0.0
+        numerical_incorrect = False
         for t, inp in enumerate(inputs):
             try:
                 with torch.no_grad():
@@ -420,17 +421,51 @@ def _solution_worker_main(
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
+                if torch.isinf(out_t[k]).any().item():
+                    correctness = Correctness(
+                        max_relative_error=float("inf"), max_absolute_error=float("inf")
+                    )
+                    ev = _make_eval(
+                        status=EvaluationStatus.INCORRECT_NUMERICAL,
+                        log_file=log_path,
+                        device=device,
+                        correctness=correctness,
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
+                if torch.isnan(out_t[k]).any().item():
+                    correctness = Correctness(
+                        max_relative_error=float("nan"), max_absolute_error=float("nan")
+                    )
+                    ev = _make_eval(
+                        status=EvaluationStatus.INCORRECT_NUMERICAL,
+                        log_file=log_path,
+                        device=device,
+                        correctness=correctness,
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
 
-                diff = (out_t[k] - ref_t[k]).abs()
-                abs_err = float(diff.max().item()) if diff.numel() > 0 else 0.0
-                denom = ref_t[k].abs().max()
-                denom_v = float(denom.item()) if denom.numel() > 0 else 0.0
-                rel_err = abs_err / (denom_v + 1e-12)
+                x = out_t[k].to(torch.float32)
+                y = ref_t[k].to(torch.float32)
+
+                diff = (x - y).abs()
+                if diff.numel() == 0:
+                    continue
+
+                tol = cfg.atol + cfg.rtol * y.abs()
+                ratio = diff / tol.clamp_min(torch.finfo(torch.float32).tiny)
+                abs_err = float(diff.max().item())
+                rel_err = float(ratio.max().item())
+
+                if rel_err > 1.0:
+                    numerical_incorrect = True
+
                 max_abs = max(max_abs, abs_err)
                 max_rel = max(max_rel, rel_err)
 
         correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
-        if max_abs > cfg.atol or max_rel > cfg.rtol:
+        if numerical_incorrect:
             ev = _make_eval(
                 status=EvaluationStatus.INCORRECT_NUMERICAL,
                 log_file=log_path,

@@ -1,9 +1,10 @@
 """Strong-typed data definitions for traces and evaluations."""
 
+import math
 from enum import Enum
 from typing import Dict, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
 
@@ -75,10 +76,29 @@ class Correctness(BaseModelWithDocstrings):
     a reference implementation to assess numerical accuracy.
     """
 
-    max_relative_error: float = Field(default=0.0, ge=0.0)
+    model_config = ConfigDict(ser_json_inf_nan="strings")
+
+    max_relative_error: float = Field(default=0.0)
     """Maximum relative error observed across all output elements."""
-    max_absolute_error: float = Field(default=0.0, ge=0.0)
+    max_absolute_error: float = Field(default=0.0)
     """Maximum absolute error observed across all output elements."""
+
+    @field_validator("max_relative_error", "max_absolute_error")
+    @classmethod
+    def non_negative_or_nan(cls, v: float):
+        if math.isnan(v):
+            return v
+        if v < 0:
+            raise ValueError("must be non-negative or NaN")
+        return v
+
+    @field_validator("max_relative_error", "max_absolute_error", mode="before")
+    @classmethod
+    def parse_str_special(cls, v):
+        if isinstance(v, str):
+            s = v.strip().lower()
+            return float("nan") if s == "nan" else (float("inf") if s == "infinity" else v)
+        return v
 
 
 class Performance(BaseModelWithDocstrings):
