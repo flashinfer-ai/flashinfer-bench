@@ -260,9 +260,16 @@ export function SolutionsList({
 
           return (
             <div key={solution.name} className="rounded-lg border">
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => onExpandSolution(solution.name)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    onExpandSolution(solution.name)
+                  }
+                }}
                 className={cn(
                   "flex w-full items-stretch gap-3 rounded-lg text-left transition-colors",
                   isExpanded ? "bg-muted/40" : "hover:bg-muted/20"
@@ -344,7 +351,7 @@ export function SolutionsList({
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
 
               {isExpanded && (
                 <SolutionTraceDetails

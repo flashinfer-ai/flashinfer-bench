@@ -202,7 +202,9 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
             return stats && stats.total > 0 && stats.passed === stats.total
           }).length
 
-          const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.max(1, Math.min(4, allPassedCount)))
+          const desiredCount = allPassedCount > 0
+            ? Math.min(DEFAULT_MAX_VISIBLE, Math.min(4, allPassedCount))
+            : Math.min(DEFAULT_MAX_VISIBLE, 4)
           const fromUrl = initialSolutionsRef.current
           const selected = new Set<string>()
 
@@ -377,7 +379,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
 
   return (
     <section id="solutions" className="space-y-6">
-      <h2 className="text-2xl font-semibold">Solutions</h2>
+      <h2 className="text-2xl font-semibold">Results</h2>
 
       <WinAtPCurves
         curves={curves?.curves || {}}
