@@ -110,7 +110,7 @@ class KernelGenerator:
             )
 
             print(f"Evaluating solution...")
-            benchmark = Benchmark(temp_traceset, log_level="WARNING")
+            benchmark = Benchmark(temp_traceset)
             result_traceset = benchmark.run_all(dump_traces=False)
 
             traces = result_traceset.traces.get(definition.name, [])
