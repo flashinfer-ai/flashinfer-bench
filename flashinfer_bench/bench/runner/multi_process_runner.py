@@ -7,7 +7,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch import multiprocessing as mp
@@ -103,6 +103,27 @@ def _normalize_outputs(
     raise RuntimeError(
         "Unexpected return type; must be Tensor, scalar, or dict[name -> Tensor/scalar]"
     )
+
+
+def _compute_error_stats(
+    output: torch.Tensor, reference: torch.Tensor, cfg: BenchmarkConfig
+) -> Tuple[float, float, bool]:
+    """Return (max_abs_err, max_rel_err, exceeds_tol) for elementwise comparison."""
+
+    x = output.to(torch.float32)
+    y = reference.to(torch.float32)
+
+    diff = (x - y).abs()
+    if diff.numel() == 0:
+        return 0.0, 0.0, False
+
+    tol = cfg.atol + cfg.rtol * y.abs()
+    ratio = diff / tol.clamp_min(torch.finfo(torch.float32).tiny)
+
+    max_abs = float(diff.max().item())
+    max_rel = float(ratio.max().item())
+
+    return max_abs, max_rel, bool(max_rel > 1.0)
 
 
 def _load_safetensors(
@@ -376,6 +397,7 @@ def _solution_worker_main(
 
         max_abs = 0.0
         max_rel = 0.0
+        numerical_incorrect = False
         for t, inp in enumerate(inputs):
             try:
                 with torch.no_grad():
@@ -421,16 +443,34 @@ def _solution_worker_main(
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
 
-                diff = (out_t[k] - ref_t[k]).abs()
-                abs_err = float(diff.max().item()) if diff.numel() > 0 else 0.0
-                denom = ref_t[k].abs().max()
-                denom_v = float(denom.item()) if denom.numel() > 0 else 0.0
-                rel_err = abs_err / (denom_v + 1e-12)
+                non_finite_err_val = None
+                if torch.isinf(out_t[k]).any().item():
+                    non_finite_err_val = float("inf")
+                elif torch.isnan(out_t[k]).any().item():
+                    non_finite_err_val = float("nan")
+                if non_finite_err_val is not None:
+                    correctness = Correctness(
+                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
+                    )
+                    ev = _make_eval(
+                        status=EvaluationStatus.INCORRECT_NUMERICAL,
+                        log_file=log_path,
+                        device=device,
+                        correctness=correctness,
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
+
+                abs_err, rel_err, exceeds_tol = _compute_error_stats(out_t[k], ref_t[k], cfg)
+
+                if exceeds_tol:
+                    numerical_incorrect = True
+
                 max_abs = max(max_abs, abs_err)
                 max_rel = max(max_rel, rel_err)
 
         correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
-        if max_abs > cfg.atol or max_rel > cfg.rtol:
+        if numerical_incorrect:
             ev = _make_eval(
                 status=EvaluationStatus.INCORRECT_NUMERICAL,
                 log_file=log_path,
