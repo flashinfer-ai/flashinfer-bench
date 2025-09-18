@@ -298,22 +298,6 @@ class TraceSet:
             "avg_latency_ms": avg_latency,
         }
 
-    def backup_traces(self) -> None:
-        """Backup the traces directory to a new directory. This is useful when we want to keep the
-        old traces for reference.
-        """
-        traces_dir = self.root / "traces"
-        backup = self.root / f"traces_bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        # Move traces directory to backup
-        if traces_dir.exists():
-            shutil.move(str(traces_dir), str(backup))
-        else:
-            backup.mkdir(parents=True, exist_ok=True)
-
-        # Create new traces directory
-        traces_dir.mkdir(parents=True, exist_ok=True)
-
     def add_traces(self, traces: List[Trace]) -> None:
         """Add traces to the TraceSet, and store the traces to disk.
 

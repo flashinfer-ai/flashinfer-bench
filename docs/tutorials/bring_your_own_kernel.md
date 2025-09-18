@@ -142,7 +142,6 @@ ts = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, wo
 # 2) Run & persist
 bench = Benchmark(ts, BenchmarkConfig(), log_level="INFO")
 bench.run_all()   # executes reference + solutions in parallel
-bench.flush()                  # writes JSONL results under root/<type>/<kernel_name>.jsonl
 ```
 
 * **Device pool.** One `MultiProcessRunner` is created per CUDA device.
@@ -163,18 +162,7 @@ bench.flush()                  # writes JSONL results under root/<type>/<kernel_
 
 Each solution run returns an `Evaluation`; the benchmark immediately stages a `Trace(def_name, workload, sol_name, evaluation)` in memory.
 
-### Persist results
-
-Call `bench.flush()` to write staged traces:
-
-* On first flush, existing `trace_set.root / "traces"` is **archived** to `traces_bak_<timestamp>/`.
-* New results **per definition** are appended (JSONL) at:
-
-  ```
-  <trace_set.root>/<definition.type>/<definition.name>.jsonl
-  ```
-
-> This produces one line per `(definition, solution, workload)` run. After benchmarking is done, the results can be used to rank solutions, visualize leaderboards, and drive `apply` at runtime.
+After benchmarking is done, the results can be used to rank solutions, visualize leaderboards, and drive `apply` at runtime.
 
 ### Reproducibility
 

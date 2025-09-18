@@ -12,32 +12,67 @@ from .runner import MultiProcessRunner
 
 
 class Benchmark:
+    """Benchmark execution engine for FlashInfer-Bench kernel solutions.
+
+    It runs the solutions against the workloads, and stores the results back to the trace set.
+    This class manages the GPU resources and will allocate multiple processes to run the solutions
+    in parallel.
+    """
+
     def __init__(
-        self,
-        trace_set: TraceSet,
-        config: BenchmarkConfig = BenchmarkConfig(),
-        log_level: str = "INFO",
+        self, trace_set: TraceSet, config: BenchmarkConfig = None, log_level: str = "INFO"
     ) -> None:
+        """Initialize the Benchmark with a TraceSet and configuration.
+
+        Parameters
+        ----------
+        trace_set : TraceSet
+            The dataset containing definitions, solutions, and workloads to benchmark.
+        config : BenchmarkConfig, optional
+            Configuration parameters for benchmark execution, by default BenchmarkConfig().
+        log_level : str, optional
+            Logging level for benchmark execution, by default "INFO".
+            Must be one of "DEBUG", "INFO", "WARNING", "ERROR".
+
+        Raises
+        ------
+        ValueError
+            If log_level is not one of the valid logging levels.
+        """
         # Dataset and configuration
         self._trace_set = trace_set
-        self._config = config
+        self._config = config if config is not None else BenchmarkConfig()
 
         # Setup logger
         self._logger = self._setup_logger(log_level)
 
         # Setup runner
-        self._runner = MultiProcessRunner(self._logger, config.log_dir)
+        self._runner = MultiProcessRunner(self._logger, self._config.log_dir)
 
         # Setup registry
         self._registry = get_registry()
 
-        # Setup traces to dump to database
-        self._traces_to_dump: List[Trace] = []
-
-        # The traces will be backed up before flush(). Checks if the traces have been backed up.
-        self._is_traces_backed_up = False
-
     def _setup_logger(self, log_level: str) -> logging.Logger:
+        """Setup a logger instance for the benchmark.
+
+        Creates a logger with stream handler and formatted output for tracking
+        benchmark progress and results.
+
+        Parameters
+        ----------
+        log_level : str
+            The logging level to set. Must be one of "DEBUG", "INFO", "WARNING", "ERROR".
+
+        Returns
+        -------
+        logging.Logger
+            Configured logger instance for this benchmark.
+
+        Raises
+        ------
+        ValueError
+            If log_level is not one of the valid logging levels.
+        """
         if log_level not in ["DEBUG", "INFO", "WARNING", "ERROR"]:
             raise ValueError(f"Invalid log_level: {log_level}")
 
@@ -52,17 +87,28 @@ class Benchmark:
         return logger
 
     def get_trace_set(self) -> TraceSet:
+        """Get the TraceSet associated with this benchmark.
+
+        Returns
+        -------
+        TraceSet
+            The TraceSet containing definitions, solutions, and workloads.
+        """
         return self._trace_set
 
     def run_all(self, dump_traces: bool = True) -> TraceSet:
-        """
-        Run benchmark and process solutions for all definitions and workloads.
+        """Run benchmark for all solutions in the trace set.
 
-        Args:
-            dump_traces: If True, dump traces to disk.
+        Parameters
+        ----------
+        dump_traces : bool, optional
+            If True, store traces to the trace set and in the disk.
 
-        Returns:
-            List of traces.
+        Returns
+        -------
+        TraceSet
+            A new TraceSet containing the original data plus the execution traces
+            from this benchmark run. The traces are organized by definition name.
         """
         result_traces: List[Trace] = []
 
@@ -104,9 +150,6 @@ class Benchmark:
                             f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
                         )
 
-        if dump_traces:
-            self._traces_to_dump.extend(result_traces)
-
         traces_by_def = defaultdict(list)
         for trace in result_traces:
             traces_by_def[trace.definition].append(trace)
@@ -119,12 +162,8 @@ class Benchmark:
             workloads=self._trace_set.workloads.copy(),
             traces=dict(traces_by_def),
         )
+
+        if dump_traces:
+            self._trace_set.add_traces(result_traces)
+
         return result_traceset
-
-    def flush(self) -> None:
-        if not self._is_traces_backed_up:
-            self._trace_set.backup_traces()
-            self._is_traces_backed_up = True
-
-        self._trace_set.add_traces(self._traces_to_dump)
-        self._traces_to_dump.clear()
