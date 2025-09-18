@@ -6,6 +6,7 @@ from typing import List
 
 from flashinfer_bench.compile import get_registry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
+from flashinfer_bench.logging import get_logger
 
 from .config import BenchmarkConfig
 from .runner import MultiProcessRunner
@@ -19,9 +20,7 @@ class Benchmark:
     in parallel.
     """
 
-    def __init__(
-        self, trace_set: TraceSet, config: BenchmarkConfig = None, log_level: str = "INFO"
-    ) -> None:
+    def __init__(self, trace_set: TraceSet, config: BenchmarkConfig = None) -> None:
         """Initialize the Benchmark with a TraceSet and configuration.
 
         Parameters
@@ -30,9 +29,6 @@ class Benchmark:
             The dataset containing definitions, solutions, and workloads to benchmark.
         config : BenchmarkConfig, optional
             Configuration parameters for benchmark execution, by default BenchmarkConfig().
-        log_level : str, optional
-            Logging level for benchmark execution, by default "INFO".
-            Must be one of "DEBUG", "INFO", "WARNING", "ERROR".
 
         Raises
         ------
@@ -44,47 +40,13 @@ class Benchmark:
         self._config = config if config is not None else BenchmarkConfig()
 
         # Setup logger
-        self._logger = self._setup_logger(log_level)
+        self._logger = get_logger("Benchmark")
 
         # Setup runner
         self._runner = MultiProcessRunner(self._logger, self._config.log_dir)
 
         # Setup registry
         self._registry = get_registry()
-
-    def _setup_logger(self, log_level: str) -> logging.Logger:
-        """Setup a logger instance for the benchmark.
-
-        Creates a logger with stream handler and formatted output for tracking
-        benchmark progress and results.
-
-        Parameters
-        ----------
-        log_level : str
-            The logging level to set. Must be one of "DEBUG", "INFO", "WARNING", "ERROR".
-
-        Returns
-        -------
-        logging.Logger
-            Configured logger instance for this benchmark.
-
-        Raises
-        ------
-        ValueError
-            If log_level is not one of the valid logging levels.
-        """
-        if log_level not in ["DEBUG", "INFO", "WARNING", "ERROR"]:
-            raise ValueError(f"Invalid log_level: {log_level}")
-
-        logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}@{id(self):x}")
-        logger.setLevel(getattr(logging, log_level.upper()))
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "[%(asctime)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        return logger
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.
