@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,14 +13,7 @@ import torch
 from torch import multiprocessing as mp
 
 from flashinfer_bench.bench.config import BenchmarkConfig
-from flashinfer_bench.bench.runner import (
-    BaselineHandle,
-    DeviceBaseline,
-    Runner,
-    RunnerError,
-    RunnerFatalError,
-)
-from flashinfer_bench.bench.timing import time_runnable
+from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import Runnable, get_registry
 from flashinfer_bench.data import (
     Correctness,
@@ -30,7 +25,14 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
+from flashinfer_bench.utils import (
+    env_snapshot,
+    list_cuda_devices,
+    redirect_stdio_to_file,
+    torch_dtype_from_def,
+)
+
+from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
 LOGGER = get_logger("MPRunner")
 
@@ -113,18 +115,18 @@ def _load_safetensors(
 
     expected = defn.get_input_shapes(wl.axes)
     stensors: Dict[str, torch.Tensor] = {}
-    for name, desc in wl.inputs.items():
-        if desc.type != "safetensors":
+    for name, input_spec in wl.inputs.items():
+        if input_spec.type != "safetensors":
             continue
 
-        path = desc.path
+        path = input_spec.path
         if traceset_root is not None and not Path(path).is_absolute():
             path = str(traceset_root / path)
 
         tensors = st.load_file(path)
-        if desc.tensor_key not in tensors:
-            raise ValueError(f"Missing key '{desc.tensor_key}' in '{path}'")
-        t = tensors[desc.tensor_key]
+        if input_spec.tensor_key not in tensors:
+            raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
+        t = tensors[input_spec.tensor_key]
         # shape check
         if list(t.shape) != expected[name]:
             raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
@@ -164,11 +166,12 @@ def _gen_inputs(
     return out
 
 
-class MultiProcessRunner(Runner):
+class SubprocessWorker:
     """Each instance binds to a CUDA device; the baseline resides in the main process; each Solution starts an independent Worker process for strong isolation."""
 
-    def __init__(self, device: str) -> None:
-        super().__init__(device)
+    def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        self._device = device
+        self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
         self._registry = get_registry()
 
@@ -179,8 +182,8 @@ class MultiProcessRunner(Runner):
         cfg: BenchmarkConfig,
         traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
-        torch.cuda.set_device(int(self.device.split(":")[1]))
-        dev = torch.device(self.device)
+        torch.cuda.set_device(int(self._device.split(":")[1]))
+        dev = torch.device(self._device)
 
         output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
         runnable_ref = self._registry.build_reference(defn)
@@ -193,7 +196,7 @@ class MultiProcessRunner(Runner):
         inputs_all: List[Dict[str, Any]] = []
         ref_out_all: List[Dict[str, torch.Tensor]] = []
         for _ in range(cfg.num_trials):
-            inp = _gen_inputs(defn, workload, device=self.device, stensors=st_cpu)
+            inp = _gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
             inputs_all.append(inp)
 
             with torch.no_grad():
@@ -206,7 +209,7 @@ class MultiProcessRunner(Runner):
 
         ref_lat_all: List[float] = []
         for inp in inputs_all:
-            ms = time_runnable(runnable_ref, inp, cfg.warmup_runs, cfg.iterations, self.device)
+            ms = time_runnable(runnable_ref, inp, cfg.warmup_runs, cfg.iterations, self._device)
             ref_lat_all.append(ms)
 
         ref_mean_latency_ms = sum(ref_lat_all) / float(len(ref_lat_all))
@@ -216,7 +219,7 @@ class MultiProcessRunner(Runner):
         self._baselines[handle] = DeviceBaseline(
             handle=handle,
             defn=defn,
-            device=self.device,
+            device=self._device,
             inputs_dev=inputs_all,
             ref_outputs_dev=ref_out_all,
             ref_mean_latency_ms=ref_mean_latency_ms,
@@ -237,7 +240,7 @@ class MultiProcessRunner(Runner):
 
         proc = ctx.Process(
             target=_solution_worker_main,
-            args=(child_conn, self.device, bl.defn, sol, cfg, log_path),
+            args=(child_conn, self._device, bl.defn, sol, cfg, log_path),
             daemon=True,
         )
         proc.start()
@@ -272,7 +275,7 @@ class MultiProcessRunner(Runner):
                     error_msg = msg.get("msg", "Unknown error")
                     evaluation = _make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
-                        device=self.device,
+                        device=self._device,
                         log_file=log_path,
                         error=error_msg,
                     )
@@ -304,7 +307,7 @@ class MultiProcessRunner(Runner):
         if evaluation is None:
             evaluation = _make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
-                device=self.device,
+                device=self._device,
                 log_file=log_path,
                 error="Worker process failed unexpectedly",
             )
@@ -489,3 +492,155 @@ def _make_eval(
         performance=performance,
         error=error,
     )
+
+
+class MultiProcessRunner(Runner):
+    def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        self._logger = logger
+        # Track retry attempts for each device
+        self._device_retry_counts: Dict[str, int] = {}
+        self._worker_max_retries = 3
+
+        # Initialize workers for all available CUDA devices
+        self._available_devices = list_cuda_devices()
+        self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
+        self._curr_worker_idx = 0
+
+        if len(self._workers) == 0:
+            raise RuntimeError("No CUDA devices available")
+
+        self._logger.info(
+            f"Initialized benchmark multi-process on {len(self._available_devices)} CUDA devices "
+            f"and {len(self._workers)} workers"
+        )
+
+    def _pick_workers(self, K: int) -> list[SubprocessWorker]:
+        """Pick K workers in round-robin fashion."""
+        # K = min(len(self._workers), len(solutions))
+        if K <= 0 or not self._workers:
+            return []
+        D = len(self._workers)
+        start = self._curr_worker_idx
+        sel = [self._workers[(start + i) % D] for i in range(min(K, D))]
+        self._curr_worker_idx = (start + K) % D
+        return sel
+
+    def _relaunch_worker(self, device: str) -> SubprocessWorker:
+        """Relaunch a worker for the given device."""
+        self._logger.info(f"Relaunching worker for device {device}")
+        return SubprocessWorker(device, self._log_dir)
+
+    def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
+        """Handle failed workers by attempting to relaunch them or removing them."""
+        workers_to_remove = []
+        workers_to_add = []
+
+        for failed_worker in failed_workers:
+            device = failed_worker._device
+            retry_count = self._device_retry_counts.get(device, 0)
+
+            if retry_count < self._worker_max_retries:
+                self._device_retry_counts[device] = retry_count + 1
+                try:
+                    new_worker = self._relaunch_worker(device)
+                    workers_to_add.append(new_worker)
+                    self._logger.info(f"Successfully relaunched worker for device {device} ")
+                except Exception:
+                    self._logger.error(f"Failed to relaunch worker for device {device} ")
+                    if retry_count + 1 >= self._worker_max_retries:
+                        workers_to_remove.append(failed_worker)
+                        self._logger.warning(
+                            f"Removing device {device} after {self._worker_max_retries} failed attempts"
+                        )
+            else:
+                workers_to_remove.append(failed_worker)
+                self._logger.warning(
+                    f"Removing device {device} after {self._worker_max_retries} failed attempts"
+                )
+        if workers_to_remove:
+            self._workers = [r for r in self._workers if r not in workers_to_remove]
+
+        self._workers.extend(workers_to_add)
+
+        if self._workers:
+            self._curr_worker_idx %= len(self._workers)
+
+    def _has_healthy_workers(self) -> bool:
+        """Check if there are any healthy workers available."""
+        return bool(self._workers)
+
+    def run_workload(
+        self,
+        defn: Definition,
+        wl: Workload,
+        solutions: List[Solution],
+        config: BenchmarkConfig,
+        root: Path,
+    ) -> Dict[str, Evaluation]:
+        """
+        Run a workload with the given solutions and return evaluation results.
+
+        Args:
+            defn: Definition object
+            wl: Workload object
+            solutions: List of solutions to evaluate
+            config: Benchmark configuration
+            root: Root path for the trace set
+
+        Returns:
+            Dictionary mapping solution names to their evaluations
+        """
+        if not solutions:
+            return {}
+
+        K = min(len(self._workers), len(solutions))
+        selected = self._pick_workers(K)
+        if not selected:
+            raise RuntimeError("No healthy workers available")
+
+        # Build baselines on each worker
+        baselines: dict[SubprocessWorker, BaselineHandle] = {}
+        failed_workers: list[SubprocessWorker] = []
+
+        with ThreadPoolExecutor(max_workers=K) as pool:
+            baseline_futs = {pool.submit(r.run_ref, defn, wl, config, root): r for r in selected}
+            for fut, r in baseline_futs.items():
+                try:
+                    h = fut.result()
+                    baselines[r] = h
+                except Exception as e:
+                    failed_workers.append(r)
+                    self._logger.error(
+                        f"Runner {r._device} failed while running reference for "
+                        f"def={defn.name} wl={wl.uuid}: {e}"
+                    )
+
+        # Handle failed workers
+        if failed_workers:
+            self._handle_failed_workers(failed_workers)
+            if not self._has_healthy_workers():
+                raise RuntimeError("No healthy workers available")
+
+        # Filter out workers that failed to build baselines
+        selected = [r for r in selected if r in baselines]
+        if not selected:
+            raise RuntimeError("No healthy workers available after baseline setup")
+
+        try:
+            # Evaluate solutions round-robin across workers
+            with ThreadPoolExecutor(max_workers=len(selected)) as pool:
+                sol_futs: Dict[str, any] = {}
+                for i, sol in enumerate(solutions):
+                    r = selected[i % len(selected)]
+                    sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)
+
+                results: Dict[str, Evaluation] = {
+                    name: fut.result() for name, fut in sol_futs.items()
+                }
+        finally:
+            # Always release baselines, even if solution execution fails
+            for r in selected:
+                if r in baselines:
+                    r.release(baselines[r])
+
+        return results

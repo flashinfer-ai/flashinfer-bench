@@ -54,13 +54,12 @@ def _maybe_init_from_env() -> None:
 
 class ApplyRuntime:
     def __init__(self, traceset: Union[TraceSet, str], config: ApplyConfig) -> None:
-        if not traceset:
-            raise ValueError("Dataset path is required for enabling apply")
-
         if isinstance(traceset, str):
             self._traceset = TraceSet.from_path(traceset)
-        else:
+        elif isinstance(traceset, TraceSet):
             self._traceset = traceset
+        else:
+            raise ValueError("traceset must be a TraceSet or a path to a TraceSet")
 
         self._config: ApplyConfig = config
         self._table: ApplyTable = ApplyTable.load_or_build(self._traceset, self._config)

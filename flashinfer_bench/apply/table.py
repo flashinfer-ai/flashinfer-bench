@@ -33,8 +33,8 @@ class ApplyTable:
     def_best: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def load_or_build(cls, ts: TraceSet, config: ApplyConfig) -> "ApplyTable":
-        digest = cls._digest(ts, config)
+    def load_or_build(cls, trace_set: TraceSet, config: ApplyConfig) -> "ApplyTable":
+        digest = cls._digest(trace_set, config)
 
         apply_dir = _apply_table_dir()
         apply_dir.mkdir(parents=True, exist_ok=True)
@@ -56,8 +56,8 @@ class ApplyTable:
             reg = get_registry()
 
             for def_name, sol_name in raw["def_best"].items():
-                defn = ts.definitions.get(def_name)
-                sol = ts.get_solution(sol_name)
+                defn = trace_set.definitions.get(def_name)
+                sol = trace_set.get_solution(sol_name)
                 if defn and sol:
                     reg.build(defn, sol)
                     def_best[def_name] = sol_name
@@ -65,12 +65,12 @@ class ApplyTable:
             table = cls(digest=digest, index=index, def_best=def_best)
 
             if config.aot_ratio and config.aot_ratio > 0.0:
-                cls._prewarm_aot(ts, config, table)
+                cls._prewarm_aot(trace_set, config, table)
 
             return table
 
         # Build fresh
-        table = cls._build(ts, config)
+        table = cls._build(trace_set, config)
         # Persist minimal index
         to_dump: Dict[str, Any] = {"digest": table.digest, "index": {}, "def_best": {}}
         for def_name, bucket in table.index.items():
@@ -84,20 +84,20 @@ class ApplyTable:
             json.dump(to_dump, f)
 
         if config.aot_ratio and config.aot_ratio > 0.0:
-            cls._prewarm_aot(ts, config, table)
+            cls._prewarm_aot(trace_set, config, table)
 
         return table
 
     @classmethod
-    def _build(cls, ts: TraceSet, config: ApplyConfig) -> "ApplyTable":
-        digest = cls._digest(ts, config)
+    def _build(cls, trace_set: TraceSet, config: ApplyConfig) -> "ApplyTable":
+        digest = cls._digest(trace_set, config)
         reg = get_registry()
 
         index: Dict[str, Dict[ApplyKey, str]] = {}
         def_best: Dict[str, Runnable] = {}
 
-        for def_name, defn in ts.definitions.items():
-            per_key, ranked = cls._sweep_def(ts, def_name, config.max_atol, config.max_rtol)
+        for def_name, defn in trace_set.definitions.items():
+            per_key, ranked = cls._sweep_def(trace_set, def_name, config.max_atol, config.max_rtol)
 
             # Build index
             for key, t in per_key.items():
@@ -109,7 +109,7 @@ class ApplyTable:
             # Build def_best
             if ranked:
                 best_sol_name = ranked[0][0]
-                sol = ts.get_solution(best_sol_name)
+                sol = trace_set.get_solution(best_sol_name)
                 if sol:
                     if config.on_miss_policy == "use_def_best":
                         # Only AOT if on_miss_policy is use_def_best
@@ -120,10 +120,10 @@ class ApplyTable:
 
     @classmethod
     def _sweep_def(
-        cls, ts: TraceSet, def_name: str, max_atol: float, max_rtol: float
+        cls, trace_set: TraceSet, def_name: str, max_atol: float, max_rtol: float
     ) -> Tuple[Dict[ApplyKey, Trace], List[Tuple[str, int]]]:
-        traces = ts.filter_traces(def_name, max_atol, max_rtol)
-        builder = ApplyKeyFactory.specialize(ts.definitions[def_name])
+        traces = trace_set.filter_traces(def_name, max_atol, max_rtol)
+        builder = ApplyKeyFactory.specialize(trace_set.definitions[def_name])
 
         # Pick the trace with the highest speedup_factor for each key
         per_key: Dict[ApplyKey, Trace] = {}
@@ -147,7 +147,7 @@ class ApplyTable:
         return per_key, ranked
 
     @classmethod
-    def _prewarm_aot(cls, ts: TraceSet, config: ApplyConfig, table: "ApplyTable") -> None:
+    def _prewarm_aot(cls, trace_set: TraceSet, config: ApplyConfig, table: "ApplyTable") -> None:
         if not (config.aot_ratio and config.aot_ratio > 0.0):
             return
         reg = get_registry()
@@ -160,24 +160,24 @@ class ApplyTable:
             ranked = sorted(win_counts.items(), key=lambda kv: kv[1], reverse=True)
             cutoff = max(1, int(len(ranked) * config.aot_ratio))
 
-            defn = ts.definitions.get(def_name)
+            defn = trace_set.definitions.get(def_name)
             if not defn:
                 continue
             for sol_name, _ in ranked[:cutoff]:
-                sol = ts.get_solution(sol_name)
+                sol = trace_set.get_solution(sol_name)
                 if sol:
                     reg.build(defn, sol)
 
         if config.on_miss_policy == "use_def_best":
             for def_name, sol_name in table.def_best.items():
-                defn = ts.definitions.get(def_name)
-                sol = ts.get_solution(sol_name)
+                defn = trace_set.definitions.get(def_name)
+                sol = trace_set.get_solution(sol_name)
                 if defn and sol:
                     reg.build(defn, sol)
 
     @classmethod
-    def _digest(cls, ts: TraceSet, config: ApplyConfig) -> str:
-        d = ts.to_dict()
+    def _digest(cls, trace_set: TraceSet, config: ApplyConfig) -> str:
+        d = trace_set.to_dict()
         for defn in d["definitions"].values():
             for drop in ("description", "tags", "reference", "constraints"):
                 defn.pop(drop, None)

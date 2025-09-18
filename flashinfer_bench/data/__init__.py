@@ -22,7 +22,7 @@ from .trace import (
     Trace,
     Workload,
 )
-from .traceset import TraceSet
+from .trace_set import TraceSet
 
 __all__ = [
     # Definition types
