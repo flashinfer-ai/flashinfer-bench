@@ -63,7 +63,7 @@ def main():
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
         print(f"Definition type: {definition.op_type}")
 
-        workloads = traceset.workload.get(definition_name, [])
+        workloads = traceset.workloads.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
             failed_generations += 1

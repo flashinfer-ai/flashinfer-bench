@@ -1,11 +1,14 @@
+import logging
 import sys
+from pathlib import Path
 
 import pytest
 import torch
 
 from flashinfer_bench.bench import BenchmarkConfig
-from flashinfer_bench.bench.runners.mp_runner import (
-    MultiProcessRunner,
+from flashinfer_bench.bench.runner import MultiProcessRunner
+from flashinfer_bench.bench.runner.multi_process_runner import (
+    SubprocessWorker,
     _gen_inputs,
     _load_safetensors,
     _normalize_outputs,
@@ -24,6 +27,47 @@ from flashinfer_bench.data import (
     TensorSpec,
     Workload,
 )
+
+
+def test_multi_process_runner(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        "flashinfer_bench.utils.list_cuda_devices", lambda: ["dev0", "dev1", "dev2"]
+    )
+
+    # Replace MultiProcessRunner with a lightweight dummy to avoid abstract instantiation
+    class _Dummy:
+        def __init__(self, device: str, log_dir: str) -> None: ...
+
+        def is_healthy(self) -> bool:
+            return True
+
+        def close(self) -> None:
+            pass
+
+        def run_ref(self, *a, **k):
+            raise NotImplementedError
+
+        def run_solution(self, *a, **k):
+            raise NotImplementedError
+
+        def release(self, *a, **k):
+            pass
+
+    monkeypatch.setattr(
+        "flashinfer_bench.bench.runner.multi_process_runner.SubprocessWorker", _Dummy
+    )
+    b = MultiProcessRunner(logging.getLogger(__name__))
+
+    b._workers = [object(), object(), object()]
+    b._curr_worker_idx = 0
+
+    sel1 = b._pick_workers(2)
+    assert sel1 == [b._workers[0], b._workers[1]]
+    sel2 = b._pick_workers(2)
+    assert sel2 == [b._workers[2], b._workers[0]]
+    sel3 = b._pick_workers(1)
+    assert sel3 == [b._workers[1]]
+    assert b._pick_workers(0) == []
 
 
 def _def2d():
@@ -76,7 +120,7 @@ def test_gen_inputs_random_and_scalar_cpu():
 @pytest.mark.skipif(
     __import__("safetensors", fromlist=["torch"]) is None, reason="safetensors not available"
 )
-def test_load_safetensors_and_gen_inputs_cpu(tmp_path):
+def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
     import safetensors.torch as st
 
     d = _def2d()
@@ -98,7 +142,7 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path):
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
-def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
+def test_mp_runner_run_ref_and_solution_minimal():
     # Dataset
     d = Definition(
         name="dmp",
@@ -116,7 +160,7 @@ def test_mp_runner_run_ref_and_solution_minimal(tmp_path, monkeypatch):
     srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
 
-    r = MultiProcessRunner(device="cuda:0")
+    r = SubprocessWorker(device="cuda:0")
     h = r.run_ref(d, wl, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None)
     ev = r.run_solution(s, h, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1))
     assert ev.status.value in {

@@ -71,10 +71,10 @@ class Tracer:
         if not rt.traceset:
             raise ValueError("Dataset not available. Set FIB_DATASET_PATH environment variable.")
 
-        if self.out_dir is None and rt.root is not None:
-            self.out_dir = Path(rt.root) / "traces" / "workloads"
-        if self.blob_dir is None and rt.root is not None:
-            self.blob_dir = Path(rt.root) / "blob" / "workloads"
+        if self.out_dir is None and rt.traceset.root is not None:
+            self.out_dir = Path(rt.traceset.root) / "traces" / "workloads"
+        if self.blob_dir is None and rt.traceset.root is not None:
+            self.blob_dir = Path(rt.traceset.root) / "blob" / "workloads"
 
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.blob_dir.mkdir(parents=True, exist_ok=True)

@@ -1,12 +1,14 @@
 """TraceSet as a pure data warehouse for definitions, solutions, and traces."""
 
+import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from .definition import Definition
-from .json_utils import load_json_file, load_jsonl_file
+from .json_utils import append_jsonl_file, load_json_file, load_jsonl_file
 from .solution import Solution
 from .trace import EvaluationStatus, Trace
 
@@ -31,14 +33,14 @@ class TraceSet:
     solutions: Dict[str, List[Solution]] = field(default_factory=dict)
     """The solutions in the database. Map from definition name to all the solutions for that
     definition."""
-    workload: Dict[str, List[Trace]] = field(default_factory=dict)
+    workloads: Dict[str, List[Trace]] = field(default_factory=dict)
     """The workload traces in the database. Map from definition name to all workload traces for that
     definition."""
     traces: Dict[str, List[Trace]] = field(default_factory=dict)
     """The traces in the database. Map from definition name to all traces for that definition."""
 
     @classmethod
-    def from_path(cls, path: str) -> "TraceSet":
+    def from_path(cls: Type["TraceSet"], path: str) -> "TraceSet":
         """Load a TraceSet from a directory structure.
 
         Loads a complete TraceSet by scanning the directory structure for:
@@ -98,7 +100,7 @@ class TraceSet:
             root=base_path,
             definitions=definitions,
             solutions=solutions,
-            workload=workloads,
+            workloads=workloads,
             traces=traces,
         )
 
@@ -121,7 +123,7 @@ class TraceSet:
             },
             "workload": {
                 name: [workload.model_dump(mode="json") for workload in workloads]
-                for name, workloads in self.workload.items()
+                for name, workloads in self.workloads.items()
             },
             "traces": {
                 name: [trace.model_dump(mode="json") for trace in traces]
@@ -295,3 +297,40 @@ class TraceSet:
             "max_latency_ms": max_latency,
             "avg_latency_ms": avg_latency,
         }
+
+    def backup_traces(self) -> None:
+        """Backup the traces directory to a new directory. This is useful when we want to keep the
+        old traces for reference.
+        """
+        traces_dir = self.root / "traces"
+        backup = self.root / f"traces_bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Move traces directory to backup
+        if traces_dir.exists():
+            shutil.move(str(traces_dir), str(backup))
+        else:
+            backup.mkdir(parents=True, exist_ok=True)
+
+        # Create new traces directory
+        traces_dir.mkdir(parents=True, exist_ok=True)
+
+    def add_traces(self, traces: List[Trace]) -> None:
+        """Add traces to the TraceSet, and store the traces to disk.
+
+        Parameters
+        ----------
+        traces : List[Trace]
+            The traces to add to the TraceSet.
+        """
+        buckets: Dict[Path, List[Trace]] = defaultdict(list)
+        for trace in traces:
+            # Add to in-memory database
+            self.traces[trace.definition].append(trace)
+            defn = self.definitions[trace.definition]
+            path = self.root / "traces" / defn.op_type / f"{defn.name}.jsonl"
+            # Add to disk bucket
+            buckets[path].append(trace)
+
+        # Write to disk
+        for path, traces in buckets.items():
+            append_jsonl_file(traces, path)
