@@ -187,13 +187,13 @@ def run(args: argparse.Namespace):
         )
         benchmark = Benchmark(trace_set, config, log_level=args.log_level)
         logger.info(f"Running benchmark for: {path}")
-        benchmark.run_all()
+        benchmark.run_all(args.save_results)
+        message = "Benchmark run complete."
         if args.save_results:
-            logger.info("Results saved.")
+            message += " Results saved."
         else:
-            logger.info(
-                "Benchmark run complete. Results not saved (use --save-results to enable saving)."
-            )
+            message += " Results not saved (use --save-results to enable saving)."
+        logger.info(message)
 
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
