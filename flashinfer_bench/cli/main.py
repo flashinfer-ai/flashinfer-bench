@@ -183,9 +183,8 @@ def run(args: argparse.Namespace):
             num_trials=args.num_trials,
             rtol=args.rtol,
             atol=args.atol,
-            log_level=args.log_level,
         )
-        benchmark = Benchmark(trace_set, config, log_level=args.log_level)
+        benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
         benchmark.run_all(args.save_results)
         message = "Benchmark run complete."

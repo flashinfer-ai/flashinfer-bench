@@ -137,11 +137,11 @@ from flashinfer_bench.bench import Benchmark
 from flashinfer_bench.bench import BenchmarkConfig
 
 # 1) Build TraceSet (definitions, solutions, workloads)
-ts = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, workloads
+trace_set = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, workloads
 
-# 2) Run & persist
-bench = Benchmark(ts, BenchmarkConfig(), log_level="INFO")
-bench.run_all()   # executes reference + solutions in parallel
+# 2) Run the benchmark
+bench = Benchmark(trace_set)
+bench.run_all(dump_traces=True)   # executes reference + solutions in parallel
 ```
 
 * **Device pool.** One `MultiProcessRunner` is created per CUDA device.
