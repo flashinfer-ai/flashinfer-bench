@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
-import { WinAtPCurves, type ScoreboardEntry } from "./win-at-p-curves"
+import { WinAtPCurves, type ScoreboardEntry } from "./win-at-p"
 import { SolutionsList, type FilterChip } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
 import { computeSolutionTraceBuckets, type SolutionTraceBuckets } from "@/lib/analytics"
-import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-traces-types"
+import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-types"
 
 const DEFAULT_MAX_VISIBLE = 10
 const DEFAULT_PIN = 0.95
@@ -78,7 +78,7 @@ export type SolutionsTracesSectionProps = {
   traces: Trace[]
 }
 
-export function SolutionsTracesSection({ definition, solutions, traces }: SolutionsTracesSectionProps) {
+export function SolutionsSection({ definition, solutions, traces }: SolutionsTracesSectionProps) {
   const searchParams = useSearchParams()
 
   const [sfState, setSfState] = useState<SolutionFiltersState>(initialSF)

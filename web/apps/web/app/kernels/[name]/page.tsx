@@ -4,7 +4,7 @@ import { DefinitionHeader } from "./header"
 import { AxesSignatureSection } from "./axes-sig"
 import { ConstraintsSection } from "./constraints"
 import { DefinitionReference } from "./reference"
-import { SolutionsTracesSection } from "./solutions-traces-section"
+import { SolutionsSection } from "./solutions"
 
 export async function generateStaticParams() {
   const definitions = await getAllDefinitions()
@@ -50,7 +50,7 @@ export default async function TraceDetailPage({
             <DefinitionReference definition={definition} />
           </section>
 
-          <SolutionsTracesSection definition={definition} solutions={solutions} traces={traces} />
+          <SolutionsSection definition={definition} solutions={solutions} traces={traces} />
         </div>
       </div>
     </div>

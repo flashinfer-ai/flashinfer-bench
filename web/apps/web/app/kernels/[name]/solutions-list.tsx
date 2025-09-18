@@ -30,7 +30,7 @@ import {
 } from "@flashinfer-bench/ui"
 import { ChevronDown, ChevronUp, Code2, Search, RotateCcw } from "lucide-react"
 import type { Solution, Trace } from "@/lib/schemas"
-import type { CorrectnessStats, SolutionFiltersState } from "./solutions-traces-types"
+import type { CorrectnessStats, SolutionFiltersState } from "./solutions-types"
 import type { SolutionTraceBuckets, SolutionTraceComparison } from "@/lib/analytics"
 import { cn } from "@flashinfer-bench/utils"
 
