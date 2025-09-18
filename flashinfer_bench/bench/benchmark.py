@@ -10,6 +10,8 @@ from flashinfer_bench.logging import get_logger
 from .config import BenchmarkConfig
 from .runner import MultiProcessRunner
 
+logger = get_logger("Benchmark")
+
 
 class Benchmark:
     """Benchmark execution engine for FlashInfer-Bench kernel solutions.
@@ -38,11 +40,8 @@ class Benchmark:
         self._trace_set = trace_set
         self._config = config if config is not None else BenchmarkConfig()
 
-        # Setup logger
-        self._logger = get_logger("Benchmark")
-
         # Setup runner
-        self._runner = MultiProcessRunner(self._logger, self._config.log_dir)
+        self._runner = MultiProcessRunner(logger, self._config.log_dir)
 
         # Setup registry
         self._registry = get_registry()
@@ -76,10 +75,10 @@ class Benchmark:
         for def_name, defn in self._trace_set.definitions.items():
             sols = self._trace_set.solutions.get(def_name, [])
             if not sols:
-                self._logger.warning(f"No solutions found for def={def_name}, skipping definition")
+                logger.warning(f"No solutions found for def={def_name}, skipping definition")
                 continue
 
-            self._logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
+            logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
 
             workloads = self._trace_set.workloads.get(def_name, [])
 
@@ -91,7 +90,7 @@ class Benchmark:
                         defn, wl, sols, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
-                    self._logger.error(f"Failed to run workload {wl.uuid}: {e}")
+                    logger.error(f"Failed to run workload {wl.uuid}: {e}")
                     continue
 
                 for sol_name, ev in results.items():
@@ -102,12 +101,12 @@ class Benchmark:
                     result_traces.append(trace)
 
                     if ev.status == EvaluationStatus.PASSED:
-                        self._logger.info(
+                        logger.info(
                             f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
                             f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
-                        self._logger.warning(
+                        logger.warning(
                             f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
                         )
 
