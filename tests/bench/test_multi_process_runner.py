@@ -9,6 +9,7 @@ from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.bench.runner import MultiProcessRunner
 from flashinfer_bench.bench.runner.multi_process_runner import (
     SubprocessWorker,
+    _compute_error_stats,
     _gen_inputs,
     _load_safetensors,
     _normalize_outputs,
@@ -139,6 +140,45 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
     stensors = _load_safetensors(d, wl)
     out = _gen_inputs(d, wl, device="cpu", stensors=stensors)
     assert torch.allclose(out["X"], data["X"]) and out["X"].device.type == "cpu"
+
+
+def test_compute_error_stats():
+    cfg = BenchmarkConfig(
+        warmup_runs=0,
+        iterations=1,
+        num_trials=1,
+        rtol=float(1e-2),
+        atol=float(1e-2),
+        log_dir="ignored",
+    )
+
+    ref = torch.tensor([0.0, 10.0, -2.0], dtype=torch.float32)
+    tol = cfg.atol + cfg.rtol * ref.abs()
+
+    sol_pass = ref + tol * torch.tensor([0.5, -0.9, 0.3], dtype=torch.float32)
+    sol_fail = ref + tol * torch.tensor([0.5, -1.2, 0.3], dtype=torch.float32)
+    sol_edge = ref + tol * torch.tensor([1.0, 0.0, -1.0], dtype=torch.float32)
+
+    abs_pass, rel_pass, exceeds_pass = _compute_error_stats(sol_pass, ref, cfg)
+    diff_pass = (sol_pass - ref).abs()
+    expected_ratio_pass = diff_pass / tol.clamp_min(torch.finfo(torch.float32).tiny)
+    assert abs_pass == pytest.approx(diff_pass.max().item())
+    assert rel_pass == pytest.approx(expected_ratio_pass.max().item())
+    assert not exceeds_pass
+    assert torch.allclose(sol_pass, ref, atol=cfg.atol, rtol=cfg.rtol)
+
+    abs_fail, rel_fail, exceeds_fail = _compute_error_stats(sol_fail, ref, cfg)
+    diff_fail = (sol_fail - ref).abs()
+    expected_ratio_fail = diff_fail / tol.clamp_min(torch.finfo(torch.float32).tiny)
+    assert abs_fail == pytest.approx(diff_fail.max().item())
+    assert rel_fail == pytest.approx(expected_ratio_fail.max().item())
+    assert exceeds_fail
+    assert not torch.allclose(sol_fail, ref, atol=cfg.atol, rtol=cfg.rtol)
+
+    _, rel_e, exc_e = _compute_error_stats(sol_edge, ref, cfg)
+    assert rel_e == pytest.approx(1.0)
+    assert not exc_e
+    assert torch.allclose(sol_edge, ref, atol=cfg.atol, rtol=cfg.rtol)
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
