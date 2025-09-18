@@ -442,21 +442,15 @@ def _solution_worker_main(
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
+
+                non_finite_err_val = None
                 if torch.isinf(out_t[k]).any().item():
+                    non_finite_err_val = float("inf")
+                elif torch.isnan(out_t[k]).any().item():
+                    non_finite_err_val = float("nan")
+                if non_finite_err_val is not None:
                     correctness = Correctness(
-                        max_relative_error=float("inf"), max_absolute_error=float("inf")
-                    )
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_NUMERICAL,
-                        log_file=log_path,
-                        device=device,
-                        correctness=correctness,
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-                if torch.isnan(out_t[k]).any().item():
-                    correctness = Correctness(
-                        max_relative_error=float("nan"), max_absolute_error=float("nan")
+                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
                     )
                     ev = _make_eval(
                         status=EvaluationStatus.INCORRECT_NUMERICAL,

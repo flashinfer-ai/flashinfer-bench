@@ -92,14 +92,6 @@ class Correctness(BaseModelWithDocstrings):
             raise ValueError("must be non-negative or NaN")
         return v
 
-    @field_validator("max_relative_error", "max_absolute_error", mode="before")
-    @classmethod
-    def parse_str_special(cls, v):
-        if isinstance(v, str):
-            s = v.strip().lower()
-            return float("nan") if s == "nan" else (float("inf") if s == "infinity" else v)
-        return v
-
 
 class Performance(BaseModelWithDocstrings):
     """Performance metrics from timing evaluation.
