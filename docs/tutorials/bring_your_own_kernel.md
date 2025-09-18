@@ -140,8 +140,8 @@ from flashinfer_bench.bench import BenchmarkConfig
 ts = TraceSet(root="./flashinfer-trace")  # scans for definitions, solutions, workloads
 
 # 2) Run & persist
-bench = Benchmark(ts, log_level="INFO")
-bench.run(BenchmarkConfig())   # executes reference + solutions in parallel
+bench = Benchmark(ts, BenchmarkConfig(), log_level="INFO")
+bench.run_all()   # executes reference + solutions in parallel
 bench.flush()                  # writes JSONL results under root/<type>/<kernel_name>.jsonl
 ```
 

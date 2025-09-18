@@ -103,7 +103,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     # Queries
     assert ts.definitions.get("d1").name == "d1"
     assert ts.get_solution("s1").name == "s1"
-    assert len(ts.workload.get("d1", [])) == 1
+    assert len(ts.workloads.get("d1", [])) == 1
     assert len(ts.traces.get("d1", [])) == 2  # pass + fail
 
     # Best trace should pick the passed one with higher speedup
