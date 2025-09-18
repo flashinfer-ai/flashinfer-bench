@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench import BenchmarkConfig
 
 
 def test_benchmark_config_defaults_valid():
@@ -15,13 +15,7 @@ def test_benchmark_config_defaults_valid():
 
 @pytest.mark.parametrize(
     "field, value",
-    [
-        ("warmup_runs", -1),
-        ("iterations", 0),
-        ("num_trials", 0),
-        ("rtol", 0.0),
-        ("atol", 0.0),
-    ],
+    [("warmup_runs", -1), ("iterations", 0), ("num_trials", 0), ("rtol", 0.0), ("atol", 0.0)],
 )
 def test_benchmark_config_validation(field, value):
     kwargs = {}

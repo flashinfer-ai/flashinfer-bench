@@ -5,8 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple, Type, Union
 
-from flashinfer_bench.data.definition import AxisVar, Definition
-from flashinfer_bench.data.trace import Workload
+from flashinfer_bench.data import AxisVar, Definition, Workload
 
 
 @dataclass(frozen=True)
@@ -147,7 +146,7 @@ class ApplyKeyFactory:
 
     @classmethod
     def specialize(cls, defn: Definition) -> ApplyKeyBuilder:
-        builder_cls = cls.for_type(defn.type)
+        builder_cls = cls.for_type(defn.op_type)
         return builder_cls(defn)
 
 

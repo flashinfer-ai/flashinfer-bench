@@ -31,11 +31,13 @@ flashinfer-bench = "flashinfer_bench.cli.main:cli"
 where = ["."]
 include = ["flashinfer_bench*"]
 [tool.setuptools.package-data]
+"flashinfer_bench" = ["py.typed"]
 "flashinfer_bench._deps.cutlass" = ["include/**"]
 
 [tool.black]
 line-length = 100
 target-version = ["py38", "py39", "py310", "py311"]
+skip-magic-trailing-comma = true
 
 [tool.isort]
 profile = "black"
@@ -49,7 +51,8 @@ target-version = "py38"
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).
 ignore = ["C901", "E501", "E741", "F402", "F823", "E731"]
-select = ["C", "E", "F", "W"]
+# TID252: Prefer absolute imports over relative imports from parent modules
+select = ["C", "E", "F", "W", "TID252"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
@@ -60,3 +63,8 @@ select = ["C", "E", "F", "W"]
 python_version = "3.8"
 ignore_missing_imports = true
 strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"

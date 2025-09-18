@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from kernel_generator import KernelGenerator
 
 from flashinfer_bench import TraceSet
-from flashinfer_bench.data.json_utils import save_json_file
+from flashinfer_bench.data import save_json_file
 
 load_dotenv()
 
@@ -66,7 +66,7 @@ def main():
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
         print(f"Definition type: {definition.op_type}")
 
-        workloads = traceset.workload.get(definition_name, [])
+        workloads = traceset.workloads.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
             failed_generations += 1

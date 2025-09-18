@@ -2,6 +2,7 @@
 
 from .definition import AxisConst, AxisVar, Definition, TensorSpec
 from .json_utils import (
+    append_jsonl_file,
     load_json_file,
     load_jsonl_file,
     save_json_file,
@@ -21,7 +22,7 @@ from .trace import (
     Trace,
     Workload,
 )
-from .traceset import TraceSet
+from .trace_set import TraceSet
 
 __all__ = [
     # Definition types
@@ -53,4 +54,5 @@ __all__ = [
     "load_json_file",
     "save_jsonl_file",
     "load_jsonl_file",
+    "append_jsonl_file",
 ]

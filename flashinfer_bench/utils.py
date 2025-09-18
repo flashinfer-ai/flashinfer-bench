@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import torch
 
-from flashinfer_bench.data.trace import Environment
+from flashinfer_bench.data import Environment
 
 
 def torch_dtype_from_def(dtype_str: str):

@@ -8,16 +8,13 @@ from kernel_generator_prompts import get_optimization_prompt, get_prompt
 
 from flashinfer_bench import (
     Benchmark,
-    BenchmarkConfig,
     BuildSpec,
     Definition,
     EvaluationStatus,
     Solution,
     SourceFile,
     SupportedLanguages,
-    Trace,
     TraceSet,
-    Workload,
 )
 
 
@@ -84,7 +81,7 @@ class KernelGenerator:
         Returns:
             Solution: a solution dataclass containing the optimized kernel code
         """
-        workloads = traceset.workload.get(definition.name, [])
+        workloads = traceset.workloads.get(definition.name, [])
         if not workloads:
             raise ValueError(
                 f"No workloads found for definition '{definition.name}' in the provided TraceSet"
@@ -108,13 +105,13 @@ class KernelGenerator:
                 root=traceset.root,
                 definitions={definition.name: definition},
                 solutions={definition.name: [solution]},
-                workload={definition.name: [selected_workload]},
+                workloads={definition.name: [selected_workload]},
                 traces={},
             )
 
             print(f"Evaluating solution...")
-            benchmark = Benchmark(temp_traceset, log_level="WARNING")
-            result_traceset = benchmark.evaluate(BenchmarkConfig())
+            benchmark = Benchmark(temp_traceset)
+            result_traceset = benchmark.run_all(dump_traces=False)
 
             traces = result_traceset.traces.get(definition.name, [])
             if not traces:

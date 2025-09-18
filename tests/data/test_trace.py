@@ -1,3 +1,5 @@
+import json
+import math
 import sys
 
 import pytest
@@ -36,6 +38,22 @@ def test_correctness_performance_environment_validation():
     Environment(hardware="cuda:0")
     with pytest.raises(ValueError):
         Environment(hardware="")
+
+
+def test_correctness_with_inf_and_nan():
+    c = Correctness(max_relative_error=float("inf"), max_absolute_error=float("nan"))
+    assert math.isinf(c.max_relative_error)
+    assert math.isnan(c.max_absolute_error)
+
+    json_payload = json.loads(c.model_dump_json())
+    assert json_payload["max_relative_error"] == "Infinity"
+    assert json_payload["max_absolute_error"] == "NaN"
+
+    parsed = Correctness.model_validate(
+        {"max_relative_error": "infinity", "max_absolute_error": "nan"}
+    )
+    assert math.isinf(parsed.max_relative_error)
+    assert math.isnan(parsed.max_absolute_error)
 
 
 def test_evaluation_status_requirements():

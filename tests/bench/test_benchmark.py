@@ -1,19 +1,17 @@
+import logging
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
-import safetensors.torch as st
-import torch
 
-from flashinfer_bench.bench.benchmark import Benchmark
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import (
     AxisConst,
     BuildSpec,
     Definition,
+    EvaluationStatus,
     RandomInput,
-    SafetensorsInput,
-    ScalarInput,
     Solution,
     SourceFile,
     SupportedLanguages,
@@ -21,272 +19,242 @@ from flashinfer_bench.data import (
     Trace,
     TraceSet,
     Workload,
+    load_jsonl_file,
     save_json_file,
     save_jsonl_file,
 )
 
 
-def test_benchmark_pick_runners_round_robin(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        "flashinfer_bench.bench.benchmark.list_cuda_devices",
-        lambda: ["dev0", "dev1", "dev2"],
+def test_run_all_empty_traceset(tmp_path: Path):
+    """Test run_all with completely empty trace set."""
+    trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
+
+    benchmark = Benchmark(trace_set)
+    result = benchmark.run_all()
+
+    assert len(result.definitions) == 0
+    assert len(result.solutions) == 0
+    assert len(result.workloads) == 0
+    assert len(result.traces) == 0
+
+
+def test_run_all_no_solutions(tmp_path: Path, caplog):
+    """Test run_all with definitions but no solutions."""
+    # Create definition
+    definition = Definition(
+        name="test_def",
+        op_type="test_op",
+        axes={"M": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A + 1\n",
     )
 
-    # Replace MultiProcessRunner with a lightweight dummy to avoid abstract instantiation
-    class _Dummy:
-        def __init__(self, device: str) -> None:
-            self.device = device
+    trace_set = TraceSet(
+        root=str(tmp_path),
+        definitions={"test_def": definition},
+        solutions={},  # No solutions
+        workloads={},
+        traces={},
+    )
 
-        def is_healthy(self) -> bool:
-            return True
+    benchmark = Benchmark(trace_set)
 
-        def close(self) -> None:
-            pass
+    # Capture log messages from the benchmark's logger
+    with caplog.at_level(logging.WARNING, logger=benchmark._logger.name):
+        result = benchmark.run_all()
 
-        def run_ref(self, *a, **k):
-            raise NotImplementedError
+    assert "No solutions found for def=test_def, skipping definition" in caplog.text
+    assert len(result.traces) == 0
 
-        def run_solution(self, *a, **k):
-            raise NotImplementedError
 
-        def release(self, *a, **k):
-            pass
+def test_run_all_no_workloads(tmp_path: Path):
+    """Test run_all with definitions and solutions but no workloads."""
+    # Create definition
+    definition = Definition(
+        name="test_def",
+        op_type="test_op",
+        axes={"M": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A + 1\n",
+    )
 
-    monkeypatch.setattr("flashinfer_bench.bench.benchmark.MultiProcessRunner", _Dummy)
-    ts = TraceSet(root=tmp_path)
-    b = Benchmark(ts)
+    # Create solution
+    solution = Solution(
+        name="test_sol",
+        definition="test_def",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="test.py::run"
+        ),
+        sources=[
+            SourceFile(path="test.py", content="import torch\n\ndef run(A):\n    return A + 1\n")
+        ],
+    )
 
-    b._runners = [object(), object(), object()]
-    b._curr_runner_idx = 0
+    trace_set = TraceSet(
+        root=str(tmp_path),
+        definitions={"test_def": definition},
+        solutions={"test_def": [solution]},
+        workloads={},  # No workloads
+        traces={},
+    )
 
-    sel1 = b._pick_runners(2)
-    assert sel1 == [b._runners[0], b._runners[1]]
-    sel2 = b._pick_runners(2)
-    assert sel2 == [b._runners[2], b._runners[0]]
-    sel3 = b._pick_runners(1)
-    assert sel3 == [b._runners[1]]
-    assert b._pick_runners(0) == []
+    benchmark = Benchmark(trace_set)
+    result = benchmark.run_all()
+
+    assert len(result.traces) == 0
+
+
+def test_dump_traces_false(tmp_path: Path):
+    """Test run_all with dump_traces=False."""
+    trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
+
+    benchmark = Benchmark(trace_set)
+    result = benchmark.run_all(dump_traces=False)
+
+    # Should not add traces to the trace set
+    assert len(result.traces) == 0
+
+
+@patch("flashinfer_bench.bench.benchmark.MultiProcessRunner")
+def test_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
+    """Test handling of RuntimeError from runner."""
+    # Setup mock runner to raise RuntimeError
+    mock_runner = MagicMock()
+    mock_runner.run_workload.side_effect = RuntimeError("Simulated runner error")
+    mock_runner_class.return_value = mock_runner
+
+    # Create test data
+    definition = Definition(
+        name="test_def",
+        op_type="test_op",
+        axes={"M": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A + 1\n",
+    )
+
+    solution = Solution(
+        name="test_sol",
+        definition="test_def",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="test.py::run"
+        ),
+        sources=[
+            SourceFile(path="test.py", content="import torch\n\ndef run(A):\n    return A + 1\n")
+        ],
+    )
+
+    workload = Workload(axes={"M": 4}, inputs={"A": RandomInput()}, uuid="test_uuid")
+
+    workload_trace = Trace(definition="test_def", workload=workload)
+
+    trace_set = TraceSet(
+        root=str(tmp_path),
+        definitions={"test_def": definition},
+        solutions={"test_def": [solution]},
+        workloads={"test_def": [workload_trace]},
+        traces={},
+    )
+
+    benchmark = Benchmark(trace_set)
+
+    # Capture log messages from the benchmark's logger
+    with caplog.at_level(logging.ERROR, logger=benchmark._logger.name):
+        result = benchmark.run_all()
+
+    assert "Failed to run workload test_uuid: Simulated runner error" in caplog.text
+    assert len(result.traces) == 0
 
 
 @pytest.mark.skipif(
     __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
 )
-def test_end_to_end_multi_gpu_with_safetensors(monkeypatch, tmp_path: Path):
+def test_benchmark_with_mixed_results(tmp_path: Path):
+    """Test benchmark with solutions that have different outcomes."""
     # Build dataset structure
     (tmp_path / "definitions").mkdir(parents=True)
     (tmp_path / "solutions").mkdir(parents=True)
-    (tmp_path / "traces").mkdir(parents=True)
+    (tmp_path / "workloads").mkdir(parents=True)
 
-    def make_def(name: str, axes: dict, inputs: dict, outputs: dict, body: str) -> Definition:
-        return Definition(
-            name=name,
-            type="op",
-            axes=axes,
-            inputs=inputs,
-            outputs=outputs,
-            reference=("import torch\n\n" + f"def run({', '.join(inputs.keys())}):\n    {body}\n"),
-        )
+    # Create definition
+    definition = Definition(
+        name="simple_add",
+        op_type="op",
+        axes={"N": AxisConst(value=8)},
+        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A + 1\n",
+    )
+    save_json_file(definition, tmp_path / "definitions" / "simple_add.json")
 
-    d_add = make_def(
-        "add_var",
-        axes={"M": AxisConst(value=8), "N": AxisConst(value=16)},
-        inputs={
-            "A": TensorSpec(shape=["M", "N"], dtype="float32"),
-            "B": TensorSpec(shape=["M", "N"], dtype="float32"),
-        },
-        outputs={"O": TensorSpec(shape=["M", "N"], dtype="float32")},
-        body="return A + B",
-    )
-    d_mul = make_def(
-        "mul_var",
-        axes={"M": AxisConst(value=8), "N": AxisConst(value=16)},
-        inputs={
-            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
-            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
-        },
-        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
-        body="return X * Y",
-    )
-    d_adds = make_def(
-        "add_with_scalar",
-        axes={"M": AxisConst(value=8), "N": AxisConst(value=16)},
-        inputs={
-            "A": TensorSpec(shape=["M", "N"], dtype="float32"),
-            "B": TensorSpec(shape=["M", "N"], dtype="float32"),
-            "S": TensorSpec(shape=None, dtype="int32"),
-        },
-        outputs={"O": TensorSpec(shape=["M", "N"], dtype="float32")},
-        body="return A + B + S",
-    )
-    for d in (d_add, d_mul, d_adds):
-        save_json_file(d, tmp_path / "definitions" / f"{d.name}.json")
-
-    def mk_solution(def_name: str, sol_name: str, params: list[str], body: str) -> Solution:
-        path = f"pkg/{sol_name}.py"
-        content = "import torch\n\n" + f"def run({', '.join(params)}):\n    {body}\n"
-        return Solution(
-            name=sol_name,
-            definition=def_name,
+    # Create solutions with different behaviors
+    solutions = [
+        Solution(
+            name="correct_sol",
+            definition="simple_add",
             author="tester",
             spec=BuildSpec(
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["gpu"],
-                entry_point=f"{path}::run",
+                entry_point="correct.py::run",
             ),
-            sources=[SourceFile(path=path, content=content)],
-        )
+            sources=[
+                SourceFile(
+                    path="correct.py", content="import torch\n\ndef run(A):\n    return A + 1\n"
+                )
+            ],
+        ),
+        Solution(
+            name="wrong_sol",
+            definition="simple_add",
+            author="tester",
+            spec=BuildSpec(
+                language=SupportedLanguages.PYTHON,
+                target_hardware=["gpu"],
+                entry_point="wrong.py::run",
+            ),
+            sources=[
+                SourceFile(
+                    path="wrong.py",
+                    content="import torch\n\ndef run(A):\n    return A + 2\n",  # Wrong result
+                )
+            ],
+        ),
+    ]
 
-    sol_matrix = {
-        d_add.name: [
-            mk_solution(d_add.name, "add_ok", ["A", "B"], "return A + B"),
-            mk_solution(d_add.name, "add_off1", ["A", "B"], "return A + B + 1"),
-            mk_solution(d_add.name, "add_half", ["A", "B"], "return (A + B).half()"),
-            mk_solution(d_add.name, "add_boom", ["A", "B"], "raise RuntimeError('boom')"),
-        ],
-        d_mul.name: [
-            mk_solution(d_mul.name, "mul_ok", ["X", "Y"], "return X * Y"),
-            mk_solution(d_mul.name, "mul_off1", ["X", "Y"], "return X * Y + 1"),
-            mk_solution(d_mul.name, "mul_half", ["X", "Y"], "return (X * Y).half()"),
-            mk_solution(d_mul.name, "mul_boom", ["X", "Y"], "raise RuntimeError('boom')"),
-        ],
-        d_adds.name: [
-            mk_solution(d_adds.name, "adds_ok", ["A", "B", "S"], "return A + B + S"),
-            mk_solution(d_adds.name, "adds_off1", ["A", "B", "S"], "return A + B + S + 1"),
-            mk_solution(d_adds.name, "adds_half", ["A", "B", "S"], "return (A + B + S).half()"),
-            mk_solution(d_adds.name, "adds_boom", ["A", "B", "S"], "raise RuntimeError('boom')"),
-        ],
-    }
-    for sols in sol_matrix.values():
-        for s in sols:
-            save_json_file(s, tmp_path / "solutions" / f"{s.name}.json")
+    for sol in solutions:
+        save_json_file(sol, tmp_path / "solutions" / f"{sol.name}.json")
 
-    safes = {}
-    for tensor_name in ("A", "B", "X", "Y"):
-        t = torch.arange(8 * 16, dtype=torch.float32).reshape(8, 16)
-        p = tmp_path / f"{tensor_name}.safetensors"
-        st.save_file({tensor_name: t}, str(p))
-        safes[tensor_name] = p
+    # Create workload
+    workload = Workload(axes={"N": 8}, inputs={"A": RandomInput()}, uuid="test_workload")
 
-    wl_matrix = {
-        d_add.name: [
-            Workload(
-                axes={"M": 8, "N": 16}, inputs={"A": RandomInput(), "B": RandomInput()}, uuid="a1"
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": SafetensorsInput(path=str(safes["A"]), tensor_key="A"),
-                    "B": RandomInput(),
-                },
-                uuid="a2",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": RandomInput(),
-                    "B": SafetensorsInput(path=str(safes["B"]), tensor_key="B"),
-                },
-                uuid="a3",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": SafetensorsInput(path=str(safes["A"]), tensor_key="A"),
-                    "B": SafetensorsInput(path=str(safes["B"]), tensor_key="B"),
-                },
-                uuid="a4",
-            ),
-        ],
-        d_mul.name: [
-            Workload(
-                axes={"M": 8, "N": 16}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="m1"
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "X": SafetensorsInput(path=str(safes["X"]), tensor_key="X"),
-                    "Y": RandomInput(),
-                },
-                uuid="m2",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "X": RandomInput(),
-                    "Y": SafetensorsInput(path=str(safes["Y"]), tensor_key="Y"),
-                },
-                uuid="m3",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "X": SafetensorsInput(path=str(safes["X"]), tensor_key="X"),
-                    "Y": SafetensorsInput(path=str(safes["Y"]), tensor_key="Y"),
-                },
-                uuid="m4",
-            ),
-        ],
-        d_adds.name: [
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={"A": RandomInput(), "B": RandomInput(), "S": ScalarInput(value=1)},
-                uuid="s1",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": SafetensorsInput(path=str(safes["A"]), tensor_key="A"),
-                    "B": RandomInput(),
-                    "S": ScalarInput(value=2),
-                },
-                uuid="s2",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": RandomInput(),
-                    "B": SafetensorsInput(path=str(safes["B"]), tensor_key="B"),
-                    "S": ScalarInput(value=3),
-                },
-                uuid="s3",
-            ),
-            Workload(
-                axes={"M": 8, "N": 16},
-                inputs={
-                    "A": SafetensorsInput(path=str(safes["A"]), tensor_key="A"),
-                    "B": SafetensorsInput(path=str(safes["B"]), tensor_key="B"),
-                    "S": ScalarInput(value=4),
-                },
-                uuid="s4",
-            ),
-        ],
-    }
-    for defn_name, wls in wl_matrix.items():
-        save_jsonl_file(
-            [Trace(definition=defn_name, workload=w) for w in wls],
-            tmp_path / "traces" / "workloads" / f"{defn_name}.jsonl",
-        )
+    workload_trace = Trace(definition="simple_add", workload=workload)
+    save_jsonl_file([workload_trace], tmp_path / "workloads" / "op" / "simple_add.jsonl")
 
-    ts = TraceSet.from_path(str(tmp_path))
-    bench = Benchmark(ts)
+    # Load trace set and run benchmark
+    trace_set = TraceSet.from_path(str(tmp_path))
+    config = BenchmarkConfig(warmup_runs=0, iterations=1, num_trials=1)
+    benchmark = Benchmark(trace_set, config)
 
-    cfg = BenchmarkConfig(warmup_runs=0, iterations=1, num_trials=1)
-    bench.run(cfg)
+    result = benchmark.run_all(dump_traces=True)
+    result_traces = result.traces["simple_add"]
 
-    # Validate in-memory results (avoid on-disk overwrite issue)
-    total_expected = sum(len(wls) * len(sol_matrix[d]) for d, wls in wl_matrix.items())
-    assert len(bench._staging_traces) == total_expected
-    statuses = [t.evaluation.status.value for t in bench._staging_traces]
-    assert any(s == "PASSED" for s in statuses)
-    assert any(s == "INCORRECT_NUMERICAL" for s in statuses)
-    assert any(s == "INCORRECT_DTYPE" for s in statuses)
-    assert any(s == "RUNTIME_ERROR" for s in statuses)
+    # Verify results
+    assert len(result_traces) == 2  # One per solution
 
-    # Flush for I/O path and check files created
-    bench.flush()
-    for d in (d_add, d_mul, d_adds):
-        out_file = tmp_path / "traces" / d.type / f"{d.name}.jsonl"
-        assert out_file.exists()
+    # Should have both correct and incorrect results
+    statuses = [t.evaluation.status for t in result_traces]
+    assert EvaluationStatus.PASSED in statuses
+    assert EvaluationStatus.INCORRECT_NUMERICAL in statuses
+
+    # Check that the traces were stored to the disk
+    assert (tmp_path / "traces" / "op" / "simple_add.jsonl").exists()
+    traces_loaded = load_jsonl_file(Trace, tmp_path / "traces" / "op" / "simple_add.jsonl")
+    assert traces_loaded == result_traces
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
-from flashinfer_bench.apply import enable_apply
-from flashinfer_bench.apply.config import ApplyConfig
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.apply import ApplyConfig, enable_apply
+from flashinfer_bench.data import (
+    BuildSpec,
     Correctness,
     Environment,
     Evaluation,
@@ -9,10 +8,13 @@ from flashinfer_bench.data.trace import (
     Performance,
     RandomInput,
     ScalarInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
     Trace,
+    TraceSet,
     Workload,
 )
-from flashinfer_bench.data.traceset import TraceSet
 
 ts = TraceSet.from_path("../flashinfer-trace")  # path to your flashinfer-trace
 
@@ -34,9 +36,7 @@ if def_name in ts.definitions:
         definition=def_name,
         author="pseudo",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["gpu"],
-            entry_point="main.py::run",
+            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
         ),
         sources=[SourceFile(path="main.py", content=pseudo_code)],
         description="Pseudo solution that prints greeting and returns zero tensors.",

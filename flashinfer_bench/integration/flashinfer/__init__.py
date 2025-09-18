@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from ..patch_manager import get_manager
+from flashinfer_bench.integration.patch_manager import get_manager
+
 from .adapters.gqa_paged_decode import GQAPagedDecodeAdapter
 from .adapters.gqa_paged_prefill import GQAPagedPrefillAdapter
 from .adapters.mla_paged import MLAPagedAdapter
@@ -28,3 +29,6 @@ def install_flashinfer_integrations() -> None:
             continue
         for spec in targets:
             mgr.patch(spec, adp.make_wrapper)
+
+
+__all__ = ["install_flashinfer_integrations"]

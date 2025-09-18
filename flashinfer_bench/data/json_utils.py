@@ -1,9 +1,12 @@
 """Unified JSON encoding/decoding utilities for Pydantic BaseModel objects."""
 
+import json
 from pathlib import Path
-from typing import List, Type, Union
+from typing import Any, Dict, List, Type, TypeVar, Union
 
 from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
@@ -24,7 +27,7 @@ def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
         f.write(object.model_dump_json(indent=2))
 
 
-def load_json_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> BaseModel:
+def load_json_file(model_cls: Type[T], path: Union[str, Path]) -> T:
     """
     Load a Pydantic BaseModel object from a JSON file.
 
@@ -68,12 +71,12 @@ def save_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        object_strs = [obj.model_dump_json(indent=None) for obj in objects]
+        output_str = "\n".join(object_strs) + "\n"
+        f.write(output_str)
 
 
-def load_jsonl_file(model_cls: Type[BaseModel], path: Union[str, Path]) -> List[BaseModel]:
+def load_jsonl_file(model_cls: Type[T], path: Union[str, Path]) -> List[T]:
     """
     Load a list of Pydantic BaseModel objects from a JSONL file. Each line in the JSONL file should
     contain a valid JSON object that can be deserialized into the specified BaseModel class. Empty
@@ -124,6 +127,6 @@ def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
-        for obj in objects:
-            f.write(obj.model_dump_json(indent=None))
-            f.write("\n")
+        object_strs = [obj.model_dump_json(indent=None) for obj in objects]
+        output_str = "\n".join(object_strs) + "\n"
+        f.write(output_str)
