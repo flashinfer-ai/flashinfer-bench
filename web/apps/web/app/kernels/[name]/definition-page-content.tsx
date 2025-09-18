@@ -3,11 +3,10 @@
 import { useState } from "react"
 import { Definition, Solution, Trace, CanonicalWorkload } from "@/lib/schemas"
 import { DefinitionReference } from "./reference"
-import { TracesTable } from "./traces"
 import { DefinitionHeader } from "./header"
 import { AxesSignatureSection } from "./axes-sig"
 import { ConstraintsSection } from "./constraints"
-import { SolutionsSection } from "./solutions"
+import { SolutionsTracesSection } from "./solutions-traces-section"
 
 interface DefinitionPageContentProps {
   definition: Definition
@@ -48,17 +47,8 @@ export function DefinitionPageContent({
             <DefinitionReference definition={definition} />
           </section>
 
-          <SolutionsSection definition={definition} solutions={solutions} />
-
-          {/* Traces Section */}
-          <section id="traces">
-            <h2 className="text-2xl font-semibold mb-4">Traces</h2>
-            <TracesTable
-              traces={traces}
-              solutions={solutions}
-              canonicalWorkloads={canonicalWorkloads}
-            />
-          </section>
+          {/* Solutions & Traces (refactored unified section) */}
+          <SolutionsTracesSection definition={definition} solutions={solutions} traces={traces} />
         </div>
       </div>
     </div>

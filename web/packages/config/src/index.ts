@@ -1,4 +1,4 @@
-export const siteName = 'FlashInfer Bench'
+export const siteName = 'FlashInfer-Bench'
 export const siteDescription = 'AI for AI Infrastructure for Accelerating AI Deployment'
 
 export const links = {
