@@ -29,7 +29,10 @@ from flashinfer_bench.data import (
     Solution,
     Workload,
 )
+from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_dtype_from_def
+
+LOGGER = get_logger("MPRunner")
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -276,13 +279,13 @@ class MultiProcessRunner(Runner):
                     break
 
                 else:
-                    print(f"Unknown worker command: {cmd}")
+                    LOGGER.warning("Unknown worker command: %s", cmd)
                     continue
 
         except EOFError as e:
-            print(f"Worker crashed (EOF) running {sol.name}: {e}")
+            LOGGER.error("Worker crashed (EOF) running %s: %s", sol.name, e)
         except Exception as e:
-            print(f"Unknown error running {sol.name}: {e}")
+            LOGGER.error("Unknown error running %s", sol.name, exc_info=True)
         finally:
             try:
                 parent_conn.close()
