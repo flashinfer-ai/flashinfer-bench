@@ -1,6 +1,5 @@
 import atexit
 import json
-import logging
 import signal
 import threading
 import uuid
@@ -11,6 +10,7 @@ import safetensors.torch
 import torch
 
 from flashinfer_bench.data import Definition
+from flashinfer_bench.logging import get_logger
 
 from .types import TraceEntry, TracingRule
 
@@ -52,7 +52,7 @@ class Tracer:
         self._cuda_graph_entries: List[TraceEntry] = []
         self._in_cuda_graph = False
 
-        self._logger = logging.getLogger(__name__)
+        self._logger = get_logger("Tracer")
 
         # Validate configuration at enable-time
         self._validate()
