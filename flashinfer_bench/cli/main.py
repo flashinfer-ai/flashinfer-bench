@@ -7,7 +7,7 @@ from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
 from flashinfer_bench.logging import configure_logging, get_logger
 
-LOGGER = get_logger("CLI")
+logger = get_logger("CLI")
 
 
 def best(args: argparse.Namespace):
@@ -17,22 +17,22 @@ def best(args: argparse.Namespace):
         for definition in definitions:
             trace = trace_set.get_best_trace(definition)
             if not trace:
-                LOGGER.warning(f"No valid solution found for {definition}.")
+                logger.warning(f"No valid solution found for {definition}.")
                 continue
-            LOGGER.info(f"Best solution for {definition}:")
-            LOGGER.info(f"- Solution: {trace.solution}")
-            LOGGER.info(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
-            LOGGER.info(
+            logger.info(f"Best solution for {definition}:")
+            logger.info(f"- Solution: {trace.solution}")
+            logger.info(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
+            logger.info(
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            LOGGER.info(f"- Log:      {trace.evaluation.log_file}")
+            logger.info(f"- Log:      {trace.evaluation.log_file}")
 
 
 def summary(args: argparse.Namespace):
     trace_sets = _load_traces(args)
     for trace_set in trace_sets:
-        LOGGER.info("%s", trace_set.summary())
+        logger.info("%s", trace_set.summary())
 
 
 def merge_tracesets(trace_sets):
@@ -103,34 +103,34 @@ def merge(args: argparse.Namespace):
     trace_sets = _load_traces(args)
     merged = merge_tracesets(trace_sets)
     export_traceset(merged, args.output)
-    LOGGER.info(f"Merged {len(trace_sets)} TraceSets and exported to {args.output}")
+    logger.info(f"Merged {len(trace_sets)} TraceSets and exported to {args.output}")
 
 
 def visualize(args: argparse.Namespace):
     """Visualize benchmark results as a console table."""
     trace_sets = _load_traces(args)
 
-    LOGGER.info("FlashInfer Bench Results Visualization")
-    LOGGER.info("=" * 80)
+    logger.info("FlashInfer Bench Results Visualization")
+    logger.info("=" * 80)
 
     for i, trace_set in enumerate(trace_sets):
         if len(trace_sets) > 1:
-            LOGGER.info(f"\nDataset {i+1}:")
-            LOGGER.info("-" * 40)
+            logger.info(f"\nDataset {i+1}:")
+            logger.info("-" * 40)
 
         # Print summary statistics
         summary = trace_set.summary()
-        LOGGER.info(f"Summary: {summary['passed']}/{summary['total']} traces passed")
+        logger.info(f"Summary: {summary['passed']}/{summary['total']} traces passed")
         if summary["avg_latency_ms"]:
-            LOGGER.info(f"Average latency: {summary['avg_latency_ms']:.3f}ms")
+            logger.info(f"Average latency: {summary['avg_latency_ms']:.3f}ms")
 
         # Print detailed results table
-        LOGGER.info("\nDetailed Results:")
-        LOGGER.info("-" * 80)
-        LOGGER.info(
+        logger.info("\nDetailed Results:")
+        logger.info("-" * 80)
+        logger.info(
             f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}"
         )
-        LOGGER.info("-" * 80)
+        logger.info("-" * 80)
 
         for def_name, traces in trace_set.traces.items():
             for trace in traces:
@@ -150,13 +150,13 @@ def visualize(args: argparse.Namespace):
                 if isinstance(max_error, (int, float)):
                     max_error = f"{max_error:.2e}"
 
-                LOGGER.info(
+                logger.info(
                     f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}"
                 )
 
         # Print best solutions
-        LOGGER.info("\nBest Solutions:")
-        LOGGER.info("-" * 80)
+        logger.info("\nBest Solutions:")
+        logger.info("-" * 80)
         for def_name in trace_set.definitions.keys():
             best_trace = trace_set.get_best_op(def_name)
             if best_trace:
@@ -165,9 +165,9 @@ def visualize(args: argparse.Namespace):
                 speedup = perf.get("speedup_factor", "N/A")
                 if isinstance(speedup, (int, float)):
                     speedup = f"{speedup:.2f}×"
-                LOGGER.info(f"{def_name}: {best_trace.solution} (Speedup: {speedup})")
+                logger.info(f"{def_name}: {best_trace.solution} (Speedup: {speedup})")
             else:
-                LOGGER.warning(f"{def_name}: No valid solution found")
+                logger.warning(f"{def_name}: No valid solution found")
 
 
 def run(args: argparse.Namespace):
@@ -183,19 +183,16 @@ def run(args: argparse.Namespace):
             num_trials=args.num_trials,
             rtol=args.rtol,
             atol=args.atol,
-            log_level=args.log_level,
         )
-        benchmark = Benchmark(trace_set, config, log_level=args.log_level)
-        LOGGER.info(f"Running benchmark for: {path}")
-        benchmark.run_all()
-        benchmark.flush()
+        benchmark = Benchmark(trace_set, config)
+        logger.info(f"Running benchmark for: {path}")
+        benchmark.run_all(args.save_results)
+        message = "Benchmark run complete."
         if args.save_results:
-            benchmark.flush()
-            LOGGER.info("Results saved.")
+            message += " Results saved."
         else:
-            LOGGER.info(
-                "Benchmark run complete. Results not saved (use --save-results to enable saving)."
-            )
+            message += " Results not saved (use --save-results to enable saving)."
+        logger.info(message)
 
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:

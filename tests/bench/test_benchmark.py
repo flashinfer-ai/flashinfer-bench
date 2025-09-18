@@ -32,7 +32,6 @@ def test_run_all_empty_traceset(tmp_path: Path):
     benchmark = Benchmark(trace_set)
     result = benchmark.run_all()
 
-    assert len(benchmark._traces_to_dump) == 0
     assert len(result.definitions) == 0
     assert len(result.solutions) == 0
     assert len(result.workloads) == 0
@@ -66,7 +65,6 @@ def test_run_all_no_solutions(tmp_path: Path, caplog):
         result = benchmark.run_all()
 
     assert "No solutions found for def=test_def, skipping definition" in caplog.text
-    assert len(benchmark._traces_to_dump) == 0
     assert len(result.traces) == 0
 
 
@@ -106,7 +104,6 @@ def test_run_all_no_workloads(tmp_path: Path):
     benchmark = Benchmark(trace_set)
     result = benchmark.run_all()
 
-    assert len(benchmark._traces_to_dump) == 0
     assert len(result.traces) == 0
 
 
@@ -117,8 +114,8 @@ def test_dump_traces_false(tmp_path: Path):
     benchmark = Benchmark(trace_set)
     result = benchmark.run_all(dump_traces=False)
 
-    # Should not add traces to dump list
-    assert len(benchmark._traces_to_dump) == 0
+    # Should not add traces to the trace set
+    assert len(result.traces) == 0
 
 
 @patch("flashinfer_bench.bench.benchmark.MultiProcessRunner")
@@ -170,86 +167,7 @@ def test_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
         result = benchmark.run_all()
 
     assert "Failed to run workload test_uuid: Simulated runner error" in caplog.text
-    assert len(benchmark._traces_to_dump) == 0
     assert len(result.traces) == 0
-
-
-def test_flush_behavior(tmp_path: Path):
-    """Test flush behavior and backup mechanism."""
-    trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
-
-    benchmark = Benchmark(trace_set)
-
-    # Add some dummy traces to dump
-    dummy_trace = Trace(
-        definition="dummy",
-        workload=Workload(axes={"M": 4}, inputs={"A": RandomInput()}, uuid="test"),
-    )
-
-    # Mock the trace_set methods with side_effect to capture arguments
-    captured_traces = []
-
-    def capture_add_traces(traces):
-        captured_traces.append(traces.copy())  # Make a copy to avoid reference issues
-
-    with patch.object(benchmark._trace_set, "backup_traces") as mock_backup, patch.object(
-        benchmark._trace_set, "add_traces", side_effect=capture_add_traces
-    ) as mock_add_traces:
-
-        # Add trace and flush
-        benchmark._traces_to_dump.append(dummy_trace)
-
-        # First flush should trigger backup
-        benchmark.flush()
-
-        mock_backup.assert_called_once()
-        mock_add_traces.assert_called_once()
-        assert len(captured_traces) == 1
-        assert captured_traces[0] == [dummy_trace]
-        assert benchmark._is_traces_backed_up is True
-        assert len(benchmark._traces_to_dump) == 0
-
-        # Second flush should not trigger backup again
-        mock_backup.reset_mock()
-        mock_add_traces.reset_mock()
-        captured_traces.clear()
-
-        # Add another trace and flush again
-        dummy_trace2 = Trace(
-            definition="dummy2",
-            workload=Workload(axes={"M": 8}, inputs={"A": RandomInput()}, uuid="test2"),
-        )
-        benchmark._traces_to_dump.append(dummy_trace2)  # Add another trace
-        benchmark.flush()
-
-        mock_backup.assert_not_called()  # Should not backup again
-        mock_add_traces.assert_called_once()
-        assert len(captured_traces) == 1
-        assert captured_traces[0] == [dummy_trace2]
-
-
-def test_multiple_run_and_flush(tmp_path: Path):
-    """Test multiple run_all and flush cycles."""
-    trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
-
-    benchmark = Benchmark(trace_set)
-
-    with patch.object(benchmark._trace_set, "backup_traces") as mock_backup, patch.object(
-        benchmark._trace_set, "add_traces"
-    ) as mock_add_traces:
-
-        # First cycle
-        benchmark.run_all()
-        benchmark.flush()
-
-        # Second cycle
-        benchmark.run_all()
-        benchmark.flush()
-
-        # Backup should only be called once
-        assert mock_backup.call_count == 1
-        # add_traces should be called twice
-        assert mock_add_traces.call_count == 2
 
 
 @pytest.mark.skipif(
@@ -322,7 +240,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
     config = BenchmarkConfig(warmup_runs=0, iterations=1, num_trials=1)
     benchmark = Benchmark(trace_set, config)
 
-    result = benchmark.run_all()
+    result = benchmark.run_all(dump_traces=True)
     result_traces = result.traces["simple_add"]
 
     # Verify results
@@ -333,10 +251,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
     assert EvaluationStatus.PASSED in statuses
     assert EvaluationStatus.INCORRECT_NUMERICAL in statuses
 
-    # Flush
-    benchmark.flush()
-
-    # Check that the traces were flushed
+    # Check that the traces were stored to the disk
     assert (tmp_path / "traces" / "op" / "simple_add.jsonl").exists()
     traces_loaded = load_jsonl_file(Trace, tmp_path / "traces" / "op" / "simple_add.jsonl")
     assert traces_loaded == result_traces
