@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation"
-import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getCanonicalWorkloads, getAllDefinitions } from "@/lib/data-loader"
-import { DefinitionPageContent } from "./definition-page-content"
+import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getAllDefinitions } from "@/lib/data-loader"
+import { DefinitionHeader } from "./header"
+import { AxesSignatureSection } from "./axes-sig"
+import { ConstraintsSection } from "./constraints"
+import { DefinitionReference } from "./reference"
+import { SolutionsTracesSection } from "./solutions-traces-section"
 
 export async function generateStaticParams() {
   const definitions = await getAllDefinitions()
@@ -21,18 +25,34 @@ export default async function TraceDetailPage({
     notFound()
   }
 
-  const [solutions, traces, canonicalWorkloads] = await Promise.all([
+  const [solutions, traces] = await Promise.all([
     getSolutionsForDefinition(definition.name),
-    getTracesForDefinition(definition.name),
-    getCanonicalWorkloads(definition.type)
+    getTracesForDefinition(definition.name)
   ])
 
   return (
-    <DefinitionPageContent
-      definition={definition}
-      solutions={solutions}
-      traces={traces}
-      canonicalWorkloads={canonicalWorkloads}
-    />
+    <div className="relative">
+      <DefinitionHeader
+        definition={definition}
+        solutionsCount={solutions.length}
+      />
+
+      <div className="container py-8">
+        <div className="space-y-8">
+          <p className="text-muted-foreground">{definition.description}</p>
+
+          <AxesSignatureSection definition={definition} />
+
+          <ConstraintsSection definition={definition} />
+
+          <section id="reference">
+            <h2 className="text-2xl font-semibold mb-4">Reference Implementation</h2>
+            <DefinitionReference definition={definition} />
+          </section>
+
+          <SolutionsTracesSection definition={definition} solutions={solutions} traces={traces} />
+        </div>
+      </div>
+    </div>
   )
 }

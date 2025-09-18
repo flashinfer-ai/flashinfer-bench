@@ -1,10 +1,15 @@
 "use client"
 
-import { useCallback, useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import * as d3 from "d3"
-import { Card, CardContent, CardHeader, CardTitle, Button } from "@flashinfer-bench/ui"
+import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from "@flashinfer-bench/ui"
 import { BarChart2, Pin as PinIcon, Undo2 } from "lucide-react"
 import type { CurvePoint } from "@/lib/analytics"
+
+export type ScoreboardEntry = {
+  name: string
+  percent: number
+}
 
 export type WinAtPCurvesProps = {
   curves: Record<string, CurvePoint[]>
@@ -12,9 +17,9 @@ export type WinAtPCurvesProps = {
   onHoverP: (p: number | null) => void
   onPinP: (p: number | null) => void
   pinnedP: number | null
-  setSortScores: (scores: Record<string, number>) => void
   headline?: string
   colorFor: (name: string) => string
+  scoreboard: ScoreboardEntry[]
 }
 
 export function WinAtPCurves({
@@ -23,26 +28,25 @@ export function WinAtPCurves({
   onHoverP,
   onPinP,
   pinnedP,
-  setSortScores,
   headline,
   colorFor,
+  scoreboard,
 }: WinAtPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const lastScoresRef = useRef<Record<string, number>>({})
+  const hintShownRef = useRef(false)
+  const hideHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showPinHint, setShowPinHint] = useState(false)
 
-  function shallowEqualScores(next: Record<string, number>, prev: Record<string, number>) {
-    const nextKeys = Object.keys(next)
-    const prevKeys = Object.keys(prev)
-    if (nextKeys.length !== prevKeys.length) return false
-    return nextKeys.every((key) => next[key] === prev[key])
-  }
-
-  const updateScores = useCallback((nextScores: Record<string, number>) => {
-    if (!shallowEqualScores(nextScores, lastScoresRef.current)) {
-      lastScoresRef.current = nextScores
-      setSortScores(nextScores)
+  useEffect(() => {
+    if (pinnedP != null) {
+      setShowPinHint(false)
+      hintShownRef.current = true
+      if (hideHintTimerRef.current) {
+        clearTimeout(hideHintTimerRef.current)
+        hideHintTimerRef.current = null
+      }
     }
-  }, [setSortScores])
+  }, [pinnedP])
 
   useEffect(() => {
     const chartSize = { width: 1000, height: 360, marginLeft: 48, marginRight: 16, marginTop: 16, marginBottom: 36 }
@@ -62,16 +66,6 @@ export function WinAtPCurves({
       .x((point) => xScale(point.p))
       .y((point) => yScale(point.percent))
       .curve(d3.curveStepAfter)
-
-    const scoresAt = (pValue: number) => {
-      const scores: Record<string, number> = {}
-      for (const [name, points] of Object.entries(curves)) {
-        if (!visible.has(name) || points.length === 0) continue
-        const index = Math.round(pValue * (points.length - 1))
-        scores[name] = points[index]?.percent ?? 0
-      }
-      return scores
-    }
 
     for (const [name, points] of Object.entries(curves)) {
       if (!visible.has(name)) continue
@@ -109,12 +103,20 @@ export function WinAtPCurves({
         const pValue = Math.max(0, Math.min(1, xScale.invert(mouseX)))
         onHoverP(pValue)
         verticalLine.style("display", null).attr("x1", mouseX).attr("x2", mouseX)
-        updateScores(scoresAt(pValue))
+
+        if (pinnedP == null && !hintShownRef.current) {
+          hintShownRef.current = true
+          setShowPinHint(true)
+          if (hideHintTimerRef.current) clearTimeout(hideHintTimerRef.current)
+          hideHintTimerRef.current = setTimeout(() => {
+            setShowPinHint(false)
+            hideHintTimerRef.current = null
+          }, 2500)
+        }
       })
       .on("mouseleave", function () {
         onHoverP(null)
         verticalLine.style("display", "none")
-        updateScores(scoresAt(0.95))
       })
       .on("click", function (event) {
         const [mouseX] = d3.pointer(event as any)
@@ -132,16 +134,13 @@ export function WinAtPCurves({
         .attr("y2", chartSize.height - chartSize.marginBottom)
         .attr("stroke", "#0ea5e9")
         .attr("stroke-width", 2)
-      updateScores(scoresAt(pinnedP))
-    } else {
-      updateScores(scoresAt(0.95))
     }
 
     return () => {
       overlay.on("mousemove", null).on("mouseleave", null).on("click", null)
       svg.selectAll("*").remove()
     }
-  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, updateScores])
+  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP])
 
   return (
     <Card>
@@ -165,7 +164,14 @@ export function WinAtPCurves({
         {headline && <div className="text-xs text-muted-foreground">{headline}</div>}
       </CardHeader>
       <CardContent>
-        <svg ref={svgRef} className="w-full h-auto" />
+        <div className="relative">
+          {showPinHint && pinnedP == null && (
+            <div className="absolute right-4 top-4 z-10 rounded-md bg-background/95 px-3 py-2 text-xs shadow">
+              Click to pin p
+            </div>
+          )}
+          <svg ref={svgRef} className="w-full h-auto" />
+        </div>
       </CardContent>
     </Card>
   )

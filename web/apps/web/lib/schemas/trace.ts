@@ -76,6 +76,7 @@ export const WorkloadInputSchema = z.discriminatedUnion("type", [
 
 // Workload schema
 export const WorkloadSchema = z.object({
+  uuid: z.string(),
   axes: z.record(z.string(), z.number()), // Concrete values for variable axes
   inputs: z.record(z.string(), WorkloadInputSchema),
 })

@@ -14,12 +14,6 @@ export type CurvesPayload = {
   correctness: Record<string, CorrectnessStats>
 }
 
-export type WorkloadFiltersState = {
-  axisRanges: Record<string, { min: number; max: number }>
-  devices: string[]
-  onlyPassed: boolean
-}
-
 export type SolutionFiltersState = {
   languages: string[]
   authors: string[]

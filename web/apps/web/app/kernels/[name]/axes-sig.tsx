@@ -19,15 +19,8 @@ import { Info } from "lucide-react"
 import { Definition } from "@/lib/schemas"
 import { cn } from "@flashinfer-bench/utils"
 
-export function AxesSignatureSection({
-  definition,
-  hoveredAxis,
-  setHoveredAxis,
-}: {
-  definition: Definition
-  hoveredAxis: string | null
-  setHoveredAxis: (v: string | null) => void
-}) {
+export function AxesSignatureSection({ definition }: { definition: Definition }) {
+  const [hoveredAxis, setHoveredAxis] = useState<string | null>(null)
   const [hoveredTensor, setHoveredTensor] = useState<string | null>(null)
 
   return (

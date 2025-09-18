@@ -48,8 +48,7 @@ function stableStringify(obj: any): string {
 }
 
 export function groupIdForTrace(t: Trace): WorkloadGroupId {
-  // Group by concrete axes values (definition is scoped by page)
-  return stableStringify(t.workload?.axes || {})
+  return t.workload?.uuid || ""
 }
 
 function passesFilters(t: Trace, wf?: WorkloadFilters): boolean {
@@ -232,29 +231,71 @@ export function computeWinAtPCurves(params: {
   return { nWorkloads, curves, correctness }
 }
 
-export function computeMeetsMisses(params: {
+export type SolutionTraceComparison = {
+  workloadId: WorkloadGroupId
+  traces: Trace[]
+  baseline?: Trace
+  candidate?: Trace
+  baselineLatency?: number | null
+  candidateLatency?: number | null
+  ratio?: number | null
+}
+
+export type SolutionTraceBuckets = {
+  faster: SolutionTraceComparison[]
+  slower: SolutionTraceComparison[]
+  incorrect: SolutionTraceComparison[]
+}
+
+export function computeSolutionTraceBuckets(params: {
   traces: Trace[]
   solutions: Solution[]
-  workloadFilters?: WorkloadFilters
   solutionName: string
   p: number
-}): { meets: WorkloadGroupId[]; misses: WorkloadGroupId[]; byGroup: Record<string, Trace[]> } {
-  const { traces, solutions, workloadFilters, solutionName, p } = params
+}): SolutionTraceBuckets {
+  const { traces, solutions, solutionName, p } = params
   const solMap = solutionMap(solutions)
-  const groups = buildWorkloadGroups(traces, workloadFilters)
-  const meets: WorkloadGroupId[] = []
-  const misses: WorkloadGroupId[] = []
-  const byGroup: Record<string, Trace[]> = {}
+  const groups = buildWorkloadGroups(traces)
+  const faster: SolutionTraceComparison[] = []
+  const slower: SolutionTraceComparison[] = []
+  const incorrect: SolutionTraceComparison[] = []
 
-  for (const [gid, trs] of groups) {
-    const baselineLatency = pickBaselineLatency(trs, solMap)
-    if (baselineLatency == null) continue
-    const candidate = trs.find((t) => t.solution === solutionName)
-    if (!candidate || !candidate.evaluation?.performance?.latency_ms) continue
-    const r = baselineLatency / candidate.evaluation.performance.latency_ms
-    if (r >= p) meets.push(gid)
-    else misses.push(gid)
-    byGroup[gid] = trs
+  for (const [workloadId, groupTraces] of groups) {
+    const candidate = groupTraces.find((trace) => trace.solution === solutionName)
+    if (!candidate) continue
+
+    const comparison: SolutionTraceComparison = {
+      workloadId,
+      traces: groupTraces,
+      candidate,
+      candidateLatency: candidate.evaluation?.performance?.latency_ms ?? null,
+    }
+
+    const status = candidate.evaluation?.status
+    if (!status || status !== "PASSED") {
+      incorrect.push(comparison)
+      continue
+    }
+
+    const baselineLatency = pickBaselineLatency(groupTraces, solMap)
+    if (baselineLatency == null || !comparison.candidateLatency) {
+      slower.push({ ...comparison, baselineLatency, ratio: null })
+      continue
+    }
+
+    const baselineTrace = groupTraces.find(
+      (trace) => trace.evaluation?.performance?.latency_ms === baselineLatency
+    )
+
+    const ratio = baselineLatency / comparison.candidateLatency
+    const target = ratio >= p ? faster : slower
+    target.push({
+      ...comparison,
+      baseline: baselineTrace,
+      baselineLatency,
+      ratio,
+    })
   }
-  return { meets, misses, byGroup }
+
+  return { faster, slower, incorrect }
 }

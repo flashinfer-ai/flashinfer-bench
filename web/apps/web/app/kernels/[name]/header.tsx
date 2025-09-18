@@ -9,11 +9,9 @@ import { Definition } from "@/lib/schemas"
 export function DefinitionHeader({
   definition,
   solutionsCount,
-  tracesCount,
 }: {
   definition: Definition
   solutionsCount: number
-  tracesCount: number
 }) {
   const [copiedItem, setCopiedItem] = useState<string | null>(null)
 
@@ -62,10 +60,6 @@ export function DefinitionHeader({
             <span className="text-muted-foreground">·</span>
             <a href="#solutions" className="hover:underline">
               Solutions ({solutionsCount})
-            </a>
-            <span className="text-muted-foreground">·</span>
-            <a href="#traces" className="hover:underline">
-              Traces ({tracesCount})
             </a>
           </div>
         </div>

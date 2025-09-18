@@ -1,65 +1,75 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Button, toast } from "@flashinfer-bench/ui"
+import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
-import { SolutionsList } from "./solutions-list"
-import { WinAtPCurves } from "./win-at-p-curves"
-import { WorkloadsTable } from "./workloads-table"
-import { SolutionsTracesToolbar } from "./solutions-traces-toolbar"
-import { SideDrawer } from "./side-drawer"
+import { WinAtPCurves, type ScoreboardEntry } from "./win-at-p-curves"
+import { SolutionsList, type FilterChip } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
-import { X } from "lucide-react"
-import type { CurvesPayload, SolutionFiltersState, WorkloadFiltersState } from "./solutions-traces-types"
+import { computeSolutionTraceBuckets, type SolutionTraceBuckets } from "@/lib/analytics"
+import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-traces-types"
 
-const MAX_VISIBLE_SOLUTIONS = 10
+const DEFAULT_MAX_VISIBLE = 10
+const DEFAULT_PIN = 0.95
 
-const COLOR_PALETTE = [
-  "#4e79a7",
-  "#f28e2b",
-  "#e15759",
-  "#76b7b2",
-  "#59a14f",
-  "#edc949",
-  "#af7aa1",
-  "#ff9da7",
-  "#9c755f",
-  "#bab0ab",
-  "#1f77b4",
-  "#ff7f0e",
-  "#2ca02c",
-  "#d62728",
-  "#9467bd",
-  "#8c564b",
-  "#e377c2",
-  "#7f7f7f",
-  "#bcbd22",
-  "#17becf",
-]
+const initialSF: SolutionFiltersState = { languages: [], authors: [], targets: [], search: "" }
 
-function deriveUniqueDevices(traces: Trace[]): string[] {
-  const devices = new Set<string>()
-  for (const trace of traces) {
-    const device = trace.evaluation?.environment.device || trace.evaluation?.environment.hardware
-    if (device) devices.add(device)
+function matchesSolutionFilters(solution: Solution, filters: SolutionFiltersState) {
+  if (filters.languages.length && !filters.languages.includes(solution.spec.language)) return false
+  if (filters.authors.length && !filters.authors.includes(solution.author)) return false
+  if (filters.targets.length && !solution.spec.target_hardware.some((target) => filters.targets.includes(target))) return false
+  if (filters.search.trim()) {
+    const q = filters.search.trim().toLowerCase()
+    const haystack = `${solution.name} ${solution.author} ${solution.spec.language} ${solution.spec.target_hardware.join(" ")}`.toLowerCase()
+    if (!haystack.includes(q)) return false
   }
-  return Array.from(devices).sort()
+  return true
 }
 
-function deriveAxisRanges(traces: Trace[]): Record<string, { min: number; max: number }> {
-  const ranges: Record<string, { min: number; max: number }> = {}
-  for (const trace of traces) {
-    const axes = trace.workload?.axes || {}
-    for (const [axis, value] of Object.entries(axes)) {
-      if (typeof value !== "number") continue
-      if (!ranges[axis]) ranges[axis] = { min: value, max: value }
-      else {
-        ranges[axis].min = Math.min(ranges[axis].min, value)
-        ranges[axis].max = Math.max(ranges[axis].max, value)
-      }
+function buildScoreMap(curves: CurvesPayload | null, p: number): Record<string, number> {
+  const map: Record<string, number> = {}
+  if (!curves) return map
+  for (const [name, points] of Object.entries(curves.curves || {})) {
+    if (!points.length) {
+      map[name] = 0
+      continue
     }
+    const index = Math.round(Math.max(0, Math.min(1, p)) * (points.length - 1))
+    map[name] = points[index]?.percent ?? 0
   }
-  return ranges
+  return map
+}
+
+function compareSolutions(
+  a: Solution,
+  b: Solution,
+  correctness: Record<string, CorrectnessStats | undefined>,
+  scoreMap: Record<string, number>
+) {
+  const statsA = correctness[a.name]
+  const statsB = correctness[b.name]
+  const totalA = statsA?.total ?? 0
+  const totalB = statsB?.total ?? 0
+  const passedA = statsA?.passed ?? 0
+  const passedB = statsB?.passed ?? 0
+  const allPassedA = totalA > 0 && passedA === totalA
+  const allPassedB = totalB > 0 && passedB === totalB
+  const scoreA = scoreMap[a.name] ?? 0
+  const scoreB = scoreMap[b.name] ?? 0
+  if (allPassedA && allPassedB) {
+    if (scoreB !== scoreA) return scoreB - scoreA
+    if (totalB !== totalA) return totalB - totalA
+    return a.name.localeCompare(b.name)
+  }
+  if (allPassedA !== allPassedB) {
+    return allPassedA ? -1 : 1
+  }
+  const passRateA = totalA > 0 ? passedA / totalA : 0
+  const passRateB = totalB > 0 ? passedB / totalB : 0
+  if (passRateB !== passRateA) return passRateB - passRateA
+  if (totalB !== totalA) return totalB - totalA
+  if (scoreB !== scoreA) return scoreB - scoreA
+  return a.name.localeCompare(b.name)
 }
 
 export type SolutionsTracesSectionProps = {
@@ -69,140 +79,182 @@ export type SolutionsTracesSectionProps = {
 }
 
 export function SolutionsTracesSection({ definition, solutions, traces }: SolutionsTracesSectionProps) {
-  const initialWorkloadFilters: WorkloadFiltersState = { axisRanges: {}, devices: [], onlyPassed: true }
-  const initialSolutionFilters: SolutionFiltersState = { languages: [], authors: [], targets: [], search: "" }
-
   const searchParams = useSearchParams()
-  const [workloadFilters, setWorkloadFilters] = useState<WorkloadFiltersState>(initialWorkloadFilters)
-  const [solutionFilters, setSolutionFilters] = useState<SolutionFiltersState>(initialSolutionFilters)
-  const initialSolutionsRef = useRef<string[] | null>(null)
-  const initialFocusRef = useRef<string | null>(null)
 
+  const [sfState, setSfState] = useState<SolutionFiltersState>(initialSF)
   const [curves, setCurves] = useState<CurvesPayload | null>(null)
   const [visibleSolutions, setVisibleSolutions] = useState<Set<string>>(new Set())
-  const [focusedSolution, setFocusedSolution] = useState<string | null>(null)
-  const [pinnedP, setPinnedP] = useState<number | null>(null)
-  const [sortScores, setSortScores] = useState<Record<string, number>>({})
-  const [searchQuery, setSearchQuery] = useState("")
+  const [expandedSolution, setExpandedSolution] = useState<string | null>(null)
+  const [pinnedP, setPinnedP] = useState<number | null>(DEFAULT_PIN)
+  const initialSolutionsRef = useRef<string[] | null>(null)
+  const initialExpandedRef = useRef<string | null>(null)
+  const lastQueryRef = useRef<string>("")
+  const hasInitializedVisibleRef = useRef(false)
 
-  const [isWorkloadDrawerOpen, setWorkloadDrawerOpen] = useState(false)
-  const [isSolutionDrawerOpen, setSolutionDrawerOpen] = useState(false)
-
-  const devices = useMemo(() => deriveUniqueDevices(traces), [traces])
-  const axisRangesAll = useMemo(() => deriveAxisRanges(traces), [traces])
-  const axisKeyOrder = useMemo(() => Object.keys(axisRangesAll).sort(), [axisRangesAll])
+  const axisKeyOrder = useMemo(() => {
+    const axes = new Set<string>()
+    for (const trace of traces) {
+      Object.keys(trace.workload?.axes || {}).forEach((axis) => axes.add(axis))
+    }
+    return Array.from(axes).sort()
+  }, [traces])
 
   const [colorMap] = useState(() => new Map<string, string>())
+  const palette = useMemo(
+    () => [
+      "#4e79a7",
+      "#f28e2b",
+      "#e15759",
+      "#76b7b2",
+      "#59a14f",
+      "#edc949",
+      "#af7aa1",
+      "#ff9da7",
+      "#9c755f",
+      "#bab0ab",
+      "#1f77b4",
+      "#ff7f0e",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b",
+      "#e377c2",
+      "#7f7f7f",
+      "#bcbd22",
+      "#17becf",
+    ],
+    []
+  )
+
   const colorFor = useCallback(
     (name: string) => {
       if (colorMap.has(name)) return colorMap.get(name) as string
       let hash = 0
       for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-      const color = COLOR_PALETTE[hash % COLOR_PALETTE.length]
+      const color = palette[hash % palette.length]
       colorMap.set(name, color)
       return color
     },
-    [colorMap],
+    [colorMap, palette]
   )
 
+  const availableLanguages = useMemo(
+    () => Array.from(new Set(solutions.map((solution) => solution.spec.language))).sort(),
+    [solutions]
+  )
+
+  const availableAuthors = useMemo(
+    () => Array.from(new Set(solutions.map((solution) => solution.author))).sort(),
+    [solutions]
+  )
+
+  const availableTargets = useMemo(
+    () => Array.from(new Set(solutions.flatMap((solution) => solution.spec.target_hardware))).sort(),
+    [solutions]
+  )
+
+  // Read state from URL on first render
   useEffect(() => {
-    const onlyPassed = searchParams.get("onlyPassed") === "1"
-    const devicesFromUrl = (searchParams.get("devices") || "").split(",").filter(Boolean)
-    const axisRangesParam = searchParams.get("axisRanges")
-    let axisRanges: WorkloadFiltersState["axisRanges"] = {}
-    if (axisRangesParam) {
-      try {
-        axisRanges = JSON.parse(axisRangesParam)
-      } catch (error) {
-        toast({ title: "Invalid axisRanges", description: "Failed to parse axisRanges from URL.", variant: "destructive" })
-      }
-    }
-    setWorkloadFilters((current) => ({ ...current, onlyPassed, devices: devicesFromUrl, axisRanges }))
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : searchParams
+    const languages = (params.get("languages") || "").split(",").filter(Boolean)
+    const authors = (params.get("authors") || "").split(",").filter(Boolean)
+    const targets = (params.get("targets") || "").split(",").filter(Boolean)
+    const search = params.get("search") || ""
+    setSfState({ languages, authors, targets, search })
 
-    const languages = (searchParams.get("languages") || "").split(",").filter(Boolean)
-    const authors = (searchParams.get("authors") || "").split(",").filter(Boolean)
-    const targets = (searchParams.get("targets") || "").split(",").filter(Boolean)
-    const search = searchParams.get("search") || ""
-    setSolutionFilters({ languages, authors, targets, search })
-
-    const solutionsParam = (searchParams.get("solutions") || "").split(",").filter(Boolean)
-    const focusParam = searchParams.get("focus") || null
-    if (solutionsParam.length) initialSolutionsRef.current = solutionsParam
-    if (focusParam) initialFocusRef.current = focusParam
-    const pinnedParam = searchParams.get("p")
-    if (pinnedParam != null) setPinnedP(Math.max(0, Math.min(1, Number(pinnedParam))))
+    const initialVisible = (params.get("solutions") || "").split(",").filter(Boolean)
+    const initialExpanded = params.get("focus") || null
+    const pParam = params.get("p")
+    if (initialVisible.length) initialSolutionsRef.current = initialVisible
+    if (initialExpanded) initialExpandedRef.current = initialExpanded
+    if (pParam != null) setPinnedP(Math.max(0, Math.min(1, Number(pParam))))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Fetch curves when filters change
   useEffect(() => {
     const params = new URLSearchParams()
-    if (workloadFilters.onlyPassed) params.set("onlyPassed", "1")
-    if (workloadFilters.devices.length) params.set("devices", workloadFilters.devices.join(","))
-    if (Object.keys(workloadFilters.axisRanges).length) params.set("axisRanges", JSON.stringify(workloadFilters.axisRanges))
-    if (solutionFilters.languages.length) params.set("languages", solutionFilters.languages.join(","))
-    if (solutionFilters.authors.length) params.set("authors", solutionFilters.authors.join(","))
-    if (solutionFilters.targets.length) params.set("targets", solutionFilters.targets.join(","))
-    if (solutionFilters.search) params.set("search", solutionFilters.search)
+    if (sfState.languages.length) params.set("languages", sfState.languages.join(","))
+    if (sfState.authors.length) params.set("authors", sfState.authors.join(","))
+    if (sfState.targets.length) params.set("targets", sfState.targets.join(","))
+    if (sfState.search) params.set("search", sfState.search)
 
     fetch(`/api/definitions/${encodeURIComponent(definition.name)}/curves?${params.toString()}`)
       .then((response) => response.json())
       .then((data: CurvesPayload) => {
         setCurves(data)
-        if (visibleSolutions.size === 0) {
-          if (initialSolutionsRef.current && initialSolutionsRef.current.length) {
-            setVisibleSolutions(new Set(initialSolutionsRef.current))
-            setFocusedSolution(initialFocusRef.current || initialSolutionsRef.current[0] || null)
-            initialSolutionsRef.current = null
-            initialFocusRef.current = null
-          } else {
-            const sortedByPass = Object.entries(data.correctness || {})
-              .filter(([, stats]) => (stats?.passed || 0) > 0)
-              .sort((a, b) => (b[1]?.passed || 0) - (a[1]?.passed || 0) || a[0].localeCompare(b[0]))
-              .map(([name]) => name)
-            const initial = sortedByPass.slice(0, MAX_VISIBLE_SOLUTIONS)
-            setVisibleSolutions(new Set(initial))
-            setFocusedSolution(initial[0] || null)
+
+        if (!hasInitializedVisibleRef.current) {
+          const scoreLookup = buildScoreMap(data, DEFAULT_PIN)
+          const ranked = solutions
+            .slice()
+            .sort((a, b) =>
+              compareSolutions(
+                a,
+                b,
+                data.correctness || {},
+                scoreLookup
+              )
+            )
+
+          const allPassedCount = ranked.filter((solution) => {
+            const stats = data.correctness?.[solution.name]
+            return stats && stats.total > 0 && stats.passed === stats.total
+          }).length
+
+          const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.max(1, Math.min(4, allPassedCount)))
+          const fromUrl = initialSolutionsRef.current
+          const selected = new Set<string>()
+
+          if (fromUrl && fromUrl.length) {
+            fromUrl.forEach((name) => {
+              if (ranked.some((solution) => solution.name === name)) {
+                selected.add(name)
+              }
+            })
           }
+
+          for (const solution of ranked) {
+            if (selected.size >= desiredCount) break
+            selected.add(solution.name)
+          }
+
+          if (!selected.size && ranked.length) {
+            selected.add(ranked[0].name)
+          }
+
+          setVisibleSolutions(selected)
+          if (initialExpandedRef.current) setExpandedSolution(initialExpandedRef.current)
+          initialSolutionsRef.current = null
+          initialExpandedRef.current = null
+          hasInitializedVisibleRef.current = true
         }
       })
       .catch((error) => console.error("failed to fetch curves", error))
-  }, [definition.name, workloadFilters, solutionFilters, visibleSolutions.size])
+  }, [definition.name, sfState, solutions])
 
+  // Keep URL in sync with state
   useEffect(() => {
-    if (pinnedP == null) setPinnedP(0.95)
-  }, [pinnedP])
-
-  const lastQueryRef = useRef<string>("")
-  useEffect(() => {
-    const isBrowser = typeof window !== "undefined"
-    if (!isBrowser) return
+    if (typeof window === "undefined") return
     const params = new URLSearchParams(window.location.search)
 
-    params.delete("onlyPassed")
-    params.delete("devices")
-    params.delete("axisRanges")
     params.delete("languages")
     params.delete("authors")
     params.delete("targets")
     params.delete("search")
+    params.delete("solutions")
+    params.delete("focus")
+    params.delete("p")
 
-    if (workloadFilters.onlyPassed) params.set("onlyPassed", "1")
-    if (workloadFilters.devices.length) params.set("devices", workloadFilters.devices.join(","))
-    if (Object.keys(workloadFilters.axisRanges).length) params.set("axisRanges", JSON.stringify(workloadFilters.axisRanges))
-    if (solutionFilters.languages.length) params.set("languages", solutionFilters.languages.join(","))
-    if (solutionFilters.authors.length) params.set("authors", solutionFilters.authors.join(","))
-    if (solutionFilters.targets.length) params.set("targets", solutionFilters.targets.join(","))
-    if (solutionFilters.search) params.set("search", solutionFilters.search)
+    if (sfState.languages.length) params.set("languages", sfState.languages.join(","))
+    if (sfState.authors.length) params.set("authors", sfState.authors.join(","))
+    if (sfState.targets.length) params.set("targets", sfState.targets.join(","))
+    if (sfState.search) params.set("search", sfState.search)
 
-    if (pinnedP != null) params.set("p", String(pinnedP.toFixed(2)))
-    else params.delete("p")
-
-    const selections = Array.from(visibleSolutions)
-    if (selections.length) params.set("solutions", selections.join(","))
-    else params.delete("solutions")
-
-    if (focusedSolution) params.set("focus", focusedSolution)
-    else params.delete("focus")
+    const selectedSolutions = Array.from(visibleSolutions)
+    if (selectedSolutions.length) params.set("solutions", selectedSolutions.join(","))
+    if (expandedSolution) params.set("focus", expandedSolution)
+    if (pinnedP != null) params.set("p", pinnedP.toFixed(2))
 
     const next = params.toString()
     if (next !== lastQueryRef.current) {
@@ -210,322 +262,180 @@ export function SolutionsTracesSection({ definition, solutions, traces }: Soluti
       const newUrl = `${window.location.pathname}${next ? `?${next}` : ""}`
       window.history.replaceState(null, "", newUrl)
     }
-  }, [workloadFilters, solutionFilters, pinnedP, visibleSolutions, focusedSolution])
+  }, [sfState, visibleSolutions, expandedSolution, pinnedP])
 
-  const chips = useMemo(() => {
-    const entries: { label: string; onRemove?: () => void }[] = []
-    if (workloadFilters.onlyPassed)
-      entries.push({ label: "Only PASSED", onRemove: () => setWorkloadFilters((filters) => ({ ...filters, onlyPassed: false })) })
-    for (const device of workloadFilters.devices)
-      entries.push({ label: `Device:${device}`, onRemove: () => setWorkloadFilters((filters) => ({ ...filters, devices: filters.devices.filter((d) => d !== device) })) })
-    for (const [axis, range] of Object.entries(workloadFilters.axisRanges))
-      entries.push({
-        label: `${axis}∈[${range.min},${range.max}]`,
-        onRemove: () => setWorkloadFilters((filters) => {
-          const nextRanges = { ...filters.axisRanges }
-          delete nextRanges[axis]
-          return { ...filters, axisRanges: nextRanges }
-        }),
-      })
-    for (const language of solutionFilters.languages)
-      entries.push({ label: `Lang:${language}`, onRemove: () => setSolutionFilters((filters) => ({ ...filters, languages: filters.languages.filter((value) => value !== language) })) })
-    for (const author of solutionFilters.authors)
-      entries.push({ label: `Author:${author}`, onRemove: () => setSolutionFilters((filters) => ({ ...filters, authors: filters.authors.filter((value) => value !== author) })) })
-    for (const target of solutionFilters.targets)
-      entries.push({ label: `Target:${target}`, onRemove: () => setSolutionFilters((filters) => ({ ...filters, targets: filters.targets.filter((value) => value !== target) })) })
-    return entries
-  }, [workloadFilters, solutionFilters])
+  const filteredSolutions = useMemo(
+    () => solutions.filter((solution) => matchesSolutionFilters(solution, sfState)),
+    [solutions, sfState]
+  )
 
-  const toggleVisible = useCallback((name: string) => {
-    setVisibleSolutions((previous) => {
-      const updated = new Set(previous)
-      if (updated.has(name)) {
-        updated.delete(name)
-        return updated
-      }
-      if (updated.size >= MAX_VISIBLE_SOLUTIONS) {
-        toast({ title: "Too many lines", description: `Limit ${MAX_VISIBLE_SOLUTIONS} curves for clarity.`, variant: "destructive" })
-        return previous
-      }
-      updated.add(name)
-      return updated
+  // Remove selections that are no longer visible
+  useEffect(() => {
+    setVisibleSolutions((current) => {
+      const allowed = new Set(filteredSolutions.map((s) => s.name))
+      const next = new Set(Array.from(current).filter((name) => allowed.has(name)))
+      if (next.size === current.size) return current
+      return next
     })
+  }, [filteredSolutions])
+
+  useEffect(() => {
+    if (expandedSolution && !filteredSolutions.some((s) => s.name === expandedSolution)) {
+      setExpandedSolution(null)
+    }
+  }, [filteredSolutions, expandedSolution])
+
+  const scoreMap = useMemo(() => buildScoreMap(curves, pinnedP ?? DEFAULT_PIN), [curves, pinnedP])
+
+  const scoreboard: ScoreboardEntry[] = useMemo(() => {
+    if (!visibleSolutions.size) return []
+    return Array.from(visibleSolutions)
+      .map((name) => ({ name, percent: scoreMap[name] ?? 0 }))
+      .sort((a, b) => b.percent - a.percent)
+  }, [visibleSolutions, scoreMap])
+
+  const sortedSolutions = useMemo(() => {
+    const correctness = curves?.correctness || {}
+    return filteredSolutions.slice().sort((a, b) => compareSolutions(a, b, correctness, scoreMap))
+  }, [filteredSolutions, curves?.correctness, scoreMap])
+
+  const traceBuckets: SolutionTraceBuckets | null = useMemo(() => {
+    if (!expandedSolution || pinnedP == null) return null
+    return computeSolutionTraceBuckets({
+      traces,
+      solutions,
+      solutionName: expandedSolution,
+      p: pinnedP,
+    })
+  }, [expandedSolution, pinnedP, traces, solutions])
+
+  const filterChips: FilterChip[] = useMemo(() => {
+    const chips: FilterChip[] = []
+    for (const lang of sfState.languages) {
+      chips.push({
+        label: `Lang:${lang}`,
+        onRemove: () => setSfState((state) => ({ ...state, languages: state.languages.filter((l) => l !== lang) })),
+      })
+    }
+    for (const author of sfState.authors) {
+      chips.push({
+        label: `Author:${author}`,
+        onRemove: () => setSfState((state) => ({ ...state, authors: state.authors.filter((a) => a !== author) })),
+      })
+    }
+    for (const target of sfState.targets) {
+      chips.push({
+        label: `Target:${target}`,
+        onRemove: () => setSfState((state) => ({ ...state, targets: state.targets.filter((t) => t !== target) })),
+      })
+    }
+    if (sfState.search) {
+      chips.push({ label: `Search:${sfState.search}`, onRemove: () => setSfState((state) => ({ ...state, search: "" })) })
+    }
+    return chips
+  }, [sfState])
+
+  const handleToggleSolution = useCallback(
+    (name: string) => {
+      setVisibleSolutions((current) => {
+        const next = new Set(current)
+        if (next.has(name)) {
+          next.delete(name)
+          return next
+        }
+        if (next.size >= DEFAULT_MAX_VISIBLE) {
+          toast({ title: "Too many lines", description: `Limit ${DEFAULT_MAX_VISIBLE} curves for clarity.`, variant: "destructive" })
+          return current
+        }
+        colorFor(name)
+        next.add(name)
+        return next
+      })
+    },
+    [colorFor]
+  )
+
+  const handleExpandSolution = useCallback((name: string) => {
+    setExpandedSolution((current) => (current === name ? null : name))
   }, [])
 
-  const visibleCurves = useMemo(() => {
-    const subset: Record<string, CurvesPayload["curves"][string]> = {}
-    if (!curves) return subset
-    for (const [name, points] of Object.entries(curves.curves)) {
-      if (visibleSolutions.has(name)) subset[name] = points
-    }
-    return subset
-  }, [curves, visibleSolutions])
+  const handlePinDefault = useCallback(() => {
+    setPinnedP(DEFAULT_PIN)
+  }, [])
+
+  const handleOpenTrace = useCallback((trace: Trace) => {
+    toast({ title: "Trace viewer", description: `Trace ${trace.workload?.uuid || trace.solution} coming soon.` })
+  }, [])
 
   const counts = useMemo(
-    () => ({ solutions: Object.keys(curves?.curves || {}).length, workloads: curves?.nWorkloads || 0 }),
-    [curves],
+    () => ({
+      solutions: Object.keys(curves?.curves || {}).length,
+      workloads: curves?.nWorkloads || 0,
+    }),
+    [curves]
   )
-
-  const solutionsForList = useMemo(
-    () =>
-      Object.keys(curves?.curves || {})
-        .map((name) => solutions.find((solution) => solution.name === name))
-        .filter(Boolean) as Solution[],
-    [curves, solutions],
-  )
-
-  const handleHoverP = useCallback((_value: number | null) => {
-    // Placeholder to keep Win@p hover plumbing intact
-  }, [])
 
   return (
-    <section id="solutions-traces" className="space-y-6">
-      <h2 className="text-2xl font-semibold mb-2">Solutions & Traces</h2>
+    <section id="solutions" className="space-y-6">
+      <h2 className="text-2xl font-semibold">Solutions</h2>
 
-      <SolutionsTracesToolbar
-        onOpenWorkload={() => setWorkloadDrawerOpen(true)}
-        onOpenSolution={() => setSolutionDrawerOpen(true)}
-        chips={chips}
-        counts={counts}
+      <WinAtPCurves
+        curves={curves?.curves || {}}
+        visible={visibleSolutions}
+        onHoverP={() => {}}
+        onPinP={setPinnedP}
+        pinnedP={pinnedP}
+        headline={`n = ${counts.workloads} workloads. Baseline prefers FlashInfer else fastest.`}
+        colorFor={colorFor}
+        scoreboard={scoreboard}
       />
 
-      <div className="container py-6 space-y-6">
-        <WinAtPCurves
-          curves={curves?.curves || {}}
-          visible={visibleSolutions}
-          onHoverP={handleHoverP}
-          onPinP={setPinnedP}
-          pinnedP={pinnedP}
-          setSortScores={setSortScores}
-          headline={`n = ${counts.workloads} workloads. Baseline: per-group preferring FlashInfer else fastest.`}
-          colorFor={colorFor}
-        />
-
-        <SolutionsList
-          solutions={solutionsForList}
-          visible={visibleSolutions}
-          onToggle={toggleVisible}
-          sortScores={sortScores}
-          search={searchQuery}
-          setSearch={setSearchQuery}
-          onFocus={setFocusedSolution}
-          correctness={curves?.correctness || {}}
-          colorFor={colorFor}
-          onSelectAll={() => {
-            if (!curves) return
-            const allNames = Object.keys(curves.curves)
-            const allowed = allNames.slice(0, MAX_VISIBLE_SOLUTIONS)
-            setVisibleSolutions(new Set(allowed))
-            if (allNames.length > MAX_VISIBLE_SOLUTIONS)
-              toast({ title: "Selection limited", description: `Selected first ${MAX_VISIBLE_SOLUTIONS} solutions.`, variant: "default" })
-          }}
-          onDeselectAll={() => setVisibleSolutions(new Set())}
-          maxVisible={MAX_VISIBLE_SOLUTIONS}
-          focused={focusedSolution}
-        />
-
-        <WorkloadsTable
-          traces={traces}
-          solutions={solutions}
-          pinnedP={pinnedP}
-          focusSolution={focusedSolution}
-          axisKeyOrder={axisKeyOrder}
-          workloadFilters={workloadFilters}
-        />
-      </div>
-
-      <SideDrawer title="Workload Filters" open={isWorkloadDrawerOpen} onClose={() => setWorkloadDrawerOpen(false)} side="left">
-        <div className="space-y-4">
-          <div>
-            <div className="font-medium mb-2">Correctness</div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={workloadFilters.onlyPassed}
-                onChange={(event) => setWorkloadFilters((filters) => ({ ...filters, onlyPassed: event.target.checked }))}
-              />
-              Only show PASSED workloads
-            </label>
-          </div>
-          <div>
-            <div className="font-medium mb-2">Devices</div>
-            <div className="flex flex-wrap gap-2">
-              {devices.map((device) => (
-                <label key={device} className="inline-flex items-center gap-1 text-sm border rounded px-2 py-1">
-                  <input
-                    type="checkbox"
-                    checked={workloadFilters.devices.includes(device)}
-                    onChange={(event) =>
-                      setWorkloadFilters((filters) => ({
-                        ...filters,
-                        devices: event.target.checked
-                          ? [...filters.devices, device]
-                          : filters.devices.filter((value) => value !== device),
-                      }))
-                    }
-                  />
-                  {device}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="font-medium mb-2">Axis ranges</div>
-            <div className="space-y-3">
-              {axisKeyOrder.map((axis) => {
-                const fullRange = axisRangesAll[axis]
-                const currentRange = workloadFilters.axisRanges[axis] || fullRange
-                return (
-                  <div key={axis} className="flex items-center gap-2 text-sm">
-                    <span className="w-28 font-mono">{axis}</span>
-                    <input
-                      type="number"
-                      className="w-24 h-8 rounded border px-2"
-                      value={currentRange.min}
-                      min={fullRange.min}
-                      max={fullRange.max}
-                      onChange={(event) =>
-                        setWorkloadFilters((filters) => ({
-                          ...filters,
-                          axisRanges: {
-                            ...filters.axisRanges,
-                            [axis]: { min: Number(event.target.value), max: currentRange.max },
-                          },
-                        }))
-                      }
-                    />
-                    <span>to</span>
-                    <input
-                      type="number"
-                      className="w-24 h-8 rounded border px-2"
-                      value={currentRange.max}
-                      min={fullRange.min}
-                      max={fullRange.max}
-                      onChange={(event) =>
-                        setWorkloadFilters((filters) => ({
-                          ...filters,
-                          axisRanges: {
-                            ...filters.axisRanges,
-                            [axis]: { min: currentRange.min, max: Number(event.target.value) },
-                          },
-                        }))
-                      }
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setWorkloadFilters((filters) => {
-                          const nextRanges = { ...filters.axisRanges }
-                          delete nextRanges[axis]
-                          return { ...filters, axisRanges: nextRanges }
-                        })
-                      }
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={() => setWorkloadDrawerOpen(false)}>Apply</Button>
-          </div>
-        </div>
-      </SideDrawer>
-
-      <SideDrawer title="Solution Filters" open={isSolutionDrawerOpen} onClose={() => setSolutionDrawerOpen(false)} side="right">
-        <div className="space-y-4">
-          <div>
-            <div className="font-medium mb-2">Language</div>
-            <div className="flex flex-wrap gap-2">
-              {Array.from(new Set(solutions.map((solution) => solution.spec.language)))
-                .sort()
-                .map((language) => (
-                  <label key={language} className="inline-flex items-center gap-1 text-sm border rounded px-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={solutionFilters.languages.includes(language)}
-                      onChange={(event) =>
-                        setSolutionFilters((filters) => ({
-                          ...filters,
-                          languages: event.target.checked
-                            ? [...filters.languages, language]
-                            : filters.languages.filter((value) => value !== language),
-                        }))
-                      }
-                    />
-                    {language}
-                  </label>
-                ))}
-            </div>
-          </div>
-          <div>
-            <div className="font-medium mb-2">Authors</div>
-            <div className="flex flex-wrap gap-2">
-              {Array.from(new Set(solutions.map((solution) => solution.author)))
-                .sort()
-                .map((author) => (
-                  <label key={author} className="inline-flex items-center gap-1 text-sm border rounded px-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={solutionFilters.authors.includes(author)}
-                      onChange={(event) =>
-                        setSolutionFilters((filters) => ({
-                          ...filters,
-                          authors: event.target.checked
-                            ? [...filters.authors, author]
-                            : filters.authors.filter((value) => value !== author),
-                        }))
-                      }
-                    />
-                    {author}
-                  </label>
-                ))}
-            </div>
-          </div>
-          <div>
-            <div className="font-medium mb-2">Targets</div>
-            <div className="flex flex-wrap gap-2">
-              {Array.from(new Set(solutions.flatMap((solution) => solution.spec.target_hardware)))
-                .sort()
-                .map((target) => (
-                  <label key={target} className="inline-flex items-center gap-1 text-sm border rounded px-2 py-1">
-                    <input
-                      type="checkbox"
-                      checked={solutionFilters.targets.includes(target)}
-                      onChange={(event) =>
-                        setSolutionFilters((filters) => ({
-                          ...filters,
-                          targets: event.target.checked
-                            ? [...filters.targets, target]
-                            : filters.targets.filter((value) => value !== target),
-                        }))
-                      }
-                    />
-                    {target}
-                  </label>
-                ))}
-            </div>
-          </div>
-          <div>
-            <div className="font-medium mb-2">Search</div>
-            <input
-              value={solutionFilters.search}
-              onChange={(event) => setSolutionFilters((filters) => ({ ...filters, search: event.target.value }))}
-              placeholder="Name or ID"
-              className="w-full h-9 rounded border px-2"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setSolutionFilters(initialSolutionFilters)}>
-              Reset
-            </Button>
-            <Button onClick={() => setSolutionDrawerOpen(false)}>Apply</Button>
-          </div>
-        </div>
-      </SideDrawer>
+      <SolutionsList
+        solutions={sortedSolutions}
+        visibleSolutions={visibleSolutions}
+        onToggleSolution={handleToggleSolution}
+        onExpandSolution={handleExpandSolution}
+        expandedSolution={expandedSolution}
+        correctness={curves?.correctness || {}}
+        colorFor={colorFor}
+        pinnedP={pinnedP}
+        onPinDefault={handlePinDefault}
+        traceBuckets={traceBuckets}
+        axisKeyOrder={axisKeyOrder}
+        filterChips={filterChips}
+        onOpenTrace={handleOpenTrace}
+        stats={counts}
+        filters={sfState}
+        onSearchChange={(value) => setSfState((state) => ({ ...state, search: value }))}
+        onToggleLanguage={(language, checked) =>
+          setSfState((state) => ({
+            ...state,
+            languages: checked
+              ? [...state.languages, language]
+              : state.languages.filter((item) => item !== language),
+          }))
+        }
+        onToggleAuthor={(author, checked) =>
+          setSfState((state) => ({
+            ...state,
+            authors: checked
+              ? [...state.authors, author]
+              : state.authors.filter((item) => item !== author),
+          }))
+        }
+        onToggleTarget={(target, checked) =>
+          setSfState((state) => ({
+            ...state,
+            targets: checked
+              ? [...state.targets, target]
+              : state.targets.filter((item) => item !== target),
+          }))
+        }
+        onResetFilters={() => setSfState(initialSF)}
+        availableLanguages={availableLanguages}
+        availableAuthors={availableAuthors}
+        availableTargets={availableTargets}
+      />
     </section>
   )
 }
