@@ -34,6 +34,7 @@ from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file, torch_d
 
 LOGGER = get_logger("MPRunner")
 
+
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     if dtype in (torch.float32, torch.float16, torch.bfloat16):
         return torch.randn(shape, dtype=dtype, device=device)

@@ -34,8 +34,7 @@ def configure_logging(
         handler = logging.StreamHandler()
     if formatter is None:
         formatter = logging.Formatter(
-            fmt="[%(asctime)s] %(levelname)s %(name)s: %(message)s",
-            datefmt="%H:%M:%S",
+            fmt="[%(asctime)s] %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S"
         )
     handler.setFormatter(formatter)
 
