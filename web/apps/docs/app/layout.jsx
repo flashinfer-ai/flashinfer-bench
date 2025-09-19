@@ -1,5 +1,6 @@
 import './globals.css'
 
+import { Inter } from 'next/font/google'
 import { Layout } from 'nextra-theme-docs'
 import { links } from '@flashinfer-bench/config'
 import { Head, Search } from 'nextra/components'
@@ -14,6 +15,8 @@ export const metadata = {
 
 const APP_HOME = process.env.NEXT_PUBLIC_APP_HOME ?? 'https://bench.flashinfer.ai'
 
+const inter = Inter({ subsets: ['latin'] })
+
 const navbar = (
   <SiteHeader
     logoHref={APP_HOME}
@@ -21,8 +24,6 @@ const navbar = (
     searchSlot={<Search />}
   />
 )
-const footer = <SiteFooter />
-
 export default async function RootLayout({ children }) {
   return (
     <html
@@ -38,16 +39,17 @@ export default async function RootLayout({ children }) {
       >
         {/* Your additional tags should be passed as `children` of `<Head>` element */}
       </Head>
-      <body>
+      <body className={inter.className}>
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}
           docsRepositoryBase={links.docsRepositoryBase}
-          footer={footer}
+          footer={null}
           // ... Your additional layout options
         >
           {children}
         </Layout>
+        <SiteFooter />
       </body>
     </html>
   )

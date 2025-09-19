@@ -1,102 +1,111 @@
 {
   "id": "qwen3-30b-a3b",
-  "name": "Qwen3 30B A3B",
-  "description": "Qwen3 30B A3B model",
+  "name": "Qwen3 30 A3B",
+  "description": "Qwen3 MoE 30B a3b model.",
   "modules": {
-    "LlamaModel": {
-      "count": 1,
-      "type": "block"
-    },
-    "embed_tokens": {
-      "count": 1,
-      "parent": "LlamaModel",
-      "type": "layer"
-    },
-    "layers": {
-      "count": 32,
-      "parent": "LlamaModel",
-      "type": "block"
-    },
-    "LlamaDecoderLayer": {
-      "count": 32,
-      "parent": "layers",
-      "type": "block"
-    },
-    "self_attn": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "block"
-    },
-    "qkv_proj": {
-      "count": 32,
-      "parent": "self_attn",
-      "type": "layer",
-      "definitions": [
-        "gemm_n_6144_k_4096"
-      ]
-    },
-    "o_proj": {
-      "count": 32,
-      "parent": "self_attn",
-      "type": "layer",
-      "definitions": [
-        "gemm_n_4096_k_4096"
-      ]
-    },
-    "rotary_emb": {
-      "count": 32,
-      "parent": "self_attn",
-      "type": "layer"
-    },
-    "attn_kernel": {
-      "count": 32,
-      "parent": "self_attn",
-      "type": "layer",
-      "definitions": [
-        "gqa_paged_decode_h32_kv8_d128_ps1",
-        "gqa_paged_prefill_causal_h32_kv8_d128_ps1"
-      ]
-    },
-    "mlp": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "block"
-    },
-    "gate_up_proj": {
-      "count": 32,
-      "parent": "mlp",
-      "type": "layer",
-      "definitions": [
-        "gemm_n_28672_k_4096"
-      ]
-    },
-    "down_proj": {
-      "count": 32,
-      "parent": "mlp",
-      "type": "layer",
-      "definitions": [
-        "gemm_n_4096_k_14336"
-      ]
-    },
-    "act_fn": {
-      "count": 32,
-      "parent": "mlp",
-      "type": "layer"
-    },
-    "input_layernorm": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "layer"
-    },
-    "post_attention_layernorm": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "layer"
-    },
-    "norm": {
-      "count": 1,
-      "parent": "LlamaModel",
-      "type": "layer"
-    }
+      "Qwen3MoeModel": {
+          "count": 1,
+          "type": "block"
+      },
+      "embed_tokens": {
+          "count": 1,
+          "parent": "Qwen3MoeModel",
+          "type": "layer"
+      },
+      "layers": {
+          "count": 32,
+          "parent": "Qwen3MoeModel",
+          "type": "block"
+      },
+      "Qwen3MoeDecoderLayer": {
+          "count": 32,
+          "parent": "layers",
+          "type": "block"
+      },
+      "self_attn": {
+          "count": 32,
+          "parent": "Qwen3MoeDecoderLayer",
+          "type": "block"
+      },
+      "qkv_proj": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer"
+      },
+      "q_norm": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer",
+          "definitions": [
+              "rmsnorm_h128"
+          ]
+      },
+      "k_norm": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer",
+          "definitions": [
+              "rmsnorm_h128"
+          ]
+      },
+      "rotary_emb": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer"
+      },
+      "attn": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer",
+          "definitions": [
+              "gqa_paged_prefill_causal_h32_kv4_d128_ps1",
+              "gqa_ragged_prefill_causal_h32_kv4_d128",
+              "gqa_paged_decode_h32_kv4_d128_ps1"
+          ]
+      },
+      "o_proj": {
+          "count": 32,
+          "parent": "self_attn",
+          "type": "layer"
+      },
+      "mlp": {
+          "count": 32,
+          "parent": "Qwen3MoeDecoderLayer",
+          "type": "block"
+      },
+      "moe": {
+        "count": 30,
+        "parent": "mlp",
+        "type": "block"
+      },
+      "moe_gate": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
+      "moe_topk": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
+      "moe_experts": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
+      "input_layernorm": {
+          "count": 32,
+          "parent": "Qwen3MoeDecoderLayer",
+          "type": "layer",
+          "definitions": [
+              "rmsnorm_h2048",
+              "fused_add_rmsnorm_h2048"
+          ]
+      },
+      "post_attention_layernorm": {
+          "count": 32,
+          "parent": "Qwen3MoeDecoderLayer",
+          "type": "layer",
+          "definitions": [
+              "fused_add_rmsnorm_h2048"
+          ]
+      },
+      "norm": {
+          "count": 1,
+          "parent": "Qwen3MoeModel",
+          "type": "layer",
+          "definitions": [
+              "fused_add_rmsnorm_h2048",
+              "rmsnorm_h2048"
+          ]
+      }
   }
 }

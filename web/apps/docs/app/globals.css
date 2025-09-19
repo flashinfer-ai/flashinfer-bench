@@ -3,6 +3,7 @@
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
 /* Include local docs app files that might use Tailwind utilities */
 @source "./**/*.{ts,tsx,js,jsx,md,mdx}";
+@source "../components/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -136,5 +137,11 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  .nextra-border {
+    border-color: hsl(var(--border)) !important;
   }
 }

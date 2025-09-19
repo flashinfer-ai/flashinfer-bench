@@ -125,11 +125,14 @@
           "type": "layer",
           "definitions": []
       },
-      "fused_moe": {
+      "moe": {
           "count": 30,
           "parent": "mlp",
-          "type": "layer"
+          "type": "block"
       },
+      "moe_gate": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
+      "moe_topk": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
+      "moe_experts": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
       "norm": {
           "count": 1,
           "parent": "DeepseekV3ForCausalLM",
