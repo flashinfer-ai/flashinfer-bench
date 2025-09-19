@@ -248,7 +248,7 @@ export function SolutionsList({
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Reference timings for comparison.</p>
+                  <p className="text-xs text-muted-foreground">{solution.description}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">

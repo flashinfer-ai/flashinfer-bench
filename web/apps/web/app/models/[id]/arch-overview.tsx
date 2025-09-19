@@ -115,7 +115,7 @@ interface ModelFlowProps {
   model: Model
 }
 
-export function ModelFlowVisualization({ model }: ModelFlowProps) {
+export function ModelArchOverview({ model }: ModelFlowProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
@@ -271,10 +271,10 @@ export function ModelFlowVisualization({ model }: ModelFlowProps) {
   )
 }
 
-export function ModelFlowWrapper({ model }: { model: Model }) {
+export function ModelArchWrapper({ model }: { model: Model }) {
   return (
     <ReactFlowProvider>
-      <ModelFlowVisualization model={model} />
+      <ModelArchOverview model={model} />
     </ReactFlowProvider>
   )
 }
