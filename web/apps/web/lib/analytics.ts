@@ -51,6 +51,14 @@ export function groupIdForTrace(t: Trace): WorkloadGroupId {
   return t.workload?.uuid || ""
 }
 
+function deviceForTrace(t: Trace): string | null {
+  return (
+    t.evaluation?.environment?.device ||
+    t.evaluation?.environment?.hardware ||
+    null
+  )
+}
+
 function passesFilters(t: Trace, wf?: WorkloadFilters): boolean {
   if (!wf) return true
   const { axisRanges, devices, onlyPassed } = wf
@@ -121,22 +129,9 @@ export function solutionMap(solutions: Solution[], sf?: SolutionFilters): Map<st
   return map
 }
 
-export function pickBaselineLatency(traces: Trace[], solMap: Map<string, Solution>): number | null {
-  // Prefer baseline authored by flashinfer
-  const preferred = traces
-    .filter((t) => !!t.solution && !!t.evaluation?.performance?.latency_ms)
-    .filter((t) => {
-      const s = t.solution ? solMap.get(t.solution) : undefined
-      return s && s.author?.toLowerCase() === "flashinfer"
-    })
-    .sort((a, b) => (a.evaluation!.performance!.latency_ms! - b.evaluation!.performance!.latency_ms!))
-  if (preferred.length > 0) return preferred[0].evaluation!.performance!.latency_ms!
-
-  // Fallback: fastest run in group
-  const all = traces
-    .filter((t) => !!t.evaluation?.performance?.latency_ms)
-    .sort((a, b) => (a.evaluation!.performance!.latency_ms! - b.evaluation!.performance!.latency_ms!))
-  return all.length > 0 ? all[0].evaluation!.performance!.latency_ms! : null
+export type BaselineConfig = {
+  default?: string
+  devices?: Record<string, string>
 }
 
 export function computeCorrectnessSummary(traces: Trace[], solutions: Solution[], wf?: WorkloadFilters, sf?: SolutionFilters) {
@@ -169,25 +164,34 @@ export function computeWinAtPCurves(params: {
   workloadFilters?: WorkloadFilters
   solutionFilters?: SolutionFilters
   sampleCount?: number // e.g. 201 points from 0..1
+  baseline?: BaselineConfig
 }): CurvesResponse {
-  const { traces, solutions, workloadFilters, solutionFilters, sampleCount = 201 } = params
+  const { traces, solutions, workloadFilters, solutionFilters, sampleCount = 201, baseline } = params
   const solMap = solutionMap(solutions, solutionFilters)
   const groups = buildWorkloadGroups(traces, workloadFilters)
 
   // For each group, compute baseline and per-solution ratios r = Lb/La
   const groupRatios: Map<WorkloadGroupId, Map<string, number>> = new Map()
   for (const [gid, trs] of groups) {
-    const baselineLatency = pickBaselineLatency(trs, solMap)
-    if (baselineLatency == null) continue
+    if (trs.length === 0) continue
+    const device = deviceForTrace(trs[0]) || "unknown"
+    const baselineName = (baseline?.devices && baseline.devices[device]) || baseline?.default || null
+    if (!baselineName) continue
+    const baselineTrace = trs.find((t) => t.solution === baselineName)
+    const baselineLatency = baselineTrace?.evaluation?.performance?.latency_ms
+    if (typeof baselineLatency !== "number" || baselineLatency <= 0) continue
     const ratios = new Map<string, number>()
     for (const t of trs) {
       if (!t.solution) continue
       if (!solMap.has(t.solution)) continue
+      if (t.solution === baselineName) continue
       const lat = t.evaluation?.performance?.latency_ms
       if (typeof lat !== "number" || lat <= 0) continue
       ratios.set(t.solution, baselineLatency / lat)
     }
-    groupRatios.set(gid, ratios)
+    if (ratios.size > 0) {
+      groupRatios.set(gid, ratios)
+    }
   }
 
   const nWorkloads = groupRatios.size
@@ -208,8 +212,17 @@ export function computeWinAtPCurves(params: {
     perSolutionSorted[s.name] = ratios
   }
 
+  const baselineNames = new Set<string>()
+  if (baseline?.default) baselineNames.add(baseline.default)
+  if (baseline?.devices) {
+    for (const value of Object.values(baseline.devices)) {
+      baselineNames.add(value)
+    }
+  }
+
   const curves: Record<string, CurvePoint[]> = {}
   for (const [sname, ratios] of Object.entries(perSolutionSorted)) {
+    if (baselineNames.has(sname)) continue
     const pts: CurvePoint[] = []
     for (const p of points) {
       // fraction of groups where r >= p (right-continuous)
@@ -252,8 +265,9 @@ export function computeSolutionTraceBuckets(params: {
   solutions: Solution[]
   solutionName: string
   p: number
+  baseline?: BaselineConfig
 }): SolutionTraceBuckets {
-  const { traces, solutions, solutionName, p } = params
+  const { traces, solutions, solutionName, p, baseline } = params
   const solMap = solutionMap(solutions)
   const groups = buildWorkloadGroups(traces)
   const faster: SolutionTraceComparison[] = []
@@ -264,11 +278,19 @@ export function computeSolutionTraceBuckets(params: {
     const candidate = groupTraces.find((trace) => trace.solution === solutionName)
     if (!candidate) continue
 
+    const device = deviceForTrace(candidate) || "unknown"
+    const baselineName = (baseline?.devices && baseline.devices[device]) || baseline?.default || null
+    if (!baselineName) continue
+    const baselineTrace = groupTraces.find((trace) => trace.solution === baselineName)
+    const baselineLatency = baselineTrace?.evaluation?.performance?.latency_ms ?? null
+
     const comparison: SolutionTraceComparison = {
       workloadId,
       traces: groupTraces,
       candidate,
       candidateLatency: candidate.evaluation?.performance?.latency_ms ?? null,
+      baseline: baselineTrace,
+      baselineLatency,
     }
 
     const status = candidate.evaluation?.status
@@ -277,22 +299,15 @@ export function computeSolutionTraceBuckets(params: {
       continue
     }
 
-    const baselineLatency = pickBaselineLatency(groupTraces, solMap)
     if (baselineLatency == null || !comparison.candidateLatency) {
-      slower.push({ ...comparison, baselineLatency, ratio: null })
+      slower.push({ ...comparison, ratio: null })
       continue
     }
-
-    const baselineTrace = groupTraces.find(
-      (trace) => trace.evaluation?.performance?.latency_ms === baselineLatency
-    )
 
     const ratio = baselineLatency / comparison.candidateLatency
     const target = ratio >= p ? faster : slower
     target.push({
       ...comparison,
-      baseline: baselineTrace,
-      baselineLatency,
       ratio,
     })
   }

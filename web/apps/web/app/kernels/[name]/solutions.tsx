@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
-import { WinAtPCurves, type ScoreboardEntry } from "./win-at-p"
+import { WinAtPCurves } from "./win-at-p"
 import { SolutionsList, type FilterChip } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
 import { computeSolutionTraceBuckets, type SolutionTraceBuckets } from "@/lib/analytics"
 import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-types"
+import baselinesData from "@/data/baselines.json"
 
 const DEFAULT_MAX_VISIBLE = 10
 const DEFAULT_PIN = 0.95
@@ -138,19 +139,44 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
     [colorMap, palette]
   )
 
+  type BaselineConfig = Record<string, string>
+  const baselineConfig = (baselinesData as Record<string, BaselineConfig | undefined>)[definition.name] || null
+  const baselineDefault = baselineConfig?.default || null
+  const baselinePerDevice = useMemo(() => {
+    if (!baselineConfig) return {}
+    const map: Record<string, string> = {}
+    for (const [key, value] of Object.entries(baselineConfig)) {
+      if (key !== "default" && value) map[key] = value
+    }
+    return map
+  }, [baselineConfig])
+  const fallbackBaseline = useMemo(() => {
+    if (baselineDefault) return baselineDefault
+    if (!baselineConfig) return null
+    const deviceEntry = Object.entries(baselineConfig).find(([key]) => key !== "default" && baselineConfig[key])
+    return deviceEntry ? deviceEntry[1] : null
+  }, [baselineConfig, baselineDefault])
+  const baselineSolutionNames = useMemo(() => new Set(Object.values(baselineConfig || {})), [baselineConfig])
+  const baselineAvailable = baselineConfig != null && Object.keys(baselineConfig).length > 0
+
+  const candidateSolutions = useMemo(
+    () => solutions.filter((solution) => !baselineSolutionNames.has(solution.name)),
+    [solutions, baselineSolutionNames]
+  )
+
   const availableLanguages = useMemo(
-    () => Array.from(new Set(solutions.map((solution) => solution.spec.language))).sort(),
-    [solutions]
+    () => Array.from(new Set(candidateSolutions.map((solution) => solution.spec.language))).sort(),
+    [candidateSolutions]
   )
 
   const availableAuthors = useMemo(
-    () => Array.from(new Set(solutions.map((solution) => solution.author))).sort(),
-    [solutions]
+    () => Array.from(new Set(candidateSolutions.map((solution) => solution.author))).sort(),
+    [candidateSolutions]
   )
 
   const availableTargets = useMemo(
-    () => Array.from(new Set(solutions.flatMap((solution) => solution.spec.target_hardware))).sort(),
-    [solutions]
+    () => Array.from(new Set(candidateSolutions.flatMap((solution) => solution.spec.target_hardware))).sort(),
+    [candidateSolutions]
   )
 
   // Read state from URL on first render
@@ -173,6 +199,11 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
 
   // Fetch curves when filters change
   useEffect(() => {
+    if (!baselineAvailable) {
+      setCurves(null)
+      return
+    }
+
     const params = new URLSearchParams()
     if (sfState.languages.length) params.set("languages", sfState.languages.join(","))
     if (sfState.authors.length) params.set("authors", sfState.authors.join(","))
@@ -186,7 +217,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
 
         if (!hasInitializedVisibleRef.current) {
           const scoreLookup = buildScoreMap(data, DEFAULT_PIN)
-          const ranked = solutions
+          const ranked = candidateSolutions
             .slice()
             .sort((a, b) =>
               compareSolutions(
@@ -225,7 +256,8 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
             selected.add(ranked[0].name)
           }
 
-          setVisibleSolutions(selected)
+          const filteredSelection = new Set(Array.from(selected).filter((name) => !baselineSolutionNames.has(name)))
+          setVisibleSolutions(filteredSelection)
           if (initialExpandedRef.current) setExpandedSolution(initialExpandedRef.current)
           initialSolutionsRef.current = null
           initialExpandedRef.current = null
@@ -233,7 +265,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
         }
       })
       .catch((error) => console.error("failed to fetch curves", error))
-  }, [definition.name, sfState, solutions])
+  }, [definition.name, sfState, baselineAvailable, candidateSolutions, baselineSolutionNames])
 
   // Keep URL in sync with state
   useEffect(() => {
@@ -267,8 +299,8 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
   }, [sfState, visibleSolutions, expandedSolution, pinnedP])
 
   const filteredSolutions = useMemo(
-    () => solutions.filter((solution) => matchesSolutionFilters(solution, sfState)),
-    [solutions, sfState]
+    () => candidateSolutions.filter((solution) => matchesSolutionFilters(solution, sfState)),
+    [candidateSolutions, sfState]
   )
 
   // Remove selections that are no longer visible
@@ -289,27 +321,24 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
 
   const scoreMap = useMemo(() => buildScoreMap(curves, pinnedP ?? DEFAULT_PIN), [curves, pinnedP])
 
-  const scoreboard: ScoreboardEntry[] = useMemo(() => {
-    if (!visibleSolutions.size) return []
-    return Array.from(visibleSolutions)
-      .map((name) => ({ name, percent: scoreMap[name] ?? 0 }))
-      .sort((a, b) => b.percent - a.percent)
-  }, [visibleSolutions, scoreMap])
-
   const sortedSolutions = useMemo(() => {
     const correctness = curves?.correctness || {}
     return filteredSolutions.slice().sort((a, b) => compareSolutions(a, b, correctness, scoreMap))
   }, [filteredSolutions, curves?.correctness, scoreMap])
 
   const traceBuckets: SolutionTraceBuckets | null = useMemo(() => {
-    if (!expandedSolution || pinnedP == null) return null
+    if (!expandedSolution || pinnedP == null || !baselineAvailable) return null
     return computeSolutionTraceBuckets({
       traces,
       solutions,
       solutionName: expandedSolution,
       p: pinnedP,
+      baseline: {
+        default: (baselineDefault || fallbackBaseline) ?? undefined,
+        devices: baselinePerDevice,
+      },
     })
-  }, [expandedSolution, pinnedP, traces, solutions])
+  }, [expandedSolution, pinnedP, traces, solutions, baselineAvailable, baselineDefault, fallbackBaseline, baselinePerDevice])
 
   const filterChips: FilterChip[] = useMemo(() => {
     const chips: FilterChip[] = []
@@ -387,9 +416,11 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
         onHoverP={() => {}}
         onPinP={setPinnedP}
         pinnedP={pinnedP}
-        headline={`n = ${counts.workloads} workloads. Baseline prefers FlashInfer else fastest.`}
+        baselineLabel={baselineDefault || fallbackBaseline || "Not specified"}
+        workloadCount={counts.workloads}
+        baselineAvailable={baselineAvailable}
         colorFor={colorFor}
-        scoreboard={scoreboard}
+        scoreboard={[]}
       />
 
       <SolutionsList

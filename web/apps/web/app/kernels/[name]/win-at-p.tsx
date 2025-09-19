@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import * as d3 from "d3"
-import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from "@flashinfer-bench/ui"
-import { BarChart2, Pin as PinIcon, Undo2 } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardTrigger, HoverCardContent } from "@flashinfer-bench/ui"
+import { Pin as PinIcon, Undo2, HelpCircle } from "lucide-react"
 import type { CurvePoint } from "@/lib/analytics"
 
 export type ScoreboardEntry = {
@@ -17,7 +17,9 @@ export type WinAtPCurvesProps = {
   onHoverP: (p: number | null) => void
   onPinP: (p: number | null) => void
   pinnedP: number | null
-  headline?: string
+  baselineLabel: string
+  workloadCount: number
+  baselineAvailable: boolean
   colorFor: (name: string) => string
   scoreboard: ScoreboardEntry[]
 }
@@ -28,9 +30,11 @@ export function WinAtPCurves({
   onHoverP,
   onPinP,
   pinnedP,
-  headline,
+  baselineLabel,
+  workloadCount,
+  baselineAvailable,
   colorFor,
-  scoreboard,
+  scoreboard: _scoreboard,
 }: WinAtPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
@@ -144,12 +148,30 @@ export function WinAtPCurves({
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BarChart2 className="h-4 w-4" />
-            <CardTitle>Win@p</CardTitle>
-            <span className="text-xs text-muted-foreground">Higher is better. Sampled p∈[0,1].</span>
+            <CardTitle>Win@P Plot</CardTitle>
+            <HoverCard>
+              <HoverCardTrigger asChild>
+                <button type="button" className="text-muted-foreground hover:text-foreground">
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-72 text-sm">
+                <p className="mb-2 text-sm text-muted-foreground">
+                  Measures the portion of workloads this solution is faster than p*baseline_performance.
+                </p>
+                <a
+                  href="/docs/win-at-p"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Read the full docs →
+                </a>
+              </HoverCardContent>
+            </HoverCard>
           </div>
           {pinnedP != null && (
             <div className="flex items-center gap-2 text-sm">
@@ -161,16 +183,26 @@ export function WinAtPCurves({
             </div>
           )}
         </div>
-        {headline && <div className="text-xs text-muted-foreground">{headline}</div>}
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>n = {workloadCount} workloads</span>
+          <span>Baseline: {baselineLabel}</span>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="relative">
-          {showPinHint && pinnedP == null && (
+          {showPinHint && pinnedP == null && baselineAvailable && (
             <div className="absolute right-4 top-4 z-10 rounded-md bg-background/95 px-3 py-2 text-xs shadow">
               Click to pin p
             </div>
           )}
-          <svg ref={svgRef} className="w-full h-auto" />
+          <div className={baselineAvailable ? undefined : "pointer-events-none opacity-40"}>
+            <svg ref={svgRef} className="w-full h-auto" />
+          </div>
+          {!baselineAvailable && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 backdrop-blur-sm">
+              <span className="text-sm text-muted-foreground">Baseline not specified</span>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

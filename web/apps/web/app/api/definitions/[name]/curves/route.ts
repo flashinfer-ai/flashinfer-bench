@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
-import { computeWinAtPCurves, WorkloadFilters, SolutionFilters } from "@/lib/analytics"
+import { computeWinAtPCurves, WorkloadFilters, SolutionFilters, BaselineConfig } from "@/lib/analytics"
+import baselinesData from "@/data/baselines.json"
 
 function parseQueryArray(q: string | string[] | null): string[] | undefined {
   if (!q) return undefined
@@ -42,7 +43,24 @@ export async function GET(req: NextRequest, ctx: any) {
     const raw = Number(searchParams.get("sampleCount") || "201")
     const sampleCount = Math.max(51, Math.min(401, Number.isFinite(raw) ? raw : 201))
 
-    const result = computeWinAtPCurves({ traces, solutions, workloadFilters: wf, solutionFilters: sf, sampleCount })
+    const baselineConfig = (baselinesData as Record<string, Record<string, string> | undefined>)[name] || undefined
+    const baseline: BaselineConfig | undefined = baselineConfig
+      ? {
+          default: baselineConfig.default,
+          devices: Object.fromEntries(
+            Object.entries(baselineConfig).filter(([key]) => key !== "default") as [string, string][]
+          ),
+        }
+      : undefined
+
+    const result = computeWinAtPCurves({
+      traces,
+      solutions,
+      workloadFilters: wf,
+      solutionFilters: sf,
+      sampleCount,
+      baseline,
+    })
     return NextResponse.json(result)
   } catch (e: any) {
     console.error("curves endpoint error", e)

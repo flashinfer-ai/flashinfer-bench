@@ -271,7 +271,7 @@ export function SolutionsList({
                   }
                 }}
                 className={cn(
-                  "flex w-full items-stretch gap-3 rounded-lg text-left transition-colors",
+                  "flex w-full items-stretch gap-3 rounded-lg text-left transition-colors cursor-pointer",
                   isExpanded ? "bg-muted/40" : "hover:bg-muted/20"
                 )}
               >
