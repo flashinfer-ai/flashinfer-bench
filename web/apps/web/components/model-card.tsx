@@ -18,8 +18,9 @@ export function ModelCard({ model, href }: ModelCardProps) {
   const [copied, setCopied] = React.useState(false)
 
   // Count only layers (kernels)
-  const totalKernels = Object.values(model.modules).filter(m => m.type === "layer").length
-  const tracedKernels = Object.values(model.modules).filter(m => m.type === "layer" && m.definition).length
+  const layerModules = Object.values(model.modules).filter(m => m.type === "layer")
+  const totalKernels = layerModules.length
+  const tracedKernels = layerModules.filter(m => (m.definitions?.length ?? 0) > 0).length
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.preventDefault()

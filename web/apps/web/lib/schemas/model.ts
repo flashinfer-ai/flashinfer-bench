@@ -6,7 +6,7 @@ export const ModuleSchema = z.object({
   count: z.number(),
   parent: z.string().optional(),
   type: ModuleTypeSchema,
-  definition: z.string().optional(),
+  definitions: z.array(z.string()).optional(),
 })
 
 export const ModelSchema = z.object({
@@ -19,15 +19,14 @@ export const ModelSchema = z.object({
 export const ModelHierarchySchema: z.ZodType<{
   name: string
   type: z.infer<typeof ModuleTypeSchema>
-  definition?: string
+  definitions?: string[]
   children?: any[]
 }> = z.object({
   name: z.string(),
   type: ModuleTypeSchema,
-  definition: z.string().optional(),
+  definitions: z.array(z.string()).optional(),
   children: z.array(z.lazy(() => ModelHierarchySchema)).optional(),
 })
-
 export type Module = z.infer<typeof ModuleSchema>
 export type Model = z.infer<typeof ModelSchema>
 export type ModelHierarchy = z.infer<typeof ModelHierarchySchema>

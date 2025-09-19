@@ -47,7 +47,7 @@ export function ModelTabs({ model }: { model: Model }) {
             </div>
             <div>
               <p className="text-2xl font-bold">
-                {Object.values(model.modules).filter(m => m.type === "layer" && m.definition).length}
+                {Object.values(model.modules).filter(m => m.type === "layer" && (m.definitions?.length ?? 0) > 0).length}
               </p>
               <p className="text-sm text-muted-foreground">Traced Kernels</p>
             </div>

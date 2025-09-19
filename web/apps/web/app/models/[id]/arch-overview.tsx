@@ -17,12 +17,23 @@ import ReactFlow, {
 import "reactflow/dist/style.css"
 import Link from "next/link"
 import { Badge, Card, CardContent } from "@flashinfer-bench/ui"
-import { Package, Layers, Cpu, ChevronDown, ChevronRight } from "lucide-react"
+import { Package, Layers, ChevronDown, ChevronRight } from "lucide-react"
 import { Model, Module } from "@/lib/schemas"
-import { getChildren, getRootModules } from "@/lib/model-utils"
+import { getChildren } from "@/lib/model-utils"
 
 // Custom node component
-function ModelNode({ data, selected }: NodeProps) {
+type ModelNodeData = {
+  label: string
+  moduleType: Module["type"]
+  definitions?: string[]
+  count: number
+  hasParent: boolean
+  children: string[]
+  stats?: { sublayers: number; kernels: number }
+  highlighted?: boolean
+}
+
+function ModelNode({ data, selected }: NodeProps<ModelNodeData>) {
   const [expanded, setExpanded] = useState(false)
   const hasChildren = data.children && data.children.length > 0
   const isBlock = data.moduleType === "block"
@@ -65,16 +76,20 @@ function ModelNode({ data, selected }: NodeProps) {
             )}
           </div>
 
-          {/* Definition link */}
-          {data.definition && (
-            <div className="pt-1">
-              <Link
-                href={`/kernels/${data.definition}`}
-                className="text-xs text-primary hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {data.definition}
-              </Link>
+          {/* Kernel definitions */}
+          {data.definitions && data.definitions.length > 0 && (
+            <div className="pt-1 space-y-1">
+              {data.definitions.map((definition) => (
+                <div key={definition} className="text-xs truncate">
+                  <Link
+                    href={`/kernels/${definition}`}
+                    className="text-primary hover:underline truncate"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {definition}
+                  </Link>
+                </div>
+              ))}
             </div>
           )}
 
@@ -116,7 +131,7 @@ interface ModelFlowProps {
 }
 
 export function ModelArchOverview({ model }: ModelFlowProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<ModelNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
 
@@ -128,7 +143,7 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
   // Build the graph structure
   useEffect(() => {
     const buildGraph = () => {
-      const newNodes: Node[] = []
+      const newNodes: Node<ModelNodeData>[] = []
       const newEdges: Edge[] = []
       const nodePositions = new Map<string, { x: number; y: number }>()
 
@@ -138,7 +153,7 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
         if (!moduleData) return { sublayers: 0, kernels: 0 }
 
         let sublayers = 0
-        let kernels = moduleData.definition ? 1 : 0
+        let kernels = moduleData.definitions?.length ?? 0
 
         // Count children
         const children = getChildren(model, moduleName)
@@ -196,7 +211,7 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
           data: {
             label: name,
             moduleType: moduleData.type,
-            definition: moduleData.definition,
+            definitions: moduleData.definitions ?? [],
             count: moduleData.count || 1,
             hasParent: !!moduleData.parent,
             children,
@@ -221,10 +236,10 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
               target: name,
               targetHandle: "target",
               type: "smoothstep",
-              animated: moduleData.definition ? true : false,
+              animated: (moduleData.definitions?.length ?? 0) > 0,
               style: {
-                strokeWidth: moduleData.definition ? 2 : 1,
-                stroke: moduleData.definition ? "#3b82f6" : "#94a3b8",
+                strokeWidth: (moduleData.definitions?.length ?? 0) > 0 ? 2 : 1,
+                stroke: (moduleData.definitions?.length ?? 0) > 0 ? "#3b82f6" : "#94a3b8",
               },
             })
           }
@@ -238,7 +253,7 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
     buildGraph()
   }, [model, selectedModule, setNodes, setEdges])
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node<ModelNodeData>) => {
     setSelectedModule(node.id)
   }, [])
 
@@ -258,7 +273,7 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            if (node.data?.definition) return "#3b82f6"
+            if ((node.data?.definitions?.length ?? 0) > 0) return "#3b82f6"
             if (node.data?.moduleType === "block") return "#10b981"
             return "#94a3b8"
           }}
