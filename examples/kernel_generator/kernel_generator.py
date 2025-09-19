@@ -8,13 +8,16 @@ from kernel_generator_prompts import get_optimization_prompt, get_prompt
 
 from flashinfer_bench import (
     Benchmark,
+    BenchmarkConfig,
     BuildSpec,
     Definition,
     EvaluationStatus,
     Solution,
     SourceFile,
     SupportedLanguages,
+    Trace,
     TraceSet,
+    Workload,
 )
 
 
@@ -106,12 +109,12 @@ class KernelGenerator:
                 definitions={definition.name: definition},
                 solutions={definition.name: [solution]},
                 workloads={definition.name: [selected_workload]},
-                traces={},
+                traces={definition.name: []},
             )
 
             print(f"Evaluating solution...")
-            benchmark = Benchmark(temp_traceset)
-            result_traceset = benchmark.run_all(dump_traces=False)
+            benchmark = Benchmark(temp_traceset, BenchmarkConfig())
+            result_traceset = benchmark.run_all()
 
             traces = result_traceset.traces.get(definition.name, [])
             if not traces:
@@ -171,13 +174,20 @@ class KernelGenerator:
             return self._parse_xml_files(code)
 
         # For non-CUDA languages (triton, python), clean up markdown and hex floats
-        if code.startswith("```"):
-            lines = code.split("\n")
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            code = "\n".join(lines)
+        if "```" in code:
+            if code.startswith("```"):
+                lines = code.split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                code = "\n".join(lines)
+            
+            if code.endswith("```"):
+                lines = code.split("\n")
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                code = "\n".join(lines)
+            
+            code = code.replace("```", "")
 
         hex_float_pattern = r"0x[0-9a-fA-F]*\.[0-9a-fA-F]*p[-+]?\d+"
         hex_floats = re.findall(hex_float_pattern, code)
