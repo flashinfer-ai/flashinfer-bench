@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { Button, Card, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Badge, Input, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Copy, Check, ChevronRight, ChevronLeft, Search, Info } from "lucide-react"
@@ -25,13 +25,47 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
   // Extract all unique types from definitions
   const types = Array.from(new Set(
-    definitions.map(d => d.type).filter(Boolean)
+    definitions.map(d => d.op_type).filter(Boolean)
   )).sort()
+
+  // Map each op_type to a consistent color pairing
+  const typeColorMap = useMemo(() => {
+    const palette = [
+      { accent: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700" },
+      { accent: "bg-sky-500", badge: "bg-sky-100 text-sky-700" },
+      { accent: "bg-amber-500", badge: "bg-amber-100 text-amber-700" },
+      { accent: "bg-purple-500", badge: "bg-purple-100 text-purple-700" },
+      { accent: "bg-rose-500", badge: "bg-rose-100 text-rose-700" },
+      { accent: "bg-lime-500", badge: "bg-lime-100 text-lime-700" },
+      { accent: "bg-cyan-500", badge: "bg-cyan-100 text-cyan-700" },
+      { accent: "bg-fuchsia-500", badge: "bg-fuchsia-100 text-fuchsia-700" },
+      { accent: "bg-indigo-500", badge: "bg-indigo-100 text-indigo-700" },
+      { accent: "bg-orange-500", badge: "bg-orange-100 text-orange-700" },
+      { accent: "bg-teal-500", badge: "bg-teal-100 text-teal-700" },
+      { accent: "bg-blue-500", badge: "bg-blue-100 text-blue-700" },
+    ]
+
+    const hashString = (value: string) => {
+      let hash = 0
+      for (let i = 0; i < value.length; i++) {
+        hash = (hash << 5) - hash + value.charCodeAt(i)
+        hash |= 0
+      }
+      return Math.abs(hash)
+    }
+
+    const map = new Map<string, { accent: string; badge: string }>()
+    types.forEach((type) => {
+      const colors = palette[hashString(type) % palette.length]
+      map.set(type, colors)
+    })
+    return map
+  }, [types])
 
   // Filter definitions based on search
   const filteredDefinitions = definitions.filter(d =>
     d.name?.toLowerCase().includes(search.toLowerCase()) ||
-    d.type?.toLowerCase().includes(search.toLowerCase()) ||
+    d.op_type?.toLowerCase().includes(search.toLowerCase()) ||
     (d.tags || []).some(tag => tag.toLowerCase().includes(search.toLowerCase()))
   )
 
@@ -42,7 +76,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
   // Create groups for each type
   types.forEach(type => {
-    typeGroups[type] = filteredDefinitions.filter(d => d.type === type)
+    typeGroups[type] = filteredDefinitions.filter(d => d.op_type === type)
   })
 
   // Reset page when search or tab changes
@@ -70,22 +104,11 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
 
   const renderDefinitionCard = (def: DefinitionWithCounts) => {
-    const type = def.type || 'unknown'
-
-    const typeColor = {
-      // Attention types - green shades
-      mha: "bg-green-500",
-      gqa: "bg-emerald-500",
-      mla: "bg-teal-500",
-      // GEMM types - blue shades
-      gemm: "bg-blue-500",
-      grouped_gemm: "bg-sky-500",
-      batch_gemm: "bg-indigo-500",
-      // Misc types - purple/orange shades
-      sampling: "bg-purple-500",
-      norm: "bg-orange-500",
-      moe: "bg-pink-500"
-    }[type] || "bg-gray-500"
+    const type = def.op_type || "unknown"
+    const colorPair = typeColorMap.get(type) ?? {
+      accent: "bg-gray-500",
+      badge: "bg-gray-100 text-gray-700",
+    }
 
     // Extract tags for display
     const tags = def.tags || []
@@ -95,7 +118,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
     return (
       <Link key={def.name} href={`/kernels/${def.name}`}>
         <div className="relative">
-          <div className={`absolute left-0 top-0 bottom-0 w-1 ${typeColor} rounded-l`} />
+          <div className={`absolute left-0 top-0 bottom-0 w-1 ${colorPair.accent} rounded-l`} />
           <Card className="h-full ml-1 hover:shadow-lg hover:border-primary transition-all cursor-pointer">
             <CardHeader className="pb-3">
               <div className="space-y-3">
@@ -123,21 +146,7 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
 
                 {/* Display tags */}
                 <div className="flex flex-wrap gap-1">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    // Attention types
-                    type === "mha" ? "bg-green-100 text-green-700" :
-                    type === "gqa" ? "bg-emerald-100 text-emerald-700" :
-                    type === "mla" ? "bg-teal-100 text-teal-700" :
-                    // GEMM types
-                    type === "gemm" ? "bg-blue-100 text-blue-700" :
-                    type === "grouped_gemm" ? "bg-sky-100 text-sky-700" :
-                    type === "batch_gemm" ? "bg-indigo-100 text-indigo-700" :
-                    // Misc types
-                    type === "sampling" ? "bg-purple-100 text-purple-700" :
-                    type === "norm" ? "bg-orange-100 text-orange-700" :
-                    type === "moe" ? "bg-pink-100 text-pink-700" :
-                    "bg-gray-100 text-gray-700"
-                  }`}>
+                  <span className={`text-xs px-2 py-1 rounded-full ${colorPair.badge}`}>
                     {type.replace('_', ' ').toUpperCase()}
                   </span>
                   {modelTags.map(tag => (

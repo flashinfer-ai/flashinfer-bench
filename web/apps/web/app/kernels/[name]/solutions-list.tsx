@@ -496,15 +496,16 @@ function SolutionTraceDetails({
   }
 
   if (totalCount === 0) {
+    const pLabel = pinnedP.toFixed(2)
     return (
       <div className="border-t bg-muted/10 px-6 py-4">
         <Tabs value="faster">
           <TabsList>
             <TabsTrigger value="faster" disabled>
-              Faster (0)
+              Win@p={pLabel} (0)
             </TabsTrigger>
             <TabsTrigger value="slower" disabled>
-              Slower (0)
+              Lose@p={pLabel} (0)
             </TabsTrigger>
             <TabsTrigger value="incorrect" disabled>
               Incorrect (0)
@@ -522,8 +523,8 @@ function SolutionTraceDetails({
     <div className="border-t bg-muted/10 px-6 py-4">
       <Tabs value={tab} onValueChange={(value) => setTab(value as any)}>
         <TabsList>
-          <TabsTrigger value="faster">Faster ({counts.faster})</TabsTrigger>
-          <TabsTrigger value="slower">Slower ({counts.slower})</TabsTrigger>
+          <TabsTrigger value="faster">Win@p={pinnedP.toFixed(2)} ({counts.faster})</TabsTrigger>
+          <TabsTrigger value="slower">Lose@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
           <TabsTrigger value="incorrect">Incorrect ({counts.incorrect})</TabsTrigger>
         </TabsList>
         <div className="mt-4">
