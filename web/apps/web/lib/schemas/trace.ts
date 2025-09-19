@@ -117,14 +117,14 @@ export const CanonicalWorkloadSchema = z.object({
 })
 
 // Type exports
-export type ConstAxis = z.infer<typeof ConstAxisSchema>export type VarAxis =
-    z.infer<typeof VarAxisSchema>export type Axis = z.infer<
-        typeof AxisSchema>export type Tensor =
-        z.infer<typeof TensorSchema>export type Definition = z.infer<
-            typeof DefinitionSchema>export type Solution =
-            z.infer<typeof SolutionSchema>export type WorkloadInput = z.infer<
-                typeof WorkloadInputSchema>export type Workload =
-                z.infer<typeof WorkloadSchema>export type Evaluation =
-                    z.infer<typeof EvaluationSchema>export type Trace = z.infer<
-                        typeof TraceSchema>export type CanonicalWorkload =
-                        z.infer<typeof CanonicalWorkloadSchema>
+export type ConstAxis = z.infer<typeof ConstAxisSchema>
+export type VarAxis = z.infer<typeof VarAxisSchema>
+export type Axis = z.infer<typeof AxisSchema>
+export type Tensor = z.infer<typeof TensorSchema>
+export type Definition = z.infer<typeof DefinitionSchema>
+export type Solution = z.infer<typeof SolutionSchema>
+export type WorkloadInput = z.infer<typeof WorkloadInputSchema>
+export type Workload = z.infer<typeof WorkloadSchema>
+export type Evaluation = z.infer<typeof EvaluationSchema>
+export type Trace = z.infer<typeof TraceSchema>
+export type CanonicalWorkload = z.infer<typeof CanonicalWorkloadSchema>
