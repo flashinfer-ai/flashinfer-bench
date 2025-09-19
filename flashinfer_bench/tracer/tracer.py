@@ -11,6 +11,7 @@ import torch
 
 from flashinfer_bench.data import Definition
 from flashinfer_bench.logging import get_logger
+from flashinfer_bench.utils import torch_dtype_from_def
 
 from .types import TraceEntry, TracingRule
 
@@ -159,7 +160,7 @@ class Tracer:
 
             try:
                 shape_spec = _materialize_shape(definition, axes, spec.get("shape"))
-                dtype_spec = _torch_dtype_from_def(spec.get("dtype"))
+                dtype_spec = torch_dtype_from_def(spec.get("dtype"))
             except ValueError as e:
                 self._logger.error(f"Error materializing specs for {name}: {e}")
                 return
@@ -487,28 +488,6 @@ def disable_tracing():
 # ============================================================================
 # Utility Functions
 # ============================================================================
-
-
-def _torch_dtype_from_def(def_dtype: str):
-    if not def_dtype:
-        raise ValueError("dtype is None or empty")
-    table = {
-        "float32": torch.float32,
-        "float16": torch.float16,
-        "bfloat16": torch.bfloat16,
-        "float8_e4m3fn": torch.float8_e4m3fn,
-        "float8_e5m2": torch.float8_e5m2,
-        "float4_e2m1": torch.float4_e2m1fn_x2,
-        "int64": torch.int64,
-        "int32": torch.int32,
-        "int16": torch.int16,
-        "int8": torch.int8,
-        "bool": torch.bool,
-    }
-    dtype = table.get(def_dtype.lower(), None)
-    if dtype is None:
-        raise ValueError(f"Unsupported dtype '{def_dtype}'")
-    return dtype
 
 
 def _axis_value(definition, axes: Dict[str, Any], axis_name: str) -> int:
