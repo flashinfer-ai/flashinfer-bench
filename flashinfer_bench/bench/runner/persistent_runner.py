@@ -245,19 +245,12 @@ class PersistentSubprocessWorker:
         
         self._worker_proc: Optional[mp.Process] = None
         self._parent_conn: Optional[mp.connection.Connection] = None
-        self._worker_restart_count = 0
-        self._max_worker_restarts = 3
         
         self._start_worker()
 
     def _start_worker(self) -> None:
         if self._worker_proc is not None and self._worker_proc.is_alive():
             self._shutdown_worker()
-        
-        self._worker_restart_count += 1
-
-        if self._worker_restart_count > self._max_worker_restarts:
-            raise RunnerFatalError(f"Worker on device {self._device} failed to start after {self._max_worker_restarts} attempts")
         
         ctx = mp.get_context("spawn")
         self._parent_conn, child_conn = ctx.Pipe(duplex=True)
@@ -289,35 +282,70 @@ class PersistentSubprocessWorker:
         
         if self._worker_proc is not None:
             try:
-                self._worker_proc.join(timeout=2)
+                self._worker_proc.join(timeout=5)
             except Exception:
                 pass
             if self._worker_proc.is_alive():
                 try:
                     self._worker_proc.terminate()
+                    self._worker_proc.join(timeout=2)
                 except Exception:
                     pass
             self._worker_proc = None
+        
+        # Clear GPU memory after worker shutdown
+        try:
+            torch.cuda.set_device(int(self._device.split(":")[1]))
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize(device=self._device)
+        except Exception:
+            pass
 
 
     def is_healthy(self) -> bool:
         if self._parent_conn is None or self._worker_proc is None or not self._worker_proc.is_alive():
             return False
         
+        # Check if connection is closed
+        if self._parent_conn.closed:
+            LOGGER.warning(f"Connection is closed for device {self._device}")
+            return False
+        
         try:
             self._parent_conn.send({"cmd": WorkerCommand.HEALTH_CHECK.value})
-            msg = self._parent_conn.recv()
             
-            if msg.get("cmd") == WorkerResponse.HEALTHY.value:
-                return True
-            elif msg.get("cmd") == WorkerResponse.CORRUPTED.value:
-                LOGGER.warning(f"GPU context corrupted on device {self._device}")
-                return False
+            if self._parent_conn.poll(timeout=5.0):
+                try:
+                    msg = self._parent_conn.recv()
+                    
+                    if msg.get("cmd") == WorkerResponse.HEALTHY.value:
+                        return True
+                    elif msg.get("cmd") == WorkerResponse.CORRUPTED.value:
+                        LOGGER.warning(f"GPU context corrupted on device {self._device}")
+                        return False
+                    else:
+                        LOGGER.warning(f"Unexpected health check response on device {self._device}: {msg}")
+                        return False
+                        
+                except (EOFError, ConnectionResetError, OSError) as e:
+                    LOGGER.warning(f"Connection error during health check on device {self._device}: {e}")
+                    return False
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "ran out of input" in error_str or "pickle" in error_str or "unpickling" in error_str:
+                        LOGGER.warning(f"Connection closed or corrupted during health check on device {self._device}: {e}")
+                    else:
+                        LOGGER.warning(f"Failed to decode health check response on device {self._device}: {e}")
+                    return False
             else:
+                LOGGER.warning(f"Health check timeout on device {self._device}")
                 return False
                 
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            LOGGER.warning(f"Connection broken during health check on device {self._device}: {e}")
+            return False
         except Exception as e:
-            LOGGER.warning(f"Health check failed: {e}")
+            LOGGER.warning(f"Health check failed on device {self._device}: {e}")
             return False
 
     def restart(self) -> bool:
@@ -329,11 +357,7 @@ class PersistentSubprocessWorker:
             LOGGER.info(f"Restarting worker for device {self._device}")
             
             self._baselines.clear()
-            current_restart_count = self._worker_restart_count
-            
             self._shutdown_worker()
-            
-            self._worker_restart_count = current_restart_count
             self._start_worker()
             
             LOGGER.info(f"Successfully restarted worker for device {self._device}")
@@ -450,29 +474,70 @@ class PersistentSubprocessWorker:
             "solution_name": sol.name
         }
         
+        if self._parent_conn is None or self._parent_conn.closed:
+            error_msg = "Connection is closed or invalid"
+            return _make_eval(
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                error=error_msg,
+            )
+        
         try:
             self._parent_conn.send(eval_msg)
-            response = self._parent_conn.recv()
             
-            if response.get("cmd") == WorkerResponse.EVALUATION.value:
-                evaluation = response["evaluation"]
-                if evaluation.status == EvaluationStatus.PASSED:
-                    self._clear_failure_record(sol.name)
-                elif evaluation.status in (EvaluationStatus.RUNTIME_ERROR, EvaluationStatus.INCORRECT_SHAPE, EvaluationStatus.INCORRECT_DTYPE):
-                    self._record_failure(sol.name, evaluation.error or "Evaluation failed", evaluation.status)
-                return evaluation
-            elif response.get("cmd") == WorkerResponse.ERROR.value:
-                error_msg = response.get("error", "Unknown evaluation error")
-                self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
-                return _make_eval(
-                    status=EvaluationStatus.RUNTIME_ERROR,
-                    device=self._device,
-                    log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                    error=error_msg,
-                )
+            if self._parent_conn.poll(timeout=300.0):
+                try:
+                    response = self._parent_conn.recv()
+                    
+                    if response.get("cmd") == WorkerResponse.EVALUATION.value:
+                        evaluation = response["evaluation"]
+                        if evaluation.status == EvaluationStatus.PASSED:
+                            self._clear_failure_record(sol.name)
+                        elif evaluation.status in (EvaluationStatus.RUNTIME_ERROR, EvaluationStatus.INCORRECT_SHAPE, EvaluationStatus.INCORRECT_DTYPE):
+                            self._record_failure(sol.name, evaluation.error or "Evaluation failed", evaluation.status)
+                        return evaluation
+                    elif response.get("cmd") == WorkerResponse.ERROR.value:
+                        error_msg = response.get("error", "Unknown evaluation error")
+                        self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
+                        return _make_eval(
+                            status=EvaluationStatus.RUNTIME_ERROR,
+                            device=self._device,
+                            log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            error=error_msg,
+                        )
+                    else:
+                        error_msg = f"Unexpected evaluation response: {response}"
+                        self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
+                        return _make_eval(
+                            status=EvaluationStatus.RUNTIME_ERROR,
+                            device=self._device,
+                            log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            error=error_msg,
+                        )
+                        
+                except (EOFError, ConnectionResetError, OSError) as e:
+                    error_msg = f"Connection error during evaluation: {e}"
+                    return _make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=self._device,
+                        log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        error=error_msg,
+                    )
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "ran out of input" in error_str or "pickle" in error_str or "unpickling" in error_str:
+                        error_msg = f"Connection closed or corrupted during evaluation: {e}"
+                    else:
+                        error_msg = f"Failed to decode evaluation response: {e}"
+                    return _make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=self._device,
+                        log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        error=error_msg,
+                    )
             else:
-                error_msg = f"Unexpected evaluation response: {response}"
-                self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
+                error_msg = f"Evaluation timeout after 300 seconds for solution {sol.name}"
                 return _make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=self._device,
@@ -480,9 +545,16 @@ class PersistentSubprocessWorker:
                     error=error_msg,
                 )
                 
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            error_msg = f"Connection broken during evaluation: {e}"
+            return _make_eval(
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                error=error_msg,
+            )
         except Exception as e:
             error_msg = f"Failed to communicate with worker: {e}"
-            # Don't record as solution failure since it's our infrastructure problem
             return _make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
