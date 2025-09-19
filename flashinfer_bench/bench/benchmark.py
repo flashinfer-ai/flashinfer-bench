@@ -40,7 +40,7 @@ class Benchmark:
         self._trace_set = trace_set
         self._config = config if config is not None else BenchmarkConfig()
 
-        if self._config.use_multiprocess_runner:
+        if self._config.use_multi_process_runner:
             self._runner = MultiProcessRunner(logger, self._config.log_dir)
         else:
             self._runner = PersistentRunner(logger, self._config.log_dir)

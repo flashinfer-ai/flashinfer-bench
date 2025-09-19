@@ -15,7 +15,7 @@ def torch_dtype_from_def(dtype_str: str):
         "float32": torch.float32,
         "float16": torch.float16,
         "bfloat16": torch.bfloat16,
-        "float8_e4m3": torch.float8_e4m3fn,
+        "float8_e4m3fn": torch.float8_e4m3fn,
         "float8_e5m2": torch.float8_e5m2,
         "float4_e2m1": torch.float4_e2m1fn_x2,
         "int64": torch.int64,

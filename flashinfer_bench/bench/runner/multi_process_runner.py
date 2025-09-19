@@ -308,7 +308,7 @@ class SubprocessWorker:
 
         except EOFError as e:
             LOGGER.error("Worker crashed (EOF) running %s: %s", sol.name, e)
-        except Exception as e:
+        except Exception:
             LOGGER.error("Unknown error running %s", sol.name, exc_info=True)
         finally:
             try:

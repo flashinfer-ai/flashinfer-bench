@@ -1,8 +1,7 @@
 """Unified JSON encoding/decoding utilities for Pydantic BaseModel objects."""
 
-import json
 from pathlib import Path
-from typing import Any, Dict, List, Type, TypeVar, Union
+from typing import List, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
