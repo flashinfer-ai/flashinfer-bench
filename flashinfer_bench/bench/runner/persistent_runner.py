@@ -56,6 +56,7 @@ class WorkerResponse(Enum):
 @dataclass
 class SolutionFailureRecord:
     """Track failures for a solution."""
+
     solution_name: str
     failure_count: int
     last_error: str
@@ -238,30 +239,30 @@ class PersistentSubprocessWorker:
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
         self._registry = get_registry()
-        
+
         # Solution failure tracking
         self._failure_records: Dict[str, SolutionFailureRecord] = {}
-        self._max_failures = 3 #if a solution fails for more than 3 times, it will be skipped
-        
+        self._max_failures = 3  # if a solution fails for more than 3 times, it will be skipped
+
         self._worker_proc: Optional[mp.Process] = None
         self._parent_conn: Optional[mp.connection.Connection] = None
-        
+
         self._start_worker()
 
     def _start_worker(self) -> None:
         if self._worker_proc is not None and self._worker_proc.is_alive():
             self._shutdown_worker()
-        
+
         ctx = mp.get_context("spawn")
         self._parent_conn, child_conn = ctx.Pipe(duplex=True)
-        
+
         self._worker_proc = ctx.Process(
             target=_persistent_worker_main,
             args=(child_conn, self._device, self._log_dir),
             daemon=True,
         )
         self._worker_proc.start()
-        
+
         try:
             msg = self._parent_conn.recv()
             if msg.get("cmd") == WorkerResponse.READY.value:
@@ -279,7 +280,7 @@ class PersistentSubprocessWorker:
             except Exception:
                 pass
             self._parent_conn = None
-        
+
         if self._worker_proc is not None:
             try:
                 self._worker_proc.join(timeout=5)
@@ -292,7 +293,7 @@ class PersistentSubprocessWorker:
                 except Exception:
                     pass
             self._worker_proc = None
-        
+
         # Clear GPU memory after worker shutdown
         try:
             torch.cuda.set_device(int(self._device.split(":")[1]))
@@ -301,46 +302,61 @@ class PersistentSubprocessWorker:
         except Exception:
             pass
 
-
     def is_healthy(self) -> bool:
-        if self._parent_conn is None or self._worker_proc is None or not self._worker_proc.is_alive():
+        if (
+            self._parent_conn is None
+            or self._worker_proc is None
+            or not self._worker_proc.is_alive()
+        ):
             return False
-        
+
         # Check if connection is closed
         if self._parent_conn.closed:
             LOGGER.warning(f"Connection is closed for device {self._device}")
             return False
-        
+
         try:
             self._parent_conn.send({"cmd": WorkerCommand.HEALTH_CHECK.value})
-            
+
             if self._parent_conn.poll(timeout=5.0):
                 try:
                     msg = self._parent_conn.recv()
-                    
+
                     if msg.get("cmd") == WorkerResponse.HEALTHY.value:
                         return True
                     elif msg.get("cmd") == WorkerResponse.CORRUPTED.value:
                         LOGGER.warning(f"GPU context corrupted on device {self._device}")
                         return False
                     else:
-                        LOGGER.warning(f"Unexpected health check response on device {self._device}: {msg}")
+                        LOGGER.warning(
+                            f"Unexpected health check response on device {self._device}: {msg}"
+                        )
                         return False
-                        
+
                 except (EOFError, ConnectionResetError, OSError) as e:
-                    LOGGER.warning(f"Connection error during health check on device {self._device}: {e}")
+                    LOGGER.warning(
+                        f"Connection error during health check on device {self._device}: {e}"
+                    )
                     return False
                 except Exception as e:
                     error_str = str(e).lower()
-                    if "ran out of input" in error_str or "pickle" in error_str or "unpickling" in error_str:
-                        LOGGER.warning(f"Connection closed or corrupted during health check on device {self._device}: {e}")
+                    if (
+                        "ran out of input" in error_str
+                        or "pickle" in error_str
+                        or "unpickling" in error_str
+                    ):
+                        LOGGER.warning(
+                            f"Connection closed or corrupted during health check on device {self._device}: {e}"
+                        )
                     else:
-                        LOGGER.warning(f"Failed to decode health check response on device {self._device}: {e}")
+                        LOGGER.warning(
+                            f"Failed to decode health check response on device {self._device}: {e}"
+                        )
                     return False
             else:
                 LOGGER.warning(f"Health check timeout on device {self._device}")
                 return False
-                
+
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             LOGGER.warning(f"Connection broken during health check on device {self._device}: {e}")
             return False
@@ -355,14 +371,14 @@ class PersistentSubprocessWorker:
         """
         try:
             LOGGER.info(f"Restarting worker for device {self._device}")
-            
+
             self._baselines.clear()
             self._shutdown_worker()
             self._start_worker()
-            
+
             LOGGER.info(f"Successfully restarted worker for device {self._device}")
             return True
-            
+
         except Exception as e:
             LOGGER.error(f"Failed to restart worker for device {self._device}: {e}")
             return False
@@ -387,7 +403,7 @@ class PersistentSubprocessWorker:
                 failure_count=1,
                 last_error=error,
                 last_status=status,
-                last_failure_time=time.time()
+                last_failure_time=time.time(),
             )
 
     def _clear_failure_record(self, solution_name: str) -> None:
@@ -451,18 +467,20 @@ class PersistentSubprocessWorker:
         if baseline not in self._baselines:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
-        
+
         solution_name = sol.name
         failure_record = self._should_skip_solution(solution_name)
         if failure_record is not None:
-            LOGGER.info(f"Skipping solution {sol.name} due to {failure_record.failure_count} consecutive failures")
+            LOGGER.info(
+                f"Skipping solution {sol.name} due to {failure_record.failure_count} consecutive failures"
+            )
             return _make_eval(
                 status=failure_record.last_status,
                 device=self._device,
                 log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
                 error=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
             )
-        
+
         eval_msg = {
             "cmd": WorkerCommand.RUN_SOLUTION.value,
             "definition": bl.defn,
@@ -471,9 +489,9 @@ class PersistentSubprocessWorker:
             "ref_outputs": bl.ref_outputs_dev,
             "ref_mean_latency_ms": bl.ref_mean_latency_ms,
             "config": cfg,
-            "solution_name": sol.name
+            "solution_name": sol.name,
         }
-        
+
         if self._parent_conn is None or self._parent_conn.closed:
             error_msg = "Connection is closed or invalid"
             return _make_eval(
@@ -482,20 +500,26 @@ class PersistentSubprocessWorker:
                 log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
                 error=error_msg,
             )
-        
+
         try:
             self._parent_conn.send(eval_msg)
-            
+
             if self._parent_conn.poll(timeout=300.0):
                 try:
                     response = self._parent_conn.recv()
-                    
+
                     if response.get("cmd") == WorkerResponse.EVALUATION.value:
                         evaluation = response["evaluation"]
                         if evaluation.status == EvaluationStatus.PASSED:
                             self._clear_failure_record(sol.name)
-                        elif evaluation.status in (EvaluationStatus.RUNTIME_ERROR, EvaluationStatus.INCORRECT_SHAPE, EvaluationStatus.INCORRECT_DTYPE):
-                            self._record_failure(sol.name, evaluation.error or "Evaluation failed", evaluation.status)
+                        elif evaluation.status in (
+                            EvaluationStatus.RUNTIME_ERROR,
+                            EvaluationStatus.INCORRECT_SHAPE,
+                            EvaluationStatus.INCORRECT_DTYPE,
+                        ):
+                            self._record_failure(
+                                sol.name, evaluation.error or "Evaluation failed", evaluation.status
+                            )
                         return evaluation
                     elif response.get("cmd") == WorkerResponse.ERROR.value:
                         error_msg = response.get("error", "Unknown evaluation error")
@@ -515,7 +539,7 @@ class PersistentSubprocessWorker:
                             log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
                             error=error_msg,
                         )
-                        
+
                 except (EOFError, ConnectionResetError, OSError) as e:
                     error_msg = f"Connection error during evaluation: {e}"
                     return _make_eval(
@@ -526,7 +550,11 @@ class PersistentSubprocessWorker:
                     )
                 except Exception as e:
                     error_str = str(e).lower()
-                    if "ran out of input" in error_str or "pickle" in error_str or "unpickling" in error_str:
+                    if (
+                        "ran out of input" in error_str
+                        or "pickle" in error_str
+                        or "unpickling" in error_str
+                    ):
                         error_msg = f"Connection closed or corrupted during evaluation: {e}"
                     else:
                         error_msg = f"Failed to decode evaluation response: {e}"
@@ -544,7 +572,7 @@ class PersistentSubprocessWorker:
                     log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
                     error=error_msg,
                 )
-                
+
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             error_msg = f"Connection broken during evaluation: {e}"
             return _make_eval(
@@ -575,7 +603,7 @@ class PersistentRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
         self._logger = logger
         self._log_dir = log_dir
-        
+
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
@@ -602,9 +630,11 @@ class PersistentRunner(Runner):
         self._curr_worker_idx = (start + K) % D
         return sel
 
-    def _handle_failed_workers(self, failed_workers: List[PersistentSubprocessWorker], increment_retries: bool = True) -> None:
+    def _handle_failed_workers(
+        self, failed_workers: List[PersistentSubprocessWorker], increment_retries: bool = True
+    ) -> None:
         """Handle failed workers by attempting to restart them or removing them.
-        
+
         Args:
             failed_workers: List of workers that have failed
             increment_retries: Whether to increment retry count (True for health failures, False for solution failures)
@@ -621,9 +651,11 @@ class PersistentRunner(Runner):
                     new_retry_count = retry_count + 1
                 else:
                     new_retry_count = retry_count
-                    
+
                 if failed_worker.restart():
-                    self._logger.info(f"Successfully restarted persistent worker for device {device}")
+                    self._logger.info(
+                        f"Successfully restarted persistent worker for device {device}"
+                    )
                 else:
                     self._logger.error(f"Failed to restart persistent worker for device {device}")
                     if new_retry_count >= self._worker_max_retries:
@@ -650,7 +682,7 @@ class PersistentRunner(Runner):
 
     def _has_healthy_workers(self) -> bool:
         return bool(self._workers)
-    
+
     def run_workload(
         self,
         defn: Definition,
@@ -697,12 +729,14 @@ class PersistentRunner(Runner):
         if not selected:
             raise RuntimeError("No healthy persistent workers available after baseline setup")
 
-        def run_solution_with_health_check(worker: PersistentSubprocessWorker, 
-                                        solution: Solution, 
-                                        baseline_handle: BaselineHandle) -> Evaluation:
+        def run_solution_with_health_check(
+            worker: PersistentSubprocessWorker, solution: Solution, baseline_handle: BaselineHandle
+        ) -> Evaluation:
             try:
                 if not worker.is_healthy():
-                    LOGGER.warning(f"Worker on device {worker._device} is unhealthy, attempting restart")
+                    LOGGER.warning(
+                        f"Worker on device {worker._device} is unhealthy, attempting restart"
+                    )
                     if worker.restart():
                         try:
                             new_baseline = worker.run_ref(defn, wl, config, root)
@@ -710,11 +744,15 @@ class PersistentRunner(Runner):
                             baseline_handle = new_baseline
                             LOGGER.info(f"Rebuilt baseline for worker on device {worker._device}")
                         except Exception as e:
-                            LOGGER.error(f"Failed to rebuild baseline after restart for device {worker._device}: {e}")
+                            LOGGER.error(
+                                f"Failed to rebuild baseline after restart for device {worker._device}: {e}"
+                            )
                             return _make_eval(
                                 status=EvaluationStatus.RUNTIME_ERROR,
                                 device=worker._device,
-                                log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                                log_file=os.path.join(
+                                    self._log_dir, f"{solution.name}_{time.time()}.log"
+                                ),
                                 error=f"Failed to rebuild baseline after restart: {e}",
                             )
                     else:
@@ -722,13 +760,15 @@ class PersistentRunner(Runner):
                         return _make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=worker._device,
-                            log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                            log_file=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             error="Worker restart failed",
                         )
-                
+
                 # Run the solution
                 return worker.run_solution(solution, baseline_handle, config)
-                
+
             except Exception as e:
                 LOGGER.error(f"Unexpected error in solution execution for {solution.name}: {e}")
                 return _make_eval(
@@ -741,16 +781,13 @@ class PersistentRunner(Runner):
         try:
             with ThreadPoolExecutor(max_workers=len(selected)) as pool:
                 sol_futs: Dict[str, any] = {}
-                
+
                 for i, sol in enumerate(solutions):
                     worker = selected[i % len(selected)]
                     baseline_handle = baselines[worker]
-                    
+
                     sol_futs[sol.name] = pool.submit(
-                        run_solution_with_health_check, 
-                        worker, 
-                        sol, 
-                        baseline_handle
+                        run_solution_with_health_check, worker, sol, baseline_handle
                     )
 
                 results: Dict[str, Evaluation] = {
@@ -768,11 +805,7 @@ class PersistentRunner(Runner):
         return results
 
 
-def _persistent_worker_main(
-    conn: mp.connection.Connection,
-    device: str,
-    log_dir: str,
-) -> None:
+def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir: str) -> None:
     """
     Long-lived worker process that handles solution evaluations.
     Caches compiled solutions to avoid recompilation (handled in builder registry).
@@ -780,17 +813,17 @@ def _persistent_worker_main(
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
-        
+
         conn.send({"cmd": WorkerResponse.READY.value})
-        
+
         while True:
             try:
                 msg = conn.recv()
                 cmd = msg.get("cmd")
-                
+
                 if cmd == WorkerCommand.SHUTDOWN.value:
                     break
-                
+
                 elif cmd == WorkerCommand.HEALTH_CHECK.value:
                     try:
                         # GPU health check
@@ -802,7 +835,7 @@ def _persistent_worker_main(
                     except Exception:
                         conn.send({"cmd": WorkerResponse.CORRUPTED.value})
                         break
-                
+
                 elif cmd == WorkerCommand.RUN_SOLUTION.value:
                     defn = msg["definition"]
                     sol = msg["solution"]
@@ -811,13 +844,13 @@ def _persistent_worker_main(
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
                     cfg = msg["config"]
                     solution_name = msg["solution_name"]
-                    
+
                     log_path = os.path.join(log_dir, f"{solution_name}_{time.time()}.log")
-                    
+
                     try:
                         # Use registry to build/get cached solution
                         runnable_sol = registry.build(defn, sol)
-                        
+
                         evaluation = _evaluate_solution_worker(
                             runnable_sol=runnable_sol,
                             inputs_bl=inputs_bl,
@@ -825,25 +858,34 @@ def _persistent_worker_main(
                             ref_mean_latency_ms=ref_mean_latency_ms,
                             cfg=cfg,
                             device=device,
-                            log_path=log_path
+                            log_path=log_path,
                         )
-                        
-                        conn.send({"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation})
-                        
+
+                        conn.send(
+                            {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
+                        )
+
                     except Exception as e:
                         import traceback
-                        error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+
+                        error_msg = (
+                            f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                        )
                         evaluation = _make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=device,
                             log_file=log_path,
                             error=error_msg,
                         )
-                        conn.send({"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation})
-                
+                        conn.send(
+                            {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
+                        )
+
                 else:
-                    conn.send({"cmd": WorkerResponse.ERROR.value, "error": f"Unknown command: {cmd}"})
-                    
+                    conn.send(
+                        {"cmd": WorkerResponse.ERROR.value, "error": f"Unknown command: {cmd}"}
+                    )
+
             except EOFError:
                 # parent closed connection
                 break
@@ -852,7 +894,7 @@ def _persistent_worker_main(
                     conn.send({"cmd": WorkerResponse.ERROR.value, "error": str(e)})
                 except Exception:
                     break
-                    
+
     except Exception as e:
         try:
             conn.send({"cmd": WorkerResponse.ERROR.value, "error": f"Worker startup failed: {e}"})
@@ -867,28 +909,28 @@ def _persistent_worker_main(
 
 def _evaluate_solution_worker(
     runnable_sol: Runnable,
-    inputs_bl: List[Dict[str, Any]], 
+    inputs_bl: List[Dict[str, Any]],
     ref_outputs_bl: List[Dict[str, torch.Tensor]],
     ref_mean_latency_ms: float,
     cfg: BenchmarkConfig,
     device: str,
-    log_path: str
+    log_path: str,
 ) -> Evaluation:
     inputs: List[Dict[str, Any]] = [
         {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inp.items()}
         for inp in inputs_bl
     ]
-    
+
     if not ref_outputs_bl:
         raise RuntimeError("No reference outputs provided")
-    
+
     output_names = list(ref_outputs_bl[0].keys())
     output_dtypes = {k: v.dtype for k, v in ref_outputs_bl[0].items()}
-    
+
     max_abs = 0.0
     max_rel = 0.0
     numerical_incorrect = False
-    
+
     # Check correctness
     for t, inp in enumerate(inputs):
         try:
@@ -897,6 +939,7 @@ def _evaluate_solution_worker(
             torch.cuda.synchronize(device=device)
         except Exception as e:
             import traceback
+
             error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             return _make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
@@ -906,31 +949,22 @@ def _evaluate_solution_worker(
             )
 
         out_t = _normalize_outputs(
-            out,
-            device=torch.device(device),
-            output_names=output_names,
-            output_dtypes=output_dtypes,
+            out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
         )
         ref_t = ref_outputs_bl[t]
-        
+
         for k in ref_t.keys():
             if k not in out_t:
                 return _make_eval(
-                    status=EvaluationStatus.INCORRECT_SHAPE,
-                    device=device,
-                    log_file=log_path,
+                    status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
                 )
             if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
                 return _make_eval(
-                    status=EvaluationStatus.INCORRECT_SHAPE,
-                    device=device,
-                    log_file=log_path,
+                    status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
                 )
             if out_t[k].dtype != ref_t[k].dtype:
                 return _make_eval(
-                    status=EvaluationStatus.INCORRECT_DTYPE,
-                    log_file=log_path,
-                    device=device,
+                    status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
                 )
 
             # Check for non-finite values
@@ -982,7 +1016,7 @@ def _evaluate_solution_worker(
         reference_latency_ms=ref_mean_latency_ms,
         speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
     )
-    
+
     return _make_eval(
         status=EvaluationStatus.PASSED,
         device=device,
