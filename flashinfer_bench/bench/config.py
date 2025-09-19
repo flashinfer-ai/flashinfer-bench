@@ -16,6 +16,7 @@ class BenchmarkConfig:
     rtol: float = field(default=1e-2)
     atol: float = field(default=1e-2)
     log_dir: str = field(default="/tmp/flashinfer_bench")
+    use_multiprocess_runner: bool = field(default=False)
 
     def __post_init__(self):
         if self.warmup_runs < 0:

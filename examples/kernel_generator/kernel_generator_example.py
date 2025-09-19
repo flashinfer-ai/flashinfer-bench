@@ -24,12 +24,14 @@ def main():
     target_gpu = "B200"
 
     # TODO: adjust local path to traceset
-    traceset_path = "/home/user/flashinfer-trace"
+    traceset_path = "/home/akj2/flashinfer-trace"
 
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
 
-    all_definitions = list(traceset.definitions.keys())
+    #all_definitions = list(traceset.definitions.keys())
+    # Filter for rmsnorm definitions only
+    all_definitions = [name for name in traceset.definitions.keys() if "rmsnorm" in name.lower()]
 
     print(f"All definitions found: {len(all_definitions)}")
 
@@ -47,6 +49,7 @@ def main():
         target_gpu=target_gpu,
         api_key=api_key,
         base_url=base_url,
+        reasoning_effort="high",
     )
 
     total_definitions = len(all_definitions)
@@ -78,7 +81,7 @@ def main():
             try:
                 print(f"\nAttempt {attempt}/{max_attempts} for {definition_name}")
 
-                solution = generator.optimized_generate(
+                solution = generator.generate(
                     traceset=traceset,
                     definition=definition,
                     max_opt_rounds=10,  # For our baseline, we used 10 rounds
