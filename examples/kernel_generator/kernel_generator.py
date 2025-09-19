@@ -8,13 +8,16 @@ from kernel_generator_prompts import get_optimization_prompt, get_prompt
 
 from flashinfer_bench import (
     Benchmark,
+    BenchmarkConfig,
     BuildSpec,
     Definition,
     EvaluationStatus,
     Solution,
     SourceFile,
     SupportedLanguages,
+    Trace,
     TraceSet,
+    Workload,
 )
 
 
@@ -106,12 +109,12 @@ class KernelGenerator:
                 definitions={definition.name: definition},
                 solutions={definition.name: [solution]},
                 workloads={definition.name: [selected_workload]},
-                traces={},
+                traces={definition.name: []},
             )
 
             print(f"Evaluating solution...")
-            benchmark = Benchmark(temp_traceset)
-            result_traceset = benchmark.run_all(dump_traces=False)
+            benchmark = Benchmark(temp_traceset, BenchmarkConfig())
+            result_traceset = benchmark.run_all()
 
             traces = result_traceset.traces.get(definition.name, [])
             if not traces:
