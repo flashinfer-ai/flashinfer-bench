@@ -159,6 +159,9 @@ export function WinAtPCurves({
                 </button>
               </HoverCardTrigger>
               <HoverCardContent className="w-72 text-sm">
+                <p className="text-xs font-medium text-primary">
+                  What&apos;s this?
+                </p>
                 <p className="mb-2 text-sm text-muted-foreground">
                   Measures the portion of workloads this solution is faster than p*baseline_performance.
                 </p>

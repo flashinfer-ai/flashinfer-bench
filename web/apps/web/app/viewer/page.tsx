@@ -3,35 +3,45 @@
 import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import stripJsonComments from "strip-json-comments"
-import { Editor } from "@/components/editor"
+import { Viewer } from "@/components/viewer"
 import { Button, Textarea, Card } from "@flashinfer-bench/ui"
 import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@flashinfer-bench/ui"
 
-function EditorContent() {
+function ViewerContent() {
   const [jsonInput, setJsonInput] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [parsedData, setParsedData] = useState<any>(null)
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Check for solution ID in URL params
-    const solutionId = searchParams.get('solution')
-    if (solutionId) {
-      // Try to get solution data from sessionStorage
-      const storedSolution = sessionStorage.getItem(`solution-${solutionId}`)
-      if (storedSolution) {
-        try {
-          const data = JSON.parse(storedSolution)
-          setParsedData(data)
-          setError(null)
-          // Clean up sessionStorage
-          sessionStorage.removeItem(`solution-${solutionId}`)
-        } catch (e) {
-          console.error('Failed to parse stored solution:', e)
-        }
+    const loadFromStorage = (prefix: string, id: string | null) => {
+      if (!id) return false
+      const key = `${prefix}-${id}`
+      const stored = sessionStorage.getItem(key)
+      if (!stored) {
+        setError("Stored viewer data not found. Please reopen from the results view.")
+        return false
+      }
+      try {
+        const data = JSON.parse(stored)
+        setParsedData(data)
+        setError(null)
+        sessionStorage.removeItem(key)
+        return true
+      } catch (e) {
+        console.error(`Failed to parse stored ${prefix}:`, e)
+        setError("Unable to read stored viewer data. Please reopen from the results view.")
+        sessionStorage.removeItem(key)
+        return false
       }
     }
+
+    const solutionId = searchParams.get("solution")
+    if (loadFromStorage("solution", solutionId)) return
+
+    const traceId = searchParams.get("trace")
+    loadFromStorage("trace", traceId)
   }, [searchParams])
 
   useEffect(() => {
@@ -50,7 +60,7 @@ function EditorContent() {
       setParsedData(data)
       setError(null)
 
-      window.history.pushState({ view: 'editor' }, '', window.location.href)
+      window.history.pushState({ view: 'viewer' }, '', window.location.href)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid JSON format. Please check your input.")
       setParsedData(null)
@@ -63,13 +73,21 @@ function EditorContent() {
     setError(null)
   }
 
+  const isTraceData = parsedData && typeof parsedData === "object" && "workload" in parsedData
+
+  const containerClass = parsedData
+    ? isTraceData
+      ? "container mx-auto py-8 px-4"
+      : "py-4 px-6"
+    : "container mx-auto py-8 px-4 max-w-7xl"
+
   return (
-    <div className={parsedData ? "py-4 px-6" : "container mx-auto py-8 px-4 max-w-7xl"}>
+    <div className={containerClass}>
       {!parsedData && (
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Definition & Solution Editor</h1>
+          <h1 className="text-3xl font-bold mb-2">Definition, Solution & Trace Viewer</h1>
           <p className="text-muted-foreground">
-            View and edit definitions and solutions. Paste a complete definition or solution JSON to get started.
+            Inspect definitions, solutions, and traces in a friendly layout. Paste a complete JSON payload or open items directly from the results page.
           </p>
         </div>
       )}
@@ -79,7 +97,7 @@ function EditorContent() {
           <div className="space-y-4">
             <div>
               <label htmlFor="json-input" className="block text-sm font-medium mb-2">
-                Paste Definition or Solution JSON
+                Paste Definition, Solution, or Trace JSON
               </label>
               <Textarea
                 id="json-input"
@@ -109,7 +127,7 @@ function EditorContent() {
         </Card>
       ) : (
         <div className="w-full -mx-4 px-4">
-          <Editor
+          <Viewer
             data={parsedData}
             onBack={() => {
               setParsedData(null)
@@ -121,10 +139,10 @@ function EditorContent() {
   )
 }
 
-export default function EditorPage() {
+export default function ViewerPage() {
   return (
     <Suspense fallback={<div className="container mx-auto py-8 px-4 max-w-7xl">Loading...</div>}>
-      <EditorContent />
+      <ViewerContent />
     </Suspense>
   )
 }

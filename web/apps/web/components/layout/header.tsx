@@ -19,10 +19,10 @@ export function Header() {
               Models
             </Link>
             <Link
-              href="/editor"
+              href="/viewer"
               className="transition-colors hover:text-foreground/80 text-foreground/60"
             >
-              Editor
+              Viewer
             </Link>
           </nav>
         </div>

@@ -1,16 +1,27 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Editor as MonacoEditor } from "@monaco-editor/react"
 import { Button, Card, toast } from "@flashinfer-bench/ui"
 import { ArrowLeft, Copy, Download, Check, Plus, FileText, Code } from "lucide-react"
 
-interface EditorProps {
+interface ViewerProps {
   data: any
   onBack: () => void
 }
 
-export function Editor({ data, onBack }: EditorProps) {
+export function Viewer({ data, onBack }: ViewerProps) {
+  const isTrace = data && typeof data === "object" && "workload" in data
+
+  if (isTrace) {
+    return <TraceViewer data={data} onBack={onBack} />
+  }
+
+  return <DefinitionSolutionViewer data={data} onBack={onBack} />
+}
+
+function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
   const [jsonText, setJsonText] = useState("")
   const [referenceCode, setReferenceCode] = useState("")
   const [sourceCode, setSourceCode] = useState<Record<string, string>>({})
@@ -408,6 +419,162 @@ export function Editor({ data, onBack }: EditorProps) {
                 formatOnType: true,
               }}
             />
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+type TraceViewerProps = {
+  data: any
+  onBack: () => void
+}
+
+function formatNumber(value: number | null | undefined, digits = 3) {
+  if (value == null || Number.isNaN(value)) return "-"
+  if (!Number.isFinite(value)) return String(value)
+  const abs = Math.abs(value)
+  if (abs >= 1 || abs === 0) return value.toFixed(digits)
+  return value.toExponential(2)
+}
+
+function TraceViewer({ data, onBack }: TraceViewerProps) {
+  const evaluation = data?.evaluation || null
+  const performance = evaluation?.performance || null
+  const correctness = evaluation?.correctness || null
+  const environment = evaluation?.environment || null
+  const axes = data?.workload?.axes || {}
+  const inputs = data?.workload?.inputs || {}
+  const libs = environment?.libs || {}
+  const definitionName = data?.definition || ""
+
+  const status = evaluation?.status || "N/A"
+  const statusTone = status === "PASSED" ? "text-emerald-600" : status.includes("INCORRECT") ? "text-amber-600" : status.includes("ERROR") ? "text-red-600" : "text-muted-foreground"
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={onBack} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold">Trace Summary</h3>
+          <div className="space-y-3 text-sm text-muted-foreground break-words">
+            <div>
+              <span className="text-foreground font-medium">Definition:</span>{" "}
+              {definitionName ? (
+                <Link href={`/kernels/${encodeURIComponent(definitionName)}`} className="text-primary hover:underline inline-flex items-center gap-1">
+                  <span>{definitionName}</span>
+                </Link>
+              ) : (
+                "-"
+              )}
+            </div>
+            <div>
+              <span className="text-foreground font-medium">Solution:</span> {data.solution ?? "Workload only"}
+            </div>
+            <div>
+              <span className="text-foreground font-medium">Status:</span>{" "}
+              <span className={`font-semibold ${statusTone}`}>{status}</span>
+            </div>
+            {evaluation?.timestamp && (
+              <div>
+                <span className="text-foreground font-medium">Timestamp:</span> {evaluation.timestamp}
+              </div>
+            )}
+            {evaluation?.log_file && (
+              <div>
+                <span className="text-foreground font-medium">Log file:</span>{" "}
+                <span className="break-all">{evaluation.log_file}</span>
+              </div>
+            )}
+            {performance && (
+              <div className="pt-1">
+                <p className="text-foreground font-medium">Performance</p>
+                <ul className="ml-4 list-disc space-y-1">
+                  <li>Latency: {formatNumber(performance.latency_ms)} ms</li>
+                  <li>Reference latency: {formatNumber(performance.reference_latency_ms)} ms</li>
+                  <li>Speedup factor: {formatNumber(performance.speedup_factor)}</li>
+                </ul>
+              </div>
+            )}
+            {correctness && (
+              <div className="pt-1">
+                <p className="text-foreground font-medium">Correctness</p>
+                <ul className="ml-4 list-disc space-y-1">
+                  <li>Max absolute error: {formatNumber(correctness.max_absolute_error)}</li>
+                  <li>Max relative error: {formatNumber(correctness.max_relative_error)}</li>
+                </ul>
+              </div>
+            )}
+            {environment && (
+              <div className="pt-1">
+                <p className="text-foreground font-medium">Environment</p>
+                <ul className="ml-4 list-disc space-y-1">
+                  <li>Hardware: {environment.hardware || "-"}</li>
+                  {Object.keys(libs).length > 0 && (
+                    <li>
+                      Libraries:
+                      <ul className="ml-4 list-disc space-y-1">
+                        {Object.entries(libs).map(([name, version]) => (
+                          <li key={name}>
+                            <span className="font-semibold text-foreground">{name}</span>: <span className="break-all">{version}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold">Workload</h3>
+          <div className="space-y-4 text-sm text-muted-foreground break-words">
+            <div>
+              <p className="text-foreground font-medium">Axes</p>
+              {Object.keys(axes).length ? (
+                <ul className="ml-4 list-disc space-y-1">
+                  {Object.entries(axes).map(([name, value]) => (
+                    <li key={name}>
+                      <span className="font-mono text-foreground">{name}</span>: {value}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No axes information.</p>
+              )}
+            </div>
+            <div>
+              <p className="text-foreground font-medium">Inputs</p>
+              {Object.keys(inputs).length ? (
+                <ul className="ml-4 list-disc space-y-2">
+                  {Object.entries(inputs).map(([name, input]) => (
+                    <li key={name}>
+                      <span className="font-mono text-foreground">{name}</span>: {input.type}
+                      {input.type === "safetensors" && (
+                        <span className="block ml-4 break-all">{input.path}::{input.tensor_key}</span>
+                      )}
+                      {input.type === "scalar" && (
+                        <span className="block ml-4">value = {String(input.value)}</span>
+                      )}
+                      {input.type === "random" && input.seed != null && (
+                        <span className="block ml-4">seed = {input.seed}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No input descriptors.</p>
+              )}
+            </div>
           </div>
         </Card>
       </div>

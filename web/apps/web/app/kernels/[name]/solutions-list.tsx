@@ -186,12 +186,12 @@ export function SolutionsList({
     const bucketsForSolution = !isBaseline && isExpanded ? traceBuckets : null
     const baselineComparison = isBaseline && isExpanded ? baselineComparisons : null
 
-    const handleOpenEditor = (event: MouseEvent<HTMLButtonElement>) => {
+    const handleOpenViewer = (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation()
       if (typeof window === "undefined") return
       const solutionId = `${solution.definition}-${solution.name}`.replace(/[^a-zA-Z0-9-_]/g, "_")
       window.sessionStorage.setItem(`solution-${solutionId}`, JSON.stringify(solution))
-      window.open(`/editor?solution=${encodeURIComponent(solutionId)}`, "_blank")
+      window.open(`/viewer?solution=${encodeURIComponent(solutionId)}`, "_blank")
     }
 
     return (
@@ -265,9 +265,9 @@ export function SolutionsList({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={handleOpenEditor}
-                  aria-label={`Open ${solution.name} in editor`}
-                  title="Open in editor"
+                  onClick={handleOpenViewer}
+                  aria-label={`Open ${solution.name} in viewer`}
+                  title="Open in viewer"
                 >
                   <Code2 className="h-4 w-4" />
                 </Button>

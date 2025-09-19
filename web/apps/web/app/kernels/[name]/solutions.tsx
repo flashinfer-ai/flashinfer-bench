@@ -401,7 +401,17 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
   }, [])
 
   const handleOpenTrace = useCallback((trace: Trace) => {
-    toast({ title: "Trace viewer", description: `Trace ${trace.workload?.uuid || trace.solution} coming soon.` })
+    if (typeof window === "undefined") return
+    const parts = [trace.definition || "trace", trace.solution || "workload", trace.workload?.uuid || "unknown"]
+    const traceId = parts.join("-").replace(/[^a-zA-Z0-9-_]/g, "_")
+    try {
+      window.sessionStorage.setItem(`trace-${traceId}`, JSON.stringify(trace))
+    } catch (error) {
+      console.error("failed to persist trace for viewer", error)
+      toast({ title: "Trace viewer", description: "Unable to open trace viewer.", variant: "destructive" })
+      return
+    }
+    window.open(`/viewer?trace=${encodeURIComponent(traceId)}`, "_blank")
   }, [])
 
   const counts = useMemo(
