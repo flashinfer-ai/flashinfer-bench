@@ -183,7 +183,7 @@ def run(args: argparse.Namespace):
             num_trials=args.num_trials,
             rtol=args.rtol,
             atol=args.atol,
-            use_multiprocess_runner=args.use_multiprocess_runner,
+            use_multi_process_runner=args.use_multi_process_runner,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
@@ -243,9 +243,9 @@ def cli():
         help="Logging level",
     )
     run_parser.add_argument(
-        "--use-multiprocess-runner", 
-        action="store_true", 
-        help="Use MultiProcessRunner instead of the default PersistentRunner"
+        "--use-multi-process-runner",
+        action="store_true",
+        help="Use MultiProcessRunner instead of the default PersistentRunner",
     )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument(

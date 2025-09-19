@@ -61,7 +61,9 @@ def test_run_all_no_solutions(tmp_path: Path, caplog):
     benchmark = Benchmark(trace_set)
 
     # Capture log messages from the benchmark's logger
-    with caplog.at_level(logging.WARNING, logger=benchmark._logger.name):
+    from flashinfer_bench.bench.benchmark import logger
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
         result = benchmark.run_all()
 
     assert "No solutions found for def=test_def, skipping definition" in caplog.text
@@ -119,7 +121,7 @@ def test_dump_traces_false(tmp_path: Path):
 
 
 @patch("flashinfer_bench.bench.benchmark.MultiProcessRunner")
-def test_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
+def test_multi_process_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
     """Test handling of RuntimeError from runner."""
     # Setup mock runner to raise RuntimeError
     mock_runner = MagicMock()
@@ -160,10 +162,12 @@ def test_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
         traces={},
     )
 
-    benchmark = Benchmark(trace_set)
+    benchmark = Benchmark(trace_set, BenchmarkConfig(use_multi_process_runner=True))
 
     # Capture log messages from the benchmark's logger
-    with caplog.at_level(logging.ERROR, logger=benchmark._logger.name):
+    from flashinfer_bench.bench.benchmark import logger
+
+    with caplog.at_level(logging.ERROR, logger=logger.name):
         result = benchmark.run_all()
 
     assert "Failed to run workload test_uuid: Simulated runner error" in caplog.text

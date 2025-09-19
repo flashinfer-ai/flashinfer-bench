@@ -180,13 +180,13 @@ class KernelGenerator:
                 if lines[0].startswith("```"):
                     lines = lines[1:]
                 code = "\n".join(lines)
-            
+
             if code.endswith("```"):
                 lines = code.split("\n")
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 code = "\n".join(lines)
-            
+
             code = code.replace("```", "")
 
         hex_float_pattern = r"0x[0-9a-fA-F]*\.[0-9a-fA-F]*p[-+]?\d+"
