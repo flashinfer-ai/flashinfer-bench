@@ -27,12 +27,7 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import (
-    env_snapshot,
-    list_cuda_devices,
-    redirect_stdio_to_file,
-    torch_dtype_from_def,
-)
+from flashinfer_bench.utils import env_snapshot, list_cuda_devices, torch_dtype_from_def
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
