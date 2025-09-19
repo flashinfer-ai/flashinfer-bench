@@ -2,7 +2,7 @@
 
 import React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Cpu, Copy, Check, Filter } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressCircle, Button } from "@flashinfer-bench/ui"
 import { Model } from "@/lib/schemas"
@@ -14,6 +14,7 @@ interface ModelCardProps {
 
 export function ModelCard({ model, href }: ModelCardProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [copied, setCopied] = React.useState(false)
 
   // Count only layers (kernels)
@@ -31,7 +32,12 @@ export function ModelCard({ model, href }: ModelCardProps) {
   const handleFilter = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    router.push(`/?kernel_search=${encodeURIComponent(`model:${model.id}`)}`)
+    const query = `model:${model.id}`
+    if (typeof window !== "undefined" && pathname === "/") {
+      window.dispatchEvent(new CustomEvent("kernelSearch", { detail: query }))
+      return
+    }
+    router.push(`/?kernel_search=${encodeURIComponent(query)}`)
   }
 
   return (

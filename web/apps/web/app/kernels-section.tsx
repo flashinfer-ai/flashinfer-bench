@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Button, Card, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Badge, Input, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Copy, Check, ChevronRight, ChevronLeft, Search, Info } from "lucide-react"
 import { Definition } from "@/lib/schemas"
@@ -18,10 +19,18 @@ interface KernelsSectionProps {
 const ITEMS_PER_PAGE = 9
 
 export function KernelsSection({ definitions }: KernelsSectionProps) {
+  const searchParams = useSearchParams()
+  const kernelSearchParam = searchParams?.get("kernel_search") ?? ""
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState(kernelSearchParam)
   const [selectedTab, setSelectedTab] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
+
+  useEffect(() => {
+    setSearch(kernelSearchParam)
+    setSelectedTab("all")
+    setCurrentPage(1)
+  }, [kernelSearchParam])
 
   // Extract all unique types from definitions
   const types = Array.from(new Set(
@@ -80,10 +89,28 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
   })
 
   // Reset page when search or tab changes
-  const handleSearch = (value: string) => {
+  const handleSearch = useCallback((value: string) => {
     setSearch(value)
+    setSelectedTab("all")
     setCurrentPage(1)
-  }
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      if (value) url.searchParams.set("kernel_search", value)
+      else url.searchParams.delete("kernel_search")
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail ?? ""
+      handleSearch(detail)
+    }
+    window.addEventListener("kernelSearch", handler as EventListener)
+    return () => window.removeEventListener("kernelSearch", handler as EventListener)
+  }, [handleSearch])
 
   const handleTabChange = (value: string) => {
     setSelectedTab(value)
