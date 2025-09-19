@@ -85,7 +85,7 @@ function ViewerContent() {
     <div className={containerClass}>
       {!parsedData && (
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Definition, Solution & Trace Viewer</h1>
+          <h1 className="text-3xl font-bold mb-2"> Viewer</h1>
           <p className="text-muted-foreground">
             Inspect definitions, solutions, and traces in a friendly layout. Paste a complete JSON payload or open items directly from the results page.
           </p>

@@ -15,3 +15,4 @@ export * from './components/progress-circle'
 export * from './components/toaster'
 
 export * from './providers/Providers'
+export * from './components/site-header'

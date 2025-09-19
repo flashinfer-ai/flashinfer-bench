@@ -1,7 +1,9 @@
-import { Footer, Layout, Navbar } from 'nextra-theme-docs'
+import './globals.css'
+
+import { Footer, Layout } from 'nextra-theme-docs'
 import { links } from '@flashinfer-bench/config'
-import { Banner, Head } from 'nextra/components'
-import { Logo } from '@flashinfer-bench/ui/brand/Logo'
+import { Head, Search } from 'nextra/components'
+import { SiteHeader } from '@flashinfer-bench/ui'
 import { getPageMap } from 'nextra/page-map'
 import 'nextra-theme-docs/style.css'
 
@@ -10,10 +12,13 @@ export const metadata = {
   // For more information on metadata API, see: https://nextjs.org/docs/app/building-your-application/optimizing/metadata
 }
 
+const APP_HOME = process.env.NEXT_PUBLIC_APP_HOME ?? 'https://bench.flashinfer.ai'
+
 const navbar = (
-  <Navbar
-    logo={<Logo />}
-    // ... Your additional navbar options
+  <SiteHeader
+    logoHref={APP_HOME}
+    navItems={[]}
+    searchSlot={<Search />}
   />
 )
 const footer = <Footer>MIT {new Date().getFullYear()} © Nextra.</Footer>
