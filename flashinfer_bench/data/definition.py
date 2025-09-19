@@ -54,7 +54,7 @@ class DType(str, Enum):
     """16-bit IEEE 754 half-precision floating point."""
     BFLOAT16 = "bfloat16"
     """16-bit Brain Floating Point format."""
-    FLOAT8_E4M3 = "float8_e4m3"
+    FLOAT8_E4M3FN = "float8_e4m3fn"
     """8-bit floating point with 4 exponent bits and 3 mantissa bits."""
     FLOAT8_E5M2 = "float8_e5m2"
     """8-bit floating point with 5 exponent bits and 2 mantissa bits."""
