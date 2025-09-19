@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation"
 import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getAllDefinitions } from "@/lib/data-loader"
+import { computeCorrectnessSummaryForSolutions, computeWinAtPCurvesForSolutions, type BaselineConfig } from "@/lib/analytics"
+import baselinesData from "@/data/baselines.json"
 import { DefinitionHeader } from "./header"
 import { AxesSignatureSection } from "./axes-sig"
 import { ConstraintsSection } from "./constraints"
@@ -30,6 +32,28 @@ export default async function TraceDetailPage({
     getTracesForDefinition(definition.name)
   ])
 
+  const baselineConfig = (baselinesData as Record<string, Record<string, string> | undefined>)[definition.name]
+  const baseline: BaselineConfig | undefined = baselineConfig
+    ? {
+        default: baselineConfig.default,
+        devices: Object.fromEntries(Object.entries(baselineConfig).filter(([key]) => key !== "default")),
+      }
+    : undefined
+
+  const correctness = computeCorrectnessSummaryForSolutions(traces, solutions)
+  const { curves, nWorkloads } = computeWinAtPCurvesForSolutions({
+    traces,
+    solutions,
+    baseline,
+    sampleCount: 300,
+  })
+
+  const precomputed = {
+    curves,
+    correctness,
+    nWorkloads,
+  }
+
   return (
     <div className="relative">
       <DefinitionHeader
@@ -50,7 +74,12 @@ export default async function TraceDetailPage({
             <DefinitionReference definition={definition} />
           </section>
 
-          <SolutionsSection definition={definition} solutions={solutions} traces={traces} />
+          <SolutionsSection
+            definition={definition}
+            solutions={solutions}
+            traces={traces}
+            precomputed={precomputed}
+          />
         </div>
       </div>
     </div>

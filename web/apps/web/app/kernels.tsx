@@ -176,14 +176,22 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                   <span className={`text-xs px-2 py-1 rounded-full ${colorPair.badge}`}>
                     {type.replace('_', ' ').toUpperCase()}
                   </span>
-                  {modelTags.map(tag => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag.replace('model:', '')}
+                  {modelTags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="secondary"
+                      className="text-xs font-medium"
+                    >
+                      {tag.replace("model:", "")}
                     </Badge>
                   ))}
-                  {statusTags.map(tag => (
-                    <Badge key={tag} variant={tag.includes('draft') ? "destructive" : "default"} className="text-xs">
-                      {tag.replace('status:', '')}
+                  {statusTags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant={tag.includes("draft") ? "destructive" : "default"}
+                      className="text-xs"
+                    >
+                      {tag.replace("status:", "")}
                     </Badge>
                   ))}
                 </div>

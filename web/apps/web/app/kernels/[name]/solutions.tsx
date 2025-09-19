@@ -81,13 +81,13 @@ export type SolutionsTracesSectionProps = {
   definition: Definition
   solutions: Solution[]
   traces: Trace[]
+  precomputed: CurvesPayload
 }
 
-export function SolutionsSection({ definition, solutions, traces }: SolutionsTracesSectionProps) {
+export function SolutionsSection({ definition, solutions, traces, precomputed }: SolutionsTracesSectionProps) {
   const searchParams = useSearchParams()
 
   const [sfState, setSfState] = useState<SolutionFiltersState>(initialSF)
-  const [curves, setCurves] = useState<CurvesPayload | null>(null)
   const [visibleSolutions, setVisibleSolutions] = useState<Set<string>>(new Set())
   const [expandedSolution, setExpandedSolution] = useState<string | null>(null)
   const [pinnedP, setPinnedP] = useState<number | null>(DEFAULT_PIN)
@@ -154,6 +154,11 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
   }, [baselineConfig, baselineDefault])
   const baselineSolutionName = fallbackBaseline || null
   const baselineAvailable = baselineSolutionName != null
+  const baselineHasTraces = useMemo(
+    () => (baselineSolutionName ? traces.some((trace) => trace.solution === baselineSolutionName) : false),
+    [traces, baselineSolutionName]
+  )
+  const baselineReady = baselineAvailable && baselineHasTraces
 
   const baselineSolution = useMemo(
     () => (baselineSolutionName ? solutions.find((solution) => solution.name === baselineSolutionName) || null : null),
@@ -198,73 +203,50 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fetch curves when filters change
   useEffect(() => {
-    if (!baselineAvailable) {
-      setCurves(null)
-      return
-    }
+    if (hasInitializedVisibleRef.current) return
+    if (!baselineAvailable) return
+    const scoreLookup = buildScoreMap(precomputed as CurvesPayload, DEFAULT_PIN)
+    const ranked = candidateSolutions
+      .slice()
+      .sort((a, b) =>
+        compareSolutions(
+          a,
+          b,
+          precomputed.correctness || {},
+          scoreLookup
+        )
+      )
 
-    const params = new URLSearchParams()
-    if (sfState.languages.length) params.set("languages", sfState.languages.join(","))
-    if (sfState.authors.length) params.set("authors", sfState.authors.join(","))
-    if (sfState.targets.length) params.set("targets", sfState.targets.join(","))
-    if (sfState.search) params.set("search", sfState.search)
+    const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.min(3, ranked.length || 0))
+    const fromUrl = initialSolutionsRef.current
+    const selected = new Set<string>()
 
-    fetch(`/api/definitions/${encodeURIComponent(definition.name)}/curves?${params.toString()}`)
-      .then((response) => response.json())
-      .then((data: CurvesPayload) => {
-        setCurves(data)
-
-        if (!hasInitializedVisibleRef.current) {
-          const scoreLookup = buildScoreMap(data, DEFAULT_PIN)
-          const ranked = candidateSolutions
-            .slice()
-            .sort((a, b) =>
-              compareSolutions(
-                a,
-                b,
-                data.correctness || {},
-                scoreLookup
-              )
-            )
-
-          const allPassedCount = ranked.filter((solution) => {
-            const stats = data.correctness?.[solution.name]
-            return stats && stats.total > 0 && stats.passed === stats.total
-          }).length
-
-          const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.min(3, ranked.length || 0))
-          const fromUrl = initialSolutionsRef.current
-          const selected = new Set<string>()
-
-          if (fromUrl && fromUrl.length) {
-            fromUrl.forEach((name) => {
-              if (ranked.some((solution) => solution.name === name)) {
-                selected.add(name)
-              }
-            })
-          }
-
-          for (const solution of ranked) {
-            if (selected.size >= desiredCount) break
-            selected.add(solution.name)
-          }
-
-          if (!selected.size && ranked.length) {
-            selected.add(ranked[0].name)
-          }
-
-          const filteredSelection = new Set(Array.from(selected).filter((name) => name !== baselineSolutionName))
-          setVisibleSolutions(filteredSelection)
-          if (initialExpandedRef.current) setExpandedSolution(initialExpandedRef.current)
-          initialSolutionsRef.current = null
-          initialExpandedRef.current = null
-          hasInitializedVisibleRef.current = true
+    if (fromUrl && fromUrl.length) {
+      fromUrl.forEach((name) => {
+        if (ranked.some((solution) => solution.name === name)) {
+          selected.add(name)
         }
       })
-      .catch((error) => console.error("failed to fetch curves", error))
-  }, [definition.name, sfState, baselineAvailable, candidateSolutions, baselineSolutionName])
+    }
+
+    for (const solution of ranked) {
+      if (selected.size >= desiredCount) break
+      selected.add(solution.name)
+    }
+
+    if (!selected.size && ranked.length) {
+      selected.add(ranked[0].name)
+    }
+
+    const filteredSelection = new Set(Array.from(selected).filter((name) => name !== baselineSolutionName))
+    setVisibleSolutions(filteredSelection)
+    if (initialExpandedRef.current) setExpandedSolution(initialExpandedRef.current)
+    initialSolutionsRef.current = null
+    initialExpandedRef.current = null
+    hasInitializedVisibleRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineAvailable, baselineSolutionName, candidateSolutions, precomputed])
 
   // Keep URL in sync with state
   useEffect(() => {
@@ -302,6 +284,18 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
     [candidateSolutions, sfState]
   )
 
+  const filteredCurves: CurvesPayload | null = useMemo(() => {
+    const allowed = new Set(filteredSolutions.map((s) => s.name))
+    const curves = Object.fromEntries(
+      Object.entries(precomputed.curves).filter(([name]) => allowed.has(name))
+    )
+    const correctness = Object.fromEntries(
+      Object.entries(precomputed.correctness).filter(([name]) => allowed.has(name))
+    )
+    return { curves, correctness, nWorkloads: precomputed.nWorkloads }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precomputed, filteredSolutions])
+
   // Remove selections that are no longer visible
   useEffect(() => {
     setVisibleSolutions((current) => {
@@ -318,12 +312,12 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
     }
   }, [filteredSolutions, expandedSolution, baselineSolutionName])
 
-  const scoreMap = useMemo(() => buildScoreMap(curves, pinnedP ?? DEFAULT_PIN), [curves, pinnedP])
+  const scoreMap = useMemo(() => buildScoreMap(filteredCurves, pinnedP ?? DEFAULT_PIN), [filteredCurves, pinnedP])
 
   const sortedSolutions = useMemo(() => {
-    const correctness = curves?.correctness || {}
+    const correctness = filteredCurves?.correctness || {}
     return filteredSolutions.slice().sort((a, b) => compareSolutions(a, b, correctness, scoreMap))
-  }, [filteredSolutions, curves?.correctness, scoreMap])
+  }, [filteredSolutions, filteredCurves?.correctness, scoreMap])
 
   const displaySolutions = useMemo(
     () => (baselineSolution ? [baselineSolution, ...sortedSolutions] : sortedSolutions),
@@ -416,10 +410,10 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
 
   const counts = useMemo(
     () => ({
-      solutions: Object.keys(curves?.curves || {}).length,
-      workloads: curves?.nWorkloads || 0,
+      solutions: Object.keys(filteredCurves?.curves || {}).length,
+      workloads: filteredCurves?.nWorkloads || 0,
     }),
-    [curves]
+    [filteredCurves]
   )
 
   return (
@@ -427,14 +421,14 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
       <h2 className="text-2xl font-semibold">Results</h2>
 
       <WinAtPCurves
-        curves={curves?.curves || {}}
+        curves={filteredCurves?.curves || {}}
         visible={visibleSolutions}
         onHoverP={() => {}}
         onPinP={setPinnedP}
         pinnedP={pinnedP}
         baselineLabel={baselineDefault || fallbackBaseline || "Not specified"}
         workloadCount={counts.workloads}
-        baselineAvailable={baselineAvailable}
+        baselineAvailable={baselineReady}
         colorFor={colorFor}
         scoreboard={[]}
       />
@@ -445,7 +439,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
         onToggleSolution={handleToggleSolution}
         onExpandSolution={handleExpandSolution}
         expandedSolution={expandedSolution}
-        correctness={curves?.correctness || {}}
+        correctness={filteredCurves?.correctness || {}}
         colorFor={colorFor}
         pinnedP={pinnedP}
         onPinDefault={handlePinDefault}

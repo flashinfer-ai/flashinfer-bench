@@ -203,7 +203,7 @@ export function WinAtPCurves({
           </div>
           {!baselineAvailable && (
             <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 backdrop-blur-sm">
-              <span className="text-sm text-muted-foreground">Baseline not specified</span>
+              <span className="text-sm text-muted-foreground">Baseline not available</span>
             </div>
           )}
         </div>

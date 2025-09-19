@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@flashinfer-bench/ui"
 import { ModelCard } from "@/components/model-card"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
-import { KernelsSection } from "./kernels-section"
+import { KernelsSection } from "./kernels"
 
 export default async function HomePage() {
   const [allDefinitions, models] = await Promise.all([getAllDefinitions(), getAllModels()])

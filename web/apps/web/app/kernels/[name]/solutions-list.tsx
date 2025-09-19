@@ -42,6 +42,8 @@ const correctnessFallback: CorrectnessStats = {
   other: 0,
 }
 
+type DropdownCheckedState = boolean | "indeterminate"
+
 function statusVariant(status?: string | null) {
   if (!status) return "outline" as const
   if (status === "PASSED") return "secondary" as const
@@ -102,7 +104,9 @@ function FilterDropdown({ label, selections, options, onToggle }: FilterDropdown
             <DropdownMenuCheckboxItem
               key={option}
               checked={selections.includes(option)}
-              onCheckedChange={(checked) => onToggle(option, Boolean(checked))}
+              onCheckedChange={(checked: DropdownCheckedState) =>
+                onToggle(option, checked === true)
+              }
             >
               {option}
             </DropdownMenuCheckboxItem>
@@ -256,7 +260,9 @@ export function SolutionsList({
                   <input
                     type="checkbox"
                     checked={isVisible}
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event: MouseEvent<HTMLInputElement>) =>
+                      event.stopPropagation()
+                    }
                     onChange={() => onToggleSolution(solution.name)}
                     className="h-4 w-4"
                     aria-label={`toggle ${solution.name}`}
@@ -340,13 +346,15 @@ export function SolutionsList({
                     key={`${chip.label}-${idx}`}
                     variant="secondary"
                     className="gap-1"
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event: MouseEvent<HTMLDivElement>) =>
+                      event.stopPropagation()
+                    }
                   >
                     {chip.label}
                     {chip.onRemove && (
                       <button
                         className="ml-1 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={(event) => {
+                        onClick={(event: MouseEvent<HTMLButtonElement>) => {
                           event.stopPropagation()
                           chip.onRemove?.()
                         }}
@@ -484,7 +492,7 @@ function SolutionTraceDetails({
           variant="outline"
           size="sm"
           className="ml-3"
-          onClick={(event) => {
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation()
             onPinDefault()
           }}
@@ -521,7 +529,14 @@ function SolutionTraceDetails({
 
   return (
     <div className="border-t bg-muted/10 px-6 py-4">
-      <Tabs value={tab} onValueChange={(value) => setTab(value as any)}>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (value === "faster" || value === "slower" || value === "incorrect") {
+            setTab(value)
+          }
+        }}
+      >
         <TabsList>
           <TabsTrigger value="faster">Win@p={pinnedP.toFixed(2)} ({counts.faster})</TabsTrigger>
           <TabsTrigger value="slower">Lose@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
@@ -587,7 +602,7 @@ function BaselineTraceDetails({ comparisons, axisKeyOrder, onOpenTrace }: Baseli
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={(event) => {
+                      onClick={(event: MouseEvent<HTMLButtonElement>) => {
                         event.stopPropagation()
                         if (trace) onOpenTrace(trace)
                       }}
@@ -669,7 +684,7 @@ function TraceTable({ rows, axisKeyOrder, onOpenTrace }: TraceTableProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={(event) => {
+                    onClick={(event: MouseEvent<HTMLButtonElement>) => {
                       event.stopPropagation()
                       if (entry.candidate) onOpenTrace(entry.candidate)
                     }}

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Editor as MonacoEditor } from "@monaco-editor/react"
 import { Button, Card, toast } from "@flashinfer-bench/ui"
 import { ArrowLeft, Copy, Download, Check, Plus, FileText, Code } from "lucide-react"
+import type { Trace, WorkloadInput } from "@/lib/schemas"
 
 interface ViewerProps {
   data: any
@@ -427,7 +428,7 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
 }
 
 type TraceViewerProps = {
-  data: any
+  data: Partial<Trace>
   onBack: () => void
 }
 
@@ -440,13 +441,13 @@ function formatNumber(value: number | null | undefined, digits = 3) {
 }
 
 function TraceViewer({ data, onBack }: TraceViewerProps) {
-  const evaluation = data?.evaluation || null
-  const performance = evaluation?.performance || null
-  const correctness = evaluation?.correctness || null
-  const environment = evaluation?.environment || null
-  const axes = data?.workload?.axes || {}
-  const inputs = data?.workload?.inputs || {}
-  const libs = environment?.libs || {}
+  const evaluation = data?.evaluation ?? null
+  const performance = evaluation?.performance ?? null
+  const correctness = evaluation?.correctness ?? null
+  const environment = evaluation?.environment ?? null
+  const axes = (data?.workload?.axes ?? {}) as Record<string, number>
+  const inputs = (data?.workload?.inputs ?? {}) as Record<string, WorkloadInput>
+  const libs = (environment?.libs ?? {}) as Record<string, string>
   const definitionName = data?.definition || ""
 
   const status = evaluation?.status || "N/A"

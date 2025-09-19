@@ -10,6 +10,7 @@
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
+    "types": ["react", "react-dom"],
     "baseUrl": ".",
     "paths": {
       "@flashinfer-bench/utils": ["../utils/src/index.ts"],

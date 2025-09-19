@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, Suspense, type ChangeEvent } from "react"
 import { useSearchParams } from "next/navigation"
 import stripJsonComments from "strip-json-comments"
 import { Viewer } from "@/components/viewer"
@@ -103,7 +103,9 @@ function ViewerContent() {
                 id="json-input"
                 placeholder="Paste your JSON here..."
                 value={jsonInput}
-                onChange={(e) => setJsonInput(e.target.value)}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                  setJsonInput(event.target.value)
+                }
                 className="font-mono text-sm min-h-[400px]"
               />
             </div>
