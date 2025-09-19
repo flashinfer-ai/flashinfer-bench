@@ -1,9 +1,9 @@
 "use client"
 
+import { Viewer } from "./viewer"
 import { useState, useEffect, Suspense, type ChangeEvent } from "react"
 import { useSearchParams } from "next/navigation"
 import stripJsonComments from "strip-json-comments"
-import { Viewer } from "@/components/viewer"
 import { Button, Textarea, Card } from "@flashinfer-bench/ui"
 import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@flashinfer-bench/ui"

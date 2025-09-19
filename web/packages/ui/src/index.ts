@@ -16,3 +16,4 @@ export * from './components/toaster'
 
 export * from './providers/Providers'
 export * from './components/site-header'
+export * from './components/site-footer'

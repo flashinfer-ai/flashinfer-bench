@@ -1,9 +1,9 @@
 import './globals.css'
 
-import { Footer, Layout } from 'nextra-theme-docs'
+import { Layout } from 'nextra-theme-docs'
 import { links } from '@flashinfer-bench/config'
 import { Head, Search } from 'nextra/components'
-import { SiteHeader } from '@flashinfer-bench/ui'
+import { SiteFooter, SiteHeader } from '@flashinfer-bench/ui'
 import { getPageMap } from 'nextra/page-map'
 import 'nextra-theme-docs/style.css'
 
@@ -21,7 +21,7 @@ const navbar = (
     searchSlot={<Search />}
   />
 )
-const footer = <Footer>MIT {new Date().getFullYear()} © Nextra.</Footer>
+const footer = <SiteFooter />
 
 export default async function RootLayout({ children }) {
   return (
