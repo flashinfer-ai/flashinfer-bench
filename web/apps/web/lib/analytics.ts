@@ -260,6 +260,33 @@ export type SolutionTraceBuckets = {
   incorrect: SolutionTraceComparison[]
 }
 
+export function computeBaselineTraceComparisons(params: {
+  traces: Trace[]
+  solutionName: string
+}): SolutionTraceComparison[] {
+  const { traces, solutionName } = params
+  const groups = buildWorkloadGroups(traces)
+  const comparisons: SolutionTraceComparison[] = []
+
+  for (const [workloadId, groupTraces] of groups) {
+    const baselineTrace = groupTraces.find((trace) => trace.solution === solutionName)
+    if (!baselineTrace) continue
+
+    const baselineLatency = baselineTrace.evaluation?.performance?.latency_ms ?? null
+    comparisons.push({
+      workloadId,
+      traces: groupTraces,
+      baseline: baselineTrace,
+      candidate: baselineTrace,
+      baselineLatency,
+      candidateLatency: baselineLatency,
+      ratio: baselineLatency && baselineLatency > 0 ? 1 : null,
+    })
+  }
+
+  return comparisons
+}
+
 export function computeSolutionTraceBuckets(params: {
   traces: Trace[]
   solutions: Solution[]

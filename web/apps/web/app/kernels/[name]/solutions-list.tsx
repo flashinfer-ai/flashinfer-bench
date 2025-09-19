@@ -137,6 +137,8 @@ export type SolutionsListProps = {
   availableLanguages: string[]
   availableAuthors: string[]
   availableTargets: string[]
+  baselineSolutionName: string | null
+  baselineComparisons: SolutionTraceComparison[] | null
 }
 
 export function SolutionsList({
@@ -163,7 +165,164 @@ export function SolutionsList({
   availableLanguages,
   availableAuthors,
   availableTargets,
+  baselineSolutionName,
+  baselineComparisons,
 }: SolutionsListProps) {
+  const baselineSolutions = baselineSolutionName
+    ? solutions.filter((solution) => solution.name === baselineSolutionName)
+    : []
+  const otherSolutions = baselineSolutionName
+    ? solutions.filter((solution) => solution.name !== baselineSolutionName)
+    : solutions
+
+  const renderSolutionCard = (solution: Solution, isBaseline: boolean) => {
+    const stats = correctness[solution.name] ?? correctnessFallback
+    const total = stats.total || 0
+    const passed = stats.passed || 0
+    const passPercent = total ? (passed / total) * 100 : 0
+    const isVisible = visibleSolutions.has(solution.name)
+    const isExpanded = expandedSolution === solution.name
+    const color = !isBaseline && isVisible ? colorFor(solution.name) : "#d4d4d8"
+    const bucketsForSolution = !isBaseline && isExpanded ? traceBuckets : null
+    const baselineComparison = isBaseline && isExpanded ? baselineComparisons : null
+
+    const handleOpenEditor = (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+      if (typeof window === "undefined") return
+      const solutionId = `${solution.definition}-${solution.name}`.replace(/[^a-zA-Z0-9-_]/g, "_")
+      window.sessionStorage.setItem(`solution-${solutionId}`, JSON.stringify(solution))
+      window.open(`/editor?solution=${encodeURIComponent(solutionId)}`, "_blank")
+    }
+
+    return (
+      <div key={solution.name} className="rounded-lg border">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onExpandSolution(solution.name)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              onExpandSolution(solution.name)
+            }
+          }}
+          className={cn(
+            "flex w-full items-stretch gap-3 rounded-lg text-left transition-colors cursor-pointer",
+            isExpanded ? "bg-muted/40" : "hover:bg-muted/20"
+          )}
+        >
+          {!isBaseline && (
+            <span
+              className="w-1.5 rounded-l-lg"
+              style={{ backgroundColor: color, opacity: isVisible ? 1 : 0.25 }}
+            />
+          )}
+          <div className="flex flex-1 flex-col gap-4 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm">{solution.name}</span>
+                  {isBaseline && (
+                    <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                      Baseline
+                    </Badge>
+                  )}
+                </div>
+                {!isBaseline ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline" className="text-xs">
+                      {solution.author}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {solution.spec.language}
+                    </Badge>
+                    {solution.spec.target_hardware.slice(0, 3).map((target) => (
+                      <Badge key={target} variant="outline" className="text-xs">
+                        {target}
+                      </Badge>
+                    ))}
+                    {solution.spec.target_hardware.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{solution.spec.target_hardware.length - 3}
+                      </Badge>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Reference timings for comparison.</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!isBaseline && (
+                  <input
+                    type="checkbox"
+                    checked={isVisible}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() => onToggleSolution(solution.name)}
+                    className="h-4 w-4"
+                    aria-label={`toggle ${solution.name}`}
+                  />
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleOpenEditor}
+                  aria-label={`Open ${solution.name} in editor`}
+                  title="Open in editor"
+                >
+                  <Code2 className="h-4 w-4" />
+                </Button>
+                <div className="text-muted-foreground">
+                  {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
+              </div>
+            </div>
+
+            {!isBaseline && (
+              <div className="space-y-1">
+                <HoverCard>
+                  <HoverCardTrigger asChild>
+                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="absolute inset-y-0 left-0 bg-emerald-500"
+                        style={{ width: `${passPercent}%`, opacity: isVisible ? 1 : 0.6 }}
+                      />
+                    </div>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="w-64 text-xs">
+                    <div className="space-y-1">
+                      <div>Passed: {stats.passed}</div>
+                      <div>Incorrect: {stats.incorrect}</div>
+                      <div>Runtime error: {stats.runtime_error}</div>
+                      <div>Other: {stats.other}</div>
+                      <div>Total: {stats.total}</div>
+                    </div>
+                  </HoverCardContent>
+                </HoverCard>
+                <div className="flex justify-end text-xs text-muted-foreground">
+                  <span>Passed {passed}/{total || "-"}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {isExpanded && (
+          isBaseline ? (
+            <BaselineTraceDetails comparisons={baselineComparison} axisKeyOrder={axisKeyOrder} onOpenTrace={onOpenTrace} />
+          ) : (
+            <SolutionTraceDetails
+              traceBuckets={bucketsForSolution}
+              pinnedP={pinnedP}
+              onPinDefault={onPinDefault}
+              axisKeyOrder={axisKeyOrder}
+              onOpenTrace={onOpenTrace}
+            />
+          )
+        )}
+      </div>
+    )
+  }
+
   return (
     <Card className="relative">
       <CardHeader className="pr-6">
@@ -171,7 +330,8 @@ export function SolutionsList({
           <div>
             <CardTitle className="text-2xl">Solutions</CardTitle>
             <div className="mt-1 text-sm text-muted-foreground">
-              Solutions: {stats.solutions} · Workloads: {stats.workloads}
+              Solutions: {stats.solutions}
+              · Workloads: {stats.workloads}
             </div>
             {filterChips.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -240,133 +400,22 @@ export function SolutionsList({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {solutions.map((solution) => {
-          const stats = correctness[solution.name] ?? correctnessFallback
-          const total = stats.total || 0
-          const passed = stats.passed || 0
-          const passPercent = total ? (passed / total) * 100 : 0
-          const isVisible = visibleSolutions.has(solution.name)
-          const isExpanded = expandedSolution === solution.name
-          const color = isVisible ? colorFor(solution.name) : "#d4d4d8"
-          const bucketsForSolution = isExpanded ? traceBuckets : null
-          const handleOpenEditor = (event: MouseEvent<HTMLButtonElement>) => {
-            event.stopPropagation()
-            if (typeof window === "undefined") return
-            const solutionId = `${solution.definition}-${solution.name}`.replace(/[^a-zA-Z0-9-_]/g, "_")
-            window.sessionStorage.setItem(`solution-${solutionId}`, JSON.stringify(solution))
-            window.open(`/editor?solution=${encodeURIComponent(solutionId)}`, "_blank")
-          }
+      <CardContent className="space-y-6">
+        {baselineSolutions.length > 0 && (
+          <div className="space-y-3">
+            <SectionDivider label="Baseline" />
+            {baselineSolutions.map((solution) => renderSolutionCard(solution, true))}
+          </div>
+        )}
 
-          return (
-            <div key={solution.name} className="rounded-lg border">
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => onExpandSolution(solution.name)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault()
-                    onExpandSolution(solution.name)
-                  }
-                }}
-                className={cn(
-                  "flex w-full items-stretch gap-3 rounded-lg text-left transition-colors cursor-pointer",
-                  isExpanded ? "bg-muted/40" : "hover:bg-muted/20"
-                )}
-              >
-                <span
-                  className="w-1.5 rounded-l-lg"
-                  style={{ backgroundColor: color, opacity: isVisible ? 1 : 0.25 }}
-                />
-                <div className="flex flex-1 flex-col gap-4 px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex flex-col gap-2">
-                      <span className="font-mono text-sm">{solution.name}</span>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="outline" className="text-xs">
-                          {solution.author}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {solution.spec.language}
-                        </Badge>
-                        {solution.spec.target_hardware.slice(0, 3).map((target) => (
-                          <Badge key={target} variant="outline" className="text-xs">
-                            {target}
-                          </Badge>
-                        ))}
-                        {solution.spec.target_hardware.length > 3 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{solution.spec.target_hardware.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isVisible}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={() => onToggleSolution(solution.name)}
-                        className="h-4 w-4"
-                        aria-label={`toggle ${solution.name}`}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleOpenEditor}
-                        aria-label={`Open ${solution.name} in editor`}
-                        title="Open in editor"
-                      >
-                        <Code2 className="h-4 w-4" />
-                      </Button>
-                      <div className="text-muted-foreground">
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </div>
-                    </div>
-                  </div>
+        {otherSolutions.length > 0 && (
+          <div className="space-y-3">
+            {baselineSolutions.length > 0 && <SectionDivider label="Solutions" />}
+            {otherSolutions.map((solution) => renderSolutionCard(solution, false))}
+          </div>
+        )}
 
-                  <div className="space-y-1">
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
-                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="absolute inset-y-0 left-0 bg-emerald-500"
-                            style={{ width: `${passPercent}%`, opacity: isVisible ? 1 : 0.6 }}
-                          />
-                        </div>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-64 text-xs">
-                        <div className="space-y-1">
-                          <div>Passed: {stats.passed}</div>
-                          <div>Incorrect: {stats.incorrect}</div>
-                          <div>Runtime error: {stats.runtime_error}</div>
-                          <div>Other: {stats.other}</div>
-                          <div>Total: {stats.total}</div>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
-                    <div className="flex justify-end text-xs text-muted-foreground">
-                      <span>Passed {passed}/{total || "-"}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {isExpanded && (
-                <SolutionTraceDetails
-                  traceBuckets={bucketsForSolution}
-                  pinnedP={pinnedP}
-                  onPinDefault={onPinDefault}
-                  axisKeyOrder={axisKeyOrder}
-                  onOpenTrace={onOpenTrace}
-                />
-              )}
-            </div>
-          )
-        })}
-
-        {solutions.length === 0 && (
+        {baselineSolutions.length === 0 && otherSolutions.length === 0 && (
           <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
             No solutions match the current filters.
           </div>
@@ -469,8 +518,6 @@ function SolutionTraceDetails({
     )
   }
 
-  const ratioLabel = `r ≥ ${pinnedP.toFixed(2)}`
-
   return (
     <div className="border-t bg-muted/10 px-6 py-4">
       <Tabs value={tab} onValueChange={(value) => setTab(value as any)}>
@@ -481,13 +528,13 @@ function SolutionTraceDetails({
         </TabsList>
         <div className="mt-4">
           <TabsContent value="faster">
-            <TraceTable rows={buckets.faster} axisKeyOrder={axisKeyOrder} ratioLabel={ratioLabel} onOpenTrace={onOpenTrace} />
+            <TraceTable rows={buckets.faster} axisKeyOrder={axisKeyOrder} onOpenTrace={onOpenTrace} />
           </TabsContent>
           <TabsContent value="slower">
-            <TraceTable rows={buckets.slower} axisKeyOrder={axisKeyOrder} ratioLabel={ratioLabel} onOpenTrace={onOpenTrace} />
+            <TraceTable rows={buckets.slower} axisKeyOrder={axisKeyOrder} onOpenTrace={onOpenTrace} />
           </TabsContent>
           <TabsContent value="incorrect">
-            <TraceTable rows={buckets.incorrect} axisKeyOrder={axisKeyOrder} ratioLabel={ratioLabel} onOpenTrace={onOpenTrace} />
+            <TraceTable rows={buckets.incorrect} axisKeyOrder={axisKeyOrder} onOpenTrace={onOpenTrace} />
           </TabsContent>
         </div>
       </Tabs>
@@ -495,14 +542,76 @@ function SolutionTraceDetails({
   )
 }
 
-type TraceTableProps = {
-  rows: SolutionTraceComparison[]
+type BaselineTraceDetailsProps = {
+  comparisons: SolutionTraceComparison[] | null
   axisKeyOrder: string[]
-  ratioLabel: string
   onOpenTrace: (trace: Trace) => void
 }
 
-function TraceTable({ rows, axisKeyOrder, ratioLabel, onOpenTrace }: TraceTableProps) {
+function BaselineTraceDetails({ comparisons, axisKeyOrder, onOpenTrace }: BaselineTraceDetailsProps) {
+  if (!comparisons || comparisons.length === 0) {
+    return (
+      <div className="border-t bg-muted/10 px-6 py-4">
+        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          No baseline traces available.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-t bg-muted/10 px-6 py-4">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Workload</TableHead>
+              <TableHead>Baseline Perf (ms)</TableHead>
+              <TableHead className="text-right" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {comparisons.map((entry) => {
+              const trace = entry.baseline ?? entry.candidate ?? null
+              const workloadLabel = formatAxesSignature(trace ?? undefined, axisKeyOrder)
+              const latency = entry.baselineLatency ?? entry.candidateLatency ?? null
+
+              return (
+                <TableRow key={entry.workloadId}>
+                  <TableCell className="max-w-[220px] truncate font-mono text-xs" title={workloadLabel}>
+                    {workloadLabel}
+                  </TableCell>
+                  <TableCell>{latency != null ? latency.toFixed(3) : "-"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (trace) onOpenTrace(trace)
+                      }}
+                      disabled={!trace}
+                    >
+                      Open trace
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
+
+type TraceTableProps = {
+  rows: SolutionTraceComparison[]
+  axisKeyOrder: string[]
+  onOpenTrace: (trace: Trace) => void
+}
+
+function TraceTable({ rows, axisKeyOrder, onOpenTrace }: TraceTableProps) {
   if (!rows.length) {
     return (
       <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -511,18 +620,26 @@ function TraceTable({ rows, axisKeyOrder, ratioLabel, onOpenTrace }: TraceTableP
     )
   }
 
+  const formatError = (value?: number | null) => {
+    if (value == null) return "-"
+    if (!Number.isFinite(value)) return String(value)
+    const absValue = Math.abs(value)
+    if (absValue >= 1 || absValue === 0) return value.toFixed(3)
+    return value.toExponential(2)
+  }
+
   return (
     <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Workload</TableHead>
-            <TableHead>Baseline</TableHead>
             <TableHead>Baseline Perf (ms)</TableHead>
             <TableHead>This Solution (ms)</TableHead>
-            <TableHead>{ratioLabel}</TableHead>
+            <TableHead>Max Abs Err</TableHead>
+            <TableHead>Max Rel Err</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="text-right" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -530,18 +647,20 @@ function TraceTable({ rows, axisKeyOrder, ratioLabel, onOpenTrace }: TraceTableP
             const workloadLabel = formatAxesSignature(entry.candidate ?? entry.baseline, axisKeyOrder)
             const baselineLatency = entry.baselineLatency ?? null
             const candidateLatency = entry.candidateLatency ?? null
-            const ratio = entry.ratio ?? null
             const status = entry.candidate?.evaluation?.status
+            const correctness = entry.candidate?.evaluation?.correctness
+            const maxAbsError = correctness?.max_absolute_error ?? null
+            const maxRelError = correctness?.max_relative_error ?? null
 
             return (
               <TableRow key={entry.workloadId}>
                 <TableCell className="max-w-[220px] truncate font-mono text-xs" title={workloadLabel}>
                   {workloadLabel}
                 </TableCell>
-                <TableCell className="font-mono text-xs">{entry.baseline?.solution || "-"}</TableCell>
                 <TableCell>{baselineLatency != null ? baselineLatency.toFixed(3) : "-"}</TableCell>
                 <TableCell>{candidateLatency != null ? candidateLatency.toFixed(3) : "-"}</TableCell>
-                <TableCell>{ratio != null ? ratio.toFixed(3) : "-"}</TableCell>
+                <TableCell>{formatError(maxAbsError)}</TableCell>
+                <TableCell>{formatError(maxRelError)}</TableCell>
                 <TableCell>
                   <Badge variant={statusVariant(status)}>{status || "-"}</Badge>
                 </TableCell>
@@ -563,6 +682,16 @@ function TraceTable({ rows, axisKeyOrder, ratioLabel, onOpenTrace }: TraceTableP
           })}
         </TableBody>
       </Table>
+    </div>
+  )
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <span className="flex-1 border-t border-border" />
+      <span>{label}</span>
+      <span className="flex-1 border-t border-border" />
     </div>
   )
 }

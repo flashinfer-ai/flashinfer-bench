@@ -6,7 +6,11 @@ import type { Definition, Solution, Trace } from "@/lib/schemas"
 import { WinAtPCurves } from "./win-at-p"
 import { SolutionsList, type FilterChip } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
-import { computeSolutionTraceBuckets, type SolutionTraceBuckets } from "@/lib/analytics"
+import {
+  computeBaselineTraceComparisons,
+  computeSolutionTraceBuckets,
+  type SolutionTraceBuckets,
+} from "@/lib/analytics"
 import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-types"
 import baselinesData from "@/data/baselines.json"
 
@@ -142,26 +146,23 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
   type BaselineConfig = Record<string, string>
   const baselineConfig = (baselinesData as Record<string, BaselineConfig | undefined>)[definition.name] || null
   const baselineDefault = baselineConfig?.default || null
-  const baselinePerDevice = useMemo(() => {
-    if (!baselineConfig) return {}
-    const map: Record<string, string> = {}
-    for (const [key, value] of Object.entries(baselineConfig)) {
-      if (key !== "default" && value) map[key] = value
-    }
-    return map
-  }, [baselineConfig])
   const fallbackBaseline = useMemo(() => {
     if (baselineDefault) return baselineDefault
     if (!baselineConfig) return null
-    const deviceEntry = Object.entries(baselineConfig).find(([key]) => key !== "default" && baselineConfig[key])
-    return deviceEntry ? deviceEntry[1] : null
+    const firstEntry = Object.entries(baselineConfig).find(([key, value]) => key && value)
+    return firstEntry ? firstEntry[1] : null
   }, [baselineConfig, baselineDefault])
-  const baselineSolutionNames = useMemo(() => new Set(Object.values(baselineConfig || {})), [baselineConfig])
-  const baselineAvailable = baselineConfig != null && Object.keys(baselineConfig).length > 0
+  const baselineSolutionName = fallbackBaseline || null
+  const baselineAvailable = baselineSolutionName != null
+
+  const baselineSolution = useMemo(
+    () => (baselineSolutionName ? solutions.find((solution) => solution.name === baselineSolutionName) || null : null),
+    [solutions, baselineSolutionName]
+  )
 
   const candidateSolutions = useMemo(
-    () => solutions.filter((solution) => !baselineSolutionNames.has(solution.name)),
-    [solutions, baselineSolutionNames]
+    () => solutions.filter((solution) => solution.name !== baselineSolutionName),
+    [solutions, baselineSolutionName]
   )
 
   const availableLanguages = useMemo(
@@ -233,9 +234,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
             return stats && stats.total > 0 && stats.passed === stats.total
           }).length
 
-          const desiredCount = allPassedCount > 0
-            ? Math.min(DEFAULT_MAX_VISIBLE, Math.min(4, allPassedCount))
-            : Math.min(DEFAULT_MAX_VISIBLE, 4)
+          const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.min(3, ranked.length || 0))
           const fromUrl = initialSolutionsRef.current
           const selected = new Set<string>()
 
@@ -256,7 +255,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
             selected.add(ranked[0].name)
           }
 
-          const filteredSelection = new Set(Array.from(selected).filter((name) => !baselineSolutionNames.has(name)))
+          const filteredSelection = new Set(Array.from(selected).filter((name) => name !== baselineSolutionName))
           setVisibleSolutions(filteredSelection)
           if (initialExpandedRef.current) setExpandedSolution(initialExpandedRef.current)
           initialSolutionsRef.current = null
@@ -265,7 +264,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
         }
       })
       .catch((error) => console.error("failed to fetch curves", error))
-  }, [definition.name, sfState, baselineAvailable, candidateSolutions, baselineSolutionNames])
+  }, [definition.name, sfState, baselineAvailable, candidateSolutions, baselineSolutionName])
 
   // Keep URL in sync with state
   useEffect(() => {
@@ -314,10 +313,10 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
   }, [filteredSolutions])
 
   useEffect(() => {
-    if (expandedSolution && !filteredSolutions.some((s) => s.name === expandedSolution)) {
+    if (expandedSolution && expandedSolution !== baselineSolutionName && !filteredSolutions.some((s) => s.name === expandedSolution)) {
       setExpandedSolution(null)
     }
-  }, [filteredSolutions, expandedSolution])
+  }, [filteredSolutions, expandedSolution, baselineSolutionName])
 
   const scoreMap = useMemo(() => buildScoreMap(curves, pinnedP ?? DEFAULT_PIN), [curves, pinnedP])
 
@@ -326,6 +325,11 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
     return filteredSolutions.slice().sort((a, b) => compareSolutions(a, b, correctness, scoreMap))
   }, [filteredSolutions, curves?.correctness, scoreMap])
 
+  const displaySolutions = useMemo(
+    () => (baselineSolution ? [baselineSolution, ...sortedSolutions] : sortedSolutions),
+    [baselineSolution, sortedSolutions]
+  )
+
   const traceBuckets: SolutionTraceBuckets | null = useMemo(() => {
     if (!expandedSolution || pinnedP == null || !baselineAvailable) return null
     return computeSolutionTraceBuckets({
@@ -333,12 +337,14 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
       solutions,
       solutionName: expandedSolution,
       p: pinnedP,
-      baseline: {
-        default: (baselineDefault || fallbackBaseline) ?? undefined,
-        devices: baselinePerDevice,
-      },
+      baseline: baselineSolutionName ? { default: baselineSolutionName } : undefined,
     })
-  }, [expandedSolution, pinnedP, traces, solutions, baselineAvailable, baselineDefault, fallbackBaseline, baselinePerDevice])
+  }, [expandedSolution, pinnedP, traces, solutions, baselineAvailable, baselineSolutionName])
+
+  const baselineComparisons = useMemo(() => {
+    if (!expandedSolution || expandedSolution !== baselineSolutionName) return null
+    return computeBaselineTraceComparisons({ traces, solutionName: expandedSolution })
+  }, [expandedSolution, baselineSolutionName, traces])
 
   const filterChips: FilterChip[] = useMemo(() => {
     const chips: FilterChip[] = []
@@ -424,7 +430,7 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
       />
 
       <SolutionsList
-        solutions={sortedSolutions}
+        solutions={displaySolutions}
         visibleSolutions={visibleSolutions}
         onToggleSolution={handleToggleSolution}
         onExpandSolution={handleExpandSolution}
@@ -468,6 +474,8 @@ export function SolutionsSection({ definition, solutions, traces }: SolutionsTra
         availableLanguages={availableLanguages}
         availableAuthors={availableAuthors}
         availableTargets={availableTargets}
+        baselineSolutionName={baselineSolutionName}
+        baselineComparisons={baselineComparisons}
       />
     </section>
   )
