@@ -1,30 +1,26 @@
-import { z } from "zod"
+import {z} from 'zod'
 
 // Axis schema - matching flashinfer-bench
 export const ConstAxisSchema = z.object({
-  type: z.literal("const"),
+  type: z.literal('const'),
   value: z.number(),
   description: z.string().optional(),
 })
 
 export const VarAxisSchema = z.object({
-  type: z.literal("var"),
+  type: z.literal('var'),
   parent: z.string().optional(),
   description: z.string().optional(),
 })
 
-export const AxisSchema = z.union([
-  ConstAxisSchema,
-  VarAxisSchema
-])
+export const AxisSchema = z.union([ConstAxisSchema, VarAxisSchema])
 
 // Tensor schema
 export const TensorSchema = z.object({
   shape: z.array(z.string()).nullable(),
   dtype: z.enum([
-    "float32", "float16", "bfloat16",
-    "float8_e4m3", "float8_e5m2", "float4_e2m1",
-    "int32", "int16", "int8", "uint8", "bool"
+    'float32', 'float16', 'bfloat16', 'float8_e4m3fn', 'float8_e5m2',
+    'float4_e2m1', 'int32', 'int16', 'int8', 'uint8', 'bool'
   ]),
   description: z.string().optional(),
 })
@@ -32,24 +28,24 @@ export const TensorSchema = z.object({
 // Definition schema - matching flashinfer-bench
 export const DefinitionSchema = z.object({
   name: z.string(),
-  type: z.string(), // General type like "gemm", "attention", "rmsnorm"
+  type: z.string(),  // General type like "gemm", "attention", "rmsnorm"
   description: z.string(),
-  tags: z.array(z.string()).optional(), // Tags for categorizing definitions
+  tags: z.array(z.string()).optional(),  // Tags for categorizing definitions
   axes: z.record(z.string(), AxisSchema),
   inputs: z.record(z.string(), TensorSchema),
   outputs: z.record(z.string(), TensorSchema),
-  reference: z.string(), // PyTorch reference implementation
+  reference: z.string(),  // PyTorch reference implementation
   constraints: z.array(z.string()).optional(),
 })
 
 // Solution schema - matching flashinfer-bench
 export const SolutionSchema = z.object({
   name: z.string(),
-  definition: z.string(), // Name of the Definition it solves
+  definition: z.string(),  // Name of the Definition it solves
   description: z.string(),
   author: z.string(),
   spec: z.object({
-    language: z.string(), // e.g., "Triton", "CUDA"
+    language: z.string(),  // e.g., "Triton", "CUDA"
     target_hardware: z.array(z.string()),
     dependencies: z.array(z.string()),
     entry_point: z.string(),
@@ -62,13 +58,13 @@ export const SolutionSchema = z.object({
 })
 
 // Workload input schema
-export const WorkloadInputSchema = z.discriminatedUnion("type", [
+export const WorkloadInputSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal("random"),
+    type: z.literal('random'),
     seed: z.number().optional(),
   }),
   z.object({
-    type: z.literal("safetensors"),
+    type: z.literal('safetensors'),
     path: z.string(),
     key: z.string(),
   }),
@@ -76,37 +72,41 @@ export const WorkloadInputSchema = z.discriminatedUnion("type", [
 
 // Workload schema
 export const WorkloadSchema = z.object({
-  axes: z.record(z.string(), z.number()), // Concrete values for variable axes
+  axes: z.record(z.string(), z.number()),  // Concrete values for variable axes
   inputs: z.record(z.string(), WorkloadInputSchema),
 })
 
 // Evaluation schema - matching flashinfer-bench
 export const EvaluationSchema = z.object({
-  status: z.enum(["PASSED", "INCORRECT_SHAPE", "INCORRECT_NUMERICAL", "INCORRECT_DTYPE", "RUNTIME_ERROR", "COMPILE_ERROR"]),
+  status: z.enum([
+    'PASSED', 'INCORRECT_SHAPE', 'INCORRECT_NUMERICAL', 'INCORRECT_DTYPE',
+    'RUNTIME_ERROR', 'COMPILE_ERROR'
+  ]),
   log_file: z.string(),
   correctness: z.object({
-    max_relative_error: z.number(),
-    max_absolute_error: z.number(),
-  }).nullable(),
+                  max_relative_error: z.number(),
+                  max_absolute_error: z.number(),
+                }).nullable(),
   performance: z.object({
-    latency_ms: z.number(),
-    reference_latency_ms: z.number(),
-    speedup_factor: z.number(),
-  }).nullable(),
+                  latency_ms: z.number(),
+                  reference_latency_ms: z.number(),
+                  speedup_factor: z.number(),
+                }).nullable(),
   environment: z.object({
     hardware: z.string().optional(),
     device: z.string().optional(),
-    libs: z.record(z.string(), z.string()), // Library versions
+    libs: z.record(z.string(), z.string()),  // Library versions
   }),
-  timestamp: z.string(), // ISO 8601 timestamp
+  timestamp: z.string(),  // ISO 8601 timestamp
 })
 
 // Trace schema - matching flashinfer-bench
 export const TraceSchema = z.object({
-  definition: z.string(), // Name of the Definition
-  solution: z.string().nullable(), // Name of the Solution (null for workload-only traces)
+  definition: z.string(),           // Name of the Definition
+  solution: z.string().nullable(),  // Name of the Solution (null for
+                                    // workload-only traces)
   workload: WorkloadSchema,
-  evaluation: EvaluationSchema.nullable(), // Null for workload-only traces
+  evaluation: EvaluationSchema.nullable(),  // Null for workload-only traces
 })
 
 // Canonical workload schema for UI

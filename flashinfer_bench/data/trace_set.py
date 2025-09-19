@@ -26,8 +26,8 @@ class TraceSet:
     keys are definition names and values are lists of associated objects.
     """
 
-    root: Path
-    """The root path of the TraceSet."""
+    root: str
+    """The root path of the TraceSet. Must be recognized by Path()."""
     definitions: Dict[str, Definition] = field(default_factory=dict)
     """The definitions in the database. Map from definition name to Definition object."""
     solutions: Dict[str, List[Solution]] = field(default_factory=dict)
@@ -323,11 +323,12 @@ class TraceSet:
             The traces to add to the TraceSet.
         """
         buckets: Dict[Path, List[Trace]] = defaultdict(list)
+        traces_path = Path(self.root) / "traces"
         for trace in traces:
             # Add to in-memory database
-            self.traces[trace.definition].append(trace)
+            self.traces.setdefault(trace.definition, []).append(trace)
             defn = self.definitions[trace.definition]
-            path = self.root / "traces" / defn.op_type / f"{defn.name}.jsonl"
+            path = traces_path / defn.op_type / f"{defn.name}.jsonl"
             # Add to disk bucket
             buckets[path].append(trace)
 

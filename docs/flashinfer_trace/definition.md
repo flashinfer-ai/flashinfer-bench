@@ -59,7 +59,7 @@ Controlled namespaces:
 
 - `quantization:*` — Indicates quantization characteristics. For the simple case, encode the effective dtype.
 
-    Examples: `quantization:float8_e4m3`, `quantization:int8`.
+    Examples: `quantization:float8_e4m3fn`, `quantization:int8`.
 
 - `status:*` — Community/validation status.
 
@@ -126,7 +126,7 @@ The following values are allowed for `dtype`:
 - `float32`
 - `float16`
 - `bfloat16`
-- `float8_e4m3`
+- `float8_e4m3fn`
 - `float8_e5m2`
 - `float4_e2m1`
 - `int64`
@@ -210,7 +210,7 @@ The `reference` field is a string that contains the reference implementation of 
   "tags": [
     "status:draft",
     "model:some_model",
-    "quantization:float8_e4m3"
+    "quantization:float8_e4m3fn"
   ],
   "axes": {
     "M": { "type": "var" },
@@ -222,11 +222,11 @@ The `reference` field is a string that contains the reference implementation of 
   "inputs": {
     "A": {
       "shape": ["M", "K"],
-      "dtype": "float8_e4m3"
+      "dtype": "float8_e4m3fn"
     },
     "B": {
       "shape": ["N", "K"],
-      "dtype": "float8_e4m3"
+      "dtype": "float8_e4m3fn"
     },
     "A_scale": {
       "shape": ["M", "K_group"],
@@ -293,7 +293,7 @@ The `reference` field is a string that contains the reference implementation of 
   "op_type": "grouped_gemm",
   "tags": [
     "status:draft",
-    "quantization:float8_e4m3",
+    "quantization:float8_e4m3fn",
     "model:some_model"
   ],
   "axes": {
@@ -306,11 +306,11 @@ The `reference` field is a string that contains the reference implementation of 
   "inputs": {
     "A": {
       "shape": ["G", "M", "K"],
-      "dtype": "float8_e4m3"
+      "dtype": "float8_e4m3fn"
     },
     "B": {
       "shape": ["G", "K", "N"],
-      "dtype": "float8_e4m3"
+      "dtype": "float8_e4m3fn"
     },
     "A_scale": {
       "shape": ["G", "M", "K_group"],
