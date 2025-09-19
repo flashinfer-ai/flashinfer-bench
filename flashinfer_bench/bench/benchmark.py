@@ -8,7 +8,7 @@ from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
 from flashinfer_bench.logging import get_logger
 
 from .config import BenchmarkConfig
-from .runner import MultiProcessRunner
+from .runner import MultiProcessRunner, PersistentRunner
 
 logger = get_logger("Benchmark")
 
@@ -40,8 +40,10 @@ class Benchmark:
         self._trace_set = trace_set
         self._config = config if config is not None else BenchmarkConfig()
 
-        # Setup runner
-        self._runner = MultiProcessRunner(logger, self._config.log_dir)
+        if self._config.use_multiprocess_runner:
+            self._runner = MultiProcessRunner(logger, self._config.log_dir)
+        else:
+            self._runner = PersistentRunner(logger, self._config.log_dir)
 
         # Setup registry
         self._registry = get_registry()
