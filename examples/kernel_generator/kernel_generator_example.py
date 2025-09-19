@@ -29,7 +29,7 @@ def main():
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
 
-    #all_definitions = list(traceset.definitions.keys())
+    # all_definitions = list(traceset.definitions.keys())
     # Filter for rmsnorm definitions only
     all_definitions = [name for name in traceset.definitions.keys() if "rmsnorm" in name.lower()]
 
