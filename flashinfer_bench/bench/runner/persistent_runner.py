@@ -458,8 +458,7 @@ class PersistentSubprocessWorker:
                 evaluation = response["evaluation"]
                 if evaluation.status == EvaluationStatus.PASSED:
                     self._clear_failure_record(sol.name)
-                elif evaluation.status in (EvaluationStatus.RUNTIME_ERROR, EvaluationStatus.INCORRECT_SHAPE, 
-                                          EvaluationStatus.INCORRECT_DTYPE, EvaluationStatus.INCORRECT_NUMERICAL):
+                elif evaluation.status in (EvaluationStatus.RUNTIME_ERROR, EvaluationStatus.INCORRECT_SHAPE, EvaluationStatus.INCORRECT_DTYPE):
                     self._record_failure(sol.name, evaluation.error or "Evaluation failed", evaluation.status)
                 return evaluation
             elif response.get("cmd") == WorkerResponse.ERROR.value:
