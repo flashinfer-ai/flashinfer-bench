@@ -650,7 +650,7 @@ class PersistentRunner(Runner):
 
     def _has_healthy_workers(self) -> bool:
         return bool(self._workers)
-
+    
     def run_workload(
         self,
         defn: Definition,
@@ -661,16 +661,6 @@ class PersistentRunner(Runner):
     ) -> Dict[str, Evaluation]:
         """
         Run a workload with the given solutions and return evaluation results.
-
-        Args:
-            defn: Definition object
-            wl: Workload object
-            solutions: List of solutions to evaluate
-            config: Benchmark configuration
-            root: Root path for the trace set
-
-        Returns:
-            Dictionary mapping solution names to their evaluations
         """
         if not solutions:
             return {}
@@ -707,35 +697,73 @@ class PersistentRunner(Runner):
         if not selected:
             raise RuntimeError("No healthy persistent workers available after baseline setup")
 
+        def run_solution_with_health_check(worker: PersistentSubprocessWorker, 
+                                        solution: Solution, 
+                                        baseline_handle: BaselineHandle) -> Evaluation:
+            try:
+                if not worker.is_healthy():
+                    LOGGER.warning(f"Worker on device {worker._device} is unhealthy, attempting restart")
+                    if worker.restart():
+                        try:
+                            new_baseline = worker.run_ref(defn, wl, config, root)
+                            worker.release(baseline_handle)
+                            baseline_handle = new_baseline
+                            LOGGER.info(f"Rebuilt baseline for worker on device {worker._device}")
+                        except Exception as e:
+                            LOGGER.error(f"Failed to rebuild baseline after restart for device {worker._device}: {e}")
+                            return _make_eval(
+                                status=EvaluationStatus.RUNTIME_ERROR,
+                                device=worker._device,
+                                log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                                error=f"Failed to rebuild baseline after restart: {e}",
+                            )
+                    else:
+                        LOGGER.error(f"Failed to restart worker on device {worker._device}")
+                        return _make_eval(
+                            status=EvaluationStatus.RUNTIME_ERROR,
+                            device=worker._device,
+                            log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                            error="Worker restart failed",
+                        )
+                
+                # Run the solution
+                return worker.run_solution(solution, baseline_handle, config)
+                
+            except Exception as e:
+                LOGGER.error(f"Unexpected error in solution execution for {solution.name}: {e}")
+                return _make_eval(
+                    status=EvaluationStatus.RUNTIME_ERROR,
+                    device=worker._device,
+                    log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                    error=f"Unexpected error: {e}",
+                )
+
         try:
             with ThreadPoolExecutor(max_workers=len(selected)) as pool:
                 sol_futs: Dict[str, any] = {}
+                
                 for i, sol in enumerate(solutions):
-                    r = selected[i % len(selected)]
+                    worker = selected[i % len(selected)]
+                    baseline_handle = baselines[worker]
                     
-                    if not r.is_healthy():
-                        LOGGER.warning(f"Worker on device {r._device} is unhealthy, attempting restart")
-                        if r.restart():
-                            try:
-                                new_baseline = r.run_ref(defn, wl, config, root)
-                                baselines[r] = new_baseline
-                                LOGGER.info(f"Rebuilt baseline for worker on device {r._device}")
-                            except Exception as e:
-                                LOGGER.error(f"Failed to rebuild baseline after restart for device {r._device}: {e}")
-                                continue
-                        else:
-                            LOGGER.error(f"Failed to restart worker on device {r._device}, skipping solution {sol.name}")
-                            continue
-                    
-                    sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)
+                    sol_futs[sol.name] = pool.submit(
+                        run_solution_with_health_check, 
+                        worker, 
+                        sol, 
+                        baseline_handle
+                    )
 
                 results: Dict[str, Evaluation] = {
                     name: fut.result() for name, fut in sol_futs.items()
                 }
         finally:
+            # Clean up baselines
             for r in selected:
                 if r in baselines:
-                    r.release(baselines[r])
+                    try:
+                        r.release(baselines[r])
+                    except Exception as e:
+                        LOGGER.warning(f"Failed to release baseline for device {r._device}: {e}")
 
         return results
 
