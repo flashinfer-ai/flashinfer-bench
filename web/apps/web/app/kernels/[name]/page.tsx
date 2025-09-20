@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getAllDefinitions } from "@/lib/data-loader"
 import { computeCorrectnessSummaryForSolutions, computeWinAtPCurvesForSolutions, type BaselineConfig } from "@/lib/analytics"
@@ -74,12 +75,14 @@ export default async function TraceDetailPage({
             <DefinitionReference definition={definition} />
           </section>
 
-          <SolutionsSection
-            definition={definition}
-            solutions={solutions}
-            traces={traces}
-            precomputed={precomputed}
-          />
+          <Suspense fallback={<div className="py-8 text-sm text-muted-foreground">Loading solutions…</div>}>
+            <SolutionsSection
+              definition={definition}
+              solutions={solutions}
+              traces={traces}
+              precomputed={precomputed}
+            />
+          </Suspense>
         </div>
       </div>
     </div>

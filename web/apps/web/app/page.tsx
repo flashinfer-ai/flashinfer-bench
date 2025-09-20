@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { Button } from "@flashinfer-bench/ui"
 import { ArrowRight } from "lucide-react"
@@ -68,7 +69,9 @@ export default async function HomePage() {
       </section>
 
       {/* Kernels Section */}
-      <KernelsSection definitions={definitionsWithCounts} />
+      <Suspense fallback={<div className="container py-12 text-sm text-muted-foreground">Loading kernels…</div>}>
+        <KernelsSection definitions={definitionsWithCounts} />
+      </Suspense>
     </div>
   )
 }
