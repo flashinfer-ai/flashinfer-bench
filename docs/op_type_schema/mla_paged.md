@@ -19,7 +19,7 @@ Inputs (7 tensors + 1 scalar):
 - `sm_scale`: softmax scale (scalar)
 
 Outputs (2 tensors):
-- `output`: attention output [total_q, num_qo_heads, head_dim]
+- `output`: attention output [total_q, num_qo_heads, head_dim_ckv]
 - `lse`: log-sum-exp values [total_q, num_qo_heads]
 
 Constraints:
