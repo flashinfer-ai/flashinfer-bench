@@ -1,13 +1,12 @@
-## **gemm**
+# gemm
 
-**Axes (3 dimensions):**
-- `M`: variable dimension
-- `N`: constant (must specify value in implementation)
-- `K`: constant (must specify value in implementation)
+Axes (3 dimensions):
+- `M`: variable
+- `N`, `K`: constant
 
-**Inputs (2 tensors):**
-- `A`: shape [M, K]
-- `B`: shape [N, K]
+Inputs (2 tensors):
+- `A`: [M, K]
+- `B`: [N, K]
 
-**Outputs:**
-- `C`: shape [M, N]
+Outputs (1 tensor):
+- `C`: [M, N]
