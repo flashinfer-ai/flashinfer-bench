@@ -15,5 +15,5 @@ Inputs (1 to 3 tensors):
   - `top_k`: for top-k sampling [batch_size], dtype: int32
   - `top_p`: for top-p/nucleus sampling [batch_size], dtype: float32
 
-Outputs:
+Outputs (1 tensor):
 - `samples`: sampled token indices [batch_size], dtype: int64
