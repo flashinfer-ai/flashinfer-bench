@@ -1,6 +1,9 @@
-/** @type {import('next').NextConfig} */
-const DOCS_ORIGIN = process.env.DOCS_ORIGIN || 'http://localhost:3030'
-const nextConfig = {
+import type { NextConfig } from 'next'
+import { withMicrofrontends } from '@vercel/microfrontends/next/config'
+
+const DOCS_ORIGIN = process.env.DOCS_ORIGIN ?? 'http://localhost:3030'
+
+const nextConfig: NextConfig = {
   transpilePackages: [
     '@flashinfer-bench/ui',
     '@flashinfer-bench/utils',
@@ -17,18 +20,12 @@ const nextConfig = {
       {
         source: '/:path*',
         headers: [
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN'
-          },
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
         ],
       },
     ]
   },
 }
 
-module.exports = nextConfig
+export default withMicrofrontends(nextConfig)
