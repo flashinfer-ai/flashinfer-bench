@@ -19,8 +19,17 @@ export const AxisSchema = z.union([ConstAxisSchema, VarAxisSchema])
 export const TensorSchema = z.object({
   shape: z.array(z.string()).nullable(),
   dtype: z.enum([
-    'float32', 'float16', 'bfloat16', 'float8_e4m3fn', 'float8_e5m2',
-    'float4_e2m1', 'int32', 'int16', 'int8', 'uint8', 'bool'
+    "float32",
+    "float16",
+    "bfloat16",
+    "float8_e4m3fn",
+    "float8_e5m2",
+    "float4_e2m1",
+    "int64",
+    "int32",
+    "int16",
+    "int8",
+    "bool",
   ]),
   description: z.string().optional(),
 })
@@ -28,9 +37,9 @@ export const TensorSchema = z.object({
 // Definition schema - matching flashinfer-bench
 export const DefinitionSchema = z.object({
   name: z.string(),
-  type: z.string(),  // General type like "gemm", "attention", "rmsnorm"
-  description: z.string(),
-  tags: z.array(z.string()).optional(),  // Tags for categorizing definitions
+  op_type: z.string(), // General op type like "gemm", "attention", "rmsnorm"
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   axes: z.record(z.string(), AxisSchema),
   inputs: z.record(z.string(), TensorSchema),
   outputs: z.record(z.string(), TensorSchema),
@@ -41,15 +50,15 @@ export const DefinitionSchema = z.object({
 // Solution schema - matching flashinfer-bench
 export const SolutionSchema = z.object({
   name: z.string(),
-  definition: z.string(),  // Name of the Definition it solves
-  description: z.string(),
+  definition: z.string(), // Name of the Definition it solves
+  description: z.string().optional(),
   author: z.string(),
   spec: z.object({
-    language: z.string(),  // e.g., "Triton", "CUDA"
+    language: z.enum(["python", "triton", "cuda"]),
     target_hardware: z.array(z.string()),
-    dependencies: z.array(z.string()),
     entry_point: z.string(),
-    build_steps: z.array(z.string()),
+    dependencies: z.array(z.string()).optional(),
+    build_commands: z.array(z.string()).optional(),
   }),
   sources: z.array(z.object({
     path: z.string(),
@@ -66,13 +75,18 @@ export const WorkloadInputSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('safetensors'),
     path: z.string(),
-    key: z.string(),
+    tensor_key: z.string(),
+  }),
+  z.object({
+    type: z.literal("scalar"),
+    value: z.union([z.number(), z.boolean()]),
   }),
 ])
 
 // Workload schema
 export const WorkloadSchema = z.object({
-  axes: z.record(z.string(), z.number()),  // Concrete values for variable axes
+  uuid: z.string(),
+  axes: z.record(z.string(), z.number()), // Concrete values for variable axes
   inputs: z.record(z.string(), WorkloadInputSchema),
 })
 
@@ -93,9 +107,9 @@ export const EvaluationSchema = z.object({
                   speedup_factor: z.number(),
                 }).nullable(),
   environment: z.object({
-    hardware: z.string().optional(),
+    hardware: z.string(),
     device: z.string().optional(),
-    libs: z.record(z.string(), z.string()),  // Library versions
+    libs: z.record(z.string(), z.string()).optional(),
   }),
   timestamp: z.string(),  // ISO 8601 timestamp
 })
