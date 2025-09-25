@@ -126,6 +126,133 @@ def _compute_error_stats(
     return max_abs, max_rel, bool(max_rel > 1.0)
 
 
+def _is_sampling_operation(defn: Definition) -> bool:
+    return getattr(defn, 'op_type', None) == 'sampling'
+
+
+def _detect_sampling_type(defn: Definition) -> str:
+    name = defn.name.lower()
+    if 'top_k_top_p' in name:
+        return 'top_k_top_p'
+    elif 'top_k' in name:
+        return 'top_k'
+    elif 'top_p' in name:
+        return 'top_p'
+    else:
+        return 'basic' # vanilla sampling
+
+
+def _validate_sampling_tokens(
+    samples: torch.Tensor, 
+    probs: torch.Tensor, 
+    sampling_type: str, 
+    params: Dict[str, Any]
+) -> bool:
+    batch_size, vocab_size = probs.shape
+    device = probs.device
+    
+    for i in range(batch_size):
+        prob_row = probs[i]
+        sample = samples[i].item()
+        
+        if sampling_type == 'top_k':
+            if 'top_k' not in params:
+                return True
+            k = int(params['top_k'][i].item()) if params['top_k'].dim() > 0 else int(params['top_k'].item())
+            if 0 < k < vocab_size:
+                sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
+                pivot = sorted_prob_desc[k - 1]
+                mask_top_k = (prob_row >= pivot).int()
+                if mask_top_k[sample] != 1:
+                    return False                    
+        elif sampling_type == 'top_p':
+            if 'top_p' not in params:
+                return True
+            p = float(params['top_p'][i].item()) if params['top_p'].dim() > 0 else float(params['top_p'].item())
+            if 0 < p < 1:
+                eps = 1e-4 # numerical stability
+                sorted_probs, indices = torch.sort(prob_row, descending=False)
+                cdf = torch.cumsum(sorted_probs, dim=0)
+                valid_mask = cdf > (1 - p) - eps
+                valid_indices = indices[valid_mask]
+                
+                if sample not in valid_indices:
+                    return False
+                        
+        elif sampling_type == 'top_k_top_p':
+            if 'top_k' not in params or 'top_p' not in params:
+                return True
+            k = int(params['top_k'][i].item()) if params['top_k'].dim() > 0 else int(params['top_k'].item())
+            p = float(params['top_p'][i].item()) if params['top_p'].dim() > 0 else float(params['top_p'].item())
+            
+            if 0 < k < vocab_size:
+                sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
+                pivot = sorted_prob_desc[k - 1]
+                mask_top_k = (prob_row >= pivot).int()
+            else:
+                mask_top_k = torch.ones(vocab_size, dtype=torch.int32, device=device)
+            
+            if 0 < p < 1:
+                eps = 1e-4
+                sorted_probs_asc, indices = torch.sort(prob_row, descending=False)
+                cdf = torch.cumsum(sorted_probs_asc, dim=0)
+                mask_top_p = torch.zeros(vocab_size, dtype=torch.int32, device=device)
+                valid_p_mask = cdf > (1 - p) - eps
+                mask_top_p[indices[valid_p_mask]] = 1
+            else:
+                mask_top_p = torch.ones(vocab_size, dtype=torch.int32, device=device)
+            
+            joint_mask = torch.minimum(mask_top_k, mask_top_p)
+            
+            if joint_mask[sample] != 1:
+                return False
+    
+    return True
+
+
+def _compute_frequency_distribution(
+    runnable: Any, 
+    inputs: List[Dict[str, Any]], 
+    device: str,
+    defn: Definition,
+    num_trials: int = 10000
+) -> torch.Tensor:
+    inp = inputs[0]
+    
+    workload_batch_size = inp['probs'].shape[0] if inp['probs'].dim() > 1 else 1
+    vocab_size = inp['probs'].shape[-1]
+    counter = torch.zeros(vocab_size, dtype=torch.int64, device=torch.device(device))
+    
+    trials_needed = (num_trials + workload_batch_size - 1) // workload_batch_size
+    total_samples_collected = 0
+    
+    for trial in range(trials_needed):
+        with torch.no_grad():
+            out = runnable(**inp)
+        
+        output_names = list(defn.outputs.keys())
+        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
+        
+        out_normalized = _normalize_outputs(
+            out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
+        )
+        
+        samples = out_normalized['samples']
+        
+        if samples.dim() == 0:
+            sample_idx = samples.item()
+            counter[sample_idx] += 1
+            total_samples_collected += 1
+        else:  # Batch of samples
+            for i in range(samples.numel()):
+                sample_idx = samples.flatten()[i].item()
+                counter[sample_idx] += 1
+                total_samples_collected += 1
+    
+    frequency = counter.float() / total_samples_collected
+    return frequency
+
+
 def _load_safetensors(
     defn: Definition, wl: Workload, traceset_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
@@ -183,7 +310,12 @@ def _gen_inputs(
             out[name] = wl.inputs[name].value
         else:  # random
             shape = shapes[name]
-            out[name] = _rand_tensor(shape, dtype, dev)
+            tensor = _rand_tensor(shape, dtype, dev)
+            
+            if _is_sampling_operation(defn) and name == "probs":
+                tensor = torch.softmax(tensor, dim=-1) # convert logits to probs for sampling
+                
+            out[name] = tensor
     return out
 
 
@@ -214,19 +346,29 @@ class SubprocessWorker:
             else {}
         )
 
+        is_sampling = _is_sampling_operation(defn)
         inputs_all: List[Dict[str, Any]] = []
         ref_out_all: List[Dict[str, torch.Tensor]] = []
-        for _ in range(cfg.num_trials):
+        
+        if is_sampling:
             inp = _gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
             inputs_all.append(inp)
-
-            with torch.no_grad():
-                out = runnable_ref(**inp)
-            torch.cuda.synchronize(device=dev)
-            ref_out = _normalize_outputs(
-                out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
-            )
+            
+            freq_dist = _compute_frequency_distribution(runnable_ref, [inp], self._device, defn, num_trials=50000)
+            ref_out = {"frequency_distribution": freq_dist}
             ref_out_all.append(ref_out)
+        else:
+            for _ in range(cfg.num_trials):
+                inp = _gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
+                inputs_all.append(inp)
+
+                with torch.no_grad():
+                    out = runnable_ref(**inp)
+                torch.cuda.synchronize(device=dev)
+                ref_out = _normalize_outputs(
+                    out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
+                )
+                ref_out_all.append(ref_out)
 
         ref_lat_all: List[float] = []
         for inp in inputs_all:
@@ -395,79 +537,158 @@ def _solution_worker_main(
             for inp in inputs_bl
         ]
 
+        # Check correctness
+        is_sampling = _is_sampling_operation(defn)
         max_abs = 0.0
         max_rel = 0.0
         numerical_incorrect = False
-        for t, inp in enumerate(inputs):
-            try:
-                with torch.no_grad():
-                    out = runnable_sol(**inp)
-                torch.cuda.synchronize(device=device)
-            except Exception as e:
-                import traceback
 
-                error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                ev = _make_eval(
-                    status=EvaluationStatus.RUNTIME_ERROR,
-                    device=device,
-                    log_file=log_path,
-                    error=error_msg,
+        if is_sampling:
+            # For non-deterministic kernels, we test correctness via output distribution
+            sampling_type = _detect_sampling_type(defn)        
+            ref_freq = ref_outputs_bl[0]["frequency_distribution"]
+            vocab_size = ref_freq.shape[0]
+            
+            inp = inputs[0]
+            params = {k: inp[k] for k in ['top_k', 'top_p'] if k in inp}
+            
+            # Validate that the solution is sampling from the correct token set
+            for trial_idx in range(100):
+                try:
+                    with torch.no_grad():
+                        out = runnable_sol(**inp)
+                    torch.cuda.synchronize(device=device)
+                except Exception as e:
+                    import traceback
+                    error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    
+                    ev = _make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=device,
+                        log_file=log_path,
+                        error=error_msg,
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
+                
+                out_normalized = _normalize_outputs(
+                    out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
                 )
-                conn.send({"cmd": "EVAL", "evaluation": ev})
-                return
-
-            out_t = _normalize_outputs(
-                out,
-                device=torch.device(device),
-                output_names=output_names,
-                output_dtypes=output_dtypes,
-            )
-            ref_t = ref_outputs_bl[t]
-            for k in ref_t.keys():
-                if k not in out_t:
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-                if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_path, device=device
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-                if out_t[k].dtype != ref_t[k].dtype:
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-
-                non_finite_err_val = None
-                if torch.isinf(out_t[k]).any().item():
-                    non_finite_err_val = float("inf")
-                elif torch.isnan(out_t[k]).any().item():
-                    non_finite_err_val = float("nan")
-                if non_finite_err_val is not None:
-                    correctness = Correctness(
-                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
-                    )
+                samples = out_normalized['samples']
+                
+                # Validate samples are within vocab range
+                if (samples < 0).any() or (samples >= vocab_size).any():
+                    invalid_samples = samples[(samples < 0) | (samples >= vocab_size)]
+                    correctness = Correctness(max_relative_error=1.0, max_absolute_error=1.0)
                     ev = _make_eval(
                         status=EvaluationStatus.INCORRECT_NUMERICAL,
-                        log_file=log_path,
                         device=device,
+                        log_file=log_path,
                         correctness=correctness,
+                        error=f"Samples {invalid_samples.tolist()} out of vocabulary range [0, {vocab_size})",
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
+                
+                # Validate sample follows sampling constraints for top_p and top_k
+                probs = inp['probs']
+                if not _validate_sampling_tokens(samples, probs, sampling_type, params):
+                    correctness = Correctness(max_relative_error=1.0, max_absolute_error=1.0)
+                    ev = _make_eval(
+                        status=EvaluationStatus.INCORRECT_NUMERICAL,
+                        device=device,
+                        log_file=log_path,
+                        correctness=correctness,
+                        error=f"Samples {samples.tolist()} violate {sampling_type} constraints",
+                    )
+                    conn.send({"cmd": "EVAL", "evaluation": ev})
+                    return
+            
+            # Validate output distribution against reference
+            try:
+                sol_freq = _compute_frequency_distribution(runnable_sol, [inp], device, defn, num_trials=50000)
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                raise
+            
+            similarity = torch.cosine_similarity(sol_freq.unsqueeze(0), ref_freq.unsqueeze(0)).item()
+            
+            max_abs, max_rel, exceeds_tol = _compute_error_stats(sol_freq, ref_freq, cfg)
+            
+            if exceeds_tol or similarity < 0.95:
+                numerical_incorrect = True
+        else:
+            for t, inp in enumerate(inputs):
+                try:
+                    with torch.no_grad():
+                        out = runnable_sol(**inp)
+                    torch.cuda.synchronize(device=device)
+                except Exception as e:
+                    import traceback
+
+                    error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                    ev = _make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=device,
+                        log_file=log_path,
+                        error=error_msg,
                     )
                     conn.send({"cmd": "EVAL", "evaluation": ev})
                     return
 
-                abs_err, rel_err, exceeds_tol = _compute_error_stats(out_t[k], ref_t[k], cfg)
+                out_t = _normalize_outputs(
+                    out,
+                    device=torch.device(device),
+                    output_names=output_names,
+                    output_dtypes=output_dtypes,
+                )
+                ref_t = ref_outputs_bl[t]
+                for k in ref_t.keys():
+                    if k not in out_t:
+                        ev = _make_eval(
+                            status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
+                        )
+                        conn.send({"cmd": "EVAL", "evaluation": ev})
+                        return
+                    if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
+                        ev = _make_eval(
+                            status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_path, device=device
+                        )
+                        conn.send({"cmd": "EVAL", "evaluation": ev})
+                        return
+                    if out_t[k].dtype != ref_t[k].dtype:
+                        ev = _make_eval(
+                            status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
+                        )
+                        conn.send({"cmd": "EVAL", "evaluation": ev})
+                        return
 
-                if exceeds_tol:
-                    numerical_incorrect = True
+                    non_finite_err_val = None
+                    if torch.isinf(out_t[k]).any().item():
+                        non_finite_err_val = float("inf")
+                    elif torch.isnan(out_t[k]).any().item():
+                        non_finite_err_val = float("nan")
+                    if non_finite_err_val is not None:
+                        correctness = Correctness(
+                            max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
+                        )
+                        ev = _make_eval(
+                            status=EvaluationStatus.INCORRECT_NUMERICAL,
+                            log_file=log_path,
+                            device=device,
+                            correctness=correctness,
+                        )
+                        conn.send({"cmd": "EVAL", "evaluation": ev})
+                        return
 
-                max_abs = max(max_abs, abs_err)
-                max_rel = max(max_rel, rel_err)
+                    abs_err, rel_err, exceeds_tol = _compute_error_stats(out_t[k], ref_t[k], cfg)
+
+                    if exceeds_tol:
+                        numerical_incorrect = True
+
+                    max_abs = max(max_abs, abs_err)
+                    max_rel = max(max_rel, rel_err)
 
         correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
         if numerical_incorrect:
