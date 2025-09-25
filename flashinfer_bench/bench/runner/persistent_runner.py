@@ -16,7 +16,7 @@ from torch import multiprocessing as mp
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
-from flashinfer_bench.compile import Runnable, get_registry, BuildError
+from flashinfer_bench.compile import BuildError, Runnable, get_registry
 from flashinfer_bench.data import (
     Correctness,
     Definition,
@@ -149,71 +149,84 @@ def _compute_error_stats(
 
 
 def _is_sampling_operation(defn: Definition) -> bool:
-    return getattr(defn, 'op_type', None) == 'sampling'
+    return getattr(defn, "op_type", None) == "sampling"
 
 
 def _detect_sampling_type(defn: Definition) -> str:
     name = defn.name.lower()
-    if 'top_k_top_p' in name:
-        return 'top_k_top_p'
-    elif 'top_k' in name:
-        return 'top_k'
-    elif 'top_p' in name:
-        return 'top_p'
+    if "top_k_top_p" in name:
+        return "top_k_top_p"
+    elif "top_k" in name:
+        return "top_k"
+    elif "top_p" in name:
+        return "top_p"
     else:
-        return 'basic' # vanilla sampling
+        return "basic"  # vanilla sampling
 
 
 def _validate_sampling_tokens(
-    samples: torch.Tensor, 
-    probs: torch.Tensor, 
-    sampling_type: str, 
-    params: Dict[str, Any]
+    samples: torch.Tensor, probs: torch.Tensor, sampling_type: str, params: Dict[str, Any]
 ) -> bool:
     batch_size, vocab_size = probs.shape
     device = probs.device
-    
+
     for i in range(batch_size):
         prob_row = probs[i]
         sample = samples[i].item()
-        
-        if sampling_type == 'top_k':
-            if 'top_k' not in params:
+
+        if sampling_type == "top_k":
+            if "top_k" not in params:
                 return True
-            k = int(params['top_k'][i].item()) if params['top_k'].dim() > 0 else int(params['top_k'].item())
+            k = (
+                int(params["top_k"][i].item())
+                if params["top_k"].dim() > 0
+                else int(params["top_k"].item())
+            )
             if 0 < k < vocab_size:
                 sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
                 pivot = sorted_prob_desc[k - 1]
                 mask_top_k = (prob_row >= pivot).int()
                 if mask_top_k[sample] != 1:
-                    return False                    
-        elif sampling_type == 'top_p':
-            if 'top_p' not in params:
+                    return False
+        elif sampling_type == "top_p":
+            if "top_p" not in params:
                 return True
-            p = float(params['top_p'][i].item()) if params['top_p'].dim() > 0 else float(params['top_p'].item())
+            p = (
+                float(params["top_p"][i].item())
+                if params["top_p"].dim() > 0
+                else float(params["top_p"].item())
+            )
             if 0 < p < 1:
-                eps = 1e-4 # numerical stability
+                eps = 1e-4  # numerical stability
                 sorted_probs, indices = torch.sort(prob_row, descending=False)
                 cdf = torch.cumsum(sorted_probs, dim=0)
                 valid_mask = cdf > (1 - p) - eps
                 valid_indices = indices[valid_mask]
-                
+
                 if sample not in valid_indices:
                     return False
-                        
-        elif sampling_type == 'top_k_top_p':
-            if 'top_k' not in params or 'top_p' not in params:
+
+        elif sampling_type == "top_k_top_p":
+            if "top_k" not in params or "top_p" not in params:
                 return True
-            k = int(params['top_k'][i].item()) if params['top_k'].dim() > 0 else int(params['top_k'].item())
-            p = float(params['top_p'][i].item()) if params['top_p'].dim() > 0 else float(params['top_p'].item())
-            
+            k = (
+                int(params["top_k"][i].item())
+                if params["top_k"].dim() > 0
+                else int(params["top_k"].item())
+            )
+            p = (
+                float(params["top_p"][i].item())
+                if params["top_p"].dim() > 0
+                else float(params["top_p"].item())
+            )
+
             if 0 < k < vocab_size:
                 sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
                 pivot = sorted_prob_desc[k - 1]
                 mask_top_k = (prob_row >= pivot).int()
             else:
                 mask_top_k = torch.ones(vocab_size, dtype=torch.int32, device=device)
-            
+
             if 0 < p < 1:
                 eps = 1e-4
                 sorted_probs_asc, indices = torch.sort(prob_row, descending=False)
@@ -223,44 +236,44 @@ def _validate_sampling_tokens(
                 mask_top_p[indices[valid_p_mask]] = 1
             else:
                 mask_top_p = torch.ones(vocab_size, dtype=torch.int32, device=device)
-            
+
             joint_mask = torch.minimum(mask_top_k, mask_top_p)
-            
+
             if joint_mask[sample] != 1:
                 return False
-    
+
     return True
 
 
 def _compute_frequency_distribution(
-    runnable: Any, 
-    inputs: List[Dict[str, Any]], 
+    runnable: Any,
+    inputs: List[Dict[str, Any]],
     device: str,
     defn: Definition,
-    num_trials: int = 10000
+    num_trials: int = 10000,
 ) -> torch.Tensor:
     inp = inputs[0]
-    
-    workload_batch_size = inp['probs'].shape[0] if inp['probs'].dim() > 1 else 1
-    vocab_size = inp['probs'].shape[-1]
+
+    workload_batch_size = inp["probs"].shape[0] if inp["probs"].dim() > 1 else 1
+    vocab_size = inp["probs"].shape[-1]
     counter = torch.zeros(vocab_size, dtype=torch.int64, device=torch.device(device))
-    
+
     trials_needed = (num_trials + workload_batch_size - 1) // workload_batch_size
     total_samples_collected = 0
-    
+
     for trial in range(trials_needed):
         with torch.no_grad():
             out = runnable(**inp)
-        
+
         output_names = list(defn.outputs.keys())
         output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
-        
+
         out_normalized = _normalize_outputs(
             out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
         )
-        
-        samples = out_normalized['samples']
-        
+
+        samples = out_normalized["samples"]
+
         if samples.dim() == 0:
             sample_idx = samples.item()
             counter[sample_idx] += 1
@@ -270,7 +283,7 @@ def _compute_frequency_distribution(
                 sample_idx = samples.flatten()[i].item()
                 counter[sample_idx] += 1
                 total_samples_collected += 1
-    
+
     frequency = counter.float() / total_samples_collected
     return frequency
 
@@ -333,10 +346,10 @@ def _gen_inputs(
         else:  # random
             shape = shapes[name]
             tensor = _rand_tensor(shape, dtype, dev)
-            
+
             if _is_sampling_operation(defn) and name == "probs":
-                tensor = torch.softmax(tensor, dim=-1) # convert logits to probs for sampling
-                
+                tensor = torch.softmax(tensor, dim=-1)  # convert logits to probs for sampling
+
             out[name] = tensor
     return out
 
@@ -561,12 +574,14 @@ class PersistentSubprocessWorker:
         is_sampling = _is_sampling_operation(defn)
         inputs_all: List[Dict[str, Any]] = []
         ref_out_all: List[Dict[str, torch.Tensor]] = []
-        
+
         if is_sampling:
             inp = _gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
             inputs_all.append(inp)
-            
-            freq_dist = _compute_frequency_distribution(runnable_ref, [inp], self._device, defn, num_trials=50000)
+
+            freq_dist = _compute_frequency_distribution(
+                runnable_ref, [inp], self._device, defn, num_trials=50000
+            )
             ref_out = {"frequency_distribution": freq_dist}
             ref_out_all.append(ref_out)
         else:
@@ -578,7 +593,10 @@ class PersistentSubprocessWorker:
                     out = runnable_ref(**inp)
                 torch.cuda.synchronize(device=dev)
                 ref_out = _normalize_outputs(
-                    out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
+                    out,
+                    device=dev,
+                    output_names=list(defn.outputs.keys()),
+                    output_dtypes=output_dtypes,
                 )
                 ref_out_all.append(ref_out)
 
@@ -1011,10 +1029,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                     except BuildError as e:
                         import traceback
 
-                        error_msg = (
-                            f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        )
-                        
+                        error_msg = f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+
                         evaluation = _make_eval(
                             status=EvaluationStatus.COMPILE_ERROR,
                             device=device,
@@ -1030,7 +1046,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         error_msg = (
                             f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
                         )
-                        
+
                         evaluation = _make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=device,
@@ -1092,13 +1108,13 @@ def _evaluate_solution_worker(
 
     if is_sampling:
         # For non-deterministic kernels, we test correctness via output distribution
-        sampling_type = _detect_sampling_type(defn)        
+        sampling_type = _detect_sampling_type(defn)
         ref_freq = ref_outputs_bl[0]["frequency_distribution"]
         vocab_size = ref_freq.shape[0]
-        
+
         inp = inputs[0]
-        params = {k: inp[k] for k in ['top_k', 'top_p'] if k in inp}
-        
+        params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
+
         # Validate that the solution is sampling from the correct token set
         for trial_idx in range(100):
             try:
@@ -1107,23 +1123,27 @@ def _evaluate_solution_worker(
                 torch.cuda.synchronize(device=device)
             except Exception as e:
                 import traceback
+
                 error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                
+
                 return _make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
                     log_file=log_path,
                     error=error_msg,
                 )
-            
+
             output_names = list(defn.outputs.keys())
             output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
-            
+
             out_normalized = _normalize_outputs(
-                out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
+                out,
+                device=torch.device(device),
+                output_names=output_names,
+                output_dtypes=output_dtypes,
             )
-            samples = out_normalized['samples']
-            
+            samples = out_normalized["samples"]
+
             # Validate samples are within vocab range
             if (samples < 0).any() or (samples >= vocab_size).any():
                 invalid_samples = samples[(samples < 0) | (samples >= vocab_size)]
@@ -1135,9 +1155,9 @@ def _evaluate_solution_worker(
                     correctness=correctness,
                     error=f"Samples {invalid_samples.tolist()} out of vocabulary range [0, {vocab_size})",
                 )
-            
+
             # Validate sample follows sampling constraints for top_p and top_k
-            probs = inp['probs']
+            probs = inp["probs"]
             if not _validate_sampling_tokens(samples, probs, sampling_type, params):
                 correctness = Correctness(max_relative_error=1.0, max_absolute_error=1.0)
                 return _make_eval(
@@ -1147,25 +1167,28 @@ def _evaluate_solution_worker(
                     correctness=correctness,
                     error=f"Samples {samples.tolist()} violate {sampling_type} constraints",
                 )
-        
+
         # Validate output distribution against reference
         try:
-            sol_freq = _compute_frequency_distribution(runnable_sol, [inp], device, defn, num_trials=50000)
-        except Exception as e:
+            sol_freq = _compute_frequency_distribution(
+                runnable_sol, [inp], device, defn, num_trials=50000
+            )
+        except Exception:
             import traceback
+
             print(traceback.format_exc())
             raise
-        
+
         similarity = torch.cosine_similarity(sol_freq.unsqueeze(0), ref_freq.unsqueeze(0)).item()
-        
+
         max_abs, max_rel, exceeds_tol = _compute_error_stats(sol_freq, ref_freq, cfg)
-        
+
         if exceeds_tol or similarity < 0.95:
             numerical_incorrect = True
     else:
         output_names = list(ref_outputs_bl[0].keys())
         output_dtypes = {k: v.dtype for k, v in ref_outputs_bl[0].items()}
-        
+
         for t, inp in enumerate(inputs):
             try:
                 with torch.no_grad():
@@ -1183,7 +1206,10 @@ def _evaluate_solution_worker(
                 )
 
             out_t = _normalize_outputs(
-                out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
+                out,
+                device=torch.device(device),
+                output_names=output_names,
+                output_dtypes=output_dtypes,
             )
             ref_t = ref_outputs_bl[t]
 
