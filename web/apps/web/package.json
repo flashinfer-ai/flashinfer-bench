@@ -28,6 +28,7 @@
     "@tanstack/react-query": "^5.81.5",
     "@types/d3": "^7.4.3",
     "@types/three": "^0.179.0",
+    "@vercel/microfrontends": "^2.0.0",
     "ajv": "^8.17.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

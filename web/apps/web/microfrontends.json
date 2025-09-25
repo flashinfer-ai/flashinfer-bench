@@ -1,0 +1,19 @@
+{
+    "$schema": "https://openapi.vercel.sh/microfrontends.json",
+    "applications": {
+      "flashinfer-bench": {
+        "packageName": "@flashinfer-bench/web",
+        "development": {
+          "fallback": "bench.flashinfer.ai"
+        }
+      },
+      "flashinfer-bench-docs": {
+        "packageName": "@flashinfer-bench/docs",
+        "routing": [
+          {
+            "paths": ["/docs", "/docs/:path*"]
+          }
+        ]
+      }
+    }
+  }
