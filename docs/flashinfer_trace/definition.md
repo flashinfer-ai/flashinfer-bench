@@ -18,8 +18,8 @@ Note that a `Definition` does not contain specific input *data* for its variable
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `name` | string | Yes | A unique, human-readable name for the kernel, should include concrete problem information. Naming convention: `{type}_{props}_{constants}` (e.g. `gqa_paged_decode_h32_kv8_d128_ps1`). |
-| `type` | string | Yes | The general compute category. |
+| `name` | string | Yes | A unique, human-readable name for the kernel, should include concrete problem information. Naming convention: `{op_type}_{props}_{constants}` (e.g. `gqa_paged_decode_h32_kv8_d128_ps1`). |
+| `op_type` | string | Yes | The general compute category. |
 | `tags` | array | No | The string tags associated with this definition. Used for grouping and filtering. |
 | `description` | string | No | A brief, human-readable description of the definition and its purpose. |
 | `axes` | object | Yes | Key-value pairs defining the symbolic dimensions used in tensor shapes. |
@@ -28,15 +28,15 @@ Note that a `Definition` does not contain specific input *data* for its variable
 | `reference` | string | Yes | The reference implementation in PyTorch, serving as the mathematical specification. |
 | `constraints` | array | No | An optional list of assertions describing relationships between axes. |
 
-### `type`: Compute Category
+### `op_type`: Compute Category
 
-`type` is a `string` field used for grouping and filtering kernels. It represents the general compute characteristic.
+`op_type` is a `string` field used for grouping and filtering kernels. It represents the genral compute characteristic.
 
-Current supported `type`s are:
+Current supported `op_type`s are:
 
-- Attention: `mha`, `gqa`, `mla`
-- GEMM: `gemm`, `grouped_gemm`, `batch_gemm`
-- Misc: `sampling`, `norm`, `moe`
+- Attention: `gqa_ragged`, `gqa_paged`, `mla_ragged`, `mla_paged`
+- GEMM: `gemm`
+- Misc: `rmsnorm`, `fused_add_rmsnorm`
 
 ### `tags` : Additional Attributes
 
@@ -208,10 +208,10 @@ The `reference` field is a string that contains the reference implementation of 
   "description": "A GEMM operation with per-tensor quantized inputs and per-group scaling factors.",
   "op_type": "gemm",
   "tags": [
-    "status:draft",
-    "model:some_model",
+      "status:draft",
+      "model:some_model",
     "quantization:float8_e4m3fn"
-  ],
+    ]
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
@@ -257,7 +257,7 @@ The `reference` field is a string that contains the reference implementation of 
   "tags": [
     "status:draft",
     "model:some_model"
-  ],
+  ]
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var" },
@@ -295,7 +295,7 @@ The `reference` field is a string that contains the reference implementation of 
     "status:draft",
     "quantization:float8_e4m3fn",
     "model:some_model"
-  ],
+  ]
   "axes": {
     "G": { "type": "var" },
     "M": { "type": "var" },
@@ -380,7 +380,7 @@ The `reference` field is a string that contains the reference implementation of 
   "tags": [
     "status:draft",
     "model:some_model"
-  ],
+  ]
   "axes": {
     "B": { "type": "var" },
     "Q": { "type": "var" },

@@ -1,4 +1,8 @@
 @import 'tailwindcss';
+/* Include class usage from workspace UI package so Tailwind v4
+   doesn't tree-shake those utilities. */
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
+
 
 @custom-variant dark (&:is(.dark *));
 

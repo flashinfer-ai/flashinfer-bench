@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flashinfer-bench"
 version = "0.0.1"
-description = "FlashInfer Bench - A benchmarking framework for GPU kernel implementations"
+description = "FlashInfer-Bench - AI for AI Infrastructure for Accelerating AI Deployment"
 readme = "README.md"
 requires-python = ">=3.9,<4.0"
 license = { text = "Apache License 2.0" }
@@ -21,6 +21,7 @@ dev = [
   "mypy>=1.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
+  "pydoc-markdown>=4.8.2",
 ]
 cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
