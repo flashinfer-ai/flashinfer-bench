@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
+const DOCS_ORIGIN = process.env.DOCS_ORIGIN || 'http://localhost:3030'
 const nextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'avatars.githubusercontent.com',
-        port: '',
-        pathname: '/**',
-      },
-    ],
+  transpilePackages: [
+    '@flashinfer-bench/ui',
+    '@flashinfer-bench/utils',
+    '@flashinfer-bench/config',
+  ],
+  async rewrites() {
+    return [
+      { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },
+      { source: '/docs/:path*', destination: `${DOCS_ORIGIN}/docs/:path*` },
+    ]
   },
   async headers() {
     return [

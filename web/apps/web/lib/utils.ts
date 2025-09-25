@@ -1,9 +1,4 @@
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+// Keep web-only helpers here. Shared `cn` moved to @flashinfer-bench/utils
 
 export function formatBytes(bytes: number, decimals = 2) {
   if (bytes === 0) return "0 Bytes"

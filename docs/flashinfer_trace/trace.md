@@ -21,7 +21,7 @@ This object provides the concrete data required to instantiate a `Definition`. T
 
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
-| `uuid` | string | Yes | A randomly generated UUID for this workload entry. |
+| `uuid` | string | Yes | A randomly generate UUID for this workload entry. |
 | `axes` | object | Yes | An object mapping `var` axis names from the `Definition` to their concrete integer values. |
 | `inputs` | object | Yes | An object describing the location and format of the required input tensor data files. |
 
@@ -55,7 +55,7 @@ This object represents a single, complete benchmark result.
 | --- | --- | --- | --- |
 | `status` | string | Yes | The final status of the evaluation run. Has to be one of the following:
 `"PASSED"`, `"INCORRECT_SHAPE"`, `"INCORRECT_NUMERICAL"`, `"INCORRECT_DTYPE"`, `"RUNTIME_ERROR"`, `"COMPILE_ERROR"`. |
-| `log_file` | string | Yes | The path or URI of the detailed log file. |
+| `log` | string | Yes | The embedded record of the stdout and stderr of the evaluation run. |
 | `correctness` | object | Yes | The summarized correctness results across all entries in the dataset. |
 | `performance` | object | Yes | The summarized performance metrics across all entries in the dataset. |
 | `environment` | object | Yes | A snapshot of the hardware and software execution environment. |
@@ -75,7 +75,7 @@ This object represents a single, complete benchmark result.
 | `latency_ms` | float | Yes | The mean latency in milliseconds per execution for this implementation. |
 | `reference_latency_ms` | float | Yes | The mean latency of the `Definition`'s reference code on the same data/hardware. |
 | `speedup_factor` | float | Yes | The calculated speedup (`reference_latency_ms / latency_ms`). |
-> Note that the speedup factor could be very large since the references are torch only, unoptimized implementations.
+> Note that it's normal for the speedup factor to be very large since the references are torch only, unoptimized implementations.
 
 ### **`environment`: Environment Definition Object**
 
@@ -84,7 +84,7 @@ The `environment` object specifies the exact execution environment for this benc
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
 | `hardware` | string | Yes | The name of the hardware, e.g., `"NVIDIA_H100"`. |
-| `libs` | object | Yes | The relevant software libraries and their versions. Keys are library names, and values are version strings. |
+| `libs` | object | Yes | A snapshot of the relevant software libraries and their versions. Keys are library names, and values are version strings. |
 
 ### The `correctness` and `performance` Nullable Table
 The `correctness` and `performance` fields are set to be nullable depending on the `status`.
@@ -122,7 +122,7 @@ The `correctness` and `performance` fields are set to be nullable depending on t
   },
   "evaluation": {
     "status": "PASSED",
-    "log_file": "logs/rmsnorm/rmsnorm_triton_v1_1751042700.log",
+    "log": "...",
     "correctness": {
       "max_relative_error": 1.15e-05,
       "max_absolute_error": 0.89e-05
