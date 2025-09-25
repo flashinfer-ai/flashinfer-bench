@@ -1,21 +1,26 @@
 import pytest
 import torch
 
-from flashinfer_bench.apply.config import ApplyConfig
-from flashinfer_bench.apply.runtime import ApplyRuntime, set_runtime
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
+from flashinfer_bench.data import (
+    AxisConst,
+    AxisVar,
+    BuildSpec,
     Correctness,
+    Definition,
     Environment,
     Evaluation,
     EvaluationStatus,
     Performance,
     RandomInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
     Trace,
+    TraceSet,
     Workload,
 )
-from flashinfer_bench.data.traceset import TraceSet
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
@@ -46,7 +51,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
     def_name = "gqa_paged_decode_h32_kv4_d128_ps1"
     definition = Definition(
         name=def_name,
-        type="gqa",
+        op_type="gqa",
         axes={
             "batch_size": AxisVar(),
             "num_qo_heads": AxisConst(value=H_q),
@@ -92,9 +97,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
         definition=def_name,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["gpu"],
-            entry_point="main.py::run",
+            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
         ),
         sources=[sol_src],
         description="Tests",
@@ -108,11 +111,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
             "len_indptr": B + 1,
             "num_kv_indices": int(indptr[-1].item()),
         },
-        inputs={
-            "q": RandomInput(),
-            "k_cache": RandomInput(),
-            "v_cache": RandomInput(),
-        },
+        inputs={"q": RandomInput(), "k_cache": RandomInput(), "v_cache": RandomInput()},
         uuid="w0",
     )
     trace = Trace(
@@ -124,7 +123,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
             log_file="/dev/null",
             environment=Environment(hardware="gpu", libs={}),
             timestamp="now",
-            correctness=Correctness(0.0, 0.0),
+            correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
             performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
         ),
     )

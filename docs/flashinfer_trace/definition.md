@@ -93,12 +93,11 @@ Example:
 
 ### `type`: `var`
 
-Represents a variable axis whose value will be determined by the input data. The `parent` field can be used to indicate hierarchical axis relationships, such as a grouped dimension structure.
+Represents a variable axis whose value will be determined by the input data.
 
 | Field | Type | Required | Description | Default |
 | --- | --- | --- | --- | --- |
 | `type` | string | Yes | Must be `"var"` | — |
-| `parent` | string | No | (Optional) name of parent axis for nesting | `null` |
 | `description` | string | No | Brief description |  |
 
 Example:
@@ -106,7 +105,6 @@ Example:
 ```json
 "sequence_length": {
   "type": "var",
-  "parent": "batch_size"
 }
 
 ```
@@ -255,14 +253,14 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "grouped_gemm_n4096_k4096",
   "description": "A batch of independent GEMM operations, grouped along a 'G' dimension.",
-  "type": "grouped_gemm",
+  "op_type": "grouped_gemm",
   "tags": [
     "status:draft",
     "model:some_model"
   ]
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var", "parent": "G" },
+    "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
@@ -292,7 +290,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "quantized_grouped_gemm_n4096_k4096_kg128",
   "description": "A batched GEMM operation where the inputs are quantized, with per-group scaling factors.",
-  "type": "grouped_gemm",
+  "op_type": "grouped_gemm",
   "tags": [
     "status:draft",
     "quantization:float8_e4m3fn",
@@ -300,7 +298,7 @@ The `reference` field is a string that contains the reference implementation of 
   ]
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var", "parent": "G" },
+    "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 },
     "K_group": { "type": "const", "value": 128 }
@@ -378,15 +376,15 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "gqa_hr4_dqk128_dvo128",
   "description": "Grouped-Query Attention with a query-to-key-value head ratio of 4.",
-  "type": "gqa",
+  "op_type": "gqa",
   "tags": [
     "status:draft",
     "model:some_model"
   ]
   "axes": {
     "B": { "type": "var" },
-    "Q": { "type": "var", "parent": "B" },
-    "KV": { "type": "var", "parent": "B" },
+    "Q": { "type": "var" },
+    "KV": { "type": "var" },
     "H_qo": { "type": "var" },
     "H_kv": { "type": "var" },
     "H_r": { "type": "const", "value": 4 },

@@ -73,20 +73,16 @@ You can run local benchmarks using the `Benchmark` runner, which scans your data
 It also supports single-solution execution via `.run_solution(...)`.
 
 ```python
-from flashinfer_bench import Benchmark, TraceSet
+from flashinfer_bench import Benchmark, BenchmarkConfig, TraceSet
 
 traces = TraceSet.from_path("./dataset")
-benchmark = Benchmark(traces)
+config = BenchmarkConfig(warmup_runs=5, iterations=20)
+benchmark = Benchmark(traces, config)
 
-benchmark.run()
+benchmark.run_all()
 
 # Accessing results
 print(traces.summary())
-
-# Customizing the benchmark run
-from flashinfer_bench import BenchmarkConfig
-config = BenchmarkConfig(warmup_runs=5, iterations=20, device="cuda:1")
-benchmark.run(config)
 ```
 
 ## Schema

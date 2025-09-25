@@ -4,22 +4,27 @@ import sys
 
 import pytest
 
-from flashinfer_bench.apply.config import ApplyConfig
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
 from flashinfer_bench.apply.hook import set_apply_hook
-from flashinfer_bench.apply.runtime import ApplyRuntime, set_runtime
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.data import (
+    AxisConst,
+    AxisVar,
+    BuildSpec,
     Correctness,
+    Definition,
     Environment,
     Evaluation,
     EvaluationStatus,
     Performance,
     RandomInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
     Trace,
+    TraceSet,
     Workload,
 )
-from flashinfer_bench.data.traceset import TraceSet
 
 
 class FakeTensor:
@@ -30,7 +35,7 @@ class FakeTensor:
 def make_def_and_solutions():
     d = Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -103,9 +108,7 @@ def test_runtime_dispatch_hit_and_miss(tmp_path, monkeypatch):
     set_apply_hook(lambda name, kw: calls.append((name, dict(kw))))
 
     out = rt.dispatch(
-        "add",
-        {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))},
-        fallback=lambda **_: "fallback",
+        "add", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=lambda **_: "fallback"
     )
     # Routed to the winning solution implementation; our sources return string tags
     assert out == "fast"
@@ -115,9 +118,7 @@ def test_runtime_dispatch_hit_and_miss(tmp_path, monkeypatch):
 
     # Miss with fallback policy: returns fallback
     miss_out = rt.dispatch(
-        "add",
-        {"X": FakeTensor((99, 2)), "Y": FakeTensor((99, 2))},
-        fallback=lambda **_: "fallback",
+        "add", {"X": FakeTensor((99, 2)), "Y": FakeTensor((99, 2))}, fallback=lambda **_: "fallback"
     )
     assert miss_out == "fallback"
 
@@ -154,9 +155,7 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(tmp_path, m
         )
 
     fb_val = rt.dispatch(
-        "unknown_def",
-        {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))},
-        fallback=lambda **_: "fb",
+        "unknown_def", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=lambda **_: "fb"
     )
     assert fb_val == "fb"
 
@@ -173,7 +172,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
     # Create dataset on disk
     d = Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -182,7 +181,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+    from flashinfer_bench.data import save_json_file, save_jsonl_file
 
     (ds / "definitions").mkdir(parents=True, exist_ok=True)
     (ds / "solutions").mkdir(parents=True, exist_ok=True)

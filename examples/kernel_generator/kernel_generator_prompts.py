@@ -40,7 +40,7 @@ def _format_definition(definition: Definition) -> str:
             constraints_str += f"  - {constraint}\n"
 
     return f"""Name: {definition.name}
-Type: {definition.type}
+Type: {definition.op_type}
 {axes_str}{inputs_str}{outputs_str}{constraints_str}
 
 Reference Implementation:
@@ -48,7 +48,7 @@ Reference Implementation:
 
 
 def _format_trace_logs(trace: Trace) -> str:
-    if trace.is_workload() or not trace.evaluation:
+    if trace.is_workload_trace() or not trace.evaluation:
         return "No evaluation logs available (workload-only trace)"
 
     eval_info = f"Status: {trace.evaluation.status.value}\n"

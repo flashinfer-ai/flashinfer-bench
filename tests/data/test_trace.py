@@ -1,3 +1,5 @@
+import json
+import math
 import sys
 
 import pytest
@@ -20,7 +22,7 @@ def test_workload_validation():
     Workload(axes={"M": 4}, inputs={"A": RandomInput()}, uuid="w1")
     # Invalid axis value
     with pytest.raises(ValueError):
-        Workload(axes={"M": 0}, inputs={"A": RandomInput()}, uuid="w_bad")
+        Workload(axes={"M": -1}, inputs={"A": RandomInput()}, uuid="w_bad")
     # Invalid input type
     with pytest.raises(ValueError):
         Workload(axes={"M": 1}, inputs={"A": object()}, uuid="w_bad2")
@@ -36,6 +38,22 @@ def test_correctness_performance_environment_validation():
     Environment(hardware="cuda:0")
     with pytest.raises(ValueError):
         Environment(hardware="")
+
+
+def test_correctness_with_inf_and_nan():
+    c = Correctness(max_relative_error=float("inf"), max_absolute_error=float("nan"))
+    assert math.isinf(c.max_relative_error)
+    assert math.isnan(c.max_absolute_error)
+
+    json_payload = json.loads(c.model_dump_json())
+    assert json_payload["max_relative_error"] == "Infinity"
+    assert json_payload["max_absolute_error"] == "NaN"
+
+    parsed = Correctness.model_validate(
+        {"max_relative_error": "infinity", "max_absolute_error": "nan"}
+    )
+    assert math.isinf(parsed.max_relative_error)
+    assert math.isnan(parsed.max_absolute_error)
 
 
 def test_evaluation_status_requirements():
@@ -85,7 +103,7 @@ def test_trace_workload_and_regular():
     )
     # Workload-only
     t_wl = Trace(definition="def1", workload=wl)
-    assert t_wl.is_workload() is True
+    assert t_wl.is_workload_trace() is True
     # Regular successful trace
     eval_ok = Evaluation(
         status=EvaluationStatus.PASSED,
@@ -96,11 +114,8 @@ def test_trace_workload_and_regular():
         performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
     )
     t_ok = Trace(definition="def1", workload=wl, solution="sol1", evaluation=eval_ok)
-    assert t_ok.is_workload() is False
+    assert t_ok.is_workload_trace() is False
     assert t_ok.is_successful() is True
-    # Regular missing fields
-    with pytest.raises(ValueError):
-        Trace(definition="def1", workload=wl, solution="sol1")  # type: ignore[call-arg]
 
 
 if __name__ == "__main__":

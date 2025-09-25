@@ -3,8 +3,15 @@ import sys
 import pytest
 
 from flashinfer_bench.compile.builders import CUDABuilder
-from flashinfer_bench.data.definition import AxisConst, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.data import (
+    AxisConst,
+    BuildSpec,
+    Definition,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
+)
 
 
 @pytest.mark.skipif(
@@ -18,7 +25,7 @@ def test_cuda_builder_minimum(tmp_path, monkeypatch):
     b = CUDABuilder()
     d = Definition(
         name="d",
-        type="op",
+        op_type="op",
         axes={"M": AxisConst(value=1)},
         inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
@@ -56,7 +63,7 @@ def test_cuda_vector_add(tmp_path, monkeypatch):
 
     defn = Definition(
         name="vec_add_cuda",
-        type="op",
+        op_type="op",
         axes={"N": AxisConst(value=256)},
         inputs={
             "X": TensorSpec(shape=["N"], dtype="float32"),
@@ -140,7 +147,7 @@ def test_cuda_references_cublas(tmp_path, monkeypatch):
 
     defn = Definition(
         name="touch_cublas",
-        type="op",
+        op_type="op",
         axes={"N": AxisConst(value=1)},
         inputs={"X": TensorSpec(shape=["N"], dtype="float32")},
         outputs={"Y": TensorSpec(shape=["N"], dtype="float32")},

@@ -3,20 +3,25 @@ import math
 import pytest
 import torch
 
-from flashinfer_bench.apply.config import ApplyConfig
-from flashinfer_bench.apply.runtime import ApplyRuntime, set_runtime
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
+from flashinfer_bench.data import (
+    AxisConst,
+    AxisVar,
+    BuildSpec,
     Correctness,
+    Definition,
     Environment,
     Evaluation,
     EvaluationStatus,
     Performance,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
     Trace,
+    TraceSet,
     Workload,
 )
-from flashinfer_bench.data.traceset import TraceSet
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
@@ -67,7 +72,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
     def_name_decode = "mla_paged_decode_h16_ckv512_kpe64_ps1"
     def_decode = Definition(
         name=def_name_decode,
-        type="mla",
+        op_type="mla",
         axes={
             "batch_size": AxisVar(),
             "num_qo_heads": AxisConst(value=H),
@@ -109,9 +114,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_decode,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["gpu"],
-            entry_point="main.py::run",
+            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
         ),
         sources=[
             SourceFile(
@@ -153,7 +156,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
                         log_file="/dev/null",
                         environment=Environment(hardware="gpu", libs={}),
                         timestamp="now",
-                        correctness=Correctness(0.0, 0.0),
+                        correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
                         performance=Performance(
                             latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0
                         ),
@@ -228,7 +231,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
     def_name_prefill = "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1"
     def_prefill = Definition(
         name=def_name_prefill,
-        type="mla",
+        op_type="mla",
         axes={
             "num_qo_heads": AxisConst(value=H),
             "head_dim_ckv": AxisConst(value=D_ckv),
@@ -269,9 +272,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_prefill,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["gpu"],
-            entry_point="main.py::run",
+            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
         ),
         sources=[
             SourceFile(
@@ -312,7 +313,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
                         log_file="/dev/null",
                         environment=Environment(hardware="gpu", libs={}),
                         timestamp="now",
-                        correctness=Correctness(0.0, 0.0),
+                        correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
                         performance=Performance(
                             latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0
                         ),

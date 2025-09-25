@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from kernel_generator import KernelGenerator
 
 from flashinfer_bench import TraceSet
-from flashinfer_bench.data.json_codec import save_json_file
+from flashinfer_bench.data import save_json_file
 
 load_dotenv()
 
@@ -19,17 +19,19 @@ def main():
     """
     Generate optimized solutions for all definitions in the traceset.
     """
-    model_name = "gpt-5-2025-08-07"  # choose model here
+    model_name = "gpt-5-2025-08-07"  # Choose model here
     language = "triton"
     target_gpu = "B200"
 
-    # Path to your traceset
-    traceset_path = "/home/user/flashinfer-trace"  # Adjust to your traceset path
+    # TODO: adjust local path to traceset
+    traceset_path = "/home/akj2/flashinfer-trace"
 
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
 
-    all_definitions = list(traceset.definitions.keys())
+    # all_definitions = list(traceset.definitions.keys())
+    # Filter for rmsnorm definitions only
+    all_definitions = [name for name in traceset.definitions.keys() if "rmsnorm" in name.lower()]
 
     print(f"All definitions found: {len(all_definitions)}")
 
@@ -47,9 +49,9 @@ def main():
         target_gpu=target_gpu,
         api_key=api_key,
         base_url=base_url,
+        reasoning_effort="high",
     )
 
-    # Statistics tracking
     total_definitions = len(all_definitions)
     successful_generations = 0
     failed_generations = 0
@@ -62,10 +64,9 @@ def main():
         definition = traceset.definitions[definition_name]
 
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
-        print(f"Definition type: {definition.type}")
+        print(f"Definition type: {definition.op_type}")
 
-        # Check if we have workloads for this definition
-        workloads = traceset.workload.get(definition_name, [])
+        workloads = traceset.workloads.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
             failed_generations += 1
@@ -80,10 +81,10 @@ def main():
             try:
                 print(f"\nAttempt {attempt}/{max_attempts} for {definition_name}")
 
-                solution = generator.optimized_generate(
+                solution = generator.generate(
                     traceset=traceset,
                     definition=definition,
-                    rounds=5,  # Try up to 5 optimization rounds
+                    max_opt_rounds=10,  # For our baseline, we used 10 rounds
                 )
 
                 print(f"Successfully generated solution for {definition_name}")
@@ -102,7 +103,7 @@ def main():
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
                 solutions_dir = (
-                    Path(traceset_path) / "solutions" / definition.type / definition_name
+                    Path(traceset_path) / "solutions" / definition.op_type / definition_name
                 )
                 solutions_dir.mkdir(parents=True, exist_ok=True)
 

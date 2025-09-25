@@ -1,163 +1,182 @@
 """Strong-typed data definitions for traces and evaluations."""
 
-from dataclasses import dataclass, field
+import math
 from enum import Enum
 from typing import Dict, Literal, Optional, Union
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-@dataclass
-class RandomInput:
-    """Random input generation descriptor."""
+from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
+
+
+class RandomInput(BaseModel):
+    """Random input generation descriptor.
+
+    Represents a specification for generating random tensor input data
+    during workload execution and benchmarking.
+    """
 
     type: Literal["random"] = "random"
+    """The input type identifier for random data generation."""
 
 
-ScalarValue = Union[int, float, bool]
+class ScalarInput(BaseModelWithDocstrings):
+    """Scalar literal input specification.
 
-
-@dataclass
-class ScalarInput:
-    """Scalar literal."""
+    Represents a scalar value (integer, float, or boolean) that will be
+    used as a direct input parameter to the computational workload.
+    """
 
     type: Literal["scalar"] = "scalar"
-    value: ScalarValue = 0
-
-    def __post_init__(self):
-        if not isinstance(self.value, (int, float, bool)):
-            raise ValueError(f"ScalarInput.value must be int/float/bool, got {type(self.value)}")
+    """The input type identifier for scalar values."""
+    value: Union[int, float, bool]
+    """The scalar value to be used as input. Must be int, float, or bool."""
 
 
-@dataclass
-class SafetensorsInput:
-    """Input loaded from a safetensors file."""
+class SafetensorsInput(BaseModelWithDocstrings):
+    """Input specification for data loaded from safetensors files.
+
+    Represents tensor data that will be loaded from a safetensors file
+    using a specific tensor key within that file.
+    """
 
     type: Literal["safetensors"] = "safetensors"
-    path: str = ""
-    tensor_key: str = ""
-
-    def __post_init__(self):
-        if not self.path:
-            raise ValueError("SafetensorsInput path cannot be empty")
-        if not self.tensor_key:
-            raise ValueError("SafetensorsInput tensor_key cannot be empty")
+    """The input type identifier for safetensors data."""
+    path: NonEmptyString
+    """Path to the safetensors file containing the tensor data."""
+    tensor_key: NonEmptyString
+    """Key identifier for the specific tensor within the safetensors file."""
 
 
-# Union type for input descriptors
-InputDesc = Union[RandomInput, SafetensorsInput, ScalarInput]
+InputSpec = Union[RandomInput, SafetensorsInput, ScalarInput]
+"""Union type representing all possible input specification types."""
 
 
-@dataclass
-class Workload:
-    """Concrete workload configuration."""
+class Workload(BaseModelWithDocstrings):
+    """Concrete workload configuration for benchmarking.
 
-    axes: Dict[str, int]
-    inputs: Dict[str, InputDesc]
-    uuid: str
+    Defines a specific instance of a computational workload with concrete
+    values for all variable axes and specifications for all input data.
+    This represents an executable configuration that can be benchmarked.
+    """
 
-    def __post_init__(self):
-        if not isinstance(self.axes, dict):
-            raise ValueError("Workload axes must be a dictionary")
-
-        # Validate axes values are positive integers
-        for axis_name, value in self.axes.items():
-            if not isinstance(value, int) or value <= 0:
-                raise ValueError(
-                    f"Workload axis '{axis_name}' must be a positive integer, got {value}"
-                )
-
-        if not isinstance(self.inputs, dict):
-            raise ValueError("Workload inputs must be a dictionary")
-
-        # Validate inputs are proper types
-        for input_name, input_desc in self.inputs.items():
-            if not isinstance(input_desc, (RandomInput, SafetensorsInput, ScalarInput)):
-                raise ValueError(
-                    f"Input '{input_name}' must be RandomInput, SafetensorsInput, or ScalarInput"
-                )
-
-        if not self.uuid:
-            raise ValueError("Workload uuid cannot be empty")
+    axes: Dict[str, NonNegativeInt]
+    """Dictionary mapping axis names to their concrete integer values. All values must be
+    positive."""
+    inputs: Dict[str, InputSpec]
+    """Dictionary mapping input names to their data specifications."""
+    uuid: NonEmptyString
+    """Unique identifier for this specific workload configuration."""
 
 
-@dataclass
-class Correctness:
-    """Correctness metrics from evaluation."""
+class Correctness(BaseModelWithDocstrings):
+    """Correctness metrics from numerical evaluation.
 
-    max_relative_error: float = 0.0
-    max_absolute_error: float = 0.0
+    Contains error measurements comparing the solution output against
+    a reference implementation to assess numerical accuracy.
+    """
 
-    def __post_init__(self):
-        if self.max_relative_error < 0:
-            raise ValueError(
-                f"max_relative_error must be non-negative, got {self.max_relative_error}"
-            )
-        if self.max_absolute_error < 0:
-            raise ValueError(
-                f"max_absolute_error must be non-negative, got {self.max_absolute_error}"
-            )
+    model_config = ConfigDict(ser_json_inf_nan="strings")
 
+    max_relative_error: float = Field(default=0.0)
+    """Maximum relative error observed across all output elements."""
+    max_absolute_error: float = Field(default=0.0)
+    """Maximum absolute error observed across all output elements."""
 
-@dataclass
-class Performance:
-    """Performance metrics from evaluation."""
-
-    latency_ms: float = 0.0
-    reference_latency_ms: float = 0.0
-    speedup_factor: float = 0.0
-
-    def __post_init__(self):
-        if self.latency_ms < 0:
-            raise ValueError(f"latency_ms must be non-negative, got {self.latency_ms}")
-        if self.reference_latency_ms < 0:
-            raise ValueError(
-                f"reference_latency_ms must be non-negative, got {self.reference_latency_ms}"
-            )
-        if self.speedup_factor < 0:
-            raise ValueError(f"speedup_factor must be non-negative, got {self.speedup_factor}")
+    @field_validator("max_relative_error", "max_absolute_error")
+    @classmethod
+    def non_negative_or_nan(cls, v: float):
+        if math.isnan(v):
+            return v
+        if v < 0:
+            raise ValueError("must be non-negative or NaN")
+        return v
 
 
-@dataclass
-class Environment:
-    """Environment information from evaluation."""
+class Performance(BaseModelWithDocstrings):
+    """Performance metrics from timing evaluation.
 
-    hardware: str
-    libs: Dict[str, str] = field(default_factory=dict)
+    Contains timing measurements and performance comparisons from
+    benchmarking the solution against reference implementations.
+    """
 
-    def __post_init__(self):
-        if not self.hardware:
-            raise ValueError("Environment hardware cannot be empty")
-        if not isinstance(self.libs, dict):
-            raise ValueError("Environment libs must be a dictionary")
+    latency_ms: float = Field(default=0.0, ge=0.0)
+    """Solution execution latency in milliseconds."""
+    reference_latency_ms: float = Field(default=0.0, ge=0.0)
+    """Reference implementation latency in milliseconds for comparison."""
+    speedup_factor: float = Field(default=0.0, ge=0.0)
+    """Performance speedup factor compared to reference (reference_time / solution_time)."""
 
 
-class EvaluationStatus(Enum):
+class Environment(BaseModelWithDocstrings):
+    """Environment information from evaluation execution.
+
+    Records the hardware and software environment details from when
+    the evaluation was performed, enabling reproducibility analysis.
+    """
+
+    hardware: NonEmptyString
+    """Hardware identifier where the evaluation was performed (e.g., 'NVIDIA_H100')."""
+    libs: Dict[str, str] = Field(default_factory=dict)
+    """Dictionary of library names to version strings used during evaluation."""
+
+
+class EvaluationStatus(str, Enum):
+    """Status codes for evaluation results.
+
+    Enumeration of all possible outcomes when evaluating a solution
+    against a workload, covering success and various failure modes.
+    """
+
     PASSED = "PASSED"
+    """Evaluation completed successfully with correct results."""
     INCORRECT_SHAPE = "INCORRECT_SHAPE"
+    """Solution produced output with incorrect tensor shape."""
     INCORRECT_NUMERICAL = "INCORRECT_NUMERICAL"
+    """Solution produced numerically incorrect results."""
     INCORRECT_DTYPE = "INCORRECT_DTYPE"
+    """Solution produced output with incorrect data type."""
     RUNTIME_ERROR = "RUNTIME_ERROR"
+    """Solution encountered a runtime error during execution."""
     COMPILE_ERROR = "COMPILE_ERROR"
+    """Solution failed to compile or build successfully."""
 
 
-@dataclass
-class Evaluation:
-    """Complete evaluation result for a workload."""
+class Evaluation(BaseModelWithDocstrings):
+    """Complete evaluation result for a solution on a workload.
+
+    Records the full outcome of benchmarking a solution implementation
+    against a specific workload, including status, metrics, and environment.
+    """
 
     status: EvaluationStatus
-    log_file: str
+    """The overall evaluation status indicating success or failure mode."""
     environment: Environment
-    timestamp: str
+    """Environment details where the evaluation was performed."""
+    timestamp: NonEmptyString
+    """Timestamp when the evaluation was performed (ISO format recommended)."""
+    log_file: Optional[str] = None
+    """Path to the log file in evaluation execution. stdout/stderr will be redirected to this file.
+    """
     correctness: Optional[Correctness] = None
+    """Correctness metrics (present for PASSED and INCORRECT_NUMERICAL status)."""
     performance: Optional[Performance] = None
+    """Performance metrics (present only for PASSED status)."""
     error: Optional[str] = None
+    """Error message or description (present for error status codes)."""
 
-    def __post_init__(self):
-        if not isinstance(self.status, EvaluationStatus):
-            raise ValueError("Evaluation status must be of EvaluationStatus type")
+    @model_validator(mode="after")
+    def _validate_status_correctness_performance(self) -> "Evaluation":
+        """Validate correctness and performance fields based on status.
 
-        if not self.log_file:
-            raise ValueError("Evaluation log_file cannot be empty")
+        Ensures that correctness and performance metrics are present or absent
+        based on the evaluation status, following the schema requirements.
 
+        Raises
+        ------
+        ValueError
+            If correctness/performance presence doesn't match status requirements.
+        """
         if self.status == EvaluationStatus.PASSED:
             if self.correctness is None:
                 raise ValueError(
@@ -176,8 +195,8 @@ class Evaluation:
                 raise ValueError(
                     f"Evaluation must not include performance when status is {self.status}"
                 )
-        # The rest of the cases do not have correctness and performance
         else:
+            # For other error statuses, neither correctness nor performance should be present
             if self.correctness is not None:
                 raise ValueError(
                     f"Evaluation must not include correctness when status is {self.status}"
@@ -186,55 +205,47 @@ class Evaluation:
                 raise ValueError(
                     f"Evaluation must not include performance when status is {self.status}"
                 )
-
-        if not isinstance(self.environment, Environment):
-            raise ValueError("Evaluation environment must be an Environment instance")
-
-        if not self.timestamp:
-            raise ValueError("Evaluation timestamp cannot be empty")
+        return self
 
 
-@dataclass
-class Trace:
-    """
-    A Trace links a specific Solution to a specific Definition, details the exact
-    workload configuration used for the run, and records the complete evaluation result.
+class Trace(BaseModelWithDocstrings):
+    """Complete trace linking a solution to a definition with evaluation results.
 
-    Special case: A "workload trace" only contains definition and workload fields,
-    with solution and evaluation set to None. This represents a workload configuration
-    without an actual benchmark run.
+    A Trace represents the complete record of benchmarking a specific solution
+    implementation against a specific computational workload definition. It includes
+    the workload configuration and evaluation results.
+
+    Special case: A "workload trace" contains only definition and workload fields
+    (with solution and evaluation set to None), representing a workload configuration
+    without an actual benchmark execution.
     """
 
-    definition: str  # Name of the Definition
+    definition: NonEmptyString
+    """Name of the Definition that specifies the computational workload."""
     workload: Workload
-    solution: Optional[str] = None  # Name of the Solution
+    """Concrete workload configuration with specific axis values and inputs."""
+    solution: Optional[str] = None
+    """Name of the Solution implementation (None for workload-only traces)."""
     evaluation: Optional[Evaluation] = None
+    """Evaluation results from benchmarking (None for workload-only traces)."""
 
-    def __post_init__(self):
-        if not self.definition:
-            raise ValueError("Trace must reference a definition")
+    def is_workload_trace(self) -> bool:
+        """Check if this is a workload-only trace.
 
-        if not isinstance(self.workload, Workload):
-            raise ValueError("Trace workload must be a Workload instance")
-
-        # Check if this is a workload-only trace
-        is_workload_trace = self.solution is None and self.evaluation is None
-
-        if not is_workload_trace:
-            # Regular trace validation
-            if self.solution is None:
-                raise ValueError("Regular trace must reference a solution")
-
-            if self.evaluation is None:
-                raise ValueError("Regular trace must have an evaluation")
-
-            if not isinstance(self.evaluation, Evaluation):
-                raise ValueError("Trace evaluation must be an Evaluation instance")
-
-    def is_workload(self) -> bool:
-        """Check if this is a workload trace."""
+        Returns
+        -------
+        bool
+            True if this is a workload trace without solution/evaluation data.
+        """
         return self.solution is None and self.evaluation is None
 
     def is_successful(self) -> bool:
-        """Check if the benchmark run was successful."""
-        return (not self.is_workload()) and self.evaluation.status == EvaluationStatus.PASSED
+        """Check if the benchmark execution was successful.
+
+        Returns
+        -------
+        bool
+            True if this is a regular trace with successful evaluation status.
+            False for workload traces or failed evaluations.
+        """
+        return (not self.is_workload_trace()) and self.evaluation.status == EvaluationStatus.PASSED

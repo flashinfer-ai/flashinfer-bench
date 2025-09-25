@@ -4,21 +4,26 @@ from pathlib import Path
 
 import pytest
 
-from flashinfer_bench.apply import apply as apply_api
-from flashinfer_bench.apply import disable_apply, enable_apply
-from flashinfer_bench.apply.runtime import set_runtime
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.apply import apply, disable_apply, enable_apply, set_runtime
+from flashinfer_bench.data import (
+    AxisConst,
+    AxisVar,
+    BuildSpec,
     Correctness,
+    Definition,
     Environment,
     Evaluation,
     EvaluationStatus,
     Performance,
     RandomInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
     Trace,
     Workload,
+    save_json_file,
+    save_jsonl_file,
 )
 
 
@@ -47,14 +52,14 @@ def test_apply_imperative_when_disabled_calls_fallback():
     def fb(**kw):
         return {"fb": True, "kw": kw}
 
-    out = apply_api("some_def", runtime_kwargs={"x": 1}, fallback=fb)
+    out = apply("some_def", runtime_kwargs={"x": 1}, fallback=fb)
     assert out == {"fb": True, "kw": {"x": 1}}
 
 
 def test_apply_imperative_raises_without_fallback_when_disabled():
     set_runtime(None)
     with pytest.raises(RuntimeError):
-        apply_api("d", runtime_kwargs={"x": 1}, fallback=None)
+        apply("d", runtime_kwargs={"x": 1}, fallback=None)
 
 
 def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
@@ -63,7 +68,7 @@ def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
     monkeypatch.delenv("FIB_ENABLE_APPLY", raising=False)
     monkeypatch.delenv("FIB_DATASET_PATH", raising=False)
 
-    @apply_api(lambda a, b: f"sum_{a}_{b}")
+    @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):
         return a + b
 
@@ -75,7 +80,7 @@ def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     rt = DummyRuntime()
     set_runtime(rt)
 
-    @apply_api(lambda a, b: f"sum_{a}_{b}")
+    @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):
         """docstring here"""
         return a + b
@@ -96,7 +101,7 @@ def test_apply_decorator_merge_conflicts_and_positional_overflow():
     rt = DummyRuntime()
     set_runtime(rt)
 
-    @apply_api("foo")
+    @apply("foo")
     def g(a, b):
         return a + b
 
@@ -124,7 +129,7 @@ def _make_dataset(root: Path) -> None:
     # Definition: add
     add_def = Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -137,7 +142,7 @@ def _make_dataset(root: Path) -> None:
     # Definition: mul
     mul_def = Definition(
         name="mul",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "A": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -249,11 +254,11 @@ def test_end_to_end_apply_substitution(tmp_path, monkeypatch):
     # Enable apply using dataset path
     with enable_apply(str(ds_root)):
         # Decorated functions for two definitions
-        @apply_api("add")
+        @apply("add")
         def add_fn(X, Y):
             return "fallback_add"
 
-        @apply_api("mul")
+        @apply("mul")
         def mul_fn(A, B):
             return "fallback_mul"
 

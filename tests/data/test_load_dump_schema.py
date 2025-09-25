@@ -1,6 +1,6 @@
-import json
 import sys
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -21,21 +21,18 @@ from flashinfer_bench.data import (
     TensorSpec,
     Trace,
     Workload,
-    from_json,
     load_json_file,
     load_jsonl_file,
     save_json_file,
     save_jsonl_file,
-    to_json,
 )
-from flashinfer_bench.data.json_codec import dict_to_dataclass
 
 
-def make_minimal_objects():
+def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
     ref = "def run(a):\n    return a\n"
     d = Definition(
         name="d1",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=4)},
         inputs={"A": TensorSpec(shape=["M", "N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
@@ -65,10 +62,9 @@ def make_minimal_objects():
 
 def test_roundtrip_to_from_json():
     d, s, t = make_minimal_objects()
-    # to_json / from_json
-    d2 = from_json(to_json(d), Definition)
-    s2 = from_json(to_json(s), Solution)
-    t2 = from_json(to_json(t), Trace)
+    d2 = Definition.model_validate_json(d.model_dump_json())
+    s2 = Solution.model_validate_json(s.model_dump_json())
+    t2 = Trace.model_validate_json(t.model_dump_json())
     assert d2.name == d.name
     assert s2.name == s.name
     assert t2.solution == t.solution
@@ -77,31 +73,26 @@ def test_roundtrip_to_from_json():
 def test_preserve_null_fields_in_trace_json():
     wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w2")
     t = Trace(definition="d1", workload=wl)  # workload-only
-    j = to_json(t)
-    obj = json.loads(j)
+    obj = t.model_dump(mode="json")
     # solution and evaluation must be present and null
     assert "solution" in obj and obj["solution"] is None
     assert "evaluation" in obj and obj["evaluation"] is None
 
 
 def test_language_and_status_string_decoding():
-    data = {
-        "language": "TrItOn",
-        "target_hardware": ["cuda"],
-        "entry_point": "main.py::run",
-    }
-    bs = dict_to_dataclass(data, BuildSpec)
+    data = {"language": "triton", "target_hardware": ["cuda"], "entry_point": "main.py::run"}
+    bs = BuildSpec.model_validate(data)
     assert bs.language == SupportedLanguages.TRITON
 
     ev_data = {
-        "status": "passed",
+        "status": "PASSED",
         "log_file": "log",
         "environment": {"hardware": "cpu"},
         "timestamp": "t",
         "correctness": {},
         "performance": {},
     }
-    ev = dict_to_dataclass(ev_data, Evaluation)
+    ev = Evaluation.model_validate(ev_data)
     assert ev.status == EvaluationStatus.PASSED
 
 
@@ -110,7 +101,7 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
     # JSON file roundtrip
     path = tmp_path / "obj.json"
     save_json_file(d, path)
-    loaded = load_json_file(path, Definition)
+    loaded = load_json_file(Definition, path)
     assert loaded.name == d.name
 
     # JSONL file roundtrip
@@ -126,23 +117,23 @@ def test_save_and_load_json_and_jsonl(tmp_path: Path):
         ),
     ]
     save_jsonl_file(traces, pathl)
-    loaded_list = load_jsonl_file(pathl, Trace)
+    loaded_list = load_jsonl_file(Trace, pathl)
     assert len(loaded_list) == 2
-    assert loaded_list[0].is_workload()
+    assert loaded_list[0].is_workload_trace()
 
 
 def test_dict_to_dataclass_with_invalid_fields():
     # Unsupported axis type
     bad_def = {
         "name": "d",
-        "type": "op",
+        "op_type": "op",
         "axes": {"M": {"type": "unknown"}},
         "inputs": {"A": {"shape": ["M"], "dtype": "float32"}},
         "outputs": {"B": {"shape": ["M"], "dtype": "float32"}},
         "reference": "def run():\n    pass\n",
     }
     with pytest.raises(ValueError):
-        dict_to_dataclass(bad_def, Definition)
+        Definition.model_validate(bad_def)
 
 
 if __name__ == "__main__":

@@ -1,185 +1,223 @@
-"""Strong-typed data definitions for workload specifications."""
+"""The definition of kernels in the FlashInfer Trace schema."""
 
 import ast
-from dataclasses import dataclass
+from enum import Enum
 from functools import cached_property
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
+from pydantic import BaseModel, Field, model_validator
 
-@dataclass
-class AxisConst:
-    """Constant axis with a fixed value."""
+from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
+
+
+class AxisConst(BaseModelWithDocstrings):
+    """Constant axis with a fixed value.
+
+    A constant axis represents a dimension that has a fixed, compile-time known value.
+    This is useful for dimensions that don't vary across different instances of the
+    same kernel definition, such as embedding dimensions or hidden layer sizes.
+    """
 
     type: Literal["const"] = "const"
-    value: int = 0
+    """The type identifier for constant axes."""
+    value: NonNegativeInt
+    """The constant integer value of this axis dimension."""
     description: Optional[str] = None
-
-    def __post_init__(self):
-        if self.value <= 0:
-            raise ValueError(f"AxisConst value must be positive, got {self.value}")
+    """An optional human-readable description explaining the purpose of this axis."""
 
 
-@dataclass
-class AxisVar:
-    """Variable axis that can be specified at runtime."""
+class AxisVar(BaseModel):
+    """Variable axis that can be specified at runtime.
+
+    A variable axis represents a dimension whose value is determined at runtime
+    based on the actual input data. Its value will be bound to the input tensor
+    dimension at runtime.
+    """
 
     type: Literal["var"] = "var"
-    parent: Optional[str] = None
+    """The type identifier for variable axes."""
     description: Optional[str] = None
+    """An optional human-readable description explaining the purpose of this axis."""
 
 
-ALLOWED_DTYPES = {
-    "float32",
-    "float16",
-    "bfloat16",
-    "float8_e4m3",
-    "float8_e5m2",
-    "float4_e2m1",
-    "int64",
-    "int32",
-    "int16",
-    "int8",
-    "bool",
-}
+class DType(str, Enum):
+    """Supported data types for tensors.
+
+    Enumeration of all data types that can be used in tensor specifications.
+    Includes both floating-point and integer types commonly used in machine
+    learning and high-performance computing applications.
+    """
+
+    FLOAT32 = "float32"
+    """32-bit IEEE 754 floating point."""
+    FLOAT16 = "float16"
+    """16-bit IEEE 754 half-precision floating point."""
+    BFLOAT16 = "bfloat16"
+    """16-bit Brain Floating Point format."""
+    FLOAT8_E4M3FN = "float8_e4m3fn"
+    """8-bit floating point with 4 exponent bits and 3 mantissa bits."""
+    FLOAT8_E5M2 = "float8_e5m2"
+    """8-bit floating point with 5 exponent bits and 2 mantissa bits."""
+    FLOAT4_E2M1 = "float4_e2m1"
+    """4-bit floating point with 2 exponent bits and 1 mantissa bit."""
+    INT64 = "int64"
+    """64-bit signed integer."""
+    INT32 = "int32"
+    """32-bit signed integer."""
+    INT16 = "int16"
+    """16-bit signed integer."""
+    INT8 = "int8"
+    """8-bit signed integer."""
+    BOOL = "bool"
+    """Boolean type."""
 
 
-@dataclass
-class TensorSpec:
-    """Specification for a tensor including shape and data type."""
+class TensorSpec(BaseModelWithDocstrings):
+    """Specification for a tensor including shape and data type, to use as input or output of a
+    kernel.
 
-    shape: Optional[List[str]]
-    dtype: Literal[
-        "float32",
-        "float16",
-        "bfloat16",
-        "float8_e4m3",
-        "float8_e5m2",
-        "float4_e2m1",
-        "int64",
-        "int32",
-        "int16",
-        "int8",
-        "bool",
-    ]
+    This includes the symbolic shape (referencing defined axes) and the data type.
+    Scalars are represented with a None shape.
+    """
+
+    shape: Optional[List[NonEmptyString]]
+    """List of axis names defining the tensor shape. None for scalar values."""
+    dtype: DType
+    """The data type of all elements in this tensor."""
     description: Optional[str] = None
-
-    def __post_init__(self):
-        if self.shape is not None and not isinstance(self.shape, list):
-            raise ValueError(f"TensorSpec shape must be a list or None, got {type(self.shape)}")
-
-        # Validate dtype is one of the allowed values
-        if self.dtype not in ALLOWED_DTYPES:
-            raise ValueError(f"Invalid dtype '{self.dtype}'. Must be one of {ALLOWED_DTYPES}")
+    """An optional human-readable description of this tensor's purpose and usage."""
 
 
-@dataclass
-class Definition:
-    """Complete definition of a computational workload."""
+class Definition(BaseModelWithDocstrings):
+    """Complete definition of a computational workload.
 
-    name: str
-    type: str
-    axes: Dict[str, Union[AxisConst, AxisVar]]
-    inputs: Dict[str, TensorSpec]
-    outputs: Dict[str, TensorSpec]
-    reference: str
-    tags: Optional[List[str]] = None
-    description: Optional[str] = None
-    constraints: Optional[List[str]] = None
+    A Definition provides a formal, machine-readable specification for a computational
+    workload. It defines the tensor formats, dimension semantics, and computational
+    logic through a reference implementation. This serves as the single source of
+    truth for kernel development and optimization.
+    """
 
-    def __post_init__(self):
-        # Basic structural validation
-        if not self.name:
-            raise ValueError("Definition name cannot be empty")
+    name: NonEmptyString
+    """A unique, human-readable name for the kernel definition."""
+    op_type: NonEmptyString
+    """The general compute category (e.g., 'gemm', 'gqa_paged', 'mla_ragged')."""
+    axes: Dict[NonEmptyString, Union[AxisConst, AxisVar]]
+    """Dictionary of symbolic dimensions used in tensor shapes. The axes will be bound to the
+    input tensor dimensions at runtime."""
+    inputs: Dict[NonEmptyString, TensorSpec]
+    """Named input tensors required by this kernel."""
+    outputs: Dict[NonEmptyString, TensorSpec]
+    """Named output tensors produced by this kernel."""
+    reference: NonEmptyString
+    """Reference implementation code. It defines the compute logic of the kernel. Must be a valid
+    Python code with a 'run' function that takes the input tensors and returns the output tensors.
+    """
+    tags: Optional[List[NonEmptyString]] = Field(default=None)
+    """Optional list of tags for grouping and filtering kernels. It's used in the FlashInfer-Bench
+    website."""
+    description: Optional[str] = Field(default=None)
+    """Optional human-readable description of the kernel's purpose."""
+    constraints: Optional[List[NonEmptyString]] = Field(default=None)
+    """Optional list of constraint expressions describing relationships between axes."""
 
-        if not self.type:
-            raise ValueError("Definition type cannot be empty")
+    @model_validator(mode="after")
+    def _validate_reference_code(self) -> "Definition":
+        """Validate that reference contains valid Python code with a 'run' function.
 
-        if not self.axes:
-            raise ValueError("Definition must have at least one axis")
-
-        if not self.inputs:
-            raise ValueError("Definition must have at least one input")
-
-        if not self.outputs:
-            raise ValueError("Definition must have at least one output")
-
-        if not self.reference:
-            raise ValueError("Definition must have a reference implementation")
-
-        # Validate axes are proper types
-        for axis_name, axis_def in self.axes.items():
-            if not isinstance(axis_def, (AxisConst, AxisVar)):
-                raise ValueError(f"Axis '{axis_name}' must be either AxisConst or AxisVar")
-
-        # Validate tensor specs reference valid axes
-        for input_name, input_spec in self.inputs.items():
-            if not isinstance(input_spec, TensorSpec):
-                raise ValueError(f"Input '{input_name}' must be a TensorSpec")
-            if input_spec.shape is not None:
-                for axis_name in input_spec.shape:
-                    if axis_name not in self.axes:
-                        raise ValueError(
-                            f"Input '{input_name}' references undefined axis '{axis_name}'"
-                        )
-
-        for output_name, output_spec in self.outputs.items():
-            if not isinstance(output_spec, TensorSpec):
-                raise ValueError(f"Output '{output_name}' must be a TensorSpec")
-            if output_spec.shape is not None:
-                for axis_name in output_spec.shape:
-                    if axis_name not in self.axes:
-                        raise ValueError(
-                            f"Output '{output_name}' references undefined axis '{axis_name}'"
-                        )
-
-        # Validate reference code
+        Raises
+        ------
+        ValueError
+            If the reference code is not valid Python syntax or doesn't contain
+            a top-level 'run' function.
+        """
         try:
             mod = ast.parse(self.reference, mode="exec")
         except SyntaxError as e:
             raise ValueError(f"Reference must be valid Python code: {e}") from e
-        run_func = None
-        for node in mod.body:
-            if isinstance(node, ast.FunctionDef) and node.name == "run":
-                run_func = node
-                break
-        if run_func is None:
+
+        # Check for 'run' function
+        has_run_func = any(
+            isinstance(node, ast.FunctionDef) and node.name == "run" for node in mod.body
+        )
+        if not has_run_func:
             raise ValueError("Reference must define a top-level function named 'run'")
-        # TODO(shanli): validate inputs/outputs for matching definition signature
+        return self
 
-        # Validate tags if present
-        if self.tags is not None:
-            if not isinstance(self.tags, list):
-                raise ValueError("Tags must be a list")
-            for tag in self.tags:
-                if not isinstance(tag, str) or not tag.strip():
-                    raise ValueError("Tags must be non-empty strings")
+    @model_validator(mode="after")
+    def _validate_constraints_syntax(self) -> "Definition":
+        """Validate that constraints are valid Python expressions.
 
-        # Validate constraints if present
+        Raises
+        ------
+        ValueError
+            If any constraint is not a valid Python expression.
+        """
         if self.constraints is not None:
-            if not isinstance(self.constraints, list):
-                raise ValueError("Constraints must be a list")
             for constraint in self.constraints:
-                if not isinstance(constraint, str) or not constraint.strip():
-                    raise ValueError("Constraints must be non-empty strings")
                 try:
                     ast.parse(constraint, mode="eval")
                 except SyntaxError as e:
                     raise ValueError(f"Constraints must be valid Python expressions: {e}") from e
+        return self
+
+    @model_validator(mode="after")
+    def _validate_tensor_axis_references(self) -> "Definition":
+        """Validate that tensor shapes reference defined axes.
+
+        Ensures that all axis names used in input and output tensor shapes
+        are properly defined in the axes dictionary.
+
+        Raises
+        ------
+        ValueError
+            If any tensor shape references an undefined axis.
+        """
+        all_tensors = {**self.inputs, **self.outputs}
+
+        for tensor_name, tensor_spec in all_tensors.items():
+            if tensor_spec.shape is not None:
+                for axis_name in tensor_spec.shape:
+                    if axis_name not in self.axes:
+                        tensor_type = "input" if tensor_name in self.inputs else "output"
+                        raise ValueError(
+                            f'{tensor_type.capitalize()} "{tensor_name}" references undefined '
+                            f'axis "{axis_name}"'
+                        )
+        return self
 
     def get_const_axes(self) -> Dict[str, int]:
-        """Get all constant axes and their values."""
+        """Get all constant axes and their values.
+
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary mapping constant axis names to their fixed values.
+        """
         return {name: axis.value for name, axis in self.axes.items() if isinstance(axis, AxisConst)}
 
     def get_var_axes(self) -> List[str]:
-        """Get all variable axis names."""
+        """Get all variable axis names.
+
+        Returns
+        -------
+        List[str]
+            List of all variable axis names defined in this Definition.
+        """
         return [name for name, axis in self.axes.items() if isinstance(axis, AxisVar)]
 
     @cached_property
     def get_var_axes_bindings(self) -> Dict[str, Tuple[str, int]]:
-        """
-        Get the bindings of variable axes to input tensors dimensions.
-        Returns:
-            Dict[str, Tuple[str, int]]: axis_name -> (input_name, dim_idx)
+        """Get the bindings of variable axes to input tensor dimensions.
+
+        Determines which input tensor and dimension index corresponds to each
+        variable axis. If multiple input tensors share the same axis, the
+        binding will be to the first tensor encountered.
+
+        Returns
+        -------
+        Dict[str, Tuple[str, int]]
+            Dictionary mapping axis names to tuples of (input_tensor_name, dimension_index).
+            Only includes variable axes that appear in input tensor shapes.
         """
         bindings: Dict[str, Tuple[str, int]] = {}
         for inp_name, spec in self.inputs.items():
@@ -194,7 +232,26 @@ class Definition:
     def _get_shapes(
         self, tensors: Dict[str, TensorSpec], var_values: Optional[Dict[str, int]] = None
     ) -> Dict[str, List[int]]:
-        """Get concrete tensor shapes given variable axis values."""
+        """Get concrete tensor shapes given variable axis values.
+
+        Parameters
+        ----------
+        tensors : Dict[str, TensorSpec]
+            Dictionary of tensor specifications to compute shapes for.
+        var_values : Optional[Dict[str, int]], default=None
+            Values for variable axes. If None, defaults to empty dictionary.
+
+        Returns
+        -------
+        Dict[str, List[int]]
+            Dictionary mapping tensor names to their concrete shapes as lists of integers.
+            Scalar tensors (shape=None) are excluded from the result.
+
+        Raises
+        ------
+        ValueError
+            If a required variable axis value is missing from var_values.
+        """
         var_values = var_values or {}
         shapes = {}
 
@@ -215,11 +272,43 @@ class Definition:
         return shapes
 
     def get_input_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
-        """Get concrete input shapes given variable axis values."""
+        """Get concrete input shapes given variable axis values.
+
+        Parameters
+        ----------
+        var_values : Optional[Dict[str, int]], default=None
+            Values for variable axes. If None, defaults to empty dictionary.
+
+        Returns
+        -------
+        Dict[str, List[int]]
+            Dictionary mapping input tensor names to their concrete shapes.
+
+        Raises
+        ------
+        ValueError
+            If a required variable axis value is missing from var_values.
+        """
         return self._get_shapes(self.inputs, var_values)
 
     def get_output_shapes(
         self, var_values: Optional[Dict[str, int]] = None
     ) -> Dict[str, List[int]]:
-        """Get concrete output shapes given variable axis values."""
+        """Get concrete output shapes given variable axis values.
+
+        Parameters
+        ----------
+        var_values : Optional[Dict[str, int]], default=None
+            Values for variable axes. If None, defaults to empty dictionary.
+
+        Returns
+        -------
+        Dict[str, List[int]]
+            Dictionary mapping output tensor names to their concrete shapes.
+
+        Raises
+        ------
+        ValueError
+            If a required variable axis value is missing from var_values.
+        """
         return self._get_shapes(self.outputs, var_values)

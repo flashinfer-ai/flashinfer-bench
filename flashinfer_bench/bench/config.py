@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 
 @dataclass
@@ -16,7 +15,8 @@ class BenchmarkConfig:
     num_trials: int = field(default=3)
     rtol: float = field(default=1e-2)
     atol: float = field(default=1e-2)
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = field(default="INFO")
+    log_dir: str = field(default="/tmp/flashinfer_bench")
+    use_multi_process_runner: bool = field(default=False)
 
     def __post_init__(self):
         if self.warmup_runs < 0:
@@ -31,5 +31,3 @@ class BenchmarkConfig:
             raise ValueError("rtol must be a float")
         if not isinstance(self.atol, float):
             raise ValueError("atol must be a float")
-        if self.log_level not in ["DEBUG", "INFO", "WARNING", "ERROR"]:
-            raise ValueError(f"Invalid log_level: {self.log_level}")

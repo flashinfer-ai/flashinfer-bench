@@ -5,22 +5,28 @@ import sys
 
 import pytest
 
-from flashinfer_bench.apply.config import ApplyConfig
+from flashinfer_bench.apply import ApplyConfig
 from flashinfer_bench.apply.key import ApplyKeyFactory
 from flashinfer_bench.apply.table import ApplyTable, _apply_table_dir
-from flashinfer_bench.data.definition import AxisConst, AxisVar, Definition, TensorSpec
-from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.data import (
+    AxisConst,
+    AxisVar,
+    BuildSpec,
     Correctness,
+    Definition,
     Environment,
     Evaluation,
     EvaluationStatus,
     Performance,
     RandomInput,
+    Solution,
+    SourceFile,
+    SupportedLanguages,
+    TensorSpec,
     Trace,
+    TraceSet,
     Workload,
 )
-from flashinfer_bench.data.traceset import TraceSet
 
 
 class FakeTensor:
@@ -31,7 +37,7 @@ class FakeTensor:
 def make_minimal_def() -> Definition:
     return Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -125,7 +131,7 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
 
     d = Definition(
         name="add",
-        type="op",
+        op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
         inputs={
             "X": TensorSpec(shape=["M", "N"], dtype="float32"),
@@ -134,11 +140,11 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    from flashinfer_bench.data.json_codec import save_json_file, save_jsonl_file
+    from flashinfer_bench.data import save_json_file, save_jsonl_file
 
     save_json_file(d, ds / "definitions" / "add.json")
 
-    from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+    from flashinfer_bench.data import BuildSpec, Solution, SourceFile, SupportedLanguages
 
     s_fast = Solution(
         name="add_fast",

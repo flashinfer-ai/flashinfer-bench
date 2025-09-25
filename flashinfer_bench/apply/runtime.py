@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from flashinfer_bench.compile.registry import get_registry
-from flashinfer_bench.data.traceset import TraceSet
+from flashinfer_bench.compile import get_registry
+from flashinfer_bench.data import TraceSet
 
 from .config import ApplyConfig
 from .hook import get_apply_hook
@@ -54,13 +54,12 @@ def _maybe_init_from_env() -> None:
 
 class ApplyRuntime:
     def __init__(self, traceset: Union[TraceSet, str], config: ApplyConfig) -> None:
-        if not traceset:
-            raise ValueError("Dataset path is required for enabling apply")
-
         if isinstance(traceset, str):
             self._traceset = TraceSet.from_path(traceset)
-        else:
+        elif isinstance(traceset, TraceSet):
             self._traceset = traceset
+        else:
+            raise ValueError("traceset must be a TraceSet or a path to a TraceSet")
 
         self._config: ApplyConfig = config
         self._table: ApplyTable = ApplyTable.load_or_build(self._traceset, self._config)
@@ -73,9 +72,7 @@ class ApplyRuntime:
         install_flashinfer_integrations()
 
     def rebuild(
-        self,
-        traceset: Optional[Union[TraceSet, str]] = None,
-        config: Optional[ApplyConfig] = None,
+        self, traceset: Optional[Union[TraceSet, str]] = None, config: Optional[ApplyConfig] = None
     ) -> None:
         if traceset is not None:
             if isinstance(traceset, str):
