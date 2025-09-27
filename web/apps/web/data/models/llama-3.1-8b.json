@@ -3,8 +3,13 @@
   "name": "Llama 3.1 8B",
   "description": "Meta's Llama 3.1 8B parameter model",
   "modules": {
+    "LlamaForCausalLM": {
+      "count": 1,
+      "type": "block"
+    },
     "LlamaModel": {
       "count": 1,
+      "parent": "LlamaForCausalLM",
       "type": "block"
     },
     "embed_tokens": {
@@ -22,6 +27,15 @@
       "parent": "layers",
       "type": "block"
     },
+    "input_layernorm": {
+      "count": 32,
+      "parent": "LlamaDecoderLayer",
+      "type": "layer",
+      "definitions": [
+        "rmsnorm_h4096",
+        "fused_add_rmsnorm_h4096"
+      ]
+    },
     "self_attn": {
       "count": 32,
       "parent": "LlamaDecoderLayer",
@@ -31,24 +45,41 @@
       "count": 32,
       "parent": "self_attn",
       "type": "layer",
-      "definition": "gemm_n_6144_k_4096"
+      "definitions": [
+        "gemm_n_6144_k_4096"
+      ]
+    },
+    "rotary_emb": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer",
+      "definitions": []
+    },
+    "attn": {
+      "count": 32,
+      "parent": "self_attn",
+      "type": "layer",
+      "definitions": [
+        "gqa_paged_prefill_causal_h32_kv8_d128_ps1",
+        "gqa_paged_decode_h32_kv8_d128_ps1",
+        "gqa_ragged_prefill_causal_h32_kv8_d128"
+      ]
     },
     "o_proj": {
       "count": 32,
       "parent": "self_attn",
       "type": "layer",
-      "definition": "gemm_n_4096_k_4096"
+      "definitions": [
+        "gemm_n_4096_k_4096"
+      ]
     },
-    "rotary_emb": {
+    "post_attention_layernorm": {
       "count": 32,
-      "parent": "self_attn",
-      "type": "layer"
-    },
-    "attn_kernel": {
-      "count": 32,
-      "parent": "self_attn",
+      "parent": "LlamaDecoderLayer",
       "type": "layer",
-      "definition": "gqa_paged_decode_h32_kv8_d128_ps1"
+      "definitions": [
+        "fused_add_rmsnorm_h4096"
+      ]
     },
     "mlp": {
       "count": 32,
@@ -59,33 +90,37 @@
       "count": 32,
       "parent": "mlp",
       "type": "layer",
-      "definition": "gemm_n_28672_k_4096"
+      "definitions": [
+        "gemm_n_28672_k_4096"
+      ]
+    },
+    "act_fn": {
+      "count": 32,
+      "parent": "mlp",
+      "type": "layer",
+      "definitions": []
     },
     "down_proj": {
       "count": 32,
       "parent": "mlp",
       "type": "layer",
-      "definition": "gemm_n_4096_k_14336"
-    },
-    "act_fn": {
-      "count": 32,
-      "parent": "mlp",
-      "type": "layer"
-    },
-    "input_layernorm": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "layer"
-    },
-    "post_attention_layernorm": {
-      "count": 32,
-      "parent": "LlamaDecoderLayer",
-      "type": "layer"
+      "definitions": [
+        "gemm_n_4096_k_14336"
+      ]
     },
     "norm": {
       "count": 1,
       "parent": "LlamaModel",
-      "type": "layer"
+      "type": "layer",
+      "definitions": [
+        "fused_add_rmsnorm_h4096"
+      ]
+    },
+    "lm_head": {
+      "count": 1,
+      "parent": "LlamaForCausalLM",
+      "type": "layer",
+      "definitions": []
     }
   }
 }

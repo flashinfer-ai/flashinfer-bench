@@ -1,0 +1,29 @@
+{
+  "name": "@flashinfer-bench/docs",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev -p 3030",
+    "build": "next build",
+    "start": "next start -p 3030",
+    "api-docs": "bash ./gen_api_docs.sh"
+  },
+  "dependencies": {
+    "@flashinfer-bench/config": "workspace:*",
+    "@flashinfer-bench/ui": "workspace:*",
+    "@vercel/microfrontends": "^2.0.0",
+    "next": "^15.5.0",
+    "nextra": "^4.4.0",
+    "nextra-theme-docs": "^4.4.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "gemm_n_28672_k_4096": {
+    "default": "torch_gemm_n_28672_k_4096"
+  },
+  "gemm_n_4096_k_14336": {
+    "default": "torch_gemm_n_4096_k_14336"
+  },
+  "gemm_n_4096_k_4096": {
+    "default": "torch_gemm_n_4096_k_4096"
+  },
+  "gemm_n_6144_k_4096": {
+    "default": "torch_gemm_n_6144_k_4096"
+  },
+  "gqa_paged_decode_h32_kv4_d128_ps1": {
+    "default": "flashinfer_gqa_paged_decode_h32_kv4_d128_ps1"
+  },
+  "gqa_paged_decode_h32_kv8_d128_ps1": {
+    "default": "flashinfer_gqa_paged_decode_h32_kv8_d128_ps1"
+  },
+  "gqa_paged_prefill_causal_h32_kv4_d128_ps1": {
+    "default": "flashinfer_gqa_paged_prefill_causal_h32_kv4_d128_ps1"
+  },
+  "gqa_paged_prefill_causal_h32_kv8_d128_ps1": {
+    "default": "flashinfer_gqa_paged_prefill_causal_h32_kv8_d128_ps1"
+  },
+  "gqa_ragged_prefill_causal_h32_kv4_d128": {
+    "default": "flashinfer_gqa_ragged_prefill_causal_h32_kv4_d128"
+  },
+  "gqa_ragged_prefill_causal_h32_kv8_d128": {
+    "default": "flashinfer_gqa_ragged_prefill_causal_h32_kv8_d128"
+  },
+  "mla_paged_decode_h16_ckv512_kpe64_ps1": {
+    "default": "flashinfer_mla_paged_decode_h16_ckv512_kpe64_ps1"
+  },
+  "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": {
+    "default": "flashinfer_mla_paged_prefill_causal_h16_ckv512_kpe64_ps1"
+  },
+  "mla_ragged_prefill_causal_h16_qk192_vo128": {
+    "default": "flashinfer_mla_ragged_prefill_causal_h16_qk192_vo128"
+  }
+}

@@ -1,10 +1,11 @@
+import { Suspense } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
+import { Button } from "@flashinfer-bench/ui"
 import { ArrowRight } from "lucide-react"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@flashinfer-bench/ui"
 import { ModelCard } from "@/components/model-card"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
-import { KernelsSection } from "./kernels-section"
+import { KernelsSection } from "./kernels"
 
 export default async function HomePage() {
   const [allDefinitions, models] = await Promise.all([getAllDefinitions(), getAllModels()])
@@ -68,7 +69,9 @@ export default async function HomePage() {
       </section>
 
       {/* Kernels Section */}
-      <KernelsSection definitions={definitionsWithCounts} />
+      <Suspense fallback={<div className="container py-12 text-sm text-muted-foreground">Loading kernels…</div>}>
+        <KernelsSection definitions={definitionsWithCounts} />
+      </Suspense>
     </div>
   )
 }
