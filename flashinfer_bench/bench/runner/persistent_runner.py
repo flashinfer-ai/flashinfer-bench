@@ -135,17 +135,17 @@ def _compute_error_stats(
     x = output.to(torch.float32)
     y = reference.to(torch.float32)
 
-    diff = (x - y).abs()
-    if diff.numel() == 0:
+    eps = 1e-8
+    abs_error = torch.abs(x - y)
+    rel_error = abs_error / (torch.abs(y) + eps)
+    if abs_error.numel() == 0:
         return 0.0, 0.0, False
 
-    tol = cfg.atol + cfg.rtol * y.abs()
-    ratio = diff / tol.clamp_min(torch.finfo(torch.float32).tiny)
+    max_abs = float(abs_error.max().item())
+    max_rel = float(rel_error.max().item())
+    exceeds_tol = max_abs > cfg.atol or max_rel > cfg.rtol
 
-    max_abs = float(diff.max().item())
-    max_rel = float(ratio.max().item())
-
-    return max_abs, max_rel, bool(max_rel > 1.0)
+    return max_abs, max_rel, exceeds_tol
 
 
 def _load_safetensors(
