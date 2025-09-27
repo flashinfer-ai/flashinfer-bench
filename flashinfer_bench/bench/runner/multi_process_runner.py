@@ -121,7 +121,7 @@ def _compute_error_stats(
 
     max_abs = float(abs_error.max().item())
     max_rel = float(rel_error.max().item())
-    exceeds_tol = max_abs > cfg.atol or max_rel > cfg.rtol
+    exceeds_tol = torch.allclose(x, y, atol=cfg.atol, rtol=cfg.rtol) is False
 
     return max_abs, max_rel, exceeds_tol
 
