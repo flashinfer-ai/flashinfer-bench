@@ -87,7 +87,10 @@ def normalize_outputs(
 
 
 def compute_error_stats(
-    output: torch.Tensor, reference: torch.Tensor, cfg: BenchmarkConfig, defn: Optional[Definition] = None
+    output: torch.Tensor,
+    reference: torch.Tensor,
+    cfg: BenchmarkConfig,
+    defn: Optional[Definition] = None,
 ) -> Tuple[float, float, bool, Optional[float]]:
     x = output.to(torch.float32)
     y = reference.to(torch.float32)
@@ -95,21 +98,21 @@ def compute_error_stats(
     eps = 1e-8
     abs_error = torch.abs(x - y)
     rel_error = abs_error / (torch.abs(y) + eps)
-    
+
     if abs_error.numel() == 0:
         return 0.0, 0.0, False, None
 
     is_fused_moe = defn is not None and getattr(defn, "op_type", None) == "fused_moe"
     max_percentage = None
-    
+
     if is_fused_moe:
         max_percentage = cfg.max_percentage
-        
+
         exceeds_tol_mask = (abs_error > cfg.atol) & (rel_error > cfg.rtol)
         mismatch_percentage = float(exceeds_tol_mask.sum().item() / abs_error.numel() * 100.0)
-        
+
         exceeds_tol = mismatch_percentage > (100.0 - max_percentage)
-        
+
         max_abs = float(abs_error.max().item())
         max_rel = float(rel_error.max().item())
     else:
