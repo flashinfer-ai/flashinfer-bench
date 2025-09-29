@@ -31,7 +31,7 @@ def minimal_def():
 def test_triton_builder_import_guard(monkeypatch, tmp_path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     b = TritonBuilder(PythonBuilder())
     d = minimal_def()
@@ -65,7 +65,7 @@ def test_triton_builder_minimum(tmp_path, monkeypatch):
     monkeypatch.setattr(_TB, "_triton_available", None, raising=False)
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     b = TritonBuilder(PythonBuilder())
     d = minimal_def()
@@ -92,7 +92,7 @@ def test_triton_vector_add(tmp_path, monkeypatch):
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     defn = Definition(
         name="vec_add",

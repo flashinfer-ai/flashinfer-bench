@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply, get_runtime
+from flashinfer_bench.apply import apply, get_apply_runtime
 from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_paged_kv_layout_from_tensors,
@@ -49,7 +49,7 @@ class GQAPagedDecodeAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
-                if get_runtime() is None:
+                if get_apply_runtime() is None:
                     return orig(inst, *args, **kwargs)
 
                 bound = binder.bind((inst, *args), kwargs)
@@ -73,7 +73,7 @@ class GQAPagedDecodeAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
-                if get_runtime() is None:
+                if get_apply_runtime() is None:
                     return orig(inst, *args, **kwargs)
 
                 ctx = self._store.get(inst)
@@ -114,9 +114,9 @@ class GQAPagedDecodeAdapter:
                 def_name = _def_name_resolver(
                     q, k_cache, v_cache, ctx["kv_indptr"], ctx["kv_indices"], sm_scale
                 )
-                rt = get_runtime()
+                rt = get_apply_runtime()
                 # Fallback if no definition found
-                if rt is None or def_name not in rt._traceset.definitions:
+                if rt is None or def_name not in rt._trace_set.definitions:
                     return orig(inst, *args, **kwargs)
 
                 rk: Dict[str, Any] = {

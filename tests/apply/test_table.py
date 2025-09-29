@@ -6,8 +6,8 @@ import sys
 import pytest
 
 from flashinfer_bench.apply import ApplyConfig
-from flashinfer_bench.apply.key import ApplyKeyFactory
-from flashinfer_bench.apply.table import ApplyTable, _apply_table_dir
+from flashinfer_bench.apply.apply_key import ApplyKeyFactory
+from flashinfer_bench.apply.apply_table import ApplyTable, _apply_table_dir
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -94,7 +94,7 @@ def test_apply_table_build_and_match(tmp_path, monkeypatch):
     # Route caches (apply table + python builder) to test tmp dir
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d, sols, traces = make_traces()
     ts = TraceSet(
@@ -119,7 +119,7 @@ def test_apply_table_build_and_match(tmp_path, monkeypatch):
 def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     ds = tmp_path / "ds"
     ds.mkdir(parents=True, exist_ok=True)

@@ -88,6 +88,10 @@ class TensorSpec(BaseModelWithDocstrings):
     """An optional human-readable description of this tensor's purpose and usage."""
 
 
+AxisSpec = Union[AxisConst, AxisVar]
+"""Union type representing all possible axis specifications."""
+
+
 class Definition(BaseModelWithDocstrings):
     """Complete definition of a computational workload.
 
@@ -101,7 +105,7 @@ class Definition(BaseModelWithDocstrings):
     """A unique, human-readable name for the kernel definition."""
     op_type: NonEmptyString
     """The general compute category (e.g., 'gemm', 'gqa_paged', 'mla_ragged')."""
-    axes: Dict[NonEmptyString, Union[AxisConst, AxisVar]]
+    axes: Dict[NonEmptyString, AxisSpec]
     """Dictionary of symbolic dimensions used in tensor shapes. The axes will be bound to the
     input tensor dimensions at runtime."""
     inputs: Dict[NonEmptyString, TensorSpec]

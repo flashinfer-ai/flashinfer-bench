@@ -14,9 +14,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from torch import multiprocessing as mp
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
-from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.compile import Runnable, get_builder_registry
 from flashinfer_bench.data import (
     Correctness,
     Definition,
@@ -27,7 +27,7 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import env_snapshot, list_cuda_devices, torch_dtype_from_def
+from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot, list_cuda_devices
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
@@ -174,7 +174,7 @@ def _load_safetensors(
         if list(t.shape) != expected[name]:
             raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
         # dtype check
-        expect_dtype = torch_dtype_from_def(defn.inputs[name].dtype)
+        expect_dtype = dtype_str_to_torch_dtype(defn.inputs[name].dtype)
         if t.dtype != expect_dtype:
             raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
 
@@ -194,7 +194,7 @@ def _gen_inputs(
     out: Dict[str, Any] = {}
 
     for name, spec in defn.inputs.items():
-        dtype = torch_dtype_from_def(spec.dtype)
+        dtype = dtype_str_to_torch_dtype(spec.dtype)
 
         if name in wl.inputs and wl.inputs[name].type == "safetensors":
             if stensors is None or name not in stensors:
@@ -233,7 +233,7 @@ class PersistentSubprocessWorker:
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
-        self._registry = get_registry()
+        self._registry = get_builder_registry()
 
         # Solution failure tracking
         self._failure_records: Dict[str, SolutionFailureRecord] = {}
@@ -414,7 +414,7 @@ class PersistentSubprocessWorker:
         torch.cuda.set_device(int(self._device.split(":")[1]))
         dev = torch.device(self._device)
 
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
+        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
         runnable_ref = self._registry.build_reference(defn)
         st_cpu = (
             _load_safetensors(defn, workload, traceset_root)
@@ -807,7 +807,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_registry()
+        registry = get_builder_registry()
 
         conn.send({"cmd": WorkerResponse.READY.value})
 
