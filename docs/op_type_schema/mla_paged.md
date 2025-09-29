@@ -1,5 +1,7 @@
 # mla_paged
 
+ Multi-head Latent Attention (MLA) with paged memory layout. MLA is an advanced attention mechanism that decomposes the key-value representation into separate compressed key-value (CKV) and key positional encoding (KPE) components to reduce memory usage while maintaining model performance. The paged layout enables efficient memory management for variable-length sequences.
+
 Variants:
 - prefill
 - decode

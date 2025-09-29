@@ -1,5 +1,7 @@
 # mla_ragged
 
+ Multi-head Latent Attention (MLA) with ragged tensor layout. This variant combines the memory efficiency of MLA's compressed representations with ragged tensors for handling variable-length sequences without padding overhead.
+
 ## prefill
 
 Axes (5 dimensions):
