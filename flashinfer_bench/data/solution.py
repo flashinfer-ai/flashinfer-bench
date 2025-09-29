@@ -72,11 +72,9 @@ class BuildSpec(BaseModelWithDocstrings):
     entry_point: NonEmptyString
     """The exact path to the function to be called. Format: '{file_path}::{function_name}'
     (e.g., 'main.py::run')."""
-    dependencies: Optional[List[NonEmptyString]] = Field(default=None)
+    dependencies: Optional[List[NonEmptyString]] = Field(default=[])
     """Optional list of required libraries or toolchains (e.g., 'CUDA >= 12.0',
     'triton >= 2.2')."""
-    build_commands: Optional[List[str]] = Field(default=None)
-    """Optional list of shell commands required to build the source code."""
 
     @model_validator(mode="after")
     def _validate_entry_point(self) -> "BuildSpec":
@@ -162,4 +160,4 @@ class Solution(BaseModelWithDocstrings):
             True if the solution requires building (has build commands or uses CUDA),
             False otherwise.
         """
-        return bool(self.spec.build_commands) or self.spec.language == SupportedLanguages.CUDA
+        return self.spec.language == SupportedLanguages.CUDA
