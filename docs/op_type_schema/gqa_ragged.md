@@ -1,5 +1,7 @@
 # gqa_ragged
 
+ Grouped Query Attention (GQA) with ragged (variable-length) tensor layout. This variant efficiently handles batches of sequences with different lengths by using ragged tensors, eliminating the need for padding and improving memory efficiency for variable-length inputs.
+
 ## prefill
 
 Axes (6 dimensions):
