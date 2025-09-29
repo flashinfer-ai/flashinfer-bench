@@ -1,5 +1,7 @@
 # gqa_paged
 
+Grouped Query Attention (GQA) with paged memory layout. GQA is an attention mechanism that reduces memory usage by grouping multiple query heads to share the same key-value heads, while using a paged memory system for efficient KV cache management. This allows for variable-length sequences and better memory utilization compared to traditional attention.
+
 Variants:
 - prefill
 - decode
