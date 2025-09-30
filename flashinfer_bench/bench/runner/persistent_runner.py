@@ -37,7 +37,7 @@ from .runner_utils import (
     make_eval,
     normalize_outputs,
 )
-from .special_validation import validate_operation_correctness
+from .evaluator import SolutionEvaluator
 
 LOGGER = get_logger("PersistentRunner")
 
@@ -69,6 +69,15 @@ class SolutionFailureRecord:
 
 class PersistentSubprocessWorker:
     def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Per device persistent subprocess worker
+        
+        Parameters
+        ----------
+        device : str
+            Device string (e.g. "cuda:0").
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
@@ -199,9 +208,12 @@ class PersistentSubprocessWorker:
             return False
 
     def restart(self) -> bool:
-        """
-        Returns:
-            bool: True if restart was successful, False otherwise
+        """Restart the worker process.
+        
+        Returns
+        -------
+        bool
+            True if restart was successful, False otherwise.
         """
         try:
             LOGGER.info(f"Restarting worker for device {self._device}")
@@ -455,6 +467,15 @@ class PersistentSubprocessWorker:
 
 class PersistentRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Initialize the persistent runner with multiple workers.
+        
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger instance for output.
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._logger = logger
         self._log_dir = log_dir
 
@@ -463,7 +484,13 @@ class PersistentRunner(Runner):
         self._worker_max_retries = 3
 
         self._available_devices = list_cuda_devices()
-        self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
+        #self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
+        # Temp: only use device 0
+        if len(self._available_devices) == 0:
+            raise RuntimeError("No CUDA devices available")
+        device_0 = self._available_devices[0]  # Use only the first device
+        self._workers = [PersistentSubprocessWorker(device_0, log_dir)]
+        # Temp
         self._curr_worker_idx = 0
 
         if len(self._workers) == 0:
@@ -489,9 +516,12 @@ class PersistentRunner(Runner):
     ) -> None:
         """Handle failed workers by attempting to restart them or removing them.
 
-        Args:
-            failed_workers: List of workers that have failed
-            increment_retries: Whether to increment retry count (True for health failures, False for solution failures)
+        Parameters
+        ----------
+        failed_workers : List[PersistentSubprocessWorker]
+            List of workers that have failed.
+        increment_retries : bool, optional
+            Whether to increment retry count (True for health failures, False for solution failures), by default True.
         """
         workers_to_remove = []
 
@@ -545,8 +575,25 @@ class PersistentRunner(Runner):
         config: BenchmarkConfig,
         root: Path,
     ) -> Dict[str, Evaluation]:
-        """
-        Run a workload with the given solutions and return evaluation results.
+        """Run a workload with the given solutions and return evaluation results.
+        
+        Parameters
+        ----------
+        defn : Definition
+            Operation definition.
+        wl : Workload
+            Workload specification.
+        solutions : List[Solution]
+            List of solutions to evaluate.
+        config : BenchmarkConfig
+            Benchmark configuration.
+        root : Path
+            Root path for the trace set.
+            
+        Returns
+        -------
+        Dict[str, Evaluation]
+            Dictionary mapping solution names to their evaluations.
         """
         if not solutions:
             return {}
@@ -660,9 +707,18 @@ class PersistentRunner(Runner):
 
 
 def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir: str) -> None:
-    """
-    Long-lived worker process that handles solution evaluations.
+    """Long-lived worker process that handles solution evaluations.
+    
     Caches compiled solutions to avoid recompilation (handled in builder registry).
+    
+    Parameters
+    ----------
+    conn : mp.connection.Connection
+        Multiprocessing connection for communication with parent process.
+    device : str
+        Device string (e.g. "cuda:0").
+    log_dir : str
+        Directory for log files.
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
@@ -791,60 +847,13 @@ def _evaluate_solution_worker(
         for inp in inputs_bl
     ]
 
-    if not ref_outputs_bl:
-        raise RuntimeError("No reference outputs provided")
-
-    # Check correctness
-    is_sampling = is_sampling_operation(defn)
-    op_type = getattr(defn, "op_type", None)
-
-    if is_sampling:
-        operation_type = "sampling"
-    elif op_type == "fused_moe":
-        operation_type = "fused_moe"
-    else:
-        operation_type = "default"
-
-    eval_result, max_abs, max_rel, numerical_incorrect, max_percentage = (
-        validate_operation_correctness(
-            operation_type, runnable_sol, inputs, ref_outputs_bl, cfg, device, log_path, defn
-        )
-    )
-
-    if eval_result is not None:
-        return eval_result
-
-    correctness = Correctness(
-        max_relative_error=max_rel, max_absolute_error=max_abs, max_percentage=max_percentage
-    )
-    if numerical_incorrect:
-        return make_eval(
-            status=EvaluationStatus.INCORRECT_NUMERICAL,
-            log_file=log_path,
-            correctness=correctness,
-            device=device,
-        )
-
-    # Measure performance
-    soln_lats: List[float] = []
-    for inp in inputs:
-        lat_ms = time_runnable(runnable_sol, inp, cfg.warmup_runs, cfg.iterations, device)
-        soln_lats.append(lat_ms)
-
-    if not soln_lats:
-        raise RuntimeError("Failed to collect solution latencies")
-
-    soln_mean_latency_ms = sum(soln_lats) / float(len(soln_lats))
-    performance = Performance(
-        latency_ms=soln_mean_latency_ms,
-        reference_latency_ms=ref_mean_latency_ms,
-        speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
-    )
-
-    return make_eval(
-        status=EvaluationStatus.PASSED,
+    return SolutionEvaluator.evaluate(
+        runnable_sol=runnable_sol,
+        inputs=inputs,
+        ref_outputs=ref_outputs_bl,
+        ref_mean_latency_ms=ref_mean_latency_ms,
+        cfg=cfg,
         device=device,
-        log_file=log_path,
-        correctness=correctness,
-        performance=performance,
+        log_path=log_path,
+        defn=defn
     )

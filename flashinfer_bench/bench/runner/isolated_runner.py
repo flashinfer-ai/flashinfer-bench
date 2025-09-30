@@ -41,7 +41,7 @@ from .runner_utils import (
     make_eval,
     normalize_outputs,
 )
-from .special_validation import validate_operation_correctness
+from .evaluator import SolutionEvaluator
 
 LOGGER = get_logger("MPRunner")
 
@@ -50,6 +50,15 @@ class SubprocessWorker:
     """Each instance binds to a CUDA device; the baseline resides in the main process; each Solution starts an independent Worker process for strong isolation."""
 
     def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Per device subprocess worker
+        
+        Parameters
+        ----------
+        device : str
+            Device string (e.g. "cuda:0").
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
@@ -124,6 +133,22 @@ class SubprocessWorker:
     def run_solution(
         self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
+        """Run solution in an isolated subprocess.
+        
+        Parameters
+        ----------
+        sol : Solution
+            Solution to evaluate.
+        baseline : BaselineHandle
+            Handle to baseline for comparison.
+        cfg : BenchmarkConfig
+            Benchmark configuration.
+            
+        Returns
+        -------
+        Evaluation
+            Evaluation results with status, correctness, and performance metrics.
+        """
         if baseline not in self._baselines:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
@@ -224,7 +249,25 @@ def _solution_worker_main(
     cfg: BenchmarkConfig,
     log_path: str,
 ) -> None:
-    """Worker process: strong isolation for single Solution. Borrow/return trial data via Pipe and send Evaluation back to parent process."""
+    """Worker process: strong isolation for single Solution.
+    
+    Borrow/return trial data via Pipe and send Evaluation back to parent process.
+    
+    Parameters
+    ----------
+    conn : mp.connection.Connection
+        Multiprocessing connection for communication with parent process.
+    device : str
+        Device string (e.g. "cuda:0").
+    defn : Definition
+        Operation definition.
+    sol : Solution
+        Solution to evaluate.
+    cfg : BenchmarkConfig
+        Benchmark configuration.
+    log_path : str
+        Path to log file.
+    """
     try:
         redirect_stdio_to_file(log_path)
         torch.cuda.set_device(int(device.split(":")[1]))
@@ -266,64 +309,19 @@ def _solution_worker_main(
             for inp in inputs_bl
         ]
 
-        # Check correctness using specialized validators
-        is_sampling = is_sampling_operation(defn)
-        op_type = getattr(defn, "op_type", None)
-
-        if is_sampling:
-            operation_type = "sampling"
-        elif op_type == "fused_moe":
-            operation_type = "fused_moe"
-        else:
-            operation_type = "default"
-
-        eval_result, max_abs, max_rel, numerical_incorrect, max_percentage = (
-            validate_operation_correctness(
-                operation_type, runnable_sol, inputs, ref_outputs_bl, cfg, device, log_path, defn
-            )
-        )
-
-        # If validation failed, send the error evaluation and return
-        if eval_result is not None:
-            conn.send({"cmd": "EVAL", "evaluation": eval_result})
-            return
-
-        correctness = Correctness(
-            max_relative_error=max_rel, max_absolute_error=max_abs, max_percentage=max_percentage
-        )
-        if numerical_incorrect:
-            ev = make_eval(
-                status=EvaluationStatus.INCORRECT_NUMERICAL,
-                log_file=log_path,
-                correctness=correctness,
-                device=device,
-            )
-            conn.send({"cmd": "EVAL", "evaluation": ev})
-            return
-
-        # Passed numerical checks; now measure implementation performance
-        soln_lats: List[float] = []
-        for inp in inputs:
-            lat_ms = time_runnable(runnable_sol, inp, cfg.warmup_runs, cfg.iterations, device)
-            soln_lats.append(lat_ms)
-
-        if not soln_lats:
-            raise RuntimeError("Failed to collect solution latencies")
-
-        soln_mean_latency_ms = sum(soln_lats) / float(len(soln_lats))
-        performance = Performance(
-            latency_ms=soln_mean_latency_ms,
-            reference_latency_ms=ref_mean_latency_ms,
-            speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
-        )
-        ev = make_eval(
-            status=EvaluationStatus.PASSED,
+        evaluation = SolutionEvaluator.evaluate(
+            runnable_sol=runnable_sol,
+            inputs=inputs,
+            ref_outputs=ref_outputs_bl,
+            ref_mean_latency_ms=ref_mean_latency_ms,
+            cfg=cfg,
             device=device,
-            log_file=log_path,
-            correctness=correctness,
-            performance=performance,
+            log_path=log_path,
+            defn=defn
         )
-        conn.send({"cmd": "EVAL", "evaluation": ev})
+        
+        conn.send({"cmd": "EVAL", "evaluation": evaluation})
+        
     except Exception as e:
         try:
             conn.send({"cmd": "ERROR", "msg": str(e)})
@@ -338,6 +336,15 @@ def _solution_worker_main(
 
 class IsolatedRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Initialize the isolated runner with per device workers.
+        
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger instance for output.
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._logger = logger
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
@@ -357,8 +364,18 @@ class IsolatedRunner(Runner):
         )
 
     def _pick_workers(self, K: int) -> list[SubprocessWorker]:
-        """Pick K workers in round-robin fashion."""
-        # K = min(len(self._workers), len(solutions))
+        """Pick K workers in round-robin fashion.
+        
+        Parameters
+        ----------
+        K : int
+            Number of workers to pick.
+            
+        Returns
+        -------
+        list[SubprocessWorker]
+            List of selected workers.
+        """
         if K <= 0 or not self._workers:
             return []
         D = len(self._workers)
@@ -368,12 +385,29 @@ class IsolatedRunner(Runner):
         return sel
 
     def _relaunch_worker(self, device: str) -> SubprocessWorker:
-        """Relaunch a worker for the given device."""
+        """Relaunch a worker for the given device.
+        
+        Parameters
+        ----------
+        device : str
+            Device string (e.g. "cuda:0").
+            
+        Returns
+        -------
+        SubprocessWorker
+            New worker instance for the device.
+        """
         self._logger.info(f"Relaunching worker for device {device}")
         return SubprocessWorker(device, self._log_dir)
 
     def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
-        """Handle failed workers by attempting to relaunch them or removing them."""
+        """Handle failed workers by attempting to relaunch them or removing them.
+        
+        Parameters
+        ----------
+        failed_workers : List[SubprocessWorker]
+            List of workers that have failed.
+        """
         workers_to_remove = []
         workers_to_add = []
 
@@ -408,7 +442,13 @@ class IsolatedRunner(Runner):
             self._curr_worker_idx %= len(self._workers)
 
     def _has_healthy_workers(self) -> bool:
-        """Check if there are any healthy workers available."""
+        """Check if there are any healthy workers available.
+        
+        Returns
+        -------
+        bool
+            True if there are healthy workers, False otherwise.
+        """
         return bool(self._workers)
 
     def run_workload(
@@ -419,18 +459,25 @@ class IsolatedRunner(Runner):
         config: BenchmarkConfig,
         root: Path,
     ) -> Dict[str, Evaluation]:
-        """
-        Run a workload with the given solutions and return evaluation results.
+        """Run a workload with the given solutions and return evaluation results.
 
-        Args:
-            defn: Definition object
-            wl: Workload object
-            solutions: List of solutions to evaluate
-            config: Benchmark configuration
-            root: Root path for the trace set
+        Parameters
+        ----------
+        defn : Definition
+            Operation definition.
+        wl : Workload
+            Workload specification.
+        solutions : List[Solution]
+            List of solutions to evaluate.
+        config : BenchmarkConfig
+            Benchmark configuration.
+        root : Path
+            Root path for the trace set.
 
-        Returns:
-            Dictionary mapping solution names to their evaluations
+        Returns
+        -------
+        Dict[str, Evaluation]
+            Dictionary mapping solution names to their evaluations.
         """
         if not solutions:
             return {}
