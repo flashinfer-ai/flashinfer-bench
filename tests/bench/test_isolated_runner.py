@@ -9,11 +9,11 @@ from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.bench.runner import IsolatedRunner
 from flashinfer_bench.bench.runner.isolated_runner import SubprocessWorker
 from flashinfer_bench.bench.runner.runner_utils import (
+    _rand_tensor,
     compute_error_stats,
     gen_inputs,
     load_safetensors,
     normalize_outputs,
-    _rand_tensor,
 )
 from flashinfer_bench.data import (
     AxisConst,
@@ -55,9 +55,7 @@ def test_isolated_runner(monkeypatch: pytest.MonkeyPatch):
         def release(self, *a, **k):
             pass
 
-    monkeypatch.setattr(
-        "flashinfer_bench.bench.runner.isolated_runner.SubprocessWorker", _Dummy
-    )
+    monkeypatch.setattr("flashinfer_bench.bench.runner.isolated_runner.SubprocessWorker", _Dummy)
     b = IsolatedRunner(logging.getLogger(__name__))
 
     b._workers = [object(), object(), object()]

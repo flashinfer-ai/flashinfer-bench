@@ -16,11 +16,9 @@ from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import Runnable, get_registry
 from flashinfer_bench.data import (
-    Correctness,
     Definition,
     Evaluation,
     EvaluationStatus,
-    Performance,
     Solution,
     Workload,
 )
@@ -32,6 +30,7 @@ from flashinfer_bench.utils import (
     torch_dtype_from_def,
 )
 
+from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 from .runner_utils import (
     compute_frequency_distribution,
@@ -41,7 +40,6 @@ from .runner_utils import (
     make_eval,
     normalize_outputs,
 )
-from .evaluator import SolutionEvaluator
 
 LOGGER = get_logger("MPRunner")
 
@@ -51,7 +49,7 @@ class SubprocessWorker:
 
     def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
         """Per device subprocess worker
-        
+
         Parameters
         ----------
         device : str
@@ -134,7 +132,7 @@ class SubprocessWorker:
         self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
         """Run solution in an isolated subprocess.
-        
+
         Parameters
         ----------
         sol : Solution
@@ -143,7 +141,7 @@ class SubprocessWorker:
             Handle to baseline for comparison.
         cfg : BenchmarkConfig
             Benchmark configuration.
-            
+
         Returns
         -------
         Evaluation
@@ -250,9 +248,9 @@ def _solution_worker_main(
     log_path: str,
 ) -> None:
     """Worker process: strong isolation for single Solution.
-    
+
     Borrow/return trial data via Pipe and send Evaluation back to parent process.
-    
+
     Parameters
     ----------
     conn : mp.connection.Connection
@@ -317,11 +315,11 @@ def _solution_worker_main(
             cfg=cfg,
             device=device,
             log_path=log_path,
-            defn=defn
+            defn=defn,
         )
-        
+
         conn.send({"cmd": "EVAL", "evaluation": evaluation})
-        
+
     except Exception as e:
         try:
             conn.send({"cmd": "ERROR", "msg": str(e)})
@@ -337,7 +335,7 @@ def _solution_worker_main(
 class IsolatedRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
         """Initialize the isolated runner with per device workers.
-        
+
         Parameters
         ----------
         logger : logging.Logger
@@ -365,12 +363,12 @@ class IsolatedRunner(Runner):
 
     def _pick_workers(self, K: int) -> list[SubprocessWorker]:
         """Pick K workers in round-robin fashion.
-        
+
         Parameters
         ----------
         K : int
             Number of workers to pick.
-            
+
         Returns
         -------
         list[SubprocessWorker]
@@ -386,12 +384,12 @@ class IsolatedRunner(Runner):
 
     def _relaunch_worker(self, device: str) -> SubprocessWorker:
         """Relaunch a worker for the given device.
-        
+
         Parameters
         ----------
         device : str
             Device string (e.g. "cuda:0").
-            
+
         Returns
         -------
         SubprocessWorker
@@ -402,7 +400,7 @@ class IsolatedRunner(Runner):
 
     def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
         """Handle failed workers by attempting to relaunch them or removing them.
-        
+
         Parameters
         ----------
         failed_workers : List[SubprocessWorker]
@@ -443,7 +441,7 @@ class IsolatedRunner(Runner):
 
     def _has_healthy_workers(self) -> bool:
         """Check if there are any healthy workers available.
-        
+
         Returns
         -------
         bool

@@ -103,121 +103,22 @@ def compute_error_stats(
         return 0.0, 0.0, False, None
 
     is_fused_moe = defn is not None and getattr(defn, "op_type", None) == "fused_moe"
-    max_percentage = None
+    required_matched_ratio = cfg.required_matched_ratio if is_fused_moe else 1.0
+    matched_ratio_used = required_matched_ratio if is_fused_moe else None
 
-    if is_fused_moe:
-        max_percentage = cfg.max_percentage
+    exceeds_tol_mask = (abs_error > cfg.atol) & (rel_error > cfg.rtol)
+    matched_ratio = 1.0 - float(exceeds_tol_mask.sum().item() / abs_error.numel())
 
-        exceeds_tol_mask = (abs_error > cfg.atol) & (rel_error > cfg.rtol)
-        mismatch_percentage = float(exceeds_tol_mask.sum().item() / abs_error.numel() * 100.0)
+    exceeds_tol = matched_ratio < required_matched_ratio
 
-        exceeds_tol = mismatch_percentage > (100.0 - max_percentage)
+    max_abs = float(abs_error.max().item())
+    max_rel = float(rel_error.max().item())
 
-        max_abs = float(abs_error.max().item())
-        max_rel = float(rel_error.max().item())
-    else:
-        max_abs = float(abs_error.max().item())
-        max_rel = float(rel_error.max().item())
-        exceeds_tol = not torch.allclose(x, y, atol=cfg.atol, rtol=cfg.rtol)
-
-    return max_abs, max_rel, exceeds_tol, max_percentage
+    return max_abs, max_rel, exceeds_tol, matched_ratio_used
 
 
 def is_sampling_operation(defn: Definition) -> bool:
     return getattr(defn, "op_type", None) == "sampling"
-
-
-def detect_sampling_type(defn: Definition) -> str:
-    name = defn.name.lower()
-    if "top_k_top_p" in name:
-        return "top_k_top_p"
-    elif "top_k" in name:
-        return "top_k"
-    elif "top_p" in name:
-        return "top_p"
-    else:
-        return "basic"  # vanilla sampling
-
-
-def validate_sampling_tokens(
-    samples: torch.Tensor, probs: torch.Tensor, sampling_type: str, params: Dict[str, Any]
-) -> bool:
-    batch_size, vocab_size = probs.shape
-    device = probs.device
-
-    for i in range(batch_size):
-        prob_row = probs[i]
-        sample = samples[i].item()
-
-        if sampling_type == "top_k":
-            if "top_k" not in params:
-                return True
-            k = (
-                int(params["top_k"][i].item())
-                if params["top_k"].dim() > 0
-                else int(params["top_k"].item())
-            )
-            if 0 < k < vocab_size:
-                sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
-                pivot = sorted_prob_desc[k - 1]
-                mask_top_k = (prob_row >= pivot).int()
-                if mask_top_k[sample] != 1:
-                    return False
-        elif sampling_type == "top_p":
-            if "top_p" not in params:
-                return True
-            p = (
-                float(params["top_p"][i].item())
-                if params["top_p"].dim() > 0
-                else float(params["top_p"].item())
-            )
-            if 0 < p < 1:
-                eps = 1e-4  # numerical stability
-                sorted_probs, indices = torch.sort(prob_row, descending=False)
-                cdf = torch.cumsum(sorted_probs, dim=0)
-                valid_mask = cdf > (1 - p) - eps
-                valid_indices = indices[valid_mask]
-
-                if sample not in valid_indices:
-                    return False
-
-        elif sampling_type == "top_k_top_p":
-            if "top_k" not in params or "top_p" not in params:
-                return True
-            k = (
-                int(params["top_k"][i].item())
-                if params["top_k"].dim() > 0
-                else int(params["top_k"].item())
-            )
-            p = (
-                float(params["top_p"][i].item())
-                if params["top_p"].dim() > 0
-                else float(params["top_p"].item())
-            )
-
-            if 0 < k < vocab_size:
-                sorted_prob_desc, _ = torch.sort(prob_row, descending=True)
-                pivot = sorted_prob_desc[k - 1]
-                mask_top_k = (prob_row >= pivot).int()
-            else:
-                mask_top_k = torch.ones(vocab_size, dtype=torch.int32, device=device)
-
-            if 0 < p < 1:
-                eps = 1e-4
-                sorted_probs_asc, indices = torch.sort(prob_row, descending=False)
-                cdf = torch.cumsum(sorted_probs_asc, dim=0)
-                mask_top_p = torch.zeros(vocab_size, dtype=torch.int32, device=device)
-                valid_p_mask = cdf > (1 - p) - eps
-                mask_top_p[indices[valid_p_mask]] = 1
-            else:
-                mask_top_p = torch.ones(vocab_size, dtype=torch.int32, device=device)
-
-            joint_mask = torch.minimum(mask_top_k, mask_top_p)
-
-            if joint_mask[sample] != 1:
-                return False
-
-    return True
 
 
 def compute_frequency_distribution(

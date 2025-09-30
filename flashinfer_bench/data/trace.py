@@ -82,8 +82,8 @@ class Correctness(BaseModelWithDocstrings):
     """Maximum relative error observed across all output elements."""
     max_absolute_error: float = Field(default=0.0)
     """Maximum absolute error observed across all output elements."""
-    max_percentage: Optional[float] = Field(default=None)
-    """Percentage of elements considered for error calculation (used for fused_moe operations)."""
+    matched_ratio: Optional[float] = Field(default=None)
+    """Ratio of elements that matched within tolerance (used for fused_moe operations)."""
 
     @field_validator("max_relative_error", "max_absolute_error")
     @classmethod
@@ -94,11 +94,11 @@ class Correctness(BaseModelWithDocstrings):
             raise ValueError("must be non-negative or NaN")
         return v
 
-    @field_validator("max_percentage")
+    @field_validator("matched_ratio")
     @classmethod
-    def validate_max_percentage(cls, v: Optional[float]):
-        if v is not None and not (0.0 < v <= 100.0):
-            raise ValueError("must be between 0 and 100")
+    def validate_matched_ratio(cls, v: Optional[float]):
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("must be between 0 and 1")
         return v
 
 

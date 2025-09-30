@@ -8,13 +8,7 @@ import torch
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import Runnable
-from flashinfer_bench.data import (
-    Correctness,
-    Definition,
-    Evaluation,
-    EvaluationStatus,
-    Performance,
-)
+from flashinfer_bench.data import Correctness, Definition, Evaluation, EvaluationStatus, Performance
 from flashinfer_bench.utils import torch_dtype_from_def
 
 from .runner_utils import (
@@ -28,12 +22,12 @@ from .runner_utils import (
 
 def _detect_sampling_type(defn: Definition) -> str:
     """Detect the type of sampling operation from the definition name.
-    
+
     Parameters
     ----------
     defn : Definition
         Operation definition.
-        
+
     Returns
     -------
     str
@@ -54,7 +48,7 @@ def _validate_sampling_tokens(
     samples: torch.Tensor, probs: torch.Tensor, sampling_type: str, params: Dict[str, Any]
 ) -> bool:
     """Validate that sampled tokens conform to sampling constraints.
-    
+
     Parameters
     ----------
     samples : torch.Tensor
@@ -65,7 +59,7 @@ def _validate_sampling_tokens(
         Type of sampling: "top_k", "top_p", "top_k_top_p", or "basic".
     params : Dict[str, Any]
         Sampling parameters (top_k, top_p values).
-        
+
     Returns
     -------
     bool
@@ -149,7 +143,7 @@ def _validate_sampling_tokens(
     return True
 
 
-class SolutionEvaluator: 
+class SolutionEvaluator:
     @staticmethod
     def evaluate(
         runnable_sol: Runnable,
@@ -162,7 +156,7 @@ class SolutionEvaluator:
         defn: Definition,
     ) -> Evaluation:
         """Evaluate a solution against reference outputs.
-        
+
         Parameters
         ----------
         runnable_sol : Runnable
@@ -181,7 +175,7 @@ class SolutionEvaluator:
             Path to log file.
         defn : Definition
             Operation definition.
-            
+
         Returns
         -------
         Evaluation
@@ -192,11 +186,11 @@ class SolutionEvaluator:
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=device,
                 log_file=log_path,
-                error="No reference outputs provided"
+                error="No reference outputs provided",
             )
-        
+
         is_sampling = is_sampling_operation(defn)
-        
+
         if is_sampling:
             eval_result, max_abs, max_rel, numerical_incorrect = (
                 SamplingValidator.validate_correctness(
@@ -210,16 +204,14 @@ class SolutionEvaluator:
                     runnable_sol, inputs, ref_outputs, cfg, device, log_path, defn
                 )
             )
-        
+
         if eval_result is not None:
             return eval_result
-        
+
         correctness = Correctness(
-            max_relative_error=max_rel,
-            max_absolute_error=max_abs,
-            matched_ratio=matched_ratio_used
+            max_relative_error=max_rel, max_absolute_error=max_abs, matched_ratio=matched_ratio_used
         )
-        
+
         if numerical_incorrect:
             return make_eval(
                 status=EvaluationStatus.INCORRECT_NUMERICAL,
@@ -227,29 +219,29 @@ class SolutionEvaluator:
                 correctness=correctness,
                 device=device,
             )
-        
+
         # Measure performance
         try:
             soln_lats: List[float] = []
             for inp in inputs:
                 lat_ms = time_runnable(runnable_sol, inp, cfg.warmup_runs, cfg.iterations, device)
                 soln_lats.append(lat_ms)
-            
+
             if not soln_lats:
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
                     log_file=log_path,
-                    error="Failed to collect solution latencies"
+                    error="Failed to collect solution latencies",
                 )
-            
+
             soln_mean_latency_ms = sum(soln_lats) / float(len(soln_lats))
             performance = Performance(
                 latency_ms=soln_mean_latency_ms,
                 reference_latency_ms=ref_mean_latency_ms,
                 speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
             )
-            
+
             return make_eval(
                 status=EvaluationStatus.PASSED,
                 device=device,
@@ -257,13 +249,13 @@ class SolutionEvaluator:
                 correctness=correctness,
                 performance=performance,
             )
-            
+
         except Exception as e:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=device,
                 log_file=log_path,
-                error=f"Performance measurement failed: {str(e)}"
+                error=f"Performance measurement failed: {str(e)}",
             )
 
 
@@ -279,7 +271,7 @@ class SamplingValidator:
         defn: Definition,
     ) -> Tuple[Optional[Evaluation], float, float, bool]:
         """Validate correctness for sampling operations.
-        
+
         Parameters
         ----------
         runnable_sol : Runnable
@@ -296,14 +288,14 @@ class SamplingValidator:
             Path to log file.
         defn : Definition
             Operation definition.
-            
+
         Returns
         -------
         Tuple[Optional[Evaluation], float, float, bool]
             A tuple containing:
             - Optional evaluation object if error occurred, None otherwise
             - Maximum absolute error
-            - Maximum relative error  
+            - Maximum relative error
             - Whether numerical correctness check failed
         """
         sampling_type = _detect_sampling_type(defn)
@@ -407,7 +399,7 @@ class DefaultValidator:
         defn: Definition,
     ) -> Tuple[Optional[Evaluation], float, float, bool, Optional[float]]:
         """Validate correctness for non-sampling operations.
-        
+
         Parameters
         ----------
         runnable_sol : Runnable
@@ -424,7 +416,7 @@ class DefaultValidator:
             Path to log file.
         defn : Definition
             Operation definition.
-            
+
         Returns
         -------
         Tuple[Optional[Evaluation], float, float, bool, Optional[float]]
@@ -522,8 +514,7 @@ class DefaultValidator:
 
                 if non_finite_err_val is not None:
                     correctness = Correctness(
-                        max_relative_error=non_finite_err_val,
-                        max_absolute_error=non_finite_err_val
+                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
                     )
                     return (
                         make_eval(
