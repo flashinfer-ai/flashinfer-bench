@@ -1,6 +1,5 @@
 import sys
-from typing import Any, Dict
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -12,12 +11,7 @@ from flashinfer_bench.bench.runner.evaluator import (
     SolutionEvaluator,
 )
 from flashinfer_bench.compile import Runnable
-from flashinfer_bench.data import (
-    AxisConst,
-    Definition,
-    EvaluationStatus,
-    TensorSpec,
-)
+from flashinfer_bench.data import AxisConst, Definition, EvaluationStatus, TensorSpec
 
 
 def _simple_def():
@@ -37,10 +31,7 @@ def _sampling_def():
     return Definition(
         name="top_k_sampling",
         op_type="sampling",
-        axes={
-            "batch_size": AxisConst(value=2),
-            "vocab_size": AxisConst(value=100),
-        },
+        axes={"batch_size": AxisConst(value=2), "vocab_size": AxisConst(value=100)},
         inputs={
             "probs": TensorSpec(shape=["batch_size", "vocab_size"], dtype="float32"),
             "top_k": TensorSpec(shape=None, dtype="int32"),
@@ -55,7 +46,7 @@ class TestDefaultValidator:
     """Tests for DefaultValidator correctness checking."""
 
     def test_validate_correct_output(self):
-        """Test validation passes for correct outputs."""        
+        """Test validation passes for correct outputs."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
@@ -64,7 +55,7 @@ class TestDefaultValidator:
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = ref_out["B"]
 
         eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio = (
@@ -93,7 +84,7 @@ class TestDefaultValidator:
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = torch.tensor([1.0, 2.0], device=device)  # Wrong shape
 
         eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio = (
@@ -121,7 +112,7 @@ class TestDefaultValidator:
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32, device=device)}
-        
+
         runnable.return_value = torch.tensor([1, 2, 3, 4], dtype=torch.int32, device=device)
 
         eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio = (
@@ -142,16 +133,14 @@ class TestDefaultValidator:
     def test_validate_numerical_error(self):
         """Test validation detects numerical errors exceeding tolerance."""
         defn = _simple_def()
-        cfg = BenchmarkConfig(
-            num_trials=1, warmup_runs=0, iterations=1, atol=1e-5, rtol=1e-5
-        )
+        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-5, rtol=1e-5)
 
         device = "cuda:0"
         # Create mock runnable that returns incorrect numerical result
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         # Large error exceeding tolerance
         runnable.return_value = torch.tensor([1.0, 2.0, 3.0, 10.0], device=device)
 
@@ -181,8 +170,8 @@ class TestDefaultValidator:
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
-        runnable.return_value = torch.tensor([1.0, 2.0, float('inf'), 4.0], device=device)
+
+        runnable.return_value = torch.tensor([1.0, 2.0, float("inf"), 4.0], device=device)
 
         eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio = (
             DefaultValidator.validate_correctness(
@@ -199,7 +188,7 @@ class TestDefaultValidator:
         assert eval_result is not None
         assert eval_result.status == EvaluationStatus.INCORRECT_NUMERICAL
         assert eval_result.correctness is not None
-        assert eval_result.correctness.max_absolute_error == float('inf')
+        assert eval_result.correctness.max_absolute_error == float("inf")
 
     def test_validate_nan_output(self):
         """Test validation detects NaN values."""
@@ -211,8 +200,8 @@ class TestDefaultValidator:
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
-        runnable.return_value = torch.tensor([1.0, float('nan'), 3.0, 4.0], device=device)
+
+        runnable.return_value = torch.tensor([1.0, float("nan"), 3.0, 4.0], device=device)
 
         eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio = (
             DefaultValidator.validate_correctness(
@@ -238,7 +227,7 @@ class TestDefaultValidator:
         # Create mock runnable that raises exception
         runnable = MagicMock(spec=Runnable)
         runnable.side_effect = RuntimeError("Test error")
-        
+
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0])}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0])}
 
@@ -267,10 +256,7 @@ class TestSamplingValidator:
         """Test validation detects samples outside vocabulary range."""
         defn = _sampling_def()
         cfg = BenchmarkConfig(
-            num_trials=1,
-            warmup_runs=0,
-            iterations=1,
-            sampling_validation_trials=1,
+            num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
 
         device = "cuda:0"
@@ -278,23 +264,21 @@ class TestSamplingValidator:
         runnable = MagicMock(spec=Runnable)
         probs = torch.softmax(torch.randn(2, 100), dim=-1).to(device)
         inp = {"probs": probs, "top_k": 10}
-        
+
         # Samples outside vocab range [0, 100)
         runnable.return_value = torch.tensor([50, 150], device=device)  # 150 is out of range
-        
+
         ref_freq = torch.zeros(100, device=device)
         ref_out = {"frequency_distribution": ref_freq}
 
-        eval_result, max_abs, max_rel, numerical_incorrect = (
-            SamplingValidator.validate_correctness(
-                runnable_sol=runnable,
-                inputs=[inp],
-                ref_outputs_bl=[ref_out],
-                cfg=cfg,
-                device=device,
-                log_path="/tmp/test.log",
-                defn=defn,
-            )
+        eval_result, max_abs, max_rel, numerical_incorrect = SamplingValidator.validate_correctness(
+            runnable_sol=runnable,
+            inputs=[inp],
+            ref_outputs_bl=[ref_out],
+            cfg=cfg,
+            device=device,
+            log_path="/tmp/test.log",
+            defn=defn,
         )
 
         assert eval_result is not None
@@ -305,32 +289,27 @@ class TestSamplingValidator:
         """Test sampling validation handles runtime errors."""
         defn = _sampling_def()
         cfg = BenchmarkConfig(
-            num_trials=1,
-            warmup_runs=0,
-            iterations=1,
-            sampling_validation_trials=1,
+            num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
 
         device = "cuda:0"
         # Create mock runnable that raises exception
         runnable = MagicMock(spec=Runnable)
         runnable.side_effect = RuntimeError("Sampling error")
-        
+
         probs = torch.softmax(torch.randn(2, 100), dim=-1).to(device)
         inp = {"probs": probs, "top_k": 10}
         ref_freq = torch.zeros(100, device=device)
         ref_out = {"frequency_distribution": ref_freq}
 
-        eval_result, max_abs, max_rel, numerical_incorrect = (
-            SamplingValidator.validate_correctness(
-                runnable_sol=runnable,
-                inputs=[inp],
-                ref_outputs_bl=[ref_out],
-                cfg=cfg,
-                device=device,
-                log_path="/tmp/test.log",
-                defn=defn,
-            )
+        eval_result, max_abs, max_rel, numerical_incorrect = SamplingValidator.validate_correctness(
+            runnable_sol=runnable,
+            inputs=[inp],
+            ref_outputs_bl=[ref_out],
+            cfg=cfg,
+            device=device,
+            log_path="/tmp/test.log",
+            defn=defn,
         )
 
         assert eval_result is not None
@@ -346,10 +325,10 @@ class TestSolutionEvaluator:
         """Test evaluation with empty reference outputs."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
-        
+
         device = "cuda:0"
         runnable = MagicMock(spec=Runnable)
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[{"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}],
@@ -368,15 +347,15 @@ class TestSolutionEvaluator:
         """Test evaluation of a correct solution."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
-        
+
         device = "cuda:0"
         # Create mock runnable that returns correct output
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = ref_out["B"]
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[inp],
@@ -397,18 +376,16 @@ class TestSolutionEvaluator:
     def test_evaluate_incorrect_numerical(self):
         """Test evaluation of numerically incorrect solution."""
         defn = _simple_def()
-        cfg = BenchmarkConfig(
-            num_trials=1, warmup_runs=0, iterations=1, atol=1e-5, rtol=1e-5
-        )
-        
+        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-5, rtol=1e-5)
+
         device = "cuda:0"
         # Create mock runnable with large error
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = torch.tensor([1.0, 2.0, 3.0, 100.0], device=device)  # Large error
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[inp],
@@ -428,15 +405,15 @@ class TestSolutionEvaluator:
         """Test evaluation detects shape errors."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
-        
+
         device = "cuda:0"
         # Create mock runnable with wrong shape
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = torch.tensor([1.0, 2.0], device=device)  # Wrong shape
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[inp],
@@ -454,19 +431,19 @@ class TestSolutionEvaluator:
         """Test evaluation handles performance measurement errors."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
-        
+
         device = "cuda:0"
         # Create mock runnable that works for validation but fails for perf
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         # First call for validation succeeds, subsequent calls for perf fail
         runnable.side_effect = [
             ref_out["B"],  # First call for validation
             RuntimeError("Performance measurement failed"),  # Second call for perf
         ]
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[inp],
@@ -490,14 +467,14 @@ class TestEvaluatorWithGPU:
         """Test evaluation on GPU device."""
         defn = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
-        
+
         device = "cuda:0"
         runnable = MagicMock(spec=Runnable)
         inp = {"A": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)}
-        
+
         runnable.return_value = ref_out["B"]
-        
+
         evaluation = SolutionEvaluator.evaluate(
             runnable_sol=runnable,
             inputs=[inp],
@@ -514,4 +491,4 @@ class TestEvaluatorWithGPU:
 
 
 if __name__ == "__main__":
-    pytest.main(sys.argv) 
+    pytest.main(sys.argv)

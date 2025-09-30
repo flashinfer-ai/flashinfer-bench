@@ -17,7 +17,9 @@ class BenchmarkConfig:
     atol: float = field(default=1e-2)
     log_dir: str = field(default="/tmp/flashinfer_bench")
     use_isolated_runner: bool = field(default=False)
-    max_percentage: float = field(default=95.0)
+    required_matched_ratio: float = field(default=0.95)
+    sampling_validation_trials: int = field(default=100)
+    sampling_similarity_threshold: float = field(default=0.95)
 
     def __post_init__(self):
         if self.warmup_runs < 0:
@@ -32,7 +34,15 @@ class BenchmarkConfig:
             raise ValueError("rtol must be a float")
         if not isinstance(self.atol, float):
             raise ValueError("atol must be a float")
-        if not (0.0 < self.max_percentage <= 100.0):
-            raise ValueError("max_percentage must be between 0 and 100")
-        if not isinstance(self.max_percentage, float):
-            raise ValueError("max_percentage must be a float")
+        if not (0.0 < self.required_matched_ratio <= 1.0):
+            raise ValueError("required_matched_ratio must be between 0 and 1")
+        if not isinstance(self.required_matched_ratio, float):
+            raise ValueError("required_matched_ratio must be a float")
+        if self.sampling_validation_trials <= 0:
+            raise ValueError("sampling_validation_trials must be > 0")
+        if not isinstance(self.sampling_validation_trials, int):
+            raise ValueError("sampling_validation_trials must be an int")
+        if not (0.0 < self.sampling_similarity_threshold <= 1.0):
+            raise ValueError("sampling_similarity_threshold must be between 0 and 1")
+        if not isinstance(self.sampling_similarity_threshold, float):
+            raise ValueError("sampling_similarity_threshold must be a float")

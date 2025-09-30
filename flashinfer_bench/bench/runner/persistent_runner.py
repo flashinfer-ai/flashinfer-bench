@@ -17,17 +17,16 @@ from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import BuildError, Runnable, get_registry
 from flashinfer_bench.data import (
-    Correctness,
     Definition,
     Evaluation,
     EvaluationStatus,
-    Performance,
     Solution,
     Workload,
 )
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import list_cuda_devices, torch_dtype_from_def
 
+from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 from .runner_utils import (
     compute_frequency_distribution,
@@ -37,7 +36,6 @@ from .runner_utils import (
     make_eval,
     normalize_outputs,
 )
-from .evaluator import SolutionEvaluator
 
 LOGGER = get_logger("PersistentRunner")
 
@@ -70,7 +68,7 @@ class SolutionFailureRecord:
 class PersistentSubprocessWorker:
     def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
         """Per device persistent subprocess worker
-        
+
         Parameters
         ----------
         device : str
@@ -209,7 +207,7 @@ class PersistentSubprocessWorker:
 
     def restart(self) -> bool:
         """Restart the worker process.
-        
+
         Returns
         -------
         bool
@@ -468,7 +466,7 @@ class PersistentSubprocessWorker:
 class PersistentRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
         """Initialize the persistent runner with multiple workers.
-        
+
         Parameters
         ----------
         logger : logging.Logger
@@ -570,7 +568,7 @@ class PersistentRunner(Runner):
         root: Path,
     ) -> Dict[str, Evaluation]:
         """Run a workload with the given solutions and return evaluation results.
-        
+
         Parameters
         ----------
         defn : Definition
@@ -583,7 +581,7 @@ class PersistentRunner(Runner):
             Benchmark configuration.
         root : Path
             Root path for the trace set.
-            
+
         Returns
         -------
         Dict[str, Evaluation]
@@ -702,9 +700,9 @@ class PersistentRunner(Runner):
 
 def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir: str) -> None:
     """Long-lived worker process that handles solution evaluations.
-    
+
     Caches compiled solutions to avoid recompilation (handled in builder registry).
-    
+
     Parameters
     ----------
     conn : mp.connection.Connection
@@ -849,5 +847,5 @@ def _evaluate_solution_worker(
         cfg=cfg,
         device=device,
         log_path=log_path,
-        defn=defn
+        defn=defn,
     )
