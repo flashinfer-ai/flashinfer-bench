@@ -484,13 +484,7 @@ class PersistentRunner(Runner):
         self._worker_max_retries = 3
 
         self._available_devices = list_cuda_devices()
-        #self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
-        # Temp: only use device 0
-        if len(self._available_devices) == 0:
-            raise RuntimeError("No CUDA devices available")
-        device_0 = self._available_devices[0]  # Use only the first device
-        self._workers = [PersistentSubprocessWorker(device_0, log_dir)]
-        # Temp
+        self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
         self._curr_worker_idx = 0
 
         if len(self._workers) == 0:

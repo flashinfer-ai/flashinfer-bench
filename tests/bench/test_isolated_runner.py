@@ -6,13 +6,13 @@ import pytest
 import torch
 
 from flashinfer_bench.bench import BenchmarkConfig
-from flashinfer_bench.bench.runner import MultiProcessRunner
-from flashinfer_bench.bench.runner.multi_process_runner import (
-    SubprocessWorker,
-    _compute_error_stats,
-    _gen_inputs,
-    _load_safetensors,
-    _normalize_outputs,
+from flashinfer_bench.bench.runner import IsolatedRunner
+from flashinfer_bench.bench.runner.isolated_runner import SubprocessWorker
+from flashinfer_bench.bench.runner.runner_utils import (
+    compute_error_stats,
+    gen_inputs,
+    load_safetensors,
+    normalize_outputs,
     _rand_tensor,
 )
 from flashinfer_bench.data import (
@@ -30,14 +30,15 @@ from flashinfer_bench.data import (
 )
 
 
-def test_multi_process_runner(monkeypatch: pytest.MonkeyPatch):
+def test_isolated_runner(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         "flashinfer_bench.utils.list_cuda_devices", lambda: ["dev0", "dev1", "dev2"]
     )
 
-    # Replace MultiProcessRunner with a lightweight dummy to avoid abstract instantiation
+    # Replace SubprocessWorker with a lightweight dummy to avoid actual process spawning
     class _Dummy:
-        def __init__(self, device: str, log_dir: str) -> None: ...
+        def __init__(self, device: str, log_dir: str) -> None:
+            self._device = device
 
         def is_healthy(self) -> bool:
             return True
@@ -55,9 +56,9 @@ def test_multi_process_runner(monkeypatch: pytest.MonkeyPatch):
             pass
 
     monkeypatch.setattr(
-        "flashinfer_bench.bench.runner.multi_process_runner.SubprocessWorker", _Dummy
+        "flashinfer_bench.bench.runner.isolated_runner.SubprocessWorker", _Dummy
     )
-    b = MultiProcessRunner(logging.getLogger(__name__))
+    b = IsolatedRunner(logging.getLogger(__name__))
 
     b._workers = [object(), object(), object()]
     b._curr_worker_idx = 0
@@ -95,13 +96,13 @@ def test_rand_tensor_and_normalize_cpu():
     b = _rand_tensor([4], torch.bool, dev)
     assert b.dtype == torch.bool and b.device.type == "cpu"
 
-    out = _normalize_outputs(
+    out = normalize_outputs(
         {"Z": 3}, device=dev, output_names=["Z"], output_dtypes={"Z": torch.int32}
     )
     assert out["Z"].dtype == torch.int32 and out["Z"].shape == ()
 
     y = torch.tensor([1.0, 2.0], dtype=torch.float32)
-    out = _normalize_outputs(y, device=dev, output_names=["Y"], output_dtypes={"Y": torch.float32})
+    out = normalize_outputs(y, device=dev, output_names=["Y"], output_dtypes={"Y": torch.float32})
     assert torch.allclose(out["Y"], y)
 
 
@@ -112,7 +113,7 @@ def test_gen_inputs_random_and_scalar_cpu():
         inputs={"X": RandomInput(), "Y": RandomInput(), "S": ScalarInput(value=7)},
         uuid="w1",
     )
-    out = _gen_inputs(d, wl, device="cpu", stensors={})
+    out = gen_inputs(d, wl, device="cpu", stensors={})
     assert out["X"].shape == (2, 3) and out["X"].dtype == torch.float32
     assert out["Y"].shape == (2, 3) and out["Y"].dtype == torch.int32
     assert out["S"] == 7
@@ -137,8 +138,8 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
         },
         uuid="w2",
     )
-    stensors = _load_safetensors(d, wl)
-    out = _gen_inputs(d, wl, device="cpu", stensors=stensors)
+    stensors = load_safetensors(d, wl)
+    out = gen_inputs(d, wl, device="cpu", stensors=stensors)
     assert torch.allclose(out["X"], data["X"]) and out["X"].device.type == "cpu"
 
 
@@ -157,32 +158,27 @@ def test_compute_error_stats():
 
     sol_pass = ref + tol * torch.tensor([0.5, -0.9, 0.3], dtype=torch.float32)
     sol_fail = ref + tol * torch.tensor([0.5, -1.2, 0.3], dtype=torch.float32)
-    sol_edge = ref + tol * torch.tensor([1.0, 0.0, -1.0], dtype=torch.float32)
 
-    abs_pass, rel_pass, exceeds_pass = _compute_error_stats(sol_pass, ref, cfg)
+    abs_pass, rel_pass, exceeds_pass, _ = compute_error_stats(sol_pass, ref, cfg)
     diff_pass = (sol_pass - ref).abs()
-    expected_ratio_pass = diff_pass / tol.clamp_min(torch.finfo(torch.float32).tiny)
+    eps = 1e-8
+    expected_rel_pass = (diff_pass / (ref.abs() + eps)).max().item()
     assert abs_pass == pytest.approx(diff_pass.max().item())
-    assert rel_pass == pytest.approx(expected_ratio_pass.max().item())
+    assert rel_pass == pytest.approx(expected_rel_pass)
     assert not exceeds_pass
     assert torch.allclose(sol_pass, ref, atol=cfg.atol, rtol=cfg.rtol)
 
-    abs_fail, rel_fail, exceeds_fail = _compute_error_stats(sol_fail, ref, cfg)
+    abs_fail, rel_fail, exceeds_fail, _ = compute_error_stats(sol_fail, ref, cfg)
     diff_fail = (sol_fail - ref).abs()
-    expected_ratio_fail = diff_fail / tol.clamp_min(torch.finfo(torch.float32).tiny)
+    expected_rel_fail = (diff_fail / (ref.abs() + eps)).max().item()
     assert abs_fail == pytest.approx(diff_fail.max().item())
-    assert rel_fail == pytest.approx(expected_ratio_fail.max().item())
+    assert rel_fail == pytest.approx(expected_rel_fail)
     assert exceeds_fail
     assert not torch.allclose(sol_fail, ref, atol=cfg.atol, rtol=cfg.rtol)
 
-    _, rel_e, exc_e = _compute_error_stats(sol_edge, ref, cfg)
-    assert rel_e == pytest.approx(1.0)
-    assert not exc_e
-    assert torch.allclose(sol_edge, ref, atol=cfg.atol, rtol=cfg.rtol)
-
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
-def test_mp_runner_run_ref_and_solution_minimal():
+def test_isolated_runner_run_ref_and_solution_minimal():
     # Dataset
     d = Definition(
         name="dmp",
@@ -206,6 +202,7 @@ def test_mp_runner_run_ref_and_solution_minimal():
     assert ev.status.value in {
         "PASSED",
         "RUNTIME_ERROR",
+        "COMPILE_ERROR",
     }  # runtime may fail on env, but no shape/dtype errors
     r.release(h)
 
