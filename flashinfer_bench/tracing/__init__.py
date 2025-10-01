@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from .builtin_config import (
-    BUILTIN_DEDUP_POLICY_FACTORIES,
-    DedupByAvgSeqLenPolicy,
-    DedupByAxesPolicy,
-    KeepAllPolicy,
-    KeepFirstKPolicy,
-)
+from .builtin_config import AttentionDedupPolicy
 from .tracing import disable_tracing, enable_tracing
-from .tracing_config import DedupPolicy, TracingConfig, WorkloadEntry
+from .tracing_config import TracingConfig
+from .tracing_policies import (
+    BUILTIN_DEDUP_POLICY_FACTORIES,
+    BUILTIN_TENSORS_DUMP_FUNCTIONS,
+    DedupPolicy,
+    DedupPolicyFactory,
+    KeepAllPolicy,
+    KeepFirstByAxesPolicy,
+    KeepFirstKPolicy,
+    TensorsToDumpFunction,
+    WorkloadEntry,
+    dump_all,
+    dump_int32,
+    dump_none,
+)
 from .tracing_runtime import TracingRuntime, get_tracing_runtime
 
 __all__ = [
@@ -19,9 +27,15 @@ __all__ = [
     "TracingConfig",
     "WorkloadEntry",
     "DedupPolicy",
+    "DedupPolicyFactory",
+    "TensorsToDumpFunction",
+    "BUILTIN_DEDUP_POLICY_FACTORIES",
     "KeepAllPolicy",
     "KeepFirstKPolicy",
-    "DedupByAxesPolicy",
-    "DedupByAvgSeqLenPolicy",
-    "BUILTIN_DEDUP_POLICY_FACTORIES",
+    "KeepFirstByAxesPolicy",
+    "AttentionDedupPolicy",
+    "BUILTIN_TENSORS_DUMP_FUNCTIONS",
+    "dump_all",
+    "dump_none",
+    "dump_int32",
 ]

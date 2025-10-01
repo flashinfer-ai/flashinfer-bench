@@ -19,7 +19,8 @@ from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
 
-from .tracing_config import DedupPolicy, TracingConfig, WorkloadEntry
+from .tracing_config import TracingConfig
+from .tracing_policies import DedupPolicy, WorkloadEntry
 
 logger = get_logger("TracingRuntime")
 

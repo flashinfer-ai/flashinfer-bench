@@ -2,12 +2,13 @@ import sys
 
 import pytest
 
-from flashinfer_bench.tracing.builtin_config import (
-    DedupByAxesPolicy,
+from flashinfer_bench.tracing.tracing_config import TracingConfig
+from flashinfer_bench.tracing.tracing_policies import (
     KeepAllPolicy,
+    KeepFirstByAxesPolicy,
     KeepFirstKPolicy,
+    WorkloadEntry,
 )
-from flashinfer_bench.tracing.tracing_config import TracingConfig, WorkloadEntry
 
 
 def test_factory_creates_independent_instances():
@@ -20,9 +21,9 @@ def test_factory_creates_independent_instances():
 
 def test_factory_with_lambda():
     """Test that lambda factories work correctly."""
-    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: DedupByAxesPolicy(k=5))
+    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstByAxesPolicy(k=5))
     policy = config.create_dedup_policy()
-    assert isinstance(policy, DedupByAxesPolicy)
+    assert isinstance(policy, KeepFirstByAxesPolicy)
     assert policy.k == 5
 
 
@@ -44,7 +45,7 @@ def test_builtin_policies_create_correct_types():
     configs = [
         ("keep_all", KeepAllPolicy),
         ("keep_first", KeepFirstKPolicy),
-        ("dedup_by_axes", DedupByAxesPolicy),
+        ("keep_first_by_axes", KeepFirstByAxesPolicy),
     ]
 
     for literal, expected_type in configs:

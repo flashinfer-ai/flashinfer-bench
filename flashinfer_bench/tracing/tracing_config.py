@@ -1,92 +1,54 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union
+from typing import Any, Dict, List, Literal, Union
+
+from .tracing_policies import (
+    BUILTIN_DEDUP_POLICY_FACTORIES,
+    BUILTIN_TENSORS_DUMP_FUNCTIONS,
+    DedupPolicy,
+    DedupPolicyFactory,
+    TensorsToDumpFunction,
+)
+
+TensorsToDumpLiteral = Literal["dump_all", "dump_none", "dump_int32"]
+"""Possible tensors_to_dump literals."""
 
 
-@dataclass
-class WorkloadEntry:
-    """In-memory buffer entry for collected workloads."""
-
-    def_name: str
-    """Name of the definition this workload entry belongs to."""
-
-    axes: Dict[str, int]
-    """Dictionary mapping axis names to their concrete integer values."""
-
-    tensors_to_dump: Dict[str, Any]
-    """Tensors to dump. Maps input name to the tensor to dump."""
-
-    order: int
-    """Sequential order number for this entry in the collection process."""
-
-    cuda_graph_snapshot: Optional[Dict[str, Any]] = None
-    """CPU snapshot of tensors collected during CUDA Graph replay, if applicable."""
-
-
-class DedupPolicy(Protocol):
-    """Protocol for workload deduplication policy.
-
-    A dedup policy maintains internal state and supports both online and offline
-    deduplication strategies. Entries are submitted one at a time via submit(),
-    and selected entries are retrieved via drain().
-    """
-
-    def submit(self, entry: WorkloadEntry) -> None:
-        """Submit a workload entry for deduplication consideration.
-
-        Parameters
-        ----------
-        entry : WorkloadEntry
-            The workload entry to submit.
-        """
-        ...
-
-    def drain(self) -> List[WorkloadEntry]:
-        """Drain and return all selected entries.
-
-        Returns
-        -------
-        List[WorkloadEntry]
-            List of entries that passed the deduplication policy.
-            After calling this method, the internal buffer is cleared.
-        """
-        ...
-
-    def reset(self) -> None:
-        """Reset the internal state of the deduplication policy.
-
-        This method should be called when starting a new deduplication session
-        to clear any cached state or statistics.
-        """
-        ...
-
-
-# Type alias for dedup policy factory function
-DedupPolicyLiteral = Literal["keep_all", "keep_first", "dedup_by_axes"]
-"""Possible dedup policy literals. See builtin_config.py for more the implementation of these
-policies."""
-
-DedupPolicyFactory = Callable[[], DedupPolicy]
-"""Factory function for dedup policy."""
+DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes"]
+"""Possible dedup policy literals."""
 
 
 @dataclass
 class TracingConfig:
     """Defines how to collect and deduplicate workloads for a definition."""
 
-    tensors_to_dump: Union[List[str], Callable[[Dict[str, Any]], List[str]]]
-    """Which inputs to persist. List[str] for static selection, Callable for dynamic."""
+    tensors_to_dump: Union[TensorsToDumpLiteral, List[str], TensorsToDumpFunction]
+    """Which inputs to persist. Can be:
+    - List[str]: static list of tensor names
+    - TensorsDumpLiteral: string literal for built-in dump functions
+    - Callable: custom function that selects tensors from runtime arguments
+    """
 
     dedup_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
-    """Deduplication policy factory. Can be a factory function or a string literal for built-in policies."""
+    """Deduplication policy factory. Can be a string literal for built-in policies or a factory
+    function for custom policies.
+    """
 
     def __post_init__(self):
-        """Convert literal dedup policy strings to factory functions."""
-        if isinstance(self.dedup_policy, str):
-            # Lazy import to avoid circular dependency
-            from .builtin_config import BUILTIN_DEDUP_POLICY_FACTORIES
+        """Convert literal strings to actual functions/factories."""
+        # Resolve tensors_to_dump literal
+        if isinstance(self.tensors_to_dump, str):
+            dump_func = BUILTIN_TENSORS_DUMP_FUNCTIONS.get(self.tensors_to_dump)
+            if dump_func is None:
+                raise ValueError(
+                    f"Unknown tensors_to_dump literal: {self.tensors_to_dump}. "
+                    f"Must be one of {list(BUILTIN_TENSORS_DUMP_FUNCTIONS.keys())}"
+                )
+            self.tensors_to_dump = dump_func
 
+        # Resolve dedup_policy literal
+        if isinstance(self.dedup_policy, str):
             factory = BUILTIN_DEDUP_POLICY_FACTORIES.get(self.dedup_policy)
             if factory is None:
                 raise ValueError(
