@@ -19,23 +19,11 @@ from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
 
+from .builtin_tracing_config import FULL_TRACING_CONFIGS
 from .tracing_config import TracingConfig
 from .tracing_policy import DedupPolicy, WorkloadEntry
 
 logger = get_logger("TracingRuntime")
-
-
-def _get_fib_full_tracing_configs() -> Dict[str, TracingConfig]:
-    """Get the full tracing configs for Fib.
-
-    Returns
-    -------
-    Dict[str, TracingConfig]
-        Dictionary mapping definition names to their tracing configurations.
-    """
-    from .builtin_tracing_config import fib_full_tracing
-
-    return fib_full_tracing
 
 
 def _init_tracing_runtime_from_env() -> Optional["TracingRuntime"]:
@@ -45,7 +33,7 @@ def _init_tracing_runtime_from_env() -> Optional["TracingRuntime"]:
         return None
     fib_dataset_path = get_fib_dataset_path()
     trace_set = TraceSet.from_path(fib_dataset_path)
-    tracing_configs = _get_fib_full_tracing_configs()
+    tracing_configs = FULL_TRACING_CONFIGS
     return TracingRuntime(trace_set, tracing_configs, None)
 
 
@@ -167,9 +155,7 @@ class TracingRuntime:
         """
         self._trace_set = trace_set
 
-        tracing_configs_non_null = (
-            tracing_configs if tracing_configs else _get_fib_full_tracing_configs()
-        )
+        tracing_configs_non_null = tracing_configs if tracing_configs else FULL_TRACING_CONFIGS
         self._tracing_configs = tracing_configs_non_null
 
         self._prev_runtime = prev_tracing_runtime

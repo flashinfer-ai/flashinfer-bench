@@ -252,6 +252,25 @@ class AttentionDedupPolicy:
         self.entries.clear()
 
 
+class KeepNonePolicy:
+    """Keep no entries."""
+
+    def __init__(self):
+        pass
+
+    def submit(self, entry: WorkloadEntry) -> None:
+        """Accept no entries."""
+        pass
+
+    def drain(self) -> List[WorkloadEntry]:
+        """Return no entries."""
+        return []
+
+    def reset(self) -> None:
+        """Clear all buffered entries."""
+        pass
+
+
 # ============================================================================
 # Built-in Dedup Policy Factories
 # ============================================================================
@@ -260,6 +279,7 @@ BUILTIN_DEDUP_POLICIES: Dict[str, DedupPolicyFactory] = {
     "keep_all": lambda: KeepAllPolicy(),
     "keep_first": lambda: KeepFirstKPolicy(k=1),
     "keep_first_by_axes": lambda: KeepFirstByAxesPolicy(k=1),
+    "keep_none": lambda: KeepNonePolicy(),
 }
 
 
