@@ -9,7 +9,7 @@ This module contains:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Hashable, List, Literal, Optional, Protocol
+from typing import Any, Callable, Dict, Hashable, List, Optional, Protocol
 
 import torch
 
