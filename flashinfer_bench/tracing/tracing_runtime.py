@@ -76,7 +76,7 @@ def set_tracing_runtime(rt: Optional["TracingRuntime"]) -> None:
     _global_tracing_runtime = rt
 
 
-def _axis_value(definition: Definition, axes: Dict[str, int], axis_name: str) -> int:
+def _get_axis_value(definition: Definition, axes: Dict[str, int], axis_name: str) -> int:
     """Get the integer value for a named axis from runtime axes or definition.
 
     Parameters
@@ -140,15 +140,7 @@ def _materialize_shape(
     """
     if shape is None:
         return None
-
-    dims: List[int] = []
-    for dim in shape:
-        if isinstance(dim, str):
-            dims.append(_axis_value(definition, axes, dim))
-        else:
-            raise ValueError(f"Unsupported shape {dim} in {shape}")
-
-    return tuple(dims)
+    return tuple(_get_axis_value(definition, axes, dim) for dim in shape)
 
 
 class TracingRuntime:
