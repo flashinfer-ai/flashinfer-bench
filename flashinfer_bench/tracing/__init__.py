@@ -4,8 +4,8 @@ from .builtin_tracing_config import AttentionDedupPolicy
 from .tracing import disable_tracing, enable_tracing
 from .tracing_config import TracingConfig
 from .tracing_policy import (
-    BUILTIN_DEDUP_POLICY_FACTORIES,
-    BUILTIN_TENSORS_DUMP_FUNCTIONS,
+    BUILTIN_DEDUP_POLICIES,
+    BUILTIN_TENSORS_TO_DUMPS,
     DedupPolicy,
     DedupPolicyFactory,
     KeepAllPolicy,
@@ -29,12 +29,12 @@ __all__ = [
     "DedupPolicy",
     "DedupPolicyFactory",
     "TensorsToDumpFunction",
-    "BUILTIN_DEDUP_POLICY_FACTORIES",
+    "BUILTIN_DEDUP_POLICIES",
     "KeepAllPolicy",
     "KeepFirstKPolicy",
     "KeepFirstByAxesPolicy",
     "AttentionDedupPolicy",
-    "BUILTIN_TENSORS_DUMP_FUNCTIONS",
+    "BUILTIN_TENSORS_TO_DUMPS",
     "dump_all",
     "dump_none",
     "dump_int32",

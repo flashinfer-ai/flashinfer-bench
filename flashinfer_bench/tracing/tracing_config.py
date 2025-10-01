@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union
 
 from .tracing_policy import (
-    BUILTIN_DEDUP_POLICY_FACTORIES,
-    BUILTIN_TENSORS_DUMP_FUNCTIONS,
+    BUILTIN_DEDUP_POLICIES,
+    BUILTIN_TENSORS_TO_DUMPS,
     DedupPolicy,
     DedupPolicyFactory,
     TensorsToDumpFunction,
@@ -41,21 +41,21 @@ class TracingConfig:
         """Convert literal strings to actual functions/factories."""
         # Resolve tensors_to_dump literal
         if isinstance(self.tensors_to_dump, str):
-            dump_func = BUILTIN_TENSORS_DUMP_FUNCTIONS.get(self.tensors_to_dump)
+            dump_func = BUILTIN_TENSORS_TO_DUMPS.get(self.tensors_to_dump)
             if dump_func is None:
                 raise ValueError(
                     f"Unknown tensors_to_dump literal: {self.tensors_to_dump}. "
-                    f"Must be one of {list(BUILTIN_TENSORS_DUMP_FUNCTIONS.keys())}"
+                    f"Must be one of {list(BUILTIN_TENSORS_TO_DUMPS.keys())}"
                 )
             self.tensors_to_dump = dump_func
 
         # Resolve dedup_policy literal
         if isinstance(self.dedup_policy, str):
-            factory = BUILTIN_DEDUP_POLICY_FACTORIES.get(self.dedup_policy)
+            factory = BUILTIN_DEDUP_POLICIES.get(self.dedup_policy)
             if factory is None:
                 raise ValueError(
                     f"Unknown dedup_policy literal: {self.dedup_policy}. "
-                    f"Must be one of {list(BUILTIN_DEDUP_POLICY_FACTORIES.keys())}"
+                    f"Must be one of {list(BUILTIN_DEDUP_POLICIES.keys())}"
                 )
             self.dedup_policy = factory
 

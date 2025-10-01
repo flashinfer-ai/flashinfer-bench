@@ -256,7 +256,7 @@ class AttentionDedupPolicy:
 # Built-in Dedup Policy Factories
 # ============================================================================
 
-BUILTIN_DEDUP_POLICY_FACTORIES: Dict[str, DedupPolicyFactory] = {
+BUILTIN_DEDUP_POLICIES: Dict[str, DedupPolicyFactory] = {
     "keep_all": lambda: KeepAllPolicy(),
     "keep_first": lambda: KeepFirstKPolicy(k=1),
     "keep_first_by_axes": lambda: KeepFirstByAxesPolicy(k=1),
@@ -292,7 +292,7 @@ def dump_int32(inputs: Dict[str, Any]) -> List[str]:
 
 
 # Built-in tensors_to_dump functions
-BUILTIN_TENSORS_DUMP_FUNCTIONS: Dict[str, TensorsToDumpFunction] = {
+BUILTIN_TENSORS_TO_DUMPS: Dict[str, TensorsToDumpFunction] = {
     "dump_all": dump_all,
     "dump_none": dump_none,
     "dump_int32": dump_int32,

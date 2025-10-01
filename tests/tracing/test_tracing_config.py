@@ -4,8 +4,8 @@ import pytest
 import torch
 
 from flashinfer_bench.tracing import (
-    BUILTIN_DEDUP_POLICY_FACTORIES,
-    BUILTIN_TENSORS_DUMP_FUNCTIONS,
+    BUILTIN_DEDUP_POLICIES,
+    BUILTIN_TENSORS_TO_DUMPS,
     AttentionDedupPolicy,
     KeepAllPolicy,
     KeepFirstByAxesPolicy,
@@ -175,13 +175,13 @@ def test_keep_first_by_axes_policy_reset():
     assert drained[0].order == 1
 
 
-def test_builtin_dedup_policy_factories_completeness():
+def test_builtin_dedup_policies_completeness():
     """Test that all builtin policy factories are registered."""
     expected_literals = ["keep_all", "keep_first", "keep_first_by_axes"]
 
     for literal in expected_literals:
-        assert literal in BUILTIN_DEDUP_POLICY_FACTORIES
-        factory = BUILTIN_DEDUP_POLICY_FACTORIES[literal]
+        assert literal in BUILTIN_DEDUP_POLICIES
+        factory = BUILTIN_DEDUP_POLICIES[literal]
         policy = factory()
         # Verify it has the protocol methods
         assert hasattr(policy, "submit")
@@ -190,7 +190,7 @@ def test_builtin_dedup_policy_factories_completeness():
 
 
 # ============================================================================
-# Tests for TensorsDump Functions
+# Tests for TensorsToDump Functions
 # ============================================================================
 
 
@@ -228,13 +228,13 @@ def test_dump_int32_function():
     assert set(result) == {"int32_tensor", "another_int32"}
 
 
-def test_builtin_tensors_dump_functions_completeness():
+def test_builtin_tensors_to_dumps_completeness():
     """Test that all builtin dump functions are registered."""
     expected_literals = ["dump_all", "dump_none", "dump_int32"]
 
     for literal in expected_literals:
-        assert literal in BUILTIN_TENSORS_DUMP_FUNCTIONS
-        func = BUILTIN_TENSORS_DUMP_FUNCTIONS[literal]
+        assert literal in BUILTIN_TENSORS_TO_DUMPS
+        func = BUILTIN_TENSORS_TO_DUMPS[literal]
         assert callable(func)
 
 
@@ -243,7 +243,7 @@ def test_builtin_tensors_dump_functions_completeness():
 # ============================================================================
 
 
-def test_tracing_config_with_literal_tensors_dump():
+def test_tracing_config_with_literal_tensors_to_dump():
     """Test TracingConfig with string literal for tensors_to_dump."""
     config = TracingConfig(tensors_to_dump="dump_all", dedup_policy="keep_all")
 
@@ -256,7 +256,7 @@ def test_tracing_config_with_literal_tensors_dump():
     assert result == ["tensor"]
 
 
-def test_tracing_config_with_list_tensors_dump():
+def test_tracing_config_with_list_tensors_to_dump():
     """Test TracingConfig with static list for tensors_to_dump."""
     config = TracingConfig(tensors_to_dump=["tensor1", "tensor2"], dedup_policy="keep_all")
 
@@ -265,7 +265,7 @@ def test_tracing_config_with_list_tensors_dump():
     assert result == ["tensor1", "tensor2"]
 
 
-def test_tracing_config_with_callable_tensors_dump():
+def test_tracing_config_with_callable_tensors_to_dump():
     """Test TracingConfig with custom callable for tensors_to_dump."""
 
     def custom_dump(inputs):
@@ -278,7 +278,7 @@ def test_tracing_config_with_callable_tensors_dump():
     assert set(result) == {"test_a", "test_b"}
 
 
-def test_tracing_config_invalid_tensors_dump_literal():
+def test_tracing_config_invalid_tensors_to_dump_literal():
     """Test TracingConfig raises error for invalid tensors_to_dump literal."""
     with pytest.raises(ValueError, match="Unknown tensors_to_dump literal"):
         TracingConfig(tensors_to_dump="invalid_literal", dedup_policy="keep_all")
