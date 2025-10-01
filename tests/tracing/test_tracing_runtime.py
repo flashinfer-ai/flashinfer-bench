@@ -3,9 +3,7 @@ import sys
 import pytest
 
 from flashinfer_bench.data import AxisVar, Definition, TensorSpec, TraceSet
-from flashinfer_bench.tracing.tracing_config import TracingConfig
-from flashinfer_bench.tracing.tracing_policies import KeepFirstKPolicy, WorkloadEntry
-from flashinfer_bench.tracing.tracing_runtime import TracingRuntime
+from flashinfer_bench.tracing import KeepFirstKPolicy, TracingConfig, TracingRuntime, WorkloadEntry
 
 
 @pytest.fixture

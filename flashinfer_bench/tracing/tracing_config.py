@@ -25,14 +25,16 @@ class TracingConfig:
 
     tensors_to_dump: Union[TensorsToDumpLiteral, List[str], TensorsToDumpFunction]
     """Which inputs to persist. Can be:
+    - TensorsToDumpLiteral: string literal for built-in dump functions
     - List[str]: static list of tensor names
-    - TensorsDumpLiteral: string literal for built-in dump functions
-    - Callable: custom function that selects tensors from runtime arguments
+    - TensorsToDumpFunction: custom function that selects tensors from runtime arguments
     """
 
     dedup_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
     """Deduplication policy factory. Can be a string literal for built-in policies or a factory
-    function for custom policies.
+    function for custom policies. Can be:
+    - DedupPolicyLiteral: string literal for built-in policies
+    - DedupPolicyFactory: custom factory function that creates a dedup policy instance
     """
 
     def __post_init__(self):
