@@ -15,7 +15,7 @@ import torch
 
 from flashinfer_bench.logging import get_logger
 
-logger = get_logger("TracingPolicies")
+logger = get_logger("TracingPolicy")
 
 
 # ============================================================================
