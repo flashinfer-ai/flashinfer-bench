@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -7,7 +8,7 @@ from flashinfer_bench.tracing import KeepFirstKPolicy, TracingConfig, TracingRun
 
 
 @pytest.fixture
-def minimal_traceset(tmp_path):
+def minimal_traceset(tmp_path: Path) -> TraceSet:
     """Create a minimal TraceSet for testing."""
     definitions = {
         "def1": Definition(
@@ -30,7 +31,7 @@ def minimal_traceset(tmp_path):
     return TraceSet(root=str(tmp_path), definitions=definitions, traces=[])
 
 
-def test_runtime_creates_independent_policies_per_definition(minimal_traceset):
+def test_runtime_creates_independent_policies_per_definition(minimal_traceset: TraceSet):
     """Test that each definition gets an independent policy instance."""
     config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
@@ -45,7 +46,7 @@ def test_runtime_creates_independent_policies_per_definition(minimal_traceset):
     assert policy2.k == 2
 
 
-def test_runtime_policy_state_isolation(minimal_traceset):
+def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
     """Test that policies for different definitions have isolated state."""
     config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
@@ -64,7 +65,7 @@ def test_runtime_policy_state_isolation(minimal_traceset):
     assert len(runtime._dedup_policies["def2"].entries) == 1
 
 
-def test_multiple_runtimes_share_config_safely(minimal_traceset):
+def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     """Test that multiple runtimes can share the same TracingConfig without conflicts."""
     config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
@@ -85,7 +86,7 @@ def test_multiple_runtimes_share_config_safely(minimal_traceset):
     assert len(policy2.entries) == 0
 
 
-def test_online_deduplication_on_collect(minimal_traceset):
+def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
     """Test that entries are submitted to dedup policy immediately during collect."""
     import torch
 
