@@ -2,7 +2,7 @@ import atexit
 import signal
 import threading
 import uuid
-from typing import Any, Dict, Hashable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
@@ -492,39 +492,43 @@ class TracingRuntime:
         )
 
     def _select_entries(self, def_name: str, entries: List[WorkloadEntry]) -> List[WorkloadEntry]:
+        """Apply online deduplication policy to select representative entries.
+
+        Parameters
+        ----------
+        def_name : str
+            Name of the definition.
+        entries : List[WorkloadEntry]
+            All entries for this definition.
+
+        Returns
+        -------
+        List[WorkloadEntry]
+            Selected entries after applying deduplication policy.
+        """
         tracing_config = self._tracing_configs.get(def_name)
         if tracing_config is None:
             logger.error(f"Recorded workload for {def_name} but its tracing config is not found")
             return []
 
-        # Bucketing by dedup_keys
-        buckets: Dict[Hashable, List[WorkloadEntry]] = {}
-        if tracing_config.dedup_keys:
-            for entry in entries:
-                try:
-                    key = tracing_config.dedup_keys(entry)
-                except Exception as err:
-                    logger.warning(f"dedup_keys error for {def_name}: {entry} because of {err}")
-                    key = "__err__"
-                if key is None:
-                    logger.warning(f"dedup_keys returned None for {def_name}: {entry}")
-                    key = "__none__"
-                buckets.setdefault(key, []).append(entry)
-        else:
-            # All in the same bucket
-            buckets.setdefault("__all__", []).extend(entries)
+        # Reset policy state before processing this batch
+        try:
+            tracing_config.dedup_policy.reset()
+        except Exception as err:
+            logger.warning(f"Failed to reset dedup_policy for {def_name}: {err}")
 
-        # Inside each bucket, run dedup_policy to pick representatives
+        # Apply online deduplication policy to each entry
         selected_entries: List[WorkloadEntry] = []
-        for bucket_entries in buckets.values():
+        for entry in entries:
             try:
-                selected_entries_in_one_bucket = tracing_config.dedup_policy(bucket_entries)
+                if tracing_config.dedup_policy(entry):
+                    selected_entries.append(entry)
             except Exception as err:
                 logger.warning(
-                    f"dedup_policy error for {def_name} because of {err}, keeping all entries"
+                    f"dedup_policy error for {def_name} on entry {entry.order}: {err}, keeping entry"
                 )
-                selected_entries_in_one_bucket = bucket_entries
-            selected_entries.extend(selected_entries_in_one_bucket)
+                selected_entries.append(entry)
+
         return selected_entries
 
     def _convert_workload_entry_to_trace(self, entry: WorkloadEntry) -> Optional[Trace]:
