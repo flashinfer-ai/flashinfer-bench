@@ -5,14 +5,14 @@ from typing import Any, Dict, List, Literal, Union
 
 from .tracing_policy import (
     BUILTIN_DEDUP_POLICIES,
-    BUILTIN_TENSORS_TO_DUMPS,
+    BUILTIN_INPUT_DUMP_POLICIES,
     DedupPolicy,
     DedupPolicyFactory,
-    TensorsToDumpFunction,
+    InputDumpPolicyFunction,
 )
 
-TensorsToDumpLiteral = Literal["dump_all", "dump_none", "dump_int32"]
-"""Possible tensors_to_dump literals."""
+InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
+"""Possible input_dump_policy literals."""
 
 
 DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes"]
@@ -23,11 +23,11 @@ DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes"]
 class TracingConfig:
     """Defines how to collect and deduplicate workloads for a definition."""
 
-    tensors_to_dump: Union[TensorsToDumpLiteral, List[str], TensorsToDumpFunction]
+    input_dump_policy: Union[InputDumpPolicyLiteral, List[str], InputDumpPolicyFunction]
     """Which inputs to persist. Can be:
-    - TensorsToDumpLiteral: string literal for built-in dump functions
+    - InputDumpPolicyLiteral: string literal for built-in dump functions
     - List[str]: static list of tensor names
-    - TensorsToDumpFunction: custom function that selects tensors from runtime arguments
+    - InputDumpPolicyFunction: custom function that selects tensors from runtime arguments
     """
 
     dedup_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
@@ -39,15 +39,15 @@ class TracingConfig:
 
     def __post_init__(self):
         """Convert literal strings to actual functions/factories."""
-        # Resolve tensors_to_dump literal
-        if isinstance(self.tensors_to_dump, str):
-            dump_func = BUILTIN_TENSORS_TO_DUMPS.get(self.tensors_to_dump)
+        # Resolve input_dump_policy literal
+        if isinstance(self.input_dump_policy, str):
+            dump_func = BUILTIN_INPUT_DUMP_POLICIES.get(self.input_dump_policy)
             if dump_func is None:
                 raise ValueError(
-                    f"Unknown tensors_to_dump literal: {self.tensors_to_dump}. "
-                    f"Must be one of {list(BUILTIN_TENSORS_TO_DUMPS.keys())}"
+                    f"Unknown input_dump_policy literal: {self.input_dump_policy}. "
+                    f"Must be one of {list(BUILTIN_INPUT_DUMP_POLICIES.keys())}"
                 )
-            self.tensors_to_dump = dump_func
+            self.input_dump_policy = dump_func
 
         # Resolve dedup_policy literal
         if isinstance(self.dedup_policy, str):
@@ -74,43 +74,43 @@ class TracingConfig:
                 f"dedup_policy must be callable after __post_init__, got {type(self.dedup_policy)}"
             )
 
-    def get_tensors_to_dump(self, runtime_args: Dict[str, Any]) -> List[str]:
-        """Get the tensors to dump from the runtime arguments. The validity of the result is
-        checked, so every returned tensor name must exist in the runtime arguments.
+    def get_inputs_to_dump(self, runtime_args: Dict[str, Any]) -> List[str]:
+        """Get the inputs to dump from the runtime arguments. The validity of the result is
+        checked, so every returned input name must exist in the runtime arguments.
 
         Parameters
         ----------
         runtime_args : Dict[str, Any]
-            The runtime arguments to get the tensors to dump from.
+            The runtime arguments to get the inputs to dump from.
 
         Returns
         -------
         List[str]
-            The tensors to dump.
+            The inputs to dump.
 
         Raises
         ------
         ValueError
-            If tensors_to_dump is not a list of strings or a callable, or the result is not valid.
+            If input_dump_policy is not a list of strings or a callable, or the result is not valid.
         """
-        if isinstance(self.tensors_to_dump, list):
-            result = self.tensors_to_dump
-        elif callable(self.tensors_to_dump):
-            result = self.tensors_to_dump(runtime_args)
+        if isinstance(self.input_dump_policy, list):
+            result = self.input_dump_policy
+        elif callable(self.input_dump_policy):
+            result = self.input_dump_policy(runtime_args)
         else:
-            raise ValueError("tensors_to_dump must be a list of strings or a callable")
+            raise ValueError("input_dump_policy must be a list of strings or a callable")
 
         # Check the validity of the result
         if not isinstance(result, list):
-            raise ValueError("tensors_to_dump callable must return a list of strings")
+            raise ValueError("input_dump_policy callable must return a list of strings")
         for name in result:
             if not isinstance(name, str):
                 raise ValueError(
-                    f"tensors_to_dump callable must return a list of strings, but got "
+                    f"input_dump_policy callable must return a list of strings, but got "
                     f"{type(name).__name__}"
                 )
             if name not in runtime_args:
                 raise ValueError(
-                    f"tensors_to_dump callable returned {name} which is not in runtime_args"
+                    f"input_dump_policy callable returned {name} which is not in runtime_args"
                 )
         return result

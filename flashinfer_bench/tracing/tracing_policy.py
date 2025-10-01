@@ -33,8 +33,9 @@ class WorkloadEntry:
     axes: Dict[str, int]
     """Dictionary mapping axis names to their concrete integer values."""
 
-    tensors_to_dump: Dict[str, Any]
-    """Tensors to dump. Maps input name to the tensor to dump."""
+    inputs_to_dump: Dict[str, Any]
+    """Inputs to dump. Maps input name to the tensor to dump. This field will be further stored
+    to disk as a tensor blob."""
 
     order: int
     """Sequential order number for this entry in the collection process."""
@@ -288,8 +289,8 @@ BUILTIN_DEDUP_POLICIES: Dict[str, DedupPolicyFactory] = {
 # ============================================================================
 
 
-TensorsToDumpFunction = Callable[[Dict[str, Any]], List[str]]
-"""Function that selects which tensors to dump from runtime arguments."""
+InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
+"""Function that selects which inputs to dump from runtime arguments."""
 
 
 def dump_all(inputs: Dict[str, Any]) -> List[str]:
@@ -311,8 +312,8 @@ def dump_int32(inputs: Dict[str, Any]) -> List[str]:
     return picks
 
 
-# Built-in tensors_to_dump functions
-BUILTIN_TENSORS_TO_DUMPS: Dict[str, TensorsToDumpFunction] = {
+# Built-in input dump policy functions
+BUILTIN_INPUT_DUMP_POLICIES: Dict[str, InputDumpPolicyFunction] = {
     "dump_all": dump_all,
     "dump_none": dump_none,
     "dump_int32": dump_int32,

@@ -11,40 +11,40 @@ from .tracing_policy import AttentionDedupPolicy
 # TracingConfig Presets
 # ============================================================================
 
-gemm_config = TracingConfig(tensors_to_dump="dump_none", dedup_policy="keep_first_by_axes")
+gemm_config = TracingConfig(input_dump_policy="dump_none", dedup_policy="keep_first_by_axes")
 
 mla_paged_prefill_config = TracingConfig(
-    tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
+    input_dump_policy=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
     dedup_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
 mla_ragged_prefill_config = TracingConfig(
-    tensors_to_dump=["seq_indptr", "sm_scale"], dedup_policy=lambda: AttentionDedupPolicy(k=1)
+    input_dump_policy=["seq_indptr", "sm_scale"], dedup_policy=lambda: AttentionDedupPolicy(k=1)
 )
 
 mla_paged_decode_config = TracingConfig(
-    tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
+    input_dump_policy=["kv_indptr", "kv_indices", "sm_scale"],
     dedup_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
 gqa_paged_prefill_config = TracingConfig(
-    tensors_to_dump=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
+    input_dump_policy=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
     dedup_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
 gqa_ragged_prefill_config = TracingConfig(
-    tensors_to_dump=["qo_indptr", "kv_indptr", "sm_scale"],
+    input_dump_policy=["qo_indptr", "kv_indptr", "sm_scale"],
     dedup_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
 gqa_paged_decode_config = TracingConfig(
-    tensors_to_dump=["kv_indptr", "kv_indices", "sm_scale"],
+    input_dump_policy=["kv_indptr", "kv_indices", "sm_scale"],
     dedup_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
-all_dump_config = TracingConfig(tensors_to_dump="dump_all", dedup_policy="keep_all")
+all_dump_config = TracingConfig(input_dump_policy="dump_all", dedup_policy="keep_all")
 
-axes_only_config = TracingConfig(tensors_to_dump="dump_none", dedup_policy="keep_first_by_axes")
+axes_only_config = TracingConfig(input_dump_policy="dump_none", dedup_policy="keep_first_by_axes")
 
 FULL_TRACING_CONFIGS = {
     "gemm_n_28672_k_4096": gemm_config,

@@ -53,7 +53,7 @@ def enable_tracing(
     Custom tracing configuration:
 
     >>> from flashinfer_bench.tracing import TracingConfig
-    >>> configs = {"rmsnorm_d4096": TracingConfig(tensors_to_dump=["x", "weight"])}
+    >>> configs = {"rmsnorm_d4096": TracingConfig(input_dump_policy=["x", "weight"], dedup_policy="keep_all")}
     >>> with enable_tracing("/path/to/traceset", tracing_configs=configs):
     ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     """

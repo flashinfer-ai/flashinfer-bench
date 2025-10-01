@@ -251,19 +251,19 @@ class TracingRuntime:
             return
 
         # At this point, runtime_args exactly matches definition.inputs
-        # Validate tensors_to_dump
-        tensor_names_to_dump = tracing_config.get_tensors_to_dump(runtime_args)
+        # Validate inputs_to_dump
+        input_names_to_dump = tracing_config.get_inputs_to_dump(runtime_args)
 
-        tensors_to_dump: Dict[str, torch.Tensor] = {}
+        inputs_to_dump: Dict[str, torch.Tensor] = {}
 
-        for name in tensor_names_to_dump:
+        for name in input_names_to_dump:
             converted = self._convert_arg_to_tensor(definition, axes, name, runtime_args[name])
             if converted is None:
                 return
-            tensors_to_dump[name] = converted
+            inputs_to_dump[name] = converted
 
         entry = WorkloadEntry(
-            def_name=def_name, axes=axes, tensors_to_dump=tensors_to_dump, order=self.order_counter
+            def_name=def_name, axes=axes, inputs_to_dump=inputs_to_dump, order=self.order_counter
         )
 
         with self._lock:
@@ -420,13 +420,13 @@ class TracingRuntime:
         for entry in self._cuda_graph_entries:
             # Create CPU snapshots
             snapshot = {}
-            for name, tensor in entry.tensors_to_dump.items():
+            for name, tensor in entry.inputs_to_dump.items():
                 if isinstance(tensor, torch.Tensor):
                     snapshot[name] = tensor.detach().cpu().clone()
                 else:
                     snapshot[name] = tensor
             entry.cuda_graph_snapshot = snapshot
-            entry.tensors_to_dump = snapshot
+            entry.inputs_to_dump = snapshot
 
             # Submit to dedup policy
             dedup_policy = self._dedup_policies.get(entry.def_name)
@@ -488,15 +488,15 @@ class TracingRuntime:
         inputs: Dict[str, InputSpec] = {}
 
         # Dump picked input tensors
-        if len(entry.tensors_to_dump) > 0:
+        if len(entry.inputs_to_dump) > 0:
             try:
                 save_path = self._trace_set.add_workload_blob_tensor(
-                    entry.def_name, workload_uuid, entry.tensors_to_dump
+                    entry.def_name, workload_uuid, entry.inputs_to_dump
                 )
             except Exception as e:
                 logger.error(f"Failed to save tensors for {entry.def_name}: {e}")
                 return None
-            for name in entry.tensors_to_dump:
+            for name in entry.inputs_to_dump:
                 inputs[name] = SafetensorsInput(path=save_path, tensor_key=name)
 
         # Set random for non-picked input tensors

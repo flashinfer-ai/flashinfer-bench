@@ -33,7 +33,7 @@ def minimal_traceset(tmp_path: Path) -> TraceSet:
 
 def test_runtime_creates_independent_policies_per_definition(minimal_traceset: TraceSet):
     """Test that each definition gets an independent policy instance."""
-    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
@@ -48,14 +48,14 @@ def test_runtime_creates_independent_policies_per_definition(minimal_traceset: T
 
 def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
     """Test that policies for different definitions have isolated state."""
-    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
 
     # Manually submit entries to policies
-    entry1 = WorkloadEntry(def_name="def1", axes={"n": 10}, tensors_to_dump={}, order=0)
-    entry2 = WorkloadEntry(def_name="def2", axes={"m": 20}, tensors_to_dump={}, order=1)
+    entry1 = WorkloadEntry(def_name="def1", axes={"n": 10}, inputs_to_dump={}, order=0)
+    entry2 = WorkloadEntry(def_name="def2", axes={"m": 20}, inputs_to_dump={}, order=1)
 
     runtime._dedup_policies["def1"].submit(entry1)
     runtime._dedup_policies["def1"].submit(entry1)
@@ -67,7 +67,7 @@ def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
 
 def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     """Test that multiple runtimes can share the same TracingConfig without conflicts."""
-    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
     runtime1 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
@@ -79,7 +79,7 @@ def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     assert policy1 is not policy2
 
     # Verify state isolation
-    entry = WorkloadEntry(def_name="def1", axes={"n": 10}, tensors_to_dump={}, order=0)
+    entry = WorkloadEntry(def_name="def1", axes={"n": 10}, inputs_to_dump={}, order=0)
     policy1.submit(entry)
 
     assert len(policy1.entries) == 1
@@ -90,7 +90,7 @@ def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
     """Test that entries are submitted to dedup policy immediately during collect."""
     import torch
 
-    config = TracingConfig(tensors_to_dump=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
