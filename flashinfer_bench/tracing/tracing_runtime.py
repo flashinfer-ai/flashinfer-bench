@@ -435,41 +435,6 @@ class TracingRuntime:
 
         self._cuda_graph_entries.clear()
 
-    def flush(self):
-        """
-        Drain selected entries from dedup policies and write to disk.
-        """
-        # Stats
-        num_selected_entries = 0
-        num_dump_errors = 0
-
-        if self._in_cuda_graph:
-            raise RuntimeError("Cannot flush during CUDA Graph replay")
-
-        # Drain entries from each dedup policy and convert to traces
-        for dedup_policy in self._dedup_policies.values():
-            # Drain selected entries from policy
-            selected_entries = dedup_policy.drain()
-
-            if len(selected_entries) == 0:
-                continue
-
-            traces_to_dump: List[Trace] = []
-            for entry in selected_entries:
-                trace = self._convert_workload_entry_to_trace(entry)
-                if trace is None:
-                    num_dump_errors += 1
-                else:
-                    traces_to_dump.append(trace)
-
-            self._trace_set.add_workload_traces(traces_to_dump)
-            num_selected_entries += len(selected_entries)
-
-        # Log stats
-        logger.info(
-            f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
-        )
-
     def _convert_workload_entry_to_trace(self, entry: WorkloadEntry) -> Optional[Trace]:
         """Convert a workload entry to a trace.
 
@@ -511,6 +476,41 @@ class TracingRuntime:
             workload=Workload(axes=entry.axes, inputs=inputs, uuid=workload_uuid),
             solution=None,
             evaluation=None,
+        )
+
+    def flush(self):
+        """
+        Drain selected entries from dedup policies and write to disk.
+        """
+        # Stats
+        num_selected_entries = 0
+        num_dump_errors = 0
+
+        if self._in_cuda_graph:
+            raise RuntimeError("Cannot flush during CUDA Graph replay")
+
+        # Drain entries from each dedup policy and convert to traces
+        for dedup_policy in self._dedup_policies.values():
+            # Drain selected entries from policy
+            selected_entries = dedup_policy.drain()
+
+            if len(selected_entries) == 0:
+                continue
+
+            traces_to_dump: List[Trace] = []
+            for entry in selected_entries:
+                trace = self._convert_workload_entry_to_trace(entry)
+                if trace is None:
+                    num_dump_errors += 1
+                else:
+                    traces_to_dump.append(trace)
+
+            self._trace_set.add_workload_traces(traces_to_dump)
+            num_selected_entries += len(selected_entries)
+
+        # Log stats
+        logger.info(
+            f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
         )
 
     def _exit_handler(self):
