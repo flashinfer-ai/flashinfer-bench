@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from .tracing import disable_tracing, enable_tracing
-from .tracing_config import (
+from .builtin_config import (
+    BUILTIN_DEDUP_POLICY_FACTORIES,
     DedupByAvgSeqLenPolicy,
     DedupByAxesPolicy,
-    DedupPolicy,
     KeepAllPolicy,
     KeepFirstKPolicy,
-    TracingConfig,
-    WorkloadEntry,
 )
+from .tracing import disable_tracing, enable_tracing
+from .tracing_config import DedupPolicy, TracingConfig, WorkloadEntry
 from .tracing_runtime import TracingRuntime, get_tracing_runtime
 
 __all__ = [
@@ -24,4 +23,5 @@ __all__ = [
     "KeepFirstKPolicy",
     "DedupByAxesPolicy",
     "DedupByAvgSeqLenPolicy",
+    "BUILTIN_DEDUP_POLICY_FACTORIES",
 ]

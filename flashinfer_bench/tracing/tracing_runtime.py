@@ -19,7 +19,7 @@ from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
 
-from .tracing_config import TracingConfig, WorkloadEntry
+from .tracing_config import DedupPolicy, TracingConfig, WorkloadEntry
 
 logger = get_logger("TracingRuntime")
 
@@ -181,8 +181,7 @@ class TracingRuntime:
 
         self._prev_runtime = prev_tracing_runtime
 
-        # In-memory buffer
-        self.entries: List[WorkloadEntry] = []
+        # Global order counter
         self.order_counter = 0
 
         # Thread safety
@@ -195,6 +194,12 @@ class TracingRuntime:
         # Init the var axes table. It maps def name to a list of all its variable axes, described
         # by tuple (input_name, dim_idx, axis_name).
         self._var_axes_table = self._init_var_axes_table()
+
+        # Create independent dedup policy instances for each definition
+        # This ensures state isolation between definitions and runtime instances
+        self._dedup_policies: Dict[str, DedupPolicy] = {}
+        for def_name, config in self._tracing_configs.items():
+            self._dedup_policies[def_name] = config.create_dedup_policy()
 
         # Validate config keys exist in definitions
         for def_name in self._tracing_configs:
@@ -284,15 +289,15 @@ class TracingRuntime:
 
         with self._lock:
             if self._in_cuda_graph:
-                # Deferred snapshot
+                # Deferred snapshot for CUDA Graph replay
                 self._cuda_graph_entries.append(entry)
             else:
-                self.entries.append(entry)
+                # Submit entry directly to dedup policy for online filtering
+                dedup_policy = self._dedup_policies.get(def_name)
+                if dedup_policy is not None:
+                    dedup_policy.submit(entry)
 
             self.order_counter += 1
-
-            if len(self.entries) % 100 == 0:
-                logger.info(f"[TracingRuntime] Buffered {len(self.entries)} entries")
 
     def _convert_arg_to_tensor(
         self, definition: Definition, axes: Dict[str, int], name: str, val: Any
@@ -426,7 +431,7 @@ class TracingRuntime:
         -----
         This method is called automatically when exiting cuda_graph_scope().
         It synchronizes CUDA execution, creates CPU copies of all deferred
-        tensors from CUDA Graph entries, and moves them to the main entries list.
+        tensors from CUDA Graph entries, and submits them to dedup policies.
         The deferred entries buffer is cleared after processing.
         """
         # Synchronize CUDA before taking snapshots
@@ -443,13 +448,17 @@ class TracingRuntime:
                     snapshot[name] = tensor
             entry.cuda_graph_snapshot = snapshot
             entry.tensors_to_dump = snapshot
-            self.entries.append(entry)
+
+            # Submit to dedup policy
+            dedup_policy = self._dedup_policies.get(entry.def_name)
+            if dedup_policy is not None:
+                dedup_policy.submit(entry)
 
         self._cuda_graph_entries.clear()
 
     def flush(self):
         """
-        Deduplicate and write collected workloads to disk.
+        Drain selected entries from dedup policies and write to disk.
         """
         # Stats
         num_selected_entries = 0
@@ -458,78 +467,29 @@ class TracingRuntime:
         if self._in_cuda_graph:
             raise RuntimeError("Cannot flush during CUDA Graph replay")
 
-        # Get entries
-        if len(self.entries) == 0:
-            logger.info("Flush done. No entries to flush")
-            return
+        # Drain entries from each dedup policy and convert to traces
+        for dedup_policy in self._dedup_policies.values():
+            # Drain selected entries from policy
+            selected_entries = dedup_policy.drain()
 
-        entries = self.entries
-        self.entries = []
-
-        # Group entries by definition
-        def_name_to_entries: Dict[str, List[WorkloadEntry]] = {}
-        for entry in entries:
-            def_name_to_entries.setdefault(entry.def_name, []).append(entry)
-
-        # Select entries and convert to traces
-        for def_name, entries in def_name_to_entries.items():
-            selected_entries = self._select_entries(def_name, entries)
+            if len(selected_entries) == 0:
+                continue
 
             traces_to_dump: List[Trace] = []
             for entry in selected_entries:
                 trace = self._convert_workload_entry_to_trace(entry)
                 if trace is None:
                     num_dump_errors += 1
-                traces_to_dump.append(trace)
-            self._trace_set.add_workload_traces(traces_to_dump)
+                else:
+                    traces_to_dump.append(trace)
 
+            self._trace_set.add_workload_traces(traces_to_dump)
             num_selected_entries += len(selected_entries)
 
         # Log stats
         logger.info(
-            f"Flush done. {len(def_name_to_entries)} definitions, {len(entries)} entries, "
-            f"{num_selected_entries} selected, {num_dump_errors} dump errors"
+            f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
         )
-
-    def _select_entries(self, def_name: str, entries: List[WorkloadEntry]) -> List[WorkloadEntry]:
-        """Apply online deduplication policy to select representative entries.
-
-        Parameters
-        ----------
-        def_name : str
-            Name of the definition.
-        entries : List[WorkloadEntry]
-            All entries for this definition.
-
-        Returns
-        -------
-        List[WorkloadEntry]
-            Selected entries after applying deduplication policy.
-        """
-        tracing_config = self._tracing_configs.get(def_name)
-        if tracing_config is None:
-            logger.error(f"Recorded workload for {def_name} but its tracing config is not found")
-            return []
-
-        # Reset policy state before processing this batch
-        try:
-            tracing_config.dedup_policy.reset()
-        except Exception as err:
-            logger.warning(f"Failed to reset dedup_policy for {def_name}: {err}")
-
-        # Apply online deduplication policy to each entry
-        selected_entries: List[WorkloadEntry] = []
-        for entry in entries:
-            try:
-                if tracing_config.dedup_policy(entry):
-                    selected_entries.append(entry)
-            except Exception as err:
-                logger.warning(
-                    f"dedup_policy error for {def_name} on entry {entry.order}: {err}, keeping entry"
-                )
-                selected_entries.append(entry)
-
-        return selected_entries
 
     def _convert_workload_entry_to_trace(self, entry: WorkloadEntry) -> Optional[Trace]:
         """Convert a workload entry to a trace.
