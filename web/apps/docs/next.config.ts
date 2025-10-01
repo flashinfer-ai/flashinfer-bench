@@ -6,6 +6,7 @@ const withNextra = nextra({})
 
 const config: NextConfig = {
   reactStrictMode: true,
+  basePath: '/docs',
   transpilePackages: [
     '@flashinfer-bench/ui',
     '@flashinfer-bench/utils',
