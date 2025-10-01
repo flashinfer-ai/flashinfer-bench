@@ -6,7 +6,6 @@ import torch
 from flashinfer_bench.tracing import (
     BUILTIN_DEDUP_POLICIES,
     BUILTIN_TENSORS_TO_DUMPS,
-    AttentionDedupPolicy,
     KeepAllPolicy,
     KeepFirstByAxesPolicy,
     KeepFirstKPolicy,
