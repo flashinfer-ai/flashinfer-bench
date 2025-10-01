@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .builtin_config import AttentionDedupPolicy
+from .builtin_tracing_config import AttentionDedupPolicy
 from .tracing import disable_tracing, enable_tracing
 from .tracing_config import TracingConfig
 from .tracing_policies import (

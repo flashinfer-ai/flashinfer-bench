@@ -33,7 +33,7 @@ def _get_fib_full_tracing_configs() -> Dict[str, TracingConfig]:
     Dict[str, TracingConfig]
         Dictionary mapping definition names to their tracing configurations.
     """
-    from .builtin_config import fib_full_tracing
+    from .builtin_tracing_config import fib_full_tracing
 
     return fib_full_tracing
 
