@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union
 
-from .tracing_policies import (
+from .tracing_policy import (
     BUILTIN_DEDUP_POLICY_FACTORIES,
     BUILTIN_TENSORS_DUMP_FUNCTIONS,
     DedupPolicy,

@@ -20,7 +20,7 @@ from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
 
 from .tracing_config import TracingConfig
-from .tracing_policies import DedupPolicy, WorkloadEntry
+from .tracing_policy import DedupPolicy, WorkloadEntry
 
 logger = get_logger("TracingRuntime")
 

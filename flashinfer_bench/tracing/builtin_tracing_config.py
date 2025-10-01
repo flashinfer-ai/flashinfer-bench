@@ -5,7 +5,7 @@ such as GEMM, attention kernels, etc.
 """
 
 from .tracing_config import TracingConfig
-from .tracing_policies import AttentionDedupPolicy
+from .tracing_policy import AttentionDedupPolicy
 
 # ============================================================================
 # TracingRule Presets
