@@ -15,7 +15,7 @@ InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
 """Possible input_dump_policy literals."""
 
 
-DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes"]
+DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes", "keep_none"]
 """Possible dedup policy literals."""
 
 

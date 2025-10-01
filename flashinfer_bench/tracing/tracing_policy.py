@@ -45,6 +45,42 @@ class WorkloadEntry:
 
 
 # ============================================================================
+# TensorsDump Type Aliases and Functions
+# ============================================================================
+
+
+InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
+"""Function that selects which inputs to dump from runtime arguments."""
+
+
+def dump_all(inputs: Dict[str, Any]) -> List[str]:
+    """Dump all tensors."""
+    return [name for name, val in inputs.items() if isinstance(val, torch.Tensor)]
+
+
+def dump_none(inputs: Dict[str, Any]) -> List[str]:
+    """Dump no tensors."""
+    return []
+
+
+def dump_int32(inputs: Dict[str, Any]) -> List[str]:
+    """Select only int32 tensors for dumping. These inputs are usually indptrs."""
+    picks: List[str] = []
+    for name, val in inputs.items():
+        if isinstance(val, torch.Tensor) and val.dtype == torch.int32:
+            picks.append(name)
+    return picks
+
+
+# Built-in input dump policy functions
+BUILTIN_INPUT_DUMP_POLICIES: Dict[str, InputDumpPolicyFunction] = {
+    "dump_all": dump_all,
+    "dump_none": dump_none,
+    "dump_int32": dump_int32,
+}
+
+
+# ============================================================================
 # DedupPolicy Protocol and Type Aliases
 # ============================================================================
 
@@ -272,49 +308,9 @@ class KeepNonePolicy:
         pass
 
 
-# ============================================================================
-# Built-in Dedup Policy Factories
-# ============================================================================
-
 BUILTIN_DEDUP_POLICIES: Dict[str, DedupPolicyFactory] = {
     "keep_all": lambda: KeepAllPolicy(),
     "keep_first": lambda: KeepFirstKPolicy(k=1),
     "keep_first_by_axes": lambda: KeepFirstByAxesPolicy(k=1),
     "keep_none": lambda: KeepNonePolicy(),
-}
-
-
-# ============================================================================
-# TensorsDump Type Aliases and Functions
-# ============================================================================
-
-
-InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
-"""Function that selects which inputs to dump from runtime arguments."""
-
-
-def dump_all(inputs: Dict[str, Any]) -> List[str]:
-    """Dump all tensors."""
-    return [name for name, val in inputs.items() if isinstance(val, torch.Tensor)]
-
-
-def dump_none(inputs: Dict[str, Any]) -> List[str]:
-    """Dump no tensors."""
-    return []
-
-
-def dump_int32(inputs: Dict[str, Any]) -> List[str]:
-    """Select only int32 tensors for dumping. These inputs are usually indptrs."""
-    picks: List[str] = []
-    for name, val in inputs.items():
-        if isinstance(val, torch.Tensor) and val.dtype == torch.int32:
-            picks.append(name)
-    return picks
-
-
-# Built-in input dump policy functions
-BUILTIN_INPUT_DUMP_POLICIES: Dict[str, InputDumpPolicyFunction] = {
-    "dump_all": dump_all,
-    "dump_none": dump_none,
-    "dump_int32": dump_int32,
 }
