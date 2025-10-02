@@ -16,13 +16,7 @@ from torch import multiprocessing as mp
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import BuildError, Runnable, get_registry
-from flashinfer_bench.data import (
-    Definition,
-    Evaluation,
-    EvaluationStatus,
-    Solution,
-    Workload,
-)
+from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import list_cuda_devices, torch_dtype_from_def
 
@@ -483,6 +477,7 @@ class PersistentRunner(Runner):
 
         self._available_devices = list_cuda_devices()
         self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
+        
         self._curr_worker_idx = 0
 
         if len(self._workers) == 0:

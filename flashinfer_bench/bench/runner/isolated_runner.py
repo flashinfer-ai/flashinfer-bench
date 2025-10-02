@@ -15,13 +15,7 @@ from torch import multiprocessing as mp
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import Runnable, get_registry
-from flashinfer_bench.data import (
-    Definition,
-    Evaluation,
-    EvaluationStatus,
-    Solution,
-    Workload,
-)
+from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import (
     env_snapshot,
