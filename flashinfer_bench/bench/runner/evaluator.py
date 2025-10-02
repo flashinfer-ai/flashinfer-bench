@@ -266,7 +266,7 @@ def _validate_sampling_correctness(
     return None, max_abs, max_rel, numerical_incorrect
 
 
-def _validate_default_correctness(
+def _validate_correctness(
     runnable_sol: Runnable,
     inputs: List[Dict[str, Any]],
     ref_outputs_bl: List[Dict[str, torch.Tensor]],
@@ -469,7 +469,7 @@ class SolutionEvaluator:
             matched_ratio_used = None
         else:
             eval_result, max_abs, max_rel, numerical_incorrect, matched_ratio_used = (
-                _validate_default_correctness(
+                _validate_correctness(
                     runnable_sol, inputs, ref_outputs, cfg, device, log_path, defn
                 )
             )
