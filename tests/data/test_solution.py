@@ -26,7 +26,6 @@ def test_buildspec_validation():
         target_hardware=["cuda"],
         entry_point="main.py::run",
         dependencies=["numpy"],
-        build_commands=["echo build"],
     )
     # Invalid entry format
     with pytest.raises(ValueError):

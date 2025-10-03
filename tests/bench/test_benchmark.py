@@ -120,8 +120,8 @@ def test_dump_traces_false(tmp_path: Path):
     assert len(result.traces) == 0
 
 
-@patch("flashinfer_bench.bench.benchmark.MultiProcessRunner")
-def test_multi_process_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
+@patch("flashinfer_bench.bench.benchmark.IsolatedRunner")
+def test_isolated_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog):
     """Test handling of RuntimeError from runner."""
     # Setup mock runner to raise RuntimeError
     mock_runner = MagicMock()
@@ -162,7 +162,7 @@ def test_multi_process_runner_runtime_error(mock_runner_class, tmp_path: Path, c
         traces={},
     )
 
-    benchmark = Benchmark(trace_set, BenchmarkConfig(use_multi_process_runner=True))
+    benchmark = Benchmark(trace_set, BenchmarkConfig(use_isolated_runner=True))
 
     # Capture log messages from the benchmark's logger
     from flashinfer_bench.bench.benchmark import logger
