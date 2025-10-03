@@ -19,7 +19,7 @@ class BenchmarkConfig:
     use_isolated_runner: bool = field(default=False)
     required_matched_ratio: float = field(default=0.95)
     sampling_validation_trials: int = field(default=100)
-    sampling_similarity_threshold: float = field(default=0.95)
+    sampling_tvd_threshold: float = field(default=0.2)
 
     def __post_init__(self):
         if self.warmup_runs < 0:
@@ -42,7 +42,7 @@ class BenchmarkConfig:
             raise ValueError("sampling_validation_trials must be > 0")
         if not isinstance(self.sampling_validation_trials, int):
             raise ValueError("sampling_validation_trials must be an int")
-        if not (0.0 < self.sampling_similarity_threshold <= 1.0):
-            raise ValueError("sampling_similarity_threshold must be between 0 and 1")
-        if not isinstance(self.sampling_similarity_threshold, float):
-            raise ValueError("sampling_similarity_threshold must be a float")
+        if not (0.0 <= self.sampling_tvd_threshold <= 1.0):
+            raise ValueError("sampling_tvd_threshold must be between 0 and 1")
+        if not isinstance(self.sampling_tvd_threshold, float):
+            raise ValueError("sampling_tvd_threshold must be a float")

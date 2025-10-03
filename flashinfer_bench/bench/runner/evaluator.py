@@ -249,7 +249,6 @@ def _validate_sampling_correctness(
                 True,
             )
 
-    # Compute frequency distribution and similarity
     try:
         sol_freq = compute_frequency_distribution(
             runnable_sol, [inp], device, defn, num_trials=50000
@@ -258,10 +257,11 @@ def _validate_sampling_correctness(
         print(traceback.format_exc())
         raise
 
-    similarity = torch.cosine_similarity(sol_freq.unsqueeze(0), ref_freq.unsqueeze(0)).item()
+    # total variation distance
+    tvd = 0.5 * torch.sum(torch.abs(sol_freq - ref_freq)).item()
     max_abs, max_rel, _, _ = compute_error_stats(sol_freq, ref_freq, cfg, defn)
 
-    numerical_incorrect = similarity < cfg.sampling_similarity_threshold
+    numerical_incorrect = tvd > cfg.sampling_tvd_threshold
 
     return None, max_abs, max_rel, numerical_incorrect
 
