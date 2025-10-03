@@ -7,7 +7,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import torch
 from torch import multiprocessing as mp
@@ -15,15 +15,7 @@ from torch import multiprocessing as mp
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import Runnable, get_registry
-from flashinfer_bench.data import (
-    Correctness,
-    Definition,
-    Evaluation,
-    EvaluationStatus,
-    Performance,
-    Solution,
-    Workload,
-)
+from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import (
     env_snapshot,
@@ -32,165 +24,33 @@ from flashinfer_bench.utils import (
     torch_dtype_from_def,
 )
 
+from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
+from .runner_utils import (
+    compute_frequency_distribution,
+    gen_inputs,
+    is_sampling_operation,
+    load_safetensors,
+    make_eval,
+    normalize_outputs,
+)
 
 LOGGER = get_logger("MPRunner")
-
-
-def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
-    if dtype in (torch.float32, torch.float16, torch.bfloat16):
-        return torch.randn(shape, dtype=dtype, device=device)
-
-    # low-precision floats
-    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2, torch.float4_e2m1fn_x2):
-        t = torch.randn(shape, dtype=torch.float32, device=device).clamp_(-2.0, 2.0)
-        return t.to(dtype)
-
-    # booleans
-    if dtype is torch.bool:
-        return torch.randint(0, 2, shape, dtype=torch.bool, device=device)
-
-    # integers
-    if dtype in (torch.int8, torch.int16, torch.int32, torch.int64):
-        ranges = {
-            torch.int8: (-128, 128),
-            torch.int16: (-1024, 1024),
-            torch.int32: (-1024, 1024),
-            torch.int64: (-1024, 1024),
-        }
-        low, high = ranges[dtype]
-        return torch.randint(low, high, shape, device=device, dtype=dtype)
-
-    raise ValueError(f"Unsupported random dtype: {dtype}")
-
-
-def _normalize_outputs(
-    out: Any,
-    *,
-    device: torch.device,
-    output_names: List[str],
-    output_dtypes: Dict[str, torch.dtype],
-) -> Dict[str, torch.Tensor]:
-    def to_tensor(name: str, v: Any) -> torch.Tensor:
-        if isinstance(v, torch.Tensor):
-            return v.to(device) if v.device != device else v
-        dtype = output_dtypes[name]
-        # Python scalar -> 0-D tensor for comparison
-        return torch.tensor(v, dtype=dtype, device=device)
-
-    if isinstance(out, dict):
-        return {k: to_tensor(k, v) for k, v in out.items() if k in output_dtypes}
-
-    if isinstance(out, torch.Tensor):
-        if len(output_names) != 1:
-            raise RuntimeError("Single Tensor returned but multiple outputs are defined")
-        name = output_names[0]
-        return {name: to_tensor(name, out)}
-
-    if isinstance(out, (int, float, bool)):
-        if len(output_names) != 1:
-            raise RuntimeError("Scalar returned but multiple outputs are defined")
-        name = output_names[0]
-        return {name: to_tensor(name, out)}
-
-    if isinstance(out, (tuple, list)):
-        if len(out) != len(output_names):
-            raise RuntimeError(
-                f"Tuple/list has {len(out)} elements but {len(output_names)} outputs expected"
-            )
-        return {name: to_tensor(name, val) for name, val in zip(output_names, out)}
-
-    raise RuntimeError(
-        "Unexpected return type; must be Tensor, scalar, or dict[name -> Tensor/scalar]"
-    )
-
-
-def _compute_error_stats(
-    output: torch.Tensor, reference: torch.Tensor, cfg: BenchmarkConfig
-) -> Tuple[float, float, bool]:
-    """Return (max_abs_err, max_rel_err, exceeds_tol) for elementwise comparison."""
-
-    x = output.to(torch.float32)
-    y = reference.to(torch.float32)
-
-    diff = (x - y).abs()
-    if diff.numel() == 0:
-        return 0.0, 0.0, False
-
-    tol = cfg.atol + cfg.rtol * y.abs()
-    ratio = diff / tol.clamp_min(torch.finfo(torch.float32).tiny)
-
-    max_abs = float(diff.max().item())
-    max_rel = float(ratio.max().item())
-
-    return max_abs, max_rel, bool(max_rel > 1.0)
-
-
-def _load_safetensors(
-    defn: Definition, wl: Workload, traceset_root: Optional[Path] = None
-) -> Dict[str, torch.Tensor]:
-    try:
-        import safetensors.torch as st
-    except Exception:
-        raise RuntimeError("safetensors is not available in the current environment")
-
-    expected = defn.get_input_shapes(wl.axes)
-    stensors: Dict[str, torch.Tensor] = {}
-    for name, input_spec in wl.inputs.items():
-        if input_spec.type != "safetensors":
-            continue
-
-        path = input_spec.path
-        if traceset_root is not None and not Path(path).is_absolute():
-            path = str(traceset_root / path)
-
-        tensors = st.load_file(path)
-        if input_spec.tensor_key not in tensors:
-            raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
-        t = tensors[input_spec.tensor_key]
-        # shape check
-        if list(t.shape) != expected[name]:
-            raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
-        # dtype check
-        expect_dtype = torch_dtype_from_def(defn.inputs[name].dtype)
-        if t.dtype != expect_dtype:
-            raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
-
-        try:
-            t = t.contiguous().pin_memory()
-        except Exception:
-            t = t.contiguous()
-        stensors[name] = t
-    return stensors
-
-
-def _gen_inputs(
-    defn: Definition, wl: Workload, device: str, stensors: Optional[Dict[str, torch.Tensor]] = None
-) -> Dict[str, Any]:
-    shapes = defn.get_input_shapes(wl.axes)
-    dev = torch.device(device)
-    out: Dict[str, Any] = {}
-
-    for name, spec in defn.inputs.items():
-        dtype = torch_dtype_from_def(spec.dtype)
-
-        if name in wl.inputs and wl.inputs[name].type == "safetensors":
-            if stensors is None or name not in stensors:
-                raise RuntimeError(f"Missing required safetensors input '{name}'")
-            t_cpu = stensors[name]
-            out[name] = t_cpu.to(device=dev, non_blocking=True)
-        elif name in wl.inputs and wl.inputs[name].type == "scalar":
-            out[name] = wl.inputs[name].value
-        else:  # random
-            shape = shapes[name]
-            out[name] = _rand_tensor(shape, dtype, dev)
-    return out
 
 
 class SubprocessWorker:
     """Each instance binds to a CUDA device; the baseline resides in the main process; each Solution starts an independent Worker process for strong isolation."""
 
     def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Per device subprocess worker
+
+        Parameters
+        ----------
+        device : str
+            Device string (e.g. "cuda:0").
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
@@ -209,24 +69,39 @@ class SubprocessWorker:
         output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
         runnable_ref = self._registry.build_reference(defn)
         st_cpu = (
-            _load_safetensors(defn, workload, traceset_root)
+            load_safetensors(defn, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
 
+        is_sampling = is_sampling_operation(defn)
         inputs_all: List[Dict[str, Any]] = []
         ref_out_all: List[Dict[str, torch.Tensor]] = []
-        for _ in range(cfg.num_trials):
-            inp = _gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
+
+        if is_sampling:
+            inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
             inputs_all.append(inp)
 
-            with torch.no_grad():
-                out = runnable_ref(**inp)
-            torch.cuda.synchronize(device=dev)
-            ref_out = _normalize_outputs(
-                out, device=dev, output_names=list(defn.outputs.keys()), output_dtypes=output_dtypes
+            freq_dist = compute_frequency_distribution(
+                runnable_ref, [inp], self._device, defn, num_trials=50000
             )
+            ref_out = {"frequency_distribution": freq_dist}
             ref_out_all.append(ref_out)
+        else:
+            for _ in range(cfg.num_trials):
+                inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
+                inputs_all.append(inp)
+
+                with torch.no_grad():
+                    out = runnable_ref(**inp)
+                torch.cuda.synchronize(device=dev)
+                ref_out = normalize_outputs(
+                    out,
+                    device=dev,
+                    output_names=list(defn.outputs.keys()),
+                    output_dtypes=output_dtypes,
+                )
+                ref_out_all.append(ref_out)
 
         ref_lat_all: List[float] = []
         for inp in inputs_all:
@@ -250,6 +125,22 @@ class SubprocessWorker:
     def run_solution(
         self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
+        """Run solution in an isolated subprocess.
+
+        Parameters
+        ----------
+        sol : Solution
+            Solution to evaluate.
+        baseline : BaselineHandle
+            Handle to baseline for comparison.
+        cfg : BenchmarkConfig
+            Benchmark configuration.
+
+        Returns
+        -------
+        Evaluation
+            Evaluation results with status, correctness, and performance metrics.
+        """
         if baseline not in self._baselines:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
@@ -294,7 +185,7 @@ class SubprocessWorker:
 
                 elif cmd == "ERROR":
                     error_msg = msg.get("msg", "Unknown error")
-                    evaluation = _make_eval(
+                    evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
                         log_file=log_path,
@@ -326,7 +217,7 @@ class SubprocessWorker:
                     pass
 
         if evaluation is None:
-            evaluation = _make_eval(
+            evaluation = make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
                 log_file=log_path,
@@ -350,14 +241,29 @@ def _solution_worker_main(
     cfg: BenchmarkConfig,
     log_path: str,
 ) -> None:
-    """Worker process: strong isolation for single Solution. Borrow/return trial data via Pipe and send Evaluation back to parent process."""
+    """Worker process: strong isolation for single Solution.
+
+    Borrow/return trial data via Pipe and send Evaluation back to parent process.
+
+    Parameters
+    ----------
+    conn : mp.connection.Connection
+        Multiprocessing connection for communication with parent process.
+    device : str
+        Device string (e.g. "cuda:0").
+    defn : Definition
+        Operation definition.
+    sol : Solution
+        Solution to evaluate.
+    cfg : BenchmarkConfig
+        Benchmark configuration.
+    log_path : str
+        Path to log file.
+    """
     try:
         redirect_stdio_to_file(log_path)
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
-
-        output_names = list(defn.outputs.keys())
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
 
         # Handshake
         conn.send({"cmd": "READY"})
@@ -395,114 +301,19 @@ def _solution_worker_main(
             for inp in inputs_bl
         ]
 
-        max_abs = 0.0
-        max_rel = 0.0
-        numerical_incorrect = False
-        for t, inp in enumerate(inputs):
-            try:
-                with torch.no_grad():
-                    out = runnable_sol(**inp)
-                torch.cuda.synchronize(device=device)
-            except Exception as e:
-                import traceback
-
-                error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                ev = _make_eval(
-                    status=EvaluationStatus.RUNTIME_ERROR,
-                    device=device,
-                    log_file=log_path,
-                    error=error_msg,
-                )
-                conn.send({"cmd": "EVAL", "evaluation": ev})
-                return
-
-            out_t = _normalize_outputs(
-                out,
-                device=torch.device(device),
-                output_names=output_names,
-                output_dtypes=output_dtypes,
-            )
-            ref_t = ref_outputs_bl[t]
-            for k in ref_t.keys():
-                if k not in out_t:
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-                if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, log_file=log_path, device=device
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-                if out_t[k].dtype != ref_t[k].dtype:
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_DTYPE, log_file=log_path, device=device
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-
-                non_finite_err_val = None
-                if torch.isinf(out_t[k]).any().item():
-                    non_finite_err_val = float("inf")
-                elif torch.isnan(out_t[k]).any().item():
-                    non_finite_err_val = float("nan")
-                if non_finite_err_val is not None:
-                    correctness = Correctness(
-                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
-                    )
-                    ev = _make_eval(
-                        status=EvaluationStatus.INCORRECT_NUMERICAL,
-                        log_file=log_path,
-                        device=device,
-                        correctness=correctness,
-                    )
-                    conn.send({"cmd": "EVAL", "evaluation": ev})
-                    return
-
-                abs_err, rel_err, exceeds_tol = _compute_error_stats(out_t[k], ref_t[k], cfg)
-
-                if exceeds_tol:
-                    numerical_incorrect = True
-
-                max_abs = max(max_abs, abs_err)
-                max_rel = max(max_rel, rel_err)
-
-        correctness = Correctness(max_relative_error=max_rel, max_absolute_error=max_abs)
-        if numerical_incorrect:
-            ev = _make_eval(
-                status=EvaluationStatus.INCORRECT_NUMERICAL,
-                log_file=log_path,
-                correctness=correctness,
-                device=device,
-            )
-            conn.send({"cmd": "EVAL", "evaluation": ev})
-            return
-
-        # Passed numerical checks; now measure implementation performance
-        soln_lats: List[float] = []
-        for inp in inputs:
-            lat_ms = time_runnable(runnable_sol, inp, cfg.warmup_runs, cfg.iterations, device)
-            soln_lats.append(lat_ms)
-
-        if not soln_lats:
-            raise RuntimeError("Failed to collect solution latencies")
-
-        soln_mean_latency_ms = sum(soln_lats) / float(len(soln_lats))
-        performance = Performance(
-            latency_ms=soln_mean_latency_ms,
-            reference_latency_ms=ref_mean_latency_ms,
-            speedup_factor=(ref_mean_latency_ms / soln_mean_latency_ms),
-        )
-        ev = _make_eval(
-            status=EvaluationStatus.PASSED,
+        evaluation = SolutionEvaluator.evaluate(
+            runnable_sol=runnable_sol,
+            inputs=inputs,
+            ref_outputs=ref_outputs_bl,
+            ref_mean_latency_ms=ref_mean_latency_ms,
+            cfg=cfg,
             device=device,
-            log_file=log_path,
-            correctness=correctness,
-            performance=performance,
+            log_path=log_path,
+            defn=defn,
         )
-        conn.send({"cmd": "EVAL", "evaluation": ev})
+
+        conn.send({"cmd": "EVAL", "evaluation": evaluation})
+
     except Exception as e:
         try:
             conn.send({"cmd": "ERROR", "msg": str(e)})
@@ -515,27 +326,17 @@ def _solution_worker_main(
             pass
 
 
-def _make_eval(
-    status: EvaluationStatus,
-    device: str,
-    log_file: str,
-    correctness: Optional[Correctness] = None,
-    performance: Optional[Performance] = None,
-    error: Optional[str] = None,
-) -> Evaluation:
-    return Evaluation(
-        status=status,
-        log_file=log_file,
-        environment=env_snapshot(device),
-        timestamp=datetime.now().isoformat(),
-        correctness=correctness,
-        performance=performance,
-        error=error,
-    )
-
-
-class MultiProcessRunner(Runner):
+class IsolatedRunner(Runner):
     def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+        """Initialize the isolated runner with per device workers.
+
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger instance for output.
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
         self._logger = logger
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
@@ -555,8 +356,18 @@ class MultiProcessRunner(Runner):
         )
 
     def _pick_workers(self, K: int) -> list[SubprocessWorker]:
-        """Pick K workers in round-robin fashion."""
-        # K = min(len(self._workers), len(solutions))
+        """Pick K workers in round-robin fashion.
+
+        Parameters
+        ----------
+        K : int
+            Number of workers to pick.
+
+        Returns
+        -------
+        list[SubprocessWorker]
+            List of selected workers.
+        """
         if K <= 0 or not self._workers:
             return []
         D = len(self._workers)
@@ -566,12 +377,29 @@ class MultiProcessRunner(Runner):
         return sel
 
     def _relaunch_worker(self, device: str) -> SubprocessWorker:
-        """Relaunch a worker for the given device."""
+        """Relaunch a worker for the given device.
+
+        Parameters
+        ----------
+        device : str
+            Device string (e.g. "cuda:0").
+
+        Returns
+        -------
+        SubprocessWorker
+            New worker instance for the device.
+        """
         self._logger.info(f"Relaunching worker for device {device}")
         return SubprocessWorker(device, self._log_dir)
 
     def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
-        """Handle failed workers by attempting to relaunch them or removing them."""
+        """Handle failed workers by attempting to relaunch them or removing them.
+
+        Parameters
+        ----------
+        failed_workers : List[SubprocessWorker]
+            List of workers that have failed.
+        """
         workers_to_remove = []
         workers_to_add = []
 
@@ -606,7 +434,13 @@ class MultiProcessRunner(Runner):
             self._curr_worker_idx %= len(self._workers)
 
     def _has_healthy_workers(self) -> bool:
-        """Check if there are any healthy workers available."""
+        """Check if there are any healthy workers available.
+
+        Returns
+        -------
+        bool
+            True if there are healthy workers, False otherwise.
+        """
         return bool(self._workers)
 
     def run_workload(
@@ -617,18 +451,25 @@ class MultiProcessRunner(Runner):
         config: BenchmarkConfig,
         root: Path,
     ) -> Dict[str, Evaluation]:
-        """
-        Run a workload with the given solutions and return evaluation results.
+        """Run a workload with the given solutions and return evaluation results.
 
-        Args:
-            defn: Definition object
-            wl: Workload object
-            solutions: List of solutions to evaluate
-            config: Benchmark configuration
-            root: Root path for the trace set
+        Parameters
+        ----------
+        defn : Definition
+            Operation definition.
+        wl : Workload
+            Workload specification.
+        solutions : List[Solution]
+            List of solutions to evaluate.
+        config : BenchmarkConfig
+            Benchmark configuration.
+        root : Path
+            Root path for the trace set.
 
-        Returns:
-            Dictionary mapping solution names to their evaluations
+        Returns
+        -------
+        Dict[str, Evaluation]
+            Dictionary mapping solution names to their evaluations.
         """
         if not solutions:
             return {}
