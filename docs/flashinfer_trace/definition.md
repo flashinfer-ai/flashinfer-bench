@@ -20,13 +20,13 @@ Note that a `Definition` does not contain specific input *data* for its variable
 | --- | --- | --- | --- |
 | `name` | string | Yes | A unique, human-readable name for the kernel, should include concrete problem information. Naming convention: `{op_type}_{props}_{constants}` (e.g. `gqa_paged_decode_h32_kv8_d128_ps1`). |
 | `op_type` | string | Yes | The general compute category. |
-| `tags` | array | No | The string tags associated with this definition. Used for grouping and filtering. |
-| `description` | string | No | A brief, human-readable description of the definition and its purpose. |
-| `axes` | object | Yes | Key-value pairs defining the symbolic dimensions used in tensor shapes. |
-| `inputs` | object | Yes | Named input tensors (e.g.,`"A"`,`"B"`). |
-| `outputs` | object | Yes | Named output tensors (e.g.,`"C"`). |
+| `tags` | array[string] (Default: `null`) | No | The string tags associated with this definition. Used for grouping and filtering. |
+| `description` | string (Default: `null`) | No | A brief, human-readable description of the definition and its purpose. |
+| `axes` | Dict[string, Union[AxisConst, AxisVar]] | Yes | An object mapping symbolic dimension names (e.g., `"M"`, `"N"`, `"K"`) to their definitions. The value is either a constant or a variable axis. The axes will be bound to the input tensor dimensions at runtime. |
+| `inputs` | Dict[string, TensorSpec] | Yes | Named input tensors (e.g.,`"A"`,`"B"`). |
+| `outputs` | Dict[string, TensorSpec] | Yes | Named output tensors (e.g.,`"C"`). |
 | `reference` | string | Yes | The reference implementation in PyTorch, serving as the mathematical specification. |
-| `constraints` | array | No | An optional list of assertions describing relationships between axes. |
+| `constraints` | array[string] (Default: `null`) | No | An optional list of assertions describing relationships between axes. |
 
 ### `op_type`: Compute Category
 
