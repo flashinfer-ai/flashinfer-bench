@@ -6,7 +6,7 @@ Axes (9 dimensions):
 - `seq_len`: variable
 - `num_experts`, `num_local_experts`, `hidden_size`, `intermediate_size`, `gemm1_out_size`, `num_hidden_blocks`, `num_intermediate_blocks`, `num_gemm1_out_blocks`: constant
 
-Inputs (10 tensors + 2 scalars):
+Inputs (8 tensors + 2 scalars):
 - `routing_logits`: Tensor of routing logits for expert selection [seq_len, num_experts]
 - `routing_bias`: Bias tensor for routing. Pass all zeros for no bias [num_experts]
 - `hidden_states`: Input hidden states tensor (FP8 quantized) [seq_len, hidden_size]
