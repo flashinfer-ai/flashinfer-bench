@@ -73,7 +73,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
         solution="s1",
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
-            log_file="log",
+            log="log",
             environment=Environment(hardware="cpu"),
             timestamp="t",
             correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
@@ -86,7 +86,7 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
         solution="s2",
         evaluation=Evaluation(
             status=EvaluationStatus.RUNTIME_ERROR,
-            log_file="log",
+            log="log",
             environment=Environment(hardware="cpu"),
             timestamp="t",
         ),

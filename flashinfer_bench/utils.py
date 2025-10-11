@@ -86,3 +86,12 @@ def redirect_stdio_to_file(log_path: str) -> None:
     os.dup2(fd, 2)  # stderr -> fd
     sys.stdout = open(1, "w", encoding="utf-8", buffering=1, closefd=False)
     sys.stderr = open(2, "w", encoding="utf-8", buffering=1, closefd=False)
+
+
+def flush_stdio_streams() -> None:
+    """Best-effort flush of redirected stdout/stderr streams."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass

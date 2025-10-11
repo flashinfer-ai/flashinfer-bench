@@ -26,7 +26,10 @@ def best(args: argparse.Namespace):
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            logger.info(f"- Log:      {trace.evaluation.log_file}")
+            if trace.evaluation.log:
+                logger.info("- Log snippet:")
+                for line in trace.evaluation.log.splitlines()[:5]:
+                    logger.info("  %s", line)
 
 
 def summary(args: argparse.Namespace):

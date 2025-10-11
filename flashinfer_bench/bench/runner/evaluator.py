@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -196,14 +197,13 @@ def _validate_sampling_correctness(
             with torch.no_grad():
                 out = runnable_sol(**inp)
             torch.cuda.synchronize(device=device)
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+        except Exception:
+            print(traceback.format_exc(), file = sys.stderr)
             return (
                 make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
-                    log_file=log_path,
-                    error=error_msg,
+                    log_path=log_path
                 ),
                 0.0,
                 0.0,
@@ -223,9 +223,9 @@ def _validate_sampling_correctness(
                 make_eval(
                     status=EvaluationStatus.INCORRECT_NUMERICAL,
                     device=device,
-                    log_file=log_path,
+                    log_path=log_path,
                     correctness=correctness,
-                    error=f"Samples {invalid_samples.tolist()} out of vocabulary range [0, {vocab_size})",
+                    extra_msg=f"Samples {invalid_samples.tolist()} out of vocabulary range [0, {vocab_size})",
                 ),
                 1.0,
                 1.0,
@@ -240,9 +240,9 @@ def _validate_sampling_correctness(
                 make_eval(
                     status=EvaluationStatus.INCORRECT_NUMERICAL,
                     device=device,
-                    log_file=log_path,
+                    log_path=log_path,
                     correctness=correctness,
-                    error=f"Samples {samples.tolist()} violate {sampling_type} constraints",
+                    extra_msg=f"Samples {samples.tolist()} violate {sampling_type} constraints",
                 ),
                 1.0,
                 1.0,
@@ -254,7 +254,7 @@ def _validate_sampling_correctness(
             runnable_sol, [inp], device, defn, num_trials=50000
         )
     except Exception:
-        print(traceback.format_exc())
+        print(traceback.format_exc(), file = sys.stderr)
         raise
 
     # total variation distance
@@ -318,13 +318,12 @@ def _validate_correctness(
                 out = runnable_sol(**inp)
             torch.cuda.synchronize(device=device)
         except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+            print(traceback.format_exc(), file = sys.stderr)
             return (
                 make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
-                    log_file=log_path,
-                    error=error_msg,
+                    log_path=log_path,
                 ),
                 0.0,
                 0.0,
@@ -342,7 +341,7 @@ def _validate_correctness(
             if k not in out_t:
                 return (
                     make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
+                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
                     ),
                     0.0,
                     0.0,
@@ -353,7 +352,7 @@ def _validate_correctness(
             if tuple(out_t[k].shape) != tuple(ref_t[k].shape):
                 return (
                     make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_file=log_path
+                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
                     ),
                     0.0,
                     0.0,
@@ -365,7 +364,7 @@ def _validate_correctness(
             if out_t[k].dtype != ref_t[k].dtype:
                 return (
                     make_eval(
-                        status=EvaluationStatus.INCORRECT_DTYPE, device=device, log_file=log_path
+                        status=EvaluationStatus.INCORRECT_DTYPE, device=device, log_path=log_path
                     ),
                     0.0,
                     0.0,
@@ -388,7 +387,7 @@ def _validate_correctness(
                     make_eval(
                         status=EvaluationStatus.INCORRECT_NUMERICAL,
                         device=device,
-                        log_file=log_path,
+                        log_path=log_path,
                         correctness=correctness,
                     ),
                     non_finite_err_val,
@@ -456,8 +455,8 @@ class SolutionEvaluator:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=device,
-                log_file=log_path,
-                error="No reference outputs provided",
+                log_path=log_path,
+                extra_msg="No reference outputs provided",
             )
 
         is_sampling = is_sampling_operation(defn)
@@ -484,7 +483,7 @@ class SolutionEvaluator:
         if numerical_incorrect:
             return make_eval(
                 status=EvaluationStatus.INCORRECT_NUMERICAL,
-                log_file=log_path,
+                log_path=log_path,
                 correctness=correctness,
                 device=device,
             )
@@ -500,8 +499,8 @@ class SolutionEvaluator:
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=device,
-                    log_file=log_path,
-                    error="Failed to collect solution latencies",
+                    log_path=log_path,
+                    extra_msg="Failed to collect solution latencies",
                 )
 
             soln_mean_latency_ms = sum(soln_lats) / float(len(soln_lats))
@@ -514,15 +513,16 @@ class SolutionEvaluator:
             return make_eval(
                 status=EvaluationStatus.PASSED,
                 device=device,
-                log_file=log_path,
+                log_path=log_path,
                 correctness=correctness,
                 performance=performance,
             )
 
         except Exception as e:
+            print(traceback.format_exc(), file = sys.stderr)
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=device,
-                log_file=log_path,
-                error=f"Performance measurement failed: {str(e)}",
+                log_path=log_path,
+                extra_msg=f"Performance measurement failed: {str(e)}",
             )

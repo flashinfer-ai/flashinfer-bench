@@ -49,7 +49,7 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
         "solution": "torch_min_gemm",
         "evaluation": {
             "status": "PASSED",
-            "log_file": "log",
+            "log": "log",
             "environment": {"hardware": "cpu"},
             "timestamp": "t",
             "correctness": {"max_relative_error": 0.0, "max_absolute_error": 0.0},

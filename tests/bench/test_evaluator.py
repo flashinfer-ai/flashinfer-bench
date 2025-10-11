@@ -341,7 +341,7 @@ class TestSolutionEvaluator:
         )
 
         assert evaluation.status == EvaluationStatus.RUNTIME_ERROR
-        assert "No reference outputs provided" in evaluation.error
+        assert evaluation.log and "No reference outputs provided" in evaluation.log
 
     def test_evaluate_correct_solution(self):
         """Test evaluation of a correct solution."""
@@ -456,7 +456,7 @@ class TestSolutionEvaluator:
         )
 
         assert evaluation.status == EvaluationStatus.RUNTIME_ERROR
-        assert "Performance measurement failed" in evaluation.error
+        assert evaluation.log and "Performance measurement failed" in evaluation.log
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
