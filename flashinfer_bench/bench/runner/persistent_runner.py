@@ -18,7 +18,7 @@ from flashinfer_bench.bench.utils import time_runnable
 from flashinfer_bench.compile import BuildError, Runnable, get_registry
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import list_cuda_devices, torch_dtype_from_def
+from flashinfer_bench.utils import list_cuda_devices, redirect_stdio_to_file, torch_dtype_from_def
 
 from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
@@ -476,7 +476,7 @@ class PersistentRunner(Runner):
 
         self._available_devices = list_cuda_devices()
         self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
-        
+
         self._curr_worker_idx = 0
 
         if len(self._workers) == 0:
@@ -706,7 +706,6 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     log_dir : str
         Directory for log files.
     """
-    PROCESS_LOGGER = get_logger(f"PersistentWorker_{device}")
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
@@ -719,7 +718,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                 cmd = msg.get("cmd")
 
                 if cmd == WorkerCommand.SHUTDOWN.value:
-                    PROCESS_LOGGER.info("Shutting down worker")
+                    print("Shutting down worker")
                     break
 
                 elif cmd == WorkerCommand.HEALTH_CHECK.value:
@@ -731,7 +730,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         del test_tensor
                         conn.send({"cmd": WorkerResponse.HEALTHY.value})
                     except Exception:
-                        PROCESS_LOGGER.error(f"Worker failed health check")
+                        print("Worker failed health check")
                         conn.send({"cmd": WorkerResponse.CORRUPTED.value})
                         break
 
@@ -744,9 +743,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                     cfg = msg["config"]
                     solution_name = msg["solution_name"]
 
-                    PROCESS_LOGGER.info(f"Running solution {solution_name} of definition {defn.name}")
-
                     log_path = os.path.join(log_dir, f"{solution_name}_{time.time()}.log")
+                    redirect_stdio_to_file(log_path)
 
                     try:
                         # Use registry to build/get cached solution
@@ -763,32 +761,30 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                             defn=defn,
                         )
 
-
-                        PROCESS_LOGGER.info(f"Evaluation completed. Status: {evaluation.status}")
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
                         )
 
                     except BuildError as e:
                         import traceback
-                        PROCESS_LOGGER.error(f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+                        print(f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
 
                         evaluation = make_eval(
-                            status=EvaluationStatus.COMPILE_ERROR,
-                            device=device,
-                            log_path=log_path,
+                            status=EvaluationStatus.COMPILE_ERROR, device=device, log_path=log_path
                         )
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
                         )
                     except Exception as e:
                         import traceback
-                        PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+                        print(
+                            f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                        )
 
                         evaluation = make_eval(
-                            status=EvaluationStatus.RUNTIME_ERROR,
-                            device=device,
-                            log_path=log_path,
+                            status=EvaluationStatus.RUNTIME_ERROR, device=device, log_path=log_path
                         )
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
@@ -803,7 +799,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                 break
             except Exception as e:
                 import traceback
-                PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+                print(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
                 try:
                     conn.send({"cmd": WorkerResponse.ERROR.value, "error": str(e)})
                 except Exception:
@@ -811,7 +808,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
 
     except Exception as e:
         import traceback
-        PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+
+        print(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
         try:
             conn.send({"cmd": WorkerResponse.ERROR.value, "error": f"Worker startup failed: {e}"})
         except Exception:

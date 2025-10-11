@@ -261,10 +261,7 @@ def _solution_worker_main(
         Path to log file.
     """
     redirect_stdio_to_file(log_path)
-    PROCESS_LOGGER = get_logger(f"IsolatedWorker_{device}")
     try:
-        PROCESS_LOGGER.info(f"Running solution {sol.name} of definition {defn.name}")
-
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
 
@@ -280,16 +277,13 @@ def _solution_worker_main(
             runnable_sol: Runnable = registry.build(defn, sol)
         except Exception as e:
             import traceback
-            PROCESS_LOGGER.error(f"Build error: {type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
-            ev = make_eval(
-                status=EvaluationStatus.COMPILE_ERROR,
-                device=device,
-                log_path=log_path,
+
+            print(
+                f"Build error: {type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             )
+            ev = make_eval(status=EvaluationStatus.COMPILE_ERROR, device=device, log_path=log_path)
             conn.send({"cmd": "EVAL", "evaluation": ev})
             return
-        PROCESS_LOGGER.info(f"Successfully built solution runnable")
-
 
         conn.send({"cmd": "LOAN"})
         loan = conn.recv()
@@ -314,7 +308,6 @@ def _solution_worker_main(
             defn=defn,
         )
 
-        PROCESS_LOGGER.info(f"Evaluation completed. Status: {evaluation.status}")
         conn.send({"cmd": "EVAL", "evaluation": evaluation})
 
     except Exception as e:

@@ -152,6 +152,48 @@ class TestPersistentSubprocessWorker:
         finally:
             worker.close()
 
+    def test_worker_embeds_stdout(self, tmp_path):
+        log_dir = str(tmp_path / "logs")
+        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+
+        handle = None
+        try:
+            d = _simple_def()
+            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_log")
+            cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+
+            message = "persistent worker log line"
+            spec = BuildSpec(
+                language=SupportedLanguages.PYTHON,
+                target_hardware=["gpu"],
+                entry_point="pkg/main.py::run",
+            )
+            srcs = [
+                SourceFile(
+                    path="pkg/main.py",
+                    content=(
+                        "import torch\n"
+                        f"def run(A):\n"
+                        f"    print({message!r})\n"
+                        "    return A\n"
+                    ),
+                )
+            ]
+            sol = Solution(
+                name="test_log", definition=d.name, author="test", spec=spec, sources=srcs
+            )
+
+            handle = worker.run_ref(d, wl, cfg, None)
+            evaluation = worker.run_solution(sol, handle, cfg)
+
+            assert isinstance(evaluation.log, str)
+            assert message in evaluation.log
+
+        finally:
+            if handle is not None:
+                worker.release(handle)
+            worker.close()
+
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 class TestPersistentRunner:
