@@ -188,8 +188,8 @@ class SubprocessWorker:
                     evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_file=log_path,
-                        error=error_msg,
+                        log_path=log_path,
+                        extra_msg=error_msg,
                     )
                     break
 
@@ -220,8 +220,8 @@ class SubprocessWorker:
             evaluation = make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_file=log_path,
-                error="Worker process failed unexpectedly",
+                log_path=log_path,
+                extra_msg="Worker process failed unexpectedly",
             )
 
         return evaluation
@@ -260,8 +260,8 @@ def _solution_worker_main(
     log_path : str
         Path to log file.
     """
+    redirect_stdio_to_file(log_path)
     try:
-        redirect_stdio_to_file(log_path)
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
 
@@ -278,14 +278,10 @@ def _solution_worker_main(
         except Exception as e:
             import traceback
 
-            error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            ev = Evaluation(
-                status=EvaluationStatus.COMPILE_ERROR,
-                log_file=log_path,
-                environment=env_snapshot(device),
-                timestamp=datetime.now().isoformat(),
-                error=error_msg,
+            print(
+                f"Build error: {type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
             )
+            ev = make_eval(status=EvaluationStatus.COMPILE_ERROR, device=device, log_path=log_path)
             conn.send({"cmd": "EVAL", "evaluation": ev})
             return
 

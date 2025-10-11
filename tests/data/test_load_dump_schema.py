@@ -50,7 +50,7 @@ def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
     wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w1")
     ev = Evaluation(
         status=EvaluationStatus.PASSED,
-        log_file="log",
+        log="log",
         environment=Environment(hardware="cpu"),
         timestamp="t",
         correctness=Correctness(),
@@ -86,7 +86,7 @@ def test_language_and_status_string_decoding():
 
     ev_data = {
         "status": "PASSED",
-        "log_file": "log",
+        "log": "log",
         "environment": {"hardware": "cpu"},
         "timestamp": "t",
         "correctness": {},

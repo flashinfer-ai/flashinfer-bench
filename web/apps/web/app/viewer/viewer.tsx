@@ -488,10 +488,12 @@ function TraceViewer({ data, onBack }: TraceViewerProps) {
                 <span className="text-foreground font-medium">Timestamp:</span> {evaluation.timestamp}
               </div>
             )}
-            {evaluation?.log_file && (
+            {evaluation?.log && (
               <div>
-                <span className="text-foreground font-medium">Log file:</span>{" "}
-                <span className="break-all">{evaluation.log_file}</span>
+                <span className="text-foreground font-medium">Log:</span>
+                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-sm">
+                  {evaluation.log}
+                </pre>
               </div>
             )}
             {performance && (

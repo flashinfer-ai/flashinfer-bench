@@ -137,8 +137,9 @@ class KernelGenerator:
             print(
                 f"Solution failed with {evaluation.status.value}, extracting feedback for next round..."
             )
-            if evaluation.error:
-                print(f"Error details: {evaluation.error}")
+            if evaluation.log:
+                print("Error details:")
+                print(evaluation.log)
 
             optimization_prompt = get_optimization_prompt(
                 self.language, definition, trace, current_raw_code, self.target_gpu
