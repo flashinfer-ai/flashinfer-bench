@@ -334,8 +334,8 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=failure_record.last_status,
                 device=self._device,
-                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                error=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
+                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                extra_msg=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
             )
 
         eval_msg = {
@@ -354,8 +354,8 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                error=error_msg,
+                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
 
         try:
@@ -375,9 +375,8 @@ class PersistentSubprocessWorker:
                             EvaluationStatus.INCORRECT_DTYPE,
                             EvaluationStatus.COMPILE_ERROR,
                         ):
-                            self._record_failure(
-                                sol.name, evaluation.error or "Evaluation failed", evaluation.status
-                            )
+                            error_text = (evaluation.log or "").strip() or "Evaluation failed"
+                            self._record_failure(sol.name, error_text, evaluation.status)
                         return evaluation
                     elif response.get("cmd") == WorkerResponse.ERROR.value:
                         error_msg = response.get("error", "Unknown evaluation error")
@@ -385,8 +384,8 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
-                            log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                            error=error_msg,
+                            log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            extra_msg=error_msg,
                         )
                     else:
                         error_msg = f"Unexpected evaluation response: {response}"
@@ -394,8 +393,8 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
-                            log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                            error=error_msg,
+                            log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            extra_msg=error_msg,
                         )
 
                 except (EOFError, ConnectionResetError, OSError) as e:
@@ -403,8 +402,8 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                        error=error_msg,
+                        log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        extra_msg=error_msg,
                     )
                 except Exception as e:
                     error_str = str(e).lower()
@@ -419,16 +418,16 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                        error=error_msg,
+                        log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        extra_msg=error_msg,
                     )
             else:
                 error_msg = f"Evaluation timeout after 300 seconds for solution {sol.name}"
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=self._device,
-                    log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                    error=error_msg,
+                    log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                    extra_msg=error_msg,
                 )
 
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
@@ -436,16 +435,16 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                error=error_msg,
+                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
         except Exception as e:
             error_msg = f"Failed to communicate with worker: {e}"
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_file=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
-                error=error_msg,
+                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
 
     def release(self, baseline: BaselineHandle) -> None:
@@ -638,20 +637,20 @@ class PersistentRunner(Runner):
                             return make_eval(
                                 status=EvaluationStatus.RUNTIME_ERROR,
                                 device=worker._device,
-                                log_file=os.path.join(
+                                log_path=os.path.join(
                                     self._log_dir, f"{solution.name}_{time.time()}.log"
                                 ),
-                                error=f"Failed to rebuild baseline after restart: {e}",
+                                extra_msg=f"Failed to rebuild baseline after restart: {e}",
                             )
                     else:
                         LOGGER.error(f"Failed to restart worker on device {worker._device}")
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=worker._device,
-                            log_file=os.path.join(
+                            log_path=os.path.join(
                                 self._log_dir, f"{solution.name}_{time.time()}.log"
                             ),
-                            error="Worker restart failed",
+                            extra_msg="Worker restart failed",
                         )
 
                 # Run the solution
@@ -662,8 +661,8 @@ class PersistentRunner(Runner):
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=worker._device,
-                    log_file=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
-                    error=f"Unexpected error: {e}",
+                    log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                    extra_msg=f"Unexpected error: {e}",
                 )
 
         try:
@@ -707,6 +706,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     log_dir : str
         Directory for log files.
     """
+    PROCESS_LOGGER = get_logger(f"PersistentWorker_{device}")
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
@@ -719,6 +719,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                 cmd = msg.get("cmd")
 
                 if cmd == WorkerCommand.SHUTDOWN.value:
+                    PROCESS_LOGGER.info("Shutting down worker")
                     break
 
                 elif cmd == WorkerCommand.HEALTH_CHECK.value:
@@ -730,6 +731,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         del test_tensor
                         conn.send({"cmd": WorkerResponse.HEALTHY.value})
                     except Exception:
+                        PROCESS_LOGGER.error(f"Worker failed health check")
                         conn.send({"cmd": WorkerResponse.CORRUPTED.value})
                         break
 
@@ -741,6 +743,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
                     cfg = msg["config"]
                     solution_name = msg["solution_name"]
+
+                    PROCESS_LOGGER.info(f"Running solution {solution_name} of definition {defn.name}")
 
                     log_path = os.path.join(log_dir, f"{solution_name}_{time.time()}.log")
 
@@ -759,36 +763,32 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                             defn=defn,
                         )
 
+
+                        PROCESS_LOGGER.info(f"Evaluation completed. Status: {evaluation.status}")
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
                         )
 
                     except BuildError as e:
                         import traceback
-
-                        error_msg = f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+                        PROCESS_LOGGER.error(f"BuildError: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
 
                         evaluation = make_eval(
                             status=EvaluationStatus.COMPILE_ERROR,
                             device=device,
-                            log_file=log_path,
-                            error=error_msg,
+                            log_path=log_path,
                         )
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
                         )
                     except Exception as e:
                         import traceback
-
-                        error_msg = (
-                            f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                        )
+                        PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
 
                         evaluation = make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=device,
-                            log_file=log_path,
-                            error=error_msg,
+                            log_path=log_path,
                         )
                         conn.send(
                             {"cmd": WorkerResponse.EVALUATION.value, "evaluation": evaluation}
@@ -802,12 +802,16 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                 # parent closed connection
                 break
             except Exception as e:
+                import traceback
+                PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
                 try:
                     conn.send({"cmd": WorkerResponse.ERROR.value, "error": str(e)})
                 except Exception:
                     break
 
     except Exception as e:
+        import traceback
+        PROCESS_LOGGER.error(f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
         try:
             conn.send({"cmd": WorkerResponse.ERROR.value, "error": f"Worker startup failed: {e}"})
         except Exception:

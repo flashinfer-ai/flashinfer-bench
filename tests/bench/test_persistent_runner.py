@@ -137,7 +137,7 @@ class TestPersistentSubprocessWorker:
                 EvaluationStatus.RUNTIME_ERROR,
                 EvaluationStatus.COMPILE_ERROR,
             }
-            assert evaluation.log_file is not None
+            assert isinstance(evaluation.log, str)
             assert evaluation.timestamp is not None
             assert evaluation.environment is not None
 
@@ -208,7 +208,7 @@ class TestPersistentRunner:
                 EvaluationStatus.RUNTIME_ERROR,
                 EvaluationStatus.COMPILE_ERROR,
             }
-            assert evaluation.log_file is not None
+            assert isinstance(evaluation.log, str)
             assert evaluation.timestamp is not None
             assert evaluation.environment is not None
 
@@ -263,7 +263,7 @@ class TestPersistentRunner:
                     EvaluationStatus.RUNTIME_ERROR,
                     EvaluationStatus.COMPILE_ERROR,
                 }
-                assert evaluation.log_file is not None
+                assert isinstance(evaluation.log, str)
                 assert evaluation.timestamp is not None
                 assert evaluation.environment is not None
 
@@ -304,7 +304,7 @@ class TestPersistentRunner:
                 EvaluationStatus.COMPILE_ERROR,
                 EvaluationStatus.RUNTIME_ERROR,
             }
-            assert evaluation.error is not None
+            assert evaluation.log and "nonexistent_module_xyz" in evaluation.log
 
         finally:
             # Workers are managed internally, no explicit cleanup needed

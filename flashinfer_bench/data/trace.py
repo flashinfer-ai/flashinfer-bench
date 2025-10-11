@@ -83,7 +83,7 @@ class Correctness(BaseModelWithDocstrings):
     max_absolute_error: float = Field(default=0.0)
     """Maximum absolute error observed across all output elements."""
     matched_ratio: Optional[float] = Field(default=None)
-    """Ratio of elements that matched within tolerance (used for fused_moe operations)."""
+    """Ratio of elements that matched within tolerance."""
 
     @field_validator("max_relative_error", "max_absolute_error")
     @classmethod
@@ -164,15 +164,12 @@ class Evaluation(BaseModelWithDocstrings):
     """Environment details where the evaluation was performed."""
     timestamp: NonEmptyString
     """Timestamp when the evaluation was performed (ISO format recommended)."""
-    log_file: Optional[str] = None
-    """Path to the log file in evaluation execution. stdout/stderr will be redirected to this file.
-    """
+    log: str = ""
+    """Captured stdout/stderr from the evaluation run."""
     correctness: Optional[Correctness] = None
     """Correctness metrics (present for PASSED and INCORRECT_NUMERICAL status)."""
     performance: Optional[Performance] = None
     """Performance metrics (present only for PASSED status)."""
-    error: Optional[str] = None
-    """Error message or description (present for error status codes)."""
 
     @model_validator(mode="after")
     def _validate_status_correctness_performance(self) -> "Evaluation":

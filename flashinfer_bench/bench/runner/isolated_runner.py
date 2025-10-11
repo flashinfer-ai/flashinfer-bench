@@ -188,8 +188,8 @@ class SubprocessWorker:
                     evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_file=log_path,
-                        error=error_msg,
+                        log_path=log_path,
+                        extra_msg=error_msg,
                     )
                     break
 
@@ -220,8 +220,8 @@ class SubprocessWorker:
             evaluation = make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_file=log_path,
-                error="Worker process failed unexpectedly",
+                log_path=log_path,
+                extra_msg="Worker process failed unexpectedly",
             )
 
         return evaluation
@@ -260,8 +260,11 @@ def _solution_worker_main(
     log_path : str
         Path to log file.
     """
+    redirect_stdio_to_file(log_path)
+    PROCESS_LOGGER = get_logger(f"IsolatedWorker_{device}")
     try:
-        redirect_stdio_to_file(log_path)
+        PROCESS_LOGGER.info(f"Running solution {sol.name} of definition {defn.name}")
+
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = get_registry()
 
@@ -277,17 +280,16 @@ def _solution_worker_main(
             runnable_sol: Runnable = registry.build(defn, sol)
         except Exception as e:
             import traceback
-
-            error_msg = f"{type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-            ev = Evaluation(
+            PROCESS_LOGGER.error(f"Build error: {type(e).__name__}: {str(e)}\n\nTraceback:\n{traceback.format_exc()}")
+            ev = make_eval(
                 status=EvaluationStatus.COMPILE_ERROR,
-                log_file=log_path,
-                environment=env_snapshot(device),
-                timestamp=datetime.now().isoformat(),
-                error=error_msg,
+                device=device,
+                log_path=log_path,
             )
             conn.send({"cmd": "EVAL", "evaluation": ev})
             return
+        PROCESS_LOGGER.info(f"Successfully built solution runnable")
+
 
         conn.send({"cmd": "LOAN"})
         loan = conn.recv()
@@ -312,6 +314,7 @@ def _solution_worker_main(
             defn=defn,
         )
 
+        PROCESS_LOGGER.info(f"Evaluation completed. Status: {evaluation.status}")
         conn.send({"cmd": "EVAL", "evaluation": evaluation})
 
     except Exception as e:

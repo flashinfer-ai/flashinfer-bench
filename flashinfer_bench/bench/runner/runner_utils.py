@@ -15,7 +15,7 @@ from flashinfer_bench.data import (
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import env_snapshot, torch_dtype_from_def
+from flashinfer_bench.utils import env_snapshot, flush_stdio_streams, torch_dtype_from_def
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -230,20 +230,49 @@ def gen_inputs(
     return out
 
 
+_MAX_EMBEDDED_LOG_BYTES = 5 * 1024 * 1024
+
+
+def _read_log_file(log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES) -> Optional[str]:
+    if not log_path:
+        return None
+
+    flush_stdio_streams()
+
+    try:
+        with open(log_path, "rb") as fh:
+            data = fh.read(limit + 1)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+
+    truncated = len(data) > limit
+    if truncated:
+        data = data[:limit]
+
+    text = data.decode("utf-8", errors="replace")
+    if truncated:
+        text += "\n\n[log truncated]\n"
+    return text
+
+
 def make_eval(
     status: EvaluationStatus,
     device: str,
-    log_file: str,
+    log_path: Optional[str],
     correctness: Optional[Correctness] = None,
     performance: Optional[Performance] = None,
-    error: Optional[str] = None,
+    extra_msg: Optional[str] = None,
 ) -> Evaluation:
+    log_text = _read_log_file(log_path) or ""
+    if extra_msg:
+        log_text = log_text + "\n" + extra_msg if log_text else extra_msg
     return Evaluation(
         status=status,
-        log_file=log_file,
+        log=log_text,
         environment=env_snapshot(device),
         timestamp=datetime.now().isoformat(),
         correctness=correctness,
         performance=performance,
-        error=error,
     )
