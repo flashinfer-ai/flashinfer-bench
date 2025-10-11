@@ -54,10 +54,8 @@ def _format_trace_logs(trace: Trace) -> str:
     eval_info = f"Status: {trace.evaluation.status.value}\n"
     eval_info += f"Timestamp: {trace.evaluation.timestamp}\n"
 
-    if trace.evaluation.error:
-        eval_info += f"\nDetailed Error Information:\n{trace.evaluation.error}\n"
-    elif trace.evaluation.log_file:
-        eval_info += f"Log file: {trace.evaluation.log_file}\n"
+    if trace.evaluation.log:
+        eval_info += f"\nExecution Log:\n{trace.evaluation.log}\n"
 
     if trace.evaluation.correctness:
         eval_info += f"Max relative error: {trace.evaluation.correctness.max_relative_error}\n"

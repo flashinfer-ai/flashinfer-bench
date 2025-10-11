@@ -205,5 +205,45 @@ def test_isolated_runner_run_ref_and_solution_minimal():
     r.release(h)
 
 
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+def test_isolated_worker_embeds_stdout(tmp_path: Path):
+    d = Definition(
+        name="dmp_log",
+        op_type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A\n",
+    )
+    wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_log")
+
+    message = "isolated worker log line"
+    spec = BuildSpec(
+        language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="pkg/main.py::run"
+    )
+    srcs = [
+        SourceFile(
+            path="pkg/main.py",
+            content=(
+                "import torch\n" f"def run(A):\n" f"    print({message!r})\n" "    return A\n"
+            ),
+        )
+    ]
+    sol = Solution(name="py_log", definition=d.name, author="me", spec=spec, sources=srcs)
+
+    worker = SubprocessWorker(device="cuda:0", log_dir=str(tmp_path / "logs"))
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    handle = None
+    try:
+        handle = worker.run_ref(d, wl, cfg, None)
+        evaluation = worker.run_solution(sol, handle, cfg)
+        assert isinstance(evaluation.log, str)
+        assert message in evaluation.log
+    finally:
+        if handle is not None:
+            worker.release(handle)
+        worker.close()
+
+
 if __name__ == "__main__":
     pytest.main(sys.argv)
