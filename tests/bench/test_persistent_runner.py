@@ -95,9 +95,9 @@ class TestPersistentSubprocessWorker:
             baseline = worker._baselines[handle]
             assert baseline.defn == d
             assert baseline.device == "cuda:0"
-            assert len(baseline.inputs_dev) == cfg.num_trials
-            assert len(baseline.ref_outputs_dev) == cfg.num_trials
-            assert baseline.ref_mean_latency_ms > 0
+            assert len(baseline.inputs) == cfg.num_trials
+            assert len(baseline.outputs) == cfg.num_trials
+            assert baseline.mean_latency_ms > 0
 
             worker.release(handle)
             assert handle not in worker._baselines

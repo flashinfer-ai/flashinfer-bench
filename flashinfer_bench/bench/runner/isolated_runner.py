@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -12,28 +11,16 @@ from typing import Any, Dict, List, Optional
 import torch
 from torch import multiprocessing as mp
 
+import flashinfer_bench.utils as fib_utils
 from flashinfer_bench.bench.config import BenchmarkConfig
-from flashinfer_bench.bench.utils import time_runnable
-from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.bench.evaluators import resolve_evaluator
+from flashinfer_bench.compile import Runnable, get_builder_registry
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import (
-    env_snapshot,
-    list_cuda_devices,
-    redirect_stdio_to_file,
-    torch_dtype_from_def,
-)
+from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file
 
-from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
-from .runner_utils import (
-    compute_frequency_distribution,
-    gen_inputs,
-    is_sampling_operation,
-    load_safetensors,
-    make_eval,
-    normalize_outputs,
-)
+from .runner_utils import make_eval
 
 LOGGER = get_logger("MPRunner")
 
@@ -54,7 +41,6 @@ class SubprocessWorker:
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
-        self._registry = get_registry()
 
     def run_ref(
         self,
@@ -63,64 +49,12 @@ class SubprocessWorker:
         cfg: BenchmarkConfig,
         traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
-        torch.cuda.set_device(int(self._device.split(":")[1]))
-        dev = torch.device(self._device)
-
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
-        runnable_ref = self._registry.build_reference(defn)
-        st_cpu = (
-            load_safetensors(defn, workload, traceset_root)
-            if any(d.type == "safetensors" for d in workload.inputs.values())
-            else {}
+        evaluator_cls = resolve_evaluator(defn)
+        baseline = evaluator_cls.build_baseline(
+            defn=defn, workload=workload, cfg=cfg, device=self._device, traceset_root=traceset_root
         )
-
-        is_sampling = is_sampling_operation(defn)
-        inputs_all: List[Dict[str, Any]] = []
-        ref_out_all: List[Dict[str, torch.Tensor]] = []
-
-        if is_sampling:
-            inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
-            inputs_all.append(inp)
-
-            freq_dist = compute_frequency_distribution(
-                runnable_ref, [inp], self._device, defn, num_trials=50000
-            )
-            ref_out = {"frequency_distribution": freq_dist}
-            ref_out_all.append(ref_out)
-        else:
-            for _ in range(cfg.num_trials):
-                inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
-                inputs_all.append(inp)
-
-                with torch.no_grad():
-                    out = runnable_ref(**inp)
-                torch.cuda.synchronize(device=dev)
-                ref_out = normalize_outputs(
-                    out,
-                    device=dev,
-                    output_names=list(defn.outputs.keys()),
-                    output_dtypes=output_dtypes,
-                )
-                ref_out_all.append(ref_out)
-
-        ref_lat_all: List[float] = []
-        for inp in inputs_all:
-            ms = time_runnable(runnable_ref, inp, cfg.warmup_runs, cfg.iterations, self._device)
-            ref_lat_all.append(ms)
-
-        ref_mean_latency_ms = sum(ref_lat_all) / float(len(ref_lat_all))
-
-        handle = BaselineHandle(uuid.uuid4().hex)
-
-        self._baselines[handle] = DeviceBaseline(
-            handle=handle,
-            defn=defn,
-            device=self._device,
-            inputs_dev=inputs_all,
-            ref_outputs_dev=ref_out_all,
-            ref_mean_latency_ms=ref_mean_latency_ms,
-        )
-        return handle
+        self._baselines[baseline.handle] = baseline
+        return baseline.handle
 
     def run_solution(
         self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
@@ -173,9 +107,9 @@ class SubprocessWorker:
                     parent_conn.send(
                         {
                             "ok": True,
-                            "inputs": bl.inputs_dev,
-                            "ref_outputs": bl.ref_outputs_dev,
-                            "ref_mean_latency_ms": bl.ref_mean_latency_ms,
+                            "inputs": bl.inputs,
+                            "ref_outputs": bl.outputs,
+                            "ref_mean_latency_ms": bl.mean_latency_ms,
                         }
                     )
 
@@ -263,7 +197,7 @@ def _solution_worker_main(
     redirect_stdio_to_file(log_path)
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_registry()
+        registry = get_builder_registry()
 
         # Handshake
         conn.send({"cmd": "READY"})
@@ -297,15 +231,16 @@ def _solution_worker_main(
             for inp in inputs_bl
         ]
 
-        evaluation = SolutionEvaluator.evaluate(
-            runnable_sol=runnable_sol,
+        evaluator_cls = resolve_evaluator(defn)
+        evaluation = evaluator_cls.evaluate(
+            defn=defn,
+            sol_runnable=runnable_sol,
             inputs=inputs,
             ref_outputs=ref_outputs_bl,
             ref_mean_latency_ms=ref_mean_latency_ms,
             cfg=cfg,
-            device=device,
             log_path=log_path,
-            defn=defn,
+            device=device,
         )
 
         conn.send({"cmd": "EVAL", "evaluation": evaluation})
@@ -339,7 +274,7 @@ class IsolatedRunner(Runner):
         self._worker_max_retries = 3
 
         # Initialize workers for all available CUDA devices
-        self._available_devices = list_cuda_devices()
+        self._available_devices = fib_utils.list_cuda_devices()
         self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
         self._curr_worker_idx = 0
 
