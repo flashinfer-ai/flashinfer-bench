@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile import Runnable, get_registry
+from flashinfer_bench.compile import Runnable, get_builder_registry
 from flashinfer_bench.data import Trace, TraceSet
 
 from .config import ApplyConfig
@@ -53,7 +53,7 @@ class ApplyTable:
                 index[def_name] = bucket
 
             def_best: Dict[str, str] = {}
-            reg = get_registry()
+            reg = get_builder_registry()
 
             for def_name, sol_name in raw["def_best"].items():
                 defn = trace_set.definitions.get(def_name)
@@ -91,7 +91,7 @@ class ApplyTable:
     @classmethod
     def _build(cls, trace_set: TraceSet, config: ApplyConfig) -> "ApplyTable":
         digest = cls._digest(trace_set, config)
-        reg = get_registry()
+        reg = get_builder_registry()
 
         index: Dict[str, Dict[ApplyKey, str]] = {}
         def_best: Dict[str, Runnable] = {}
@@ -150,7 +150,7 @@ class ApplyTable:
     def _prewarm_aot(cls, trace_set: TraceSet, config: ApplyConfig, table: "ApplyTable") -> None:
         if not (config.aot_ratio and config.aot_ratio > 0.0):
             return
-        reg = get_registry()
+        reg = get_builder_registry()
 
         for def_name, bucket in table.index.items():
             if not bucket:

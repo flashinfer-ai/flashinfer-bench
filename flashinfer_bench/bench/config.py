@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -17,7 +18,7 @@ class BenchmarkConfig:
     atol: float = field(default=1e-2)
     log_dir: str = field(default="/tmp/flashinfer_bench")
     use_isolated_runner: bool = field(default=False)
-    required_matched_ratio: float = field(default=0.95)
+    required_matched_ratio: Optional[float] = field(default=None)
     sampling_validation_trials: int = field(default=100)
     sampling_tvd_threshold: float = field(default=0.2)
 
@@ -34,9 +35,13 @@ class BenchmarkConfig:
             raise ValueError("rtol must be a float")
         if not isinstance(self.atol, float):
             raise ValueError("atol must be a float")
-        if not (0.0 < self.required_matched_ratio <= 1.0):
+        if self.required_matched_ratio is not None and not (
+            0.0 < self.required_matched_ratio <= 1.0
+        ):
             raise ValueError("required_matched_ratio must be between 0 and 1")
-        if not isinstance(self.required_matched_ratio, float):
+        if self.required_matched_ratio is not None and not isinstance(
+            self.required_matched_ratio, float
+        ):
             raise ValueError("required_matched_ratio must be a float")
         if self.sampling_validation_trials <= 0:
             raise ValueError("sampling_validation_trials must be > 0")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from flashinfer_bench.compile import get_registry
+from flashinfer_bench.compile import get_builder_registry
 from flashinfer_bench.data import TraceSet
 
 from .config import ApplyConfig
@@ -115,7 +115,7 @@ class ApplyRuntime:
         if sol_name:
             sol = self._traceset.get_solution(sol_name)
             if sol:
-                runnable = get_registry().build(defn, sol)
+                runnable = get_builder_registry().build(defn, sol)
 
         # Miss policy
         if runnable is None:
@@ -123,7 +123,7 @@ class ApplyRuntime:
                 best_sol_name = self._table.def_best.get(def_name)
                 sol = self._traceset.get_solution(best_sol_name)
                 if defn and sol:
-                    runnable = get_registry().build(defn, sol)
+                    runnable = get_builder_registry().build(defn, sol)
                 if runnable is not None:
                     return runnable(**runtime_kwargs)
             if fallback is None:
