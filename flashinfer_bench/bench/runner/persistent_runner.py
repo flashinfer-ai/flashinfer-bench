@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
@@ -13,23 +12,16 @@ from typing import Any, Dict, List, Optional
 import torch
 from torch import multiprocessing as mp
 
+import flashinfer_bench.utils as fib_utils
 from flashinfer_bench.bench.config import BenchmarkConfig
-from flashinfer_bench.bench.utils import time_runnable
-from flashinfer_bench.compile import BuildError, Runnable, get_registry
+from flashinfer_bench.bench.evaluators import resolve_evaluator
+from flashinfer_bench.compile import BuildError, Runnable, get_builder_registry
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import list_cuda_devices, redirect_stdio_to_file, torch_dtype_from_def
+from flashinfer_bench.utils import redirect_stdio_to_file
 
-from .evaluator import SolutionEvaluator
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
-from .runner_utils import (
-    compute_frequency_distribution,
-    gen_inputs,
-    is_sampling_operation,
-    load_safetensors,
-    make_eval,
-    normalize_outputs,
-)
+from .runner_utils import make_eval
 
 LOGGER = get_logger("PersistentRunner")
 
@@ -73,7 +65,7 @@ class PersistentSubprocessWorker:
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
-        self._registry = get_registry()
+        self._registry = get_builder_registry()
 
         # Solution failure tracking
         self._failure_records: Dict[str, SolutionFailureRecord] = {}
@@ -258,64 +250,12 @@ class PersistentSubprocessWorker:
         cfg: BenchmarkConfig,
         traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
-        torch.cuda.set_device(int(self._device.split(":")[1]))
-        dev = torch.device(self._device)
-
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
-        runnable_ref = self._registry.build_reference(defn)
-        st_cpu = (
-            load_safetensors(defn, workload, traceset_root)
-            if any(d.type == "safetensors" for d in workload.inputs.values())
-            else {}
+        evaluator_cls = resolve_evaluator(defn)
+        baseline = evaluator_cls.build_baseline(
+            defn=defn, workload=workload, cfg=cfg, device=self._device, traceset_root=traceset_root
         )
-
-        is_sampling = is_sampling_operation(defn)
-        inputs_all: List[Dict[str, Any]] = []
-        ref_out_all: List[Dict[str, torch.Tensor]] = []
-
-        if is_sampling:
-            inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
-            inputs_all.append(inp)
-
-            freq_dist = compute_frequency_distribution(
-                runnable_ref, [inp], self._device, defn, num_trials=50000
-            )
-            ref_out = {"frequency_distribution": freq_dist}
-            ref_out_all.append(ref_out)
-        else:
-            for _ in range(cfg.num_trials):
-                inp = gen_inputs(defn, workload, device=self._device, stensors=st_cpu)
-                inputs_all.append(inp)
-
-                with torch.no_grad():
-                    out = runnable_ref(**inp)
-                torch.cuda.synchronize(device=dev)
-                ref_out = normalize_outputs(
-                    out,
-                    device=dev,
-                    output_names=list(defn.outputs.keys()),
-                    output_dtypes=output_dtypes,
-                )
-                ref_out_all.append(ref_out)
-
-        ref_lat_all: List[float] = []
-        for inp in inputs_all:
-            ms = time_runnable(runnable_ref, inp, cfg.warmup_runs, cfg.iterations, self._device)
-            ref_lat_all.append(ms)
-
-        ref_mean_latency_ms = sum(ref_lat_all) / float(len(ref_lat_all))
-
-        handle = BaselineHandle(uuid.uuid4().hex)
-
-        self._baselines[handle] = DeviceBaseline(
-            handle=handle,
-            defn=defn,
-            device=self._device,
-            inputs_dev=inputs_all,
-            ref_outputs_dev=ref_out_all,
-            ref_mean_latency_ms=ref_mean_latency_ms,
-        )
-        return handle
+        self._baselines[baseline.handle] = baseline
+        return baseline.handle
 
     def run_solution(
         self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
@@ -342,9 +282,9 @@ class PersistentSubprocessWorker:
             "cmd": WorkerCommand.RUN_SOLUTION.value,
             "definition": bl.defn,
             "solution": sol,
-            "inputs": bl.inputs_dev,
-            "ref_outputs": bl.ref_outputs_dev,
-            "ref_mean_latency_ms": bl.ref_mean_latency_ms,
+            "inputs": bl.inputs,
+            "ref_outputs": bl.outputs,
+            "ref_mean_latency_ms": bl.mean_latency_ms,
             "config": cfg,
             "solution_name": sol.name,
         }
@@ -474,7 +414,7 @@ class PersistentRunner(Runner):
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
 
-        self._available_devices = list_cuda_devices()
+        self._available_devices = fib_utils.list_cuda_devices()
         self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
 
         self._curr_worker_idx = 0
@@ -708,7 +648,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_registry()
+        registry = get_builder_registry()
 
         conn.send({"cmd": WorkerResponse.READY.value})
 
@@ -750,15 +690,24 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         # Use registry to build/get cached solution
                         runnable_sol = registry.build(defn, sol)
 
-                        evaluation = _evaluate_solution_worker(
-                            runnable_sol=runnable_sol,
-                            inputs_bl=inputs_bl,
-                            ref_outputs_bl=ref_outputs_bl,
+                        inputs: List[Dict[str, Any]] = [
+                            {
+                                k: v.clone() if isinstance(v, torch.Tensor) else v
+                                for k, v in inp.items()
+                            }
+                            for inp in inputs_bl
+                        ]
+
+                        evaluator_cls = resolve_evaluator(defn)
+                        evaluation = evaluator_cls.evaluate(
+                            defn=defn,
+                            sol_runnable=runnable_sol,
+                            inputs=inputs,
+                            ref_outputs=ref_outputs_bl,
                             ref_mean_latency_ms=ref_mean_latency_ms,
                             cfg=cfg,
-                            device=device,
                             log_path=log_path,
-                            defn=defn,
+                            device=device,
                         )
 
                         conn.send(
@@ -819,30 +768,3 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
             conn.close()
         except Exception:
             pass
-
-
-def _evaluate_solution_worker(
-    runnable_sol: Runnable,
-    inputs_bl: List[Dict[str, Any]],
-    ref_outputs_bl: List[Dict[str, torch.Tensor]],
-    ref_mean_latency_ms: float,
-    cfg: BenchmarkConfig,
-    device: str,
-    log_path: str,
-    defn: Definition,
-) -> Evaluation:
-    inputs: List[Dict[str, Any]] = [
-        {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inp.items()}
-        for inp in inputs_bl
-    ]
-
-    return SolutionEvaluator.evaluate(
-        runnable_sol=runnable_sol,
-        inputs=inputs,
-        ref_outputs=ref_outputs_bl,
-        ref_mean_latency_ms=ref_mean_latency_ms,
-        cfg=cfg,
-        device=device,
-        log_path=log_path,
-        defn=defn,
-    )
