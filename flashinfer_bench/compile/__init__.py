@@ -4,7 +4,7 @@ Exports common builder types for convenience.
 """
 
 from .builder import Builder, BuildError
-from .registry import BuilderRegistry, get_registry
+from .registry import BuilderRegistry, get_builder_registry
 from .runnable import Runnable
 
-__all__ = ["Builder", "BuildError", "BuilderRegistry", "Runnable", "get_registry"]
+__all__ = ["Builder", "BuildError", "BuilderRegistry", "Runnable", "get_builder_registry"]

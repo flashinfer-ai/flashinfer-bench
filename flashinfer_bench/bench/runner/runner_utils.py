@@ -87,11 +87,8 @@ def normalize_outputs(
 
 
 def compute_error_stats(
-    output: torch.Tensor,
-    reference: torch.Tensor,
-    cfg: BenchmarkConfig,
-    defn: Optional[Definition] = None,
-) -> Tuple[float, float, bool, Optional[float]]:
+    output: torch.Tensor, reference: torch.Tensor, cfg: BenchmarkConfig
+) -> Tuple[float, float, bool, float]:
     x = output.to(torch.float32)
     y = reference.to(torch.float32)
 
@@ -99,22 +96,24 @@ def compute_error_stats(
     abs_error = torch.abs(x - y)
     rel_error = abs_error / (torch.abs(y) + eps)
 
-    if abs_error.numel() == 0:
-        return 0.0, 0.0, False, None
+    total_elements = abs_error.numel()
+    if total_elements == 0:
+        return 0.0, 0.0, False, 1.0
 
-    is_fused_moe = defn is not None and getattr(defn, "op_type", None) == "fused_moe"
-    required_matched_ratio = cfg.required_matched_ratio if is_fused_moe else 1.0
-    matched_ratio_used = required_matched_ratio if is_fused_moe else None
-
+    required_matched_ratio = (
+        cfg.required_matched_ratio if cfg.required_matched_ratio is not None else 1.0
+    )
     exceeds_tol_mask = (abs_error > cfg.atol) & (rel_error > cfg.rtol)
-    matched_ratio = 1.0 - float(exceeds_tol_mask.sum().item() / abs_error.numel())
+    exceeds_count = float(exceeds_tol_mask.sum().item())
+    matched_ratio = 1.0 - (exceeds_count / float(total_elements))
+    matched_ratio = max(0.0, min(1.0, matched_ratio))
 
     exceeds_tol = matched_ratio < required_matched_ratio
 
     max_abs = float(abs_error.max().item())
     max_rel = float(rel_error.max().item())
 
-    return max_abs, max_rel, exceeds_tol, matched_ratio_used
+    return max_abs, max_rel, exceeds_tol, matched_ratio
 
 
 def is_sampling_operation(defn: Definition) -> bool:
@@ -233,7 +232,9 @@ def gen_inputs(
 _MAX_EMBEDDED_LOG_BYTES = 5 * 1024 * 1024
 
 
-def _read_log_file(log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES) -> Optional[str]:
+def _read_log_file(
+    log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES
+) -> Optional[str]:
     if not log_path:
         return None
 

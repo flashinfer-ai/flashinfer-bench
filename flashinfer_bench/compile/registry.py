@@ -49,7 +49,7 @@ class BuilderRegistry:
 _registry: BuilderRegistry | None = None
 
 
-def get_registry() -> BuilderRegistry:
+def get_builder_registry() -> BuilderRegistry:
     global _registry
     if _registry is None:
         from .builders import CUDABuilder, PythonBuilder, TritonBuilder

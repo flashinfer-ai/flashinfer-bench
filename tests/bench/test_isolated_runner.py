@@ -157,21 +157,23 @@ def test_compute_error_stats():
     sol_pass = ref + tol * torch.tensor([0.5, -0.9, 0.3], dtype=torch.float32)
     sol_fail = ref + tol * torch.tensor([0.5, -1.2, 0.3], dtype=torch.float32)
 
-    abs_pass, rel_pass, exceeds_pass, _ = compute_error_stats(sol_pass, ref, cfg)
+    abs_pass, rel_pass, exceeds_pass, matched_ratio_pass = compute_error_stats(sol_pass, ref, cfg)
     diff_pass = (sol_pass - ref).abs()
     eps = 1e-8
     expected_rel_pass = (diff_pass / (ref.abs() + eps)).max().item()
     assert abs_pass == pytest.approx(diff_pass.max().item())
     assert rel_pass == pytest.approx(expected_rel_pass)
     assert not exceeds_pass
+    assert matched_ratio_pass == pytest.approx(1.0)
     assert torch.allclose(sol_pass, ref, atol=cfg.atol, rtol=cfg.rtol)
 
-    abs_fail, rel_fail, exceeds_fail, _ = compute_error_stats(sol_fail, ref, cfg)
+    abs_fail, rel_fail, exceeds_fail, matched_ratio_fail = compute_error_stats(sol_fail, ref, cfg)
     diff_fail = (sol_fail - ref).abs()
     expected_rel_fail = (diff_fail / (ref.abs() + eps)).max().item()
     assert abs_fail == pytest.approx(diff_fail.max().item())
     assert rel_fail == pytest.approx(expected_rel_fail)
     assert exceeds_fail
+    assert matched_ratio_fail == pytest.approx(2.0 / 3.0)
     assert not torch.allclose(sol_fail, ref, atol=cfg.atol, rtol=cfg.rtol)
 
 
