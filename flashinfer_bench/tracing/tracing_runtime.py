@@ -26,111 +26,6 @@ from .tracing_policy import DedupPolicy, WorkloadEntry
 logger = get_logger("TracingRuntime")
 
 
-def _init_tracing_runtime_from_env() -> Optional["TracingRuntime"]:
-    """Initialize the global tracing runtime instance from environment variables."""
-    fib_enable_tracing = get_fib_enable_tracing()
-    if not fib_enable_tracing:
-        return None
-    fib_dataset_path = get_fib_dataset_path()
-    trace_set = TraceSet.from_path(fib_dataset_path)
-    tracing_configs = FULL_TRACING_CONFIGS
-    return TracingRuntime(trace_set, tracing_configs, None)
-
-
-# Global singleton tracing runtime instance
-_global_tracing_runtime: Optional["TracingRuntime"] = _init_tracing_runtime_from_env()
-
-
-def get_tracing_runtime() -> Optional["TracingRuntime"]:
-    """Get the global tracing runtime instance.
-
-    Returns
-    -------
-    TracingRuntime
-        The global runtime instance.
-    """
-    return _global_tracing_runtime
-
-
-def set_tracing_runtime(rt: Optional["TracingRuntime"]) -> None:
-    """Set the global tracing runtime instance.
-
-    Parameters
-    ----------
-    rt : Optional[TracingRuntime]
-        The runtime instance to set, or None to clear the global runtime.
-    """
-    global _global_tracing_runtime
-    _global_tracing_runtime = rt
-
-
-def _get_axis_value(definition: Definition, axes: Dict[str, int], axis_name: str) -> int:
-    """Get the integer value for a named axis from runtime axes or definition.
-
-    Parameters
-    ----------
-    definition : Definition
-        The workload definition containing axis specifications.
-    axes : Dict[str, int]
-        Runtime axis values provided during tracing.
-    axis_name : str
-        Name of the axis to resolve.
-
-    Returns
-    -------
-    int
-        The resolved integer value for the axis.
-
-    Raises
-    ------
-    ValueError
-        If the axis is unknown, has unsupported type, or is missing required values.
-    """
-    axis_spec = definition.axes.get(axis_name)
-    if axis_spec is None:
-        raise ValueError(f'Unknown axis "{axis_name}" in shape')
-
-    if axis_spec.type == "const":
-        return axis_spec.value
-    elif axis_spec.type == "var":
-        if axis_name in axes:
-            return int(axes[axis_name])
-        else:
-            raise ValueError(f'Axis "{axis_name}" is a variable axis but missing in axes')
-    raise ValueError(f'Unsupported axis type for "{axis_name}": {axis_spec.type}')
-
-
-def _materialize_shape(
-    definition: Definition, axes: Dict[str, int], shape: Optional[List[str]]
-) -> Optional[Tuple[int, ...]]:
-    """Convert a shape specification with named axes to concrete integer dimensions.
-
-    Parameters
-    ----------
-    definition : Definition
-        The workload definition containing axis specifications.
-    axes : Dict[str, int]
-        Runtime axis values provided during tracing.
-    shape : Optional[List[str]]
-        The symbolized tensor shape from the definition. None for scalar.
-
-    Returns
-    -------
-    Optional[Tuple[int, ...]]
-        Tuple of concrete integer dimensions representing the materialized shape.
-        Returns None for scalar.
-
-    Raises
-    ------
-    ValueError
-        If shape specification is None, contains unsupported dimensions,
-        or axis resolution fails.
-    """
-    if shape is None:
-        return None
-    return tuple(_get_axis_value(definition, axes, dim) for dim in shape)
-
-
 class TracingRuntime:
     """Process-wide singleton tracer for workload collection."""
 
@@ -178,7 +73,7 @@ class TracingRuntime:
         # This ensures state isolation between definitions and runtime instances
         self._dedup_policies: Dict[str, DedupPolicy] = {}
         for def_name, config in self._tracing_configs.items():
-            self._dedup_policies[def_name] = config.create_dedup_policy()
+            self._dedup_policies[def_name] = config.create_filter_policy()
 
         # Validate config keys exist in definitions
         for def_name in self._tracing_configs:
@@ -272,9 +167,9 @@ class TracingRuntime:
                 self._cuda_graph_entries.append(entry)
             else:
                 # Submit entry directly to dedup policy for online filtering
-                dedup_policy = self._dedup_policies.get(def_name)
-                if dedup_policy is not None:
-                    dedup_policy.submit(entry)
+                filter_policy = self._dedup_policies.get(def_name)
+                if filter_policy is not None:
+                    filter_policy.submit(entry)
 
             self.order_counter += 1
 
@@ -429,9 +324,9 @@ class TracingRuntime:
             entry.inputs_to_dump = snapshot
 
             # Submit to dedup policy
-            dedup_policy = self._dedup_policies.get(entry.def_name)
-            if dedup_policy is not None:
-                dedup_policy.submit(entry)
+            filter_policy = self._dedup_policies.get(entry.def_name)
+            if filter_policy is not None:
+                filter_policy.submit(entry)
 
         self._cuda_graph_entries.clear()
 
@@ -490,9 +385,9 @@ class TracingRuntime:
             raise RuntimeError("Cannot flush during CUDA Graph replay")
 
         # Drain entries from each dedup policy and convert to traces
-        for dedup_policy in self._dedup_policies.values():
+        for filter_policy in self._dedup_policies.values():
             # Drain selected entries from policy
-            selected_entries = dedup_policy.drain()
+            selected_entries = filter_policy.drain()
 
             if len(selected_entries) == 0:
                 continue
@@ -565,6 +460,111 @@ class TracingRuntime:
         self.flush()
         set_tracing_runtime(self._prev_runtime)
         return False
+
+
+def _init_tracing_runtime_from_env() -> Optional["TracingRuntime"]:
+    """Initialize the global tracing runtime instance from environment variables."""
+    fib_enable_tracing = get_fib_enable_tracing()
+    if not fib_enable_tracing:
+        return None
+    fib_dataset_path = get_fib_dataset_path()
+    trace_set = TraceSet.from_path(fib_dataset_path)
+    tracing_configs = FULL_TRACING_CONFIGS
+    return TracingRuntime(trace_set, tracing_configs, None)
+
+
+# Global singleton tracing runtime instance
+_global_tracing_runtime: Optional["TracingRuntime"] = _init_tracing_runtime_from_env()
+
+
+def get_tracing_runtime() -> Optional["TracingRuntime"]:
+    """Get the global tracing runtime instance.
+
+    Returns
+    -------
+    TracingRuntime
+        The global runtime instance.
+    """
+    return _global_tracing_runtime
+
+
+def set_tracing_runtime(rt: Optional["TracingRuntime"]) -> None:
+    """Set the global tracing runtime instance.
+
+    Parameters
+    ----------
+    rt : Optional[TracingRuntime]
+        The runtime instance to set, or None to clear the global runtime.
+    """
+    global _global_tracing_runtime
+    _global_tracing_runtime = rt
+
+
+def _get_axis_value(definition: Definition, axes: Dict[str, int], axis_name: str) -> int:
+    """Get the integer value for a named axis from runtime axes or definition.
+
+    Parameters
+    ----------
+    definition : Definition
+        The workload definition containing axis specifications.
+    axes : Dict[str, int]
+        Runtime axis values provided during tracing.
+    axis_name : str
+        Name of the axis to resolve.
+
+    Returns
+    -------
+    int
+        The resolved integer value for the axis.
+
+    Raises
+    ------
+    ValueError
+        If the axis is unknown, has unsupported type, or is missing required values.
+    """
+    axis_spec = definition.axes.get(axis_name)
+    if axis_spec is None:
+        raise ValueError(f'Unknown axis "{axis_name}" in shape')
+
+    if axis_spec.type == "const":
+        return axis_spec.value
+    elif axis_spec.type == "var":
+        if axis_name in axes:
+            return int(axes[axis_name])
+        else:
+            raise ValueError(f'Axis "{axis_name}" is a variable axis but missing in axes')
+    raise ValueError(f'Unsupported axis type for "{axis_name}": {axis_spec.type}')
+
+
+def _materialize_shape(
+    definition: Definition, axes: Dict[str, int], shape: Optional[List[str]]
+) -> Optional[Tuple[int, ...]]:
+    """Convert a shape specification with named axes to concrete integer dimensions.
+
+    Parameters
+    ----------
+    definition : Definition
+        The workload definition containing axis specifications.
+    axes : Dict[str, int]
+        Runtime axis values provided during tracing.
+    shape : Optional[List[str]]
+        The symbolized tensor shape from the definition. None for scalar.
+
+    Returns
+    -------
+    Optional[Tuple[int, ...]]
+        Tuple of concrete integer dimensions representing the materialized shape.
+        Returns None for scalar.
+
+    Raises
+    ------
+    ValueError
+        If shape specification is None, contains unsupported dimensions,
+        or axis resolution fails.
+    """
+    if shape is None:
+        return None
+    return tuple(_get_axis_value(definition, axes, dim) for dim in shape)
 
 
 # TODO: Fix cuda graph support

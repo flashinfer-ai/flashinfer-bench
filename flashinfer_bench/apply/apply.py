@@ -4,6 +4,7 @@ import inspect
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from flashinfer_bench.data import TraceSet
+from flashinfer_bench.tracing import get_tracing_runtime
 
 from .apply_config import ApplyConfig
 from .apply_runtime import ApplyRuntime, get_apply_runtime, set_apply_runtime
@@ -67,14 +68,14 @@ def apply(
     Decorator mode with a fixed name
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     >>> @apply("gemm_bf16")
-    ... def gemm_bf16(A, B, bias=None):
-    ...     return torch.nn.functional.linear(A, B, bias)
+    ... def gemm_bf16(A, B):
+    ...     return torch.nn.functional.linear(A, B)
 
     Decorator mode with a resolver
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    >>> @apply(lambda A, B: f"gemm_n_{B.shape[0]}_k_{B.shape[1]}")
-    ... def gemm_bf16(A, B, bias=None):
-    ...     return torch.nn.functional.linear(A, B, bias)
+    >>> @apply(lambda A, B: f"gemm_n{B.shape[0]}_k{B.shape[1]}")
+    ... def gemm_bf16(A, B):
+    ...     return torch.nn.functional.linear(A, B)
 
     Function mode
     ~~~~~~~~~~~~~
@@ -86,11 +87,15 @@ def apply(
     """
     # Imperative
     if runtime_kwargs is not None:
-        rt = get_apply_runtime()
-        if rt is None:
+        tracing_rt = get_tracing_runtime()
+        if tracing_rt is not None:
+            tracing_rt.collect(def_name, kwargs)
+
+        apply_rt = get_apply_runtime()
+        if apply_rt is None:
             if fallback is None:
                 raise RuntimeError("Apply is not enabled and no fallback provided")
-            return fallback(**runtime_kwargs)
+            return fallback(**kwargs)
 
         kwargs = dict(runtime_kwargs)
         def_name = (
@@ -98,7 +103,8 @@ def apply(
             if isinstance(def_name_or_resolver, str)
             else def_name_or_resolver(**kwargs)
         )
-        return rt.dispatch(def_name, kwargs, fallback)
+
+        return apply_rt.dispatch(def_name, kwargs, fallback)
 
     # Decorator
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -107,8 +113,9 @@ def apply(
         param_names = tuple(sig.parameters.keys())
 
         def wrapped(*args: Any, **kwargs: Any):
-            rt = get_apply_runtime()
-            if rt is None:
+            tracing_rt = get_tracing_runtime()
+            apply_rt = get_apply_runtime()
+            if tracing_rt is None and apply_rt is None:
                 return fn(*args, **kwargs)
 
             bound = _merge_args_to_kwargs(param_names, args, kwargs)
@@ -117,7 +124,11 @@ def apply(
                 if isinstance(def_name_or_resolver, str)
                 else def_name_or_resolver(**bound)
             )
-            return rt.dispatch(def_name, bound, fn)
+            if tracing_rt is not None:
+                tracing_rt.collect(def_name, bound)
+            if apply_rt is None:
+                return fn(*args, **kwargs)
+            return apply_rt.dispatch(def_name, bound, fn)
 
         wrapped.__name__ = fn.__name__
         wrapped.__doc__ = fn.__doc__

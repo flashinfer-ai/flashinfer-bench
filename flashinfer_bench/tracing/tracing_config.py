@@ -30,7 +30,7 @@ class TracingConfig:
     - InputDumpPolicyFunction: custom function that selects tensors from runtime arguments
     """
 
-    dedup_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
+    filter_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
     """Deduplication policy factory. Can be a string literal for built-in policies or a factory
     function for custom policies. Can be:
     - DedupPolicyLiteral: string literal for built-in policies
@@ -49,17 +49,17 @@ class TracingConfig:
                 )
             self.input_dump_policy = dump_func
 
-        # Resolve dedup_policy literal
-        if isinstance(self.dedup_policy, str):
-            factory = BUILTIN_DEDUP_POLICIES.get(self.dedup_policy)
+        # Resolve filter_policy literal
+        if isinstance(self.filter_policy, str):
+            factory = BUILTIN_DEDUP_POLICIES.get(self.filter_policy)
             if factory is None:
                 raise ValueError(
-                    f"Unknown dedup_policy literal: {self.dedup_policy}. "
+                    f"Unknown filter_policy literal: {self.filter_policy}. "
                     f"Must be one of {list(BUILTIN_DEDUP_POLICIES.keys())}"
                 )
-            self.dedup_policy = factory
+            self.filter_policy = factory
 
-    def create_dedup_policy(self) -> DedupPolicy:
+    def create_filter_policy(self) -> DedupPolicy:
         """Create a new dedup policy instance.
 
         Returns
@@ -67,11 +67,11 @@ class TracingConfig:
         DedupPolicy
             A new policy instance with independent state.
         """
-        if callable(self.dedup_policy):
-            return self.dedup_policy()
+        if callable(self.filter_policy):
+            return self.filter_policy()
         else:
             raise TypeError(
-                f"dedup_policy must be callable after __post_init__, got {type(self.dedup_policy)}"
+                f"filter_policy must be callable after __post_init__, got {type(self.filter_policy)}"
             )
 
     def get_inputs_to_dump(self, runtime_args: Dict[str, Any]) -> List[str]:
