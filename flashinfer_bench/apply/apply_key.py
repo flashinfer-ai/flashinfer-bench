@@ -14,7 +14,6 @@ class ApplyKey:
     # Features extracted from input tensors
     feats: Tuple[Tuple[str, Union[int, Union[float, bool]]], ...] = field(default_factory=tuple)
 
-    @property
     def encode(self) -> str:
         return json.dumps(
             {"axes": list(self.axes), "feats": list(self.feats)},

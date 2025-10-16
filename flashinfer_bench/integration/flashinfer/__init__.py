@@ -6,6 +6,7 @@ from .adapters.gqa_paged_decode import GQAPagedDecodeAdapter
 from .adapters.gqa_paged_prefill import GQAPagedPrefillAdapter
 from .adapters.mla_paged import MLAPagedAdapter
 from .adapters.ragged_prefill import RaggedPrefillAdapter
+from .adapters.rmsnorm import RMSNormAdapter
 
 
 def install_flashinfer_integrations() -> None:
@@ -13,6 +14,7 @@ def install_flashinfer_integrations() -> None:
     Install patches for a set of adapters. If a target does not exist in
     the current environment, skip silently. Idempotent.
     """
+    print("Installing flashinfer integrations...")
     mgr = get_manager()
 
     adapters = [
@@ -20,6 +22,7 @@ def install_flashinfer_integrations() -> None:
         RaggedPrefillAdapter(),
         GQAPagedDecodeAdapter(),
         MLAPagedAdapter(),
+        RMSNormAdapter(),
     ]
 
     for adp in adapters:
