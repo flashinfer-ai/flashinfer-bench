@@ -70,7 +70,7 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
 def make_eval(speedup: float) -> Evaluation:
     return Evaluation(
         status=EvaluationStatus.PASSED,
-        log_file="log",
+        log="log",
         environment=Environment(hardware="cpu"),
         timestamp="t",
         correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
@@ -214,7 +214,7 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
     def ev(sp: float) -> Evaluation:
         return Evaluation(
             status=EvaluationStatus.PASSED,
-            log_file="log",
+            log="log",
             environment=env,
             timestamp="t",
             correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),

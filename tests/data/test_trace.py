@@ -60,11 +60,11 @@ def test_evaluation_status_requirements():
     env = Environment(hardware="cuda")
     # PASSED requires correctness and performance
     with pytest.raises(ValueError):
-        Evaluation(status=EvaluationStatus.PASSED, log_file="a", environment=env, timestamp="t")
+        Evaluation(status=EvaluationStatus.PASSED, log="a", environment=env, timestamp="t")
     # INCORRECT_NUMERICAL requires correctness only
     Evaluation(
         status=EvaluationStatus.INCORRECT_NUMERICAL,
-        log_file="a",
+        log="a",
         environment=env,
         timestamp="t",
         correctness=Correctness(),
@@ -72,7 +72,7 @@ def test_evaluation_status_requirements():
     with pytest.raises(ValueError):
         Evaluation(
             status=EvaluationStatus.INCORRECT_NUMERICAL,
-            log_file="a",
+            log="a",
             environment=env,
             timestamp="t",
             performance=Performance(),
@@ -84,14 +84,14 @@ def test_evaluation_status_requirements():
         EvaluationStatus.RUNTIME_ERROR,
         EvaluationStatus.COMPILE_ERROR,
     ]:
-        Evaluation(status=st, log_file="a", environment=env, timestamp="t")
+        Evaluation(status=st, log="a", environment=env, timestamp="t")
         with pytest.raises(ValueError):
             Evaluation(
-                status=st, log_file="a", environment=env, timestamp="t", correctness=Correctness()
+                status=st, log="a", environment=env, timestamp="t", correctness=Correctness()
             )
         with pytest.raises(ValueError):
             Evaluation(
-                status=st, log_file="a", environment=env, timestamp="t", performance=Performance()
+                status=st, log="a", environment=env, timestamp="t", performance=Performance()
             )
 
 
@@ -107,7 +107,7 @@ def test_trace_workload_and_regular():
     # Regular successful trace
     eval_ok = Evaluation(
         status=EvaluationStatus.PASSED,
-        log_file="log",
+        log="log",
         environment=Environment(hardware="cuda"),
         timestamp="t",
         correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),

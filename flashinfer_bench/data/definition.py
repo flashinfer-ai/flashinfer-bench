@@ -104,8 +104,8 @@ class Definition(BaseModelWithDocstrings):
     name: NonEmptyString
     """A unique, human-readable name for the kernel definition."""
     op_type: NonEmptyString
-    """The general compute category (e.g., 'gemm', 'gqa_paged', 'mla_ragged')."""
-    axes: Dict[NonEmptyString, AxisSpec]
+    """The general compute category (e.g., 'gemm', 'gqa_ragged', 'mla_paged', 'moe')."""
+    axes: Dict[NonEmptyString, Union[AxisConst, AxisVar]]
     """Dictionary of symbolic dimensions used in tensor shapes. The axes will be bound to the
     input tensor dimensions at runtime."""
     inputs: Dict[NonEmptyString, TensorSpec]

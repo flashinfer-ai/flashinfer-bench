@@ -26,7 +26,10 @@ def best(args: argparse.Namespace):
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            logger.info(f"- Log:      {trace.evaluation.log_file}")
+            if trace.evaluation.log:
+                logger.info("- Log snippet:")
+                for line in trace.evaluation.log.splitlines()[:5]:
+                    logger.info("  %s", line)
 
 
 def summary(args: argparse.Namespace):
@@ -177,13 +180,14 @@ def run(args: argparse.Namespace):
     # Only support --local for now
     for path in args.local:
         trace_set = TraceSet.from_path(str(path))
+
         config = BenchmarkConfig(
             warmup_runs=args.warmup_runs,
             iterations=args.iterations,
             num_trials=args.num_trials,
             rtol=args.rtol,
             atol=args.atol,
-            use_multi_process_runner=args.use_multi_process_runner,
+            use_isolated_runner=args.use_isolated_runner,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
@@ -243,9 +247,9 @@ def cli():
         help="Logging level",
     )
     run_parser.add_argument(
-        "--use-multi-process-runner",
+        "--use-isolated-runner",
         action="store_true",
-        help="Use MultiProcessRunner instead of the default PersistentRunner",
+        help="Use IsolatedRunner instead of the default PersistentRunner",
     )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
     run_parser.add_argument(

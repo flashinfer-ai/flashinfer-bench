@@ -96,7 +96,7 @@ export const EvaluationSchema = z.object({
     'PASSED', 'INCORRECT_SHAPE', 'INCORRECT_NUMERICAL', 'INCORRECT_DTYPE',
     'RUNTIME_ERROR', 'COMPILE_ERROR'
   ]),
-  log_file: z.string(),
+  log: z.string().default(''),
   correctness: z.object({
                   max_relative_error: z.number(),
                   max_absolute_error: z.number(),

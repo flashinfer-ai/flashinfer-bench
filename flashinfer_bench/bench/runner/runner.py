@@ -27,9 +27,9 @@ class DeviceBaseline:
     handle: BaselineHandle
     defn: Definition
     device: str
-    inputs_dev: List[Dict[str, Any]]
-    ref_outputs_dev: List[Dict[str, torch.Tensor]]
-    ref_mean_latency_ms: float
+    inputs: List[Dict[str, Any]]
+    outputs: List[Dict[str, torch.Tensor]]
+    mean_latency_ms: float
 
 
 class Runner(ABC):

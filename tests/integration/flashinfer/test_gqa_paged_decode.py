@@ -120,7 +120,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
         solution=solution.name,
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
-            log_file="/dev/null",
+            log="/dev/null",
             environment=Environment(hardware="gpu", libs={}),
             timestamp="now",
             correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
