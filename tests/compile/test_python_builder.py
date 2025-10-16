@@ -18,7 +18,7 @@ from flashinfer_bench.data import (
 def test_python_builder_minimum(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d = Definition(
         name="mm",
@@ -54,7 +54,7 @@ def test_python_builder_minimum(tmp_path, monkeypatch):
 def test_python_builder_add(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     defn = Definition(
         name="add",

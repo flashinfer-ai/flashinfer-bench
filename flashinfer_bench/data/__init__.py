@@ -1,6 +1,6 @@
 """Data layer with strongly-typed dataclasses for FlashInfer Bench."""
 
-from .definition import AxisConst, AxisVar, Definition, TensorSpec
+from .definition import AxisConst, AxisSpec, AxisVar, Definition, TensorSpec
 from .json_utils import (
     append_jsonl_file,
     load_json_file,
@@ -27,6 +27,7 @@ from .trace_set import TraceSet
 __all__ = [
     # Definition types
     "AxisConst",
+    "AxisSpec",
     "AxisVar",
     "TensorSpec",
     "Definition",

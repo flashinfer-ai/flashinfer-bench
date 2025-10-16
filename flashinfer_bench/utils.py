@@ -1,30 +1,54 @@
 import os
 import platform
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
 from flashinfer_bench.data import Environment
 
+_DTYPE_STR_TO_TORCH_DTYPE = {
+    "float32": torch.float32,
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float8_e4m3fn": torch.float8_e4m3fn,
+    "float8_e5m2": torch.float8_e5m2,
+    "float4_e2m1": torch.float4_e2m1fn_x2,
+    "int64": torch.int64,
+    "int32": torch.int32,
+    "int16": torch.int16,
+    "int8": torch.int8,
+    "bool": torch.bool,
+}
 
-def torch_dtype_from_def(dtype_str: str):
+_DTYPE_STR_TO_PYTHON_DTYPE = {
+    "float32": float,
+    "float16": float,
+    "bfloat16": float,
+    "float8_e4m3fn": float,
+    "float8_e5m2": float,
+    "float4_e2m1": float,
+    "int64": int,
+    "int32": int,
+    "int16": int,
+    "int8": int,
+    "bool": bool,
+}
+
+
+def dtype_str_to_torch_dtype(dtype_str: str) -> torch.dtype:
     if not dtype_str:
         raise ValueError("dtype is None or empty")
-    table = {
-        "float32": torch.float32,
-        "float16": torch.float16,
-        "bfloat16": torch.bfloat16,
-        "float8_e4m3fn": torch.float8_e4m3fn,
-        "float8_e5m2": torch.float8_e5m2,
-        "float4_e2m1": torch.float4_e2m1fn_x2,
-        "int64": torch.int64,
-        "int32": torch.int32,
-        "int16": torch.int16,
-        "int8": torch.int8,
-        "bool": torch.bool,
-    }
-    dtype = table.get(dtype_str.lower(), None)
+    dtype = _DTYPE_STR_TO_TORCH_DTYPE.get(dtype_str, None)
+    if dtype is None:
+        raise ValueError(f"Unsupported dtype '{dtype_str}'")
+    return dtype
+
+
+def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
+    if not dtype_str:
+        raise ValueError("dtype is None or empty")
+    dtype = _DTYPE_STR_TO_PYTHON_DTYPE.get(dtype_str, None)
     if dtype is None:
         raise ValueError(f"Unsupported dtype '{dtype_str}'")
     return dtype

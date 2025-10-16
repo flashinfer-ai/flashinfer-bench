@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import inspect
-import os
-from typing import Any, Callable, Dict, Mapping, Optional, Union, overload
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
-from .config import ApplyConfig
-from .runtime import ApplyRuntime, get_runtime, set_runtime
+from flashinfer_bench.data import TraceSet
+from flashinfer_bench.tracing import get_tracing_runtime
 
-_SENTINEL = object()
+from .apply_config import ApplyConfig
+from .apply_runtime import ApplyRuntime, get_apply_runtime, set_apply_runtime
 
 
-# Decorator
+# Decorator mode
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
 
 
+# Function mode
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
@@ -28,8 +29,8 @@ def apply(
 
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],
-    runtime_kwargs: Dict[str, Any] = _SENTINEL,
-    fallback: Optional[Callable[..., Any]] = _SENTINEL,
+    runtime_kwargs: Optional[Dict[str, Any]] = None,
+    fallback: Optional[Callable[..., Any]] = None,
 ):
     """
     Decorator/function for routing to the best-performing kernel recorded in the
@@ -67,14 +68,14 @@ def apply(
     Decorator mode with a fixed name
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     >>> @apply("gemm_bf16")
-    ... def gemm_bf16(A, B, bias=None):
-    ...     return torch.nn.functional.linear(A, B, bias)
+    ... def gemm_bf16(A, B):
+    ...     return torch.nn.functional.linear(A, B)
 
     Decorator mode with a resolver
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    >>> @apply(lambda A, B: f"gemm_n_{B.shape[0]}_k_{B.shape[1]}")
-    ... def gemm_bf16(A, B, bias=None):
-    ...     return torch.nn.functional.linear(A, B, bias)
+    >>> @apply(lambda A, B: f"gemm_n{B.shape[0]}_k{B.shape[1]}")
+    ... def gemm_bf16(A, B):
+    ...     return torch.nn.functional.linear(A, B)
 
     Function mode
     ~~~~~~~~~~~~~
@@ -85,12 +86,16 @@ def apply(
     ... )
     """
     # Imperative
-    if runtime_kwargs is not _SENTINEL:
-        rt = get_runtime()
-        if rt is None:
+    if runtime_kwargs is not None:
+        tracing_rt = get_tracing_runtime()
+        if tracing_rt is not None:
+            tracing_rt.collect(def_name, kwargs)
+
+        apply_rt = get_apply_runtime()
+        if apply_rt is None:
             if fallback is None:
                 raise RuntimeError("Apply is not enabled and no fallback provided")
-            return fallback(**runtime_kwargs)
+            return fallback(**kwargs)
 
         kwargs = dict(runtime_kwargs)
         def_name = (
@@ -98,7 +103,8 @@ def apply(
             if isinstance(def_name_or_resolver, str)
             else def_name_or_resolver(**kwargs)
         )
-        return rt.dispatch(def_name, kwargs, fallback)
+
+        return apply_rt.dispatch(def_name, kwargs, fallback)
 
     # Decorator
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -107,17 +113,22 @@ def apply(
         param_names = tuple(sig.parameters.keys())
 
         def wrapped(*args: Any, **kwargs: Any):
-            rt = get_runtime()
-            if rt is None:
+            tracing_rt = get_tracing_runtime()
+            apply_rt = get_apply_runtime()
+            if tracing_rt is None and apply_rt is None:
                 return fn(*args, **kwargs)
 
-            bound = _merge_to_kwargs(param_names, args, kwargs)
+            bound = _merge_args_to_kwargs(param_names, args, kwargs)
             def_name = (
                 def_name_or_resolver
                 if isinstance(def_name_or_resolver, str)
                 else def_name_or_resolver(**bound)
             )
-            return rt.dispatch(def_name, bound, fn)
+            if tracing_rt is not None:
+                tracing_rt.collect(def_name, bound)
+            if apply_rt is None:
+                return fn(*args, **kwargs)
+            return apply_rt.dispatch(def_name, bound, fn)
 
         wrapped.__name__ = fn.__name__
         wrapped.__doc__ = fn.__doc__
@@ -129,12 +140,11 @@ def apply(
 
 def enable_apply(
     dataset_path: Optional[str] = None, apply_config: Optional[ApplyConfig] = None
-) -> _ApplyHandle:
-    """Immediately enable global apply and return a handle.
+) -> ApplyRuntime:
+    """Enable apply functionality globally and return a ApplyRuntime instance that manages the
+    apply functionality.
 
-    The returned handle can be used in two ways:
-    - As a function for imperative apply calls
-    - In a with block for contextual availability, exiting restores the original state
+    There is only one global ApplyRuntime instance. This function must be called in the main thread.
 
     Parameters
     ----------
@@ -145,20 +155,28 @@ def enable_apply(
 
     Returns
     -------
-    _ApplyHandle
-        Handle that can be used for imperative apply or as context manager
+    ApplyRuntime
+        The global ApplyRuntime instance managing the apply functionality.
 
     Examples
     --------
     >>> # Direct usage
-    >>> handle = enable_apply("/path/to/traceset", cfg)
+    >>> enable_apply("/path/to/traceset", cfg)
+    >>> # Apply is now enabled
     >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> disable_apply()
+    >>> # Apply is now disabled.
 
     >>> # Context manager usage
-    >>> with enable_apply("/path/to/traceset", cfg) as apply_fn:
-    ...     out = apply_fn("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> with enable_apply("/path/to/traceset", cfg):
+    ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> # Apply is now disabled.
     """
-    return _ApplyHandle(dataset_path, apply_config)
+    prev_runtime = get_apply_runtime()
+    trace_set = TraceSet.from_path(dataset_path)
+    apply_runtime = ApplyRuntime(trace_set, apply_config, prev_runtime)
+    set_apply_runtime(apply_runtime)
+    return apply_runtime
 
 
 def disable_apply() -> None:
@@ -168,57 +186,13 @@ def disable_apply() -> None:
     After calling this function, any subsequent calls to apply() will use fallback
     functions instead of the apply runtime.
 
-    Examples
-    --------
-    >>> enable_apply("/path/to/traceset")
-    >>> # apply is now enabled
-    >>> disable_apply()
-    >>> # apply is now disabled, fallback functions will be used
+    Check out the `enable_apply` function for examples.
     """
-    set_runtime(None)
+    set_apply_runtime(None)
 
 
-class _ApplyHandle:
-    """Context manager for enabling apply."""
-
-    def __init__(
-        self, dataset_path: Optional[str] = None, config: Optional[ApplyConfig] = None
-    ) -> None:
-        # Record current runtime, then install new runtime
-        self._prev: Optional[ApplyRuntime] = get_runtime()
-        self._rt = ApplyRuntime(_resolve_dataset(dataset_path), _resolve_cfg(config))
-        set_runtime(self._rt)
-
-    # Imperative apply
-    def __call__(
-        self,
-        def_name_or_resolver: Union[str, Callable[..., str]],
-        *,
-        runtime_kwargs: Dict[str, Any],
-        fallback: Optional[Callable[..., Any]],
-    ) -> Any:
-        def_name = (
-            def_name_or_resolver
-            if isinstance(def_name_or_resolver, str)
-            else def_name_or_resolver(**runtime_kwargs)
-        )
-        return self._rt.dispatch(def_name, runtime_kwargs, fallback)
-
-    def __enter__(self) -> Callable[[Union[str, Callable[..., str]]], Any]:
-        return self.__call__
-
-    # Exit restores the runtime before entering
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        try:
-            set_runtime(self._prev)
-        finally:
-            self._prev = None
-            self._rt = None
-        return False
-
-
-def _merge_to_kwargs(
-    param_names: tuple[str, ...], args: tuple[Any, ...], kwargs: Mapping[str, Any]
+def _merge_args_to_kwargs(
+    param_names: Tuple[str], args: Tuple[Any], kwargs: Dict[str, Any]
 ) -> Dict[str, Any]:
     if len(args) > len(param_names):
         raise TypeError("Too many positional arguments")
@@ -231,16 +205,3 @@ def _merge_to_kwargs(
             raise TypeError(f"Multiple values for argument '{k}'")
         merged[k] = v
     return merged
-
-
-def _resolve_dataset(dataset_path: Optional[str]) -> str:
-    if dataset_path:
-        return dataset_path
-    env_ds = os.environ.get("FIB_DATASET_PATH")
-    if env_ds:
-        return env_ds
-    raise ValueError("dataset_path is required (or set FIB_DATASET_PATH).")
-
-
-def _resolve_cfg(cfg: Optional[ApplyConfig]) -> ApplyConfig:
-    return cfg or ApplyConfig()

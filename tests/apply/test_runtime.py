@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+from typing import Tuple
 
 import pytest
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
-from flashinfer_bench.apply.hook import set_apply_hook
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.compile import Runnable
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -28,11 +30,11 @@ from flashinfer_bench.data import (
 
 
 class FakeTensor:
-    def __init__(self, shape):
+    def __init__(self, shape: Tuple[int, ...]):
         self.shape = tuple(shape)
 
 
-def make_def_and_solutions():
+def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
     d = Definition(
         name="add",
         op_type="op",
@@ -78,7 +80,7 @@ def make_eval(speedup: float) -> Evaluation:
     )
 
 
-def make_traces():
+def make_traces() -> Tuple[Definition, TraceSet]:
     d, s1, s2 = make_def_and_solutions()
     wl2 = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w2")
     wl3 = Workload(axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w3")
@@ -95,26 +97,20 @@ def make_traces():
     return d, ts
 
 
-def test_runtime_dispatch_hit_and_miss(tmp_path, monkeypatch):
+def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d, ts = make_traces()
     rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
-    set_runtime(rt)
-
-    calls = []
-    set_apply_hook(lambda name, kw: calls.append((name, dict(kw))))
+    set_apply_runtime(rt)
 
     out = rt.dispatch(
         "add", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=lambda **_: "fallback"
     )
     # Routed to the winning solution implementation; our sources return string tags
     assert out == "fast"
-    assert calls and calls[0][0] == "add"
-    # Reset hook
-    set_apply_hook(None)
 
     # Miss with fallback policy: returns fallback
     miss_out = rt.dispatch(
@@ -127,10 +123,12 @@ def test_runtime_dispatch_hit_and_miss(tmp_path, monkeypatch):
         rt.dispatch("add", {"X": FakeTensor((999, 2)), "Y": FakeTensor((999, 2))}, fallback=None)
 
 
-def test_runtime_dispatch_def_best_policy_without_fallback(tmp_path, monkeypatch):
+def test_runtime_dispatch_def_best_policy_without_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d, ts = make_traces()
     # Choose def_best when miss
@@ -141,10 +139,12 @@ def test_runtime_dispatch_def_best_policy_without_fallback(tmp_path, monkeypatch
     assert out in ("fast", "slow")
 
 
-def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(tmp_path, monkeypatch):
+def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d, ts = make_traces()
     rt = ApplyRuntime(ts, ApplyConfig())
@@ -161,10 +161,10 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(tmp_path, m
 
 
 @pytest.mark.skip(reason="TODO: fix this test")
-def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
+def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     ds = tmp_path / "ds"
     ds.mkdir(parents=True, exist_ok=True)
@@ -237,7 +237,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
 
     # Avoid AOT to simplify counting builder invocations
     rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=0.0))
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     # Patch PythonBuilder._build to count actual builds
     from flashinfer_bench.compile.builders.python_builder import PythonBuilder
@@ -245,7 +245,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
     counts = {"build": 0}
     orig_build = PythonBuilder._build
 
-    def counting_build(self, definition, solution):
+    def counting_build(self, definition: Definition, solution: Solution) -> Runnable:
         counts["build"] += 1
         return orig_build(self, definition, solution)
 
@@ -255,7 +255,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
 
         # Two dispatches for same key should reuse cached runnable
         class T:
-            def __init__(self, shape):
+            def __init__(self, shape: Tuple[int, ...]):
                 self.shape = shape
 
         assert (
@@ -270,7 +270,7 @@ def test_runnable_cache_used_by_registry(tmp_path, monkeypatch):
         assert counts["build"] == 1
     finally:
         PythonBuilder._build = orig_build  # type: ignore[assignment]
-        set_runtime(None)
+        set_apply_runtime(None)
 
 
 if __name__ == "__main__":

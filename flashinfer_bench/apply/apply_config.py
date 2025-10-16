@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-@dataclass(frozen=True)
+@dataclass
 class ApplyConfig:
     # The maximum absolute difference allowed between the reference and the candidate
     max_atol: float = 1e-2

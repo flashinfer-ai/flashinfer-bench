@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -168,9 +168,9 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     rt = ApplyRuntime(ts, ApplyConfig())
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     # Decode through adapter
     mla_d = flashinfer.mla.BatchMLAPagedAttentionWrapper(torch.zeros_like(ws))
@@ -325,9 +325,9 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     rt = ApplyRuntime(ts, ApplyConfig())
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
     assert out_prefill_apply == "__SUB__mla_prefill__"

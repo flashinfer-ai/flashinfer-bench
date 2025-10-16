@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -139,9 +139,9 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
     ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     rt = ApplyRuntime(ts, ApplyConfig())
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     # New wrapper instance to exercise the patched adapter path
     wrapper = flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper(

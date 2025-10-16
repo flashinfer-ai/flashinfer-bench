@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply, get_runtime
+from flashinfer_bench.apply import apply, get_apply_runtime
 from flashinfer_bench.integration.flashinfer.common import pick_sm_scale_mla, write_back_outputs
 from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
@@ -53,7 +53,7 @@ class MLAPagedAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
-                if get_runtime() is None:
+                if get_apply_runtime() is None:
                     return orig(inst, *args, **kwargs)
 
                 bound = binder.bind((inst, *args), kwargs)
@@ -81,7 +81,7 @@ class MLAPagedAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
-                if get_runtime() is None:
+                if get_apply_runtime() is None:
                     return orig(inst, *args, **kwargs)
 
                 ctx = self._store.get(inst)
@@ -148,9 +148,9 @@ class MLAPagedAdapter:
                         sm_scale,
                     )
 
-                rt = get_runtime()
+                rt = get_apply_runtime()
                 # Fallback if no definition found
-                if def_name not in rt._traceset.definitions:
+                if def_name not in rt._trace_set.definitions:
                     return orig(inst, *args, **kwargs)
 
                 if is_decode:
