@@ -59,7 +59,7 @@ class PythonBuilder(Builder):
         module_name = pkg + "." + ".".join(Path(entry_file).with_suffix("").parts)
         # $HOME/.cache/flashinfer_bench/python/<temp_dir>/<pkg>
         cache_root = os.environ.get(
-            "FIB_CACHE_DIR", os.path.join(os.path.expanduser("~"), ".cache", "flashinfer_bench")
+            "FIB_CACHE_PATH", os.path.join(os.path.expanduser("~"), ".cache", "flashinfer_bench")
         )
         pkg_dir = write_sources_to_temp(
             base=os.path.join(cache_root, "python"), sources=sol.sources, pkg=pkg

@@ -5,7 +5,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
+
+import safetensors.torch
+import torch
+
+from flashinfer_bench.env import get_fib_dataset_path
 
 from .definition import Definition
 from .json_utils import append_jsonl_file, load_json_file, load_jsonl_file
@@ -26,8 +31,9 @@ class TraceSet:
     keys are definition names and values are lists of associated objects.
     """
 
-    root: str
-    """The root path of the TraceSet. Must be recognized by Path()."""
+    root: Optional[Path] = None
+    """The root path of the TraceSet. If None, all add() or get() operations will be performed
+    in-memory."""
     definitions: Dict[str, Definition] = field(default_factory=dict)
     """The definitions in the database. Map from definition name to Definition object."""
     solutions: Dict[str, List[Solution]] = field(default_factory=dict)
@@ -39,19 +45,58 @@ class TraceSet:
     traces: Dict[str, List[Trace]] = field(default_factory=dict)
     """The traces in the database. Map from definition name to all traces for that definition."""
 
+    @property
+    def definitions_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "definitions"
+
+    @property
+    def solutions_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "solutions"
+
+    @property
+    def workloads_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "workloads"
+
+    @property
+    def traces_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "traces"
+
+    @property
+    def blob_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "blob"
+
+    @property
+    def blob_workloads_path(self) -> Path:
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        return self.root / "blob" / "workloads"
+
     @classmethod
-    def from_path(cls: Type["TraceSet"], path: str) -> "TraceSet":
+    def from_path(cls: type["TraceSet"], path: Optional[str] = None) -> "TraceSet":
         """Load a TraceSet from a directory structure.
 
         Loads a complete TraceSet by scanning the directory structure for:
         - definitions/: JSON files containing Definition objects
         - solutions/: JSON files containing Solution objects
-        - traces/: JSONL files containing Trace objects (both workload and execution traces)
+        - workloads/: JSONL files containing Trace objects (workload traces)
+        - traces/: JSONL files containing Trace objects (execution traces)
 
         Parameters
         ----------
-        path : str
-            Root directory path containing the dataset structure.
+        path : Optional[str], optional
+            Root directory path containing the dataset structure. If None,
+            the global environment variable FIB_DATASET_PATH is used. If
+            FIB_DATASET_PATH is not set, ~/.cache/flashinfer_bench/dataset is used.
 
         Returns
         -------
@@ -65,44 +110,39 @@ class TraceSet:
         FileNotFoundError
             If the specified path doesn't exist.
         """
-        base_path = Path(path)
+        path = Path(path) if path else get_fib_dataset_path()
+
+        # Create the path if it doesn't exist
+        path.mkdir(parents=True, exist_ok=True)
+
+        trace_set = cls(root=path)
 
         # Load json files from all subdirectories
-        definitions = {}
-        for p in sorted((base_path / "definitions").rglob("*.json")):
+        for p in sorted((trace_set.definitions_path.rglob("*.json"))):
             d = load_json_file(Definition, p)
-            if d.name in definitions:
+            if d.name in trace_set.definitions:
                 raise ValueError(f"Duplicate definition name: {d.name}")
-            definitions[d.name] = d
+            trace_set.definitions[d.name] = d
 
         seen_solutions = set()
-        solutions = defaultdict(list)
-        for p in sorted((base_path / "solutions").rglob("*.json")):
+        for p in sorted((trace_set.solutions_path.rglob("*.json"))):
             s = load_json_file(Solution, p)
             if s.name in seen_solutions:
                 raise ValueError(f"Duplicate solution name: {s.name}")
             seen_solutions.add(s.name)
-            solutions[s.definition].append(s)
+            trace_set.solutions.setdefault(s.definition, []).append(s)
 
-        workloads = defaultdict(list)
-        for p in sorted((base_path / "workloads").rglob("*.jsonl")):
+        for p in sorted((trace_set.workloads_path.rglob("*.jsonl"))):
             for t in load_jsonl_file(Trace, p):
                 assert t.is_workload_trace()
-                workloads[t.definition].append(t)
+                trace_set.workloads.setdefault(t.definition, []).append(t)
 
-        traces = defaultdict(list)
-        for p in sorted((base_path / "traces").rglob("*.jsonl")):
+        for p in sorted((trace_set.traces_path.rglob("*.jsonl"))):
             for t in load_jsonl_file(Trace, p):
                 assert not t.is_workload_trace()
-                traces[t.definition].append(t)
+                trace_set.traces.setdefault(t.definition, []).append(t)
 
-        return cls(
-            root=base_path,
-            definitions=definitions,
-            solutions=solutions,
-            workloads=workloads,
-            traces=traces,
-        )
+        return trace_set
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the TraceSet to a Python dict.
@@ -302,17 +342,19 @@ class TraceSet:
         """Backup the traces directory to a new directory. This is useful when we want to keep the
         old traces for reference.
         """
-        traces_dir = self.root / "traces"
-        backup = self.root / f"traces_bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        traces_path = self.traces_path
+        backup_path = self.root / f"traces_bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # Move traces directory to backup
-        if traces_dir.exists():
-            shutil.move(str(traces_dir), str(backup))
+        if traces_path.exists():
+            shutil.move(str(traces_path), str(backup_path))
         else:
-            backup.mkdir(parents=True, exist_ok=True)
+            backup_path.mkdir(parents=True, exist_ok=True)
 
         # Create new traces directory
-        traces_dir.mkdir(parents=True, exist_ok=True)
+        traces_path.mkdir(parents=True, exist_ok=True)
 
     def add_traces(self, traces: List[Trace]) -> None:
         """Add traces to the TraceSet, and store the traces to disk.
@@ -323,15 +365,113 @@ class TraceSet:
             The traces to add to the TraceSet.
         """
         buckets: Dict[Path, List[Trace]] = defaultdict(list)
-        traces_path = Path(self.root) / "traces"
         for trace in traces:
             # Add to in-memory database
+            if trace.definition not in self.definitions:
+                raise ValueError(
+                    f"Add trace failed: Definition {trace.definition} not found in TraceSet"
+                )
             self.traces.setdefault(trace.definition, []).append(trace)
-            defn = self.definitions[trace.definition]
-            path = traces_path / defn.op_type / f"{defn.name}.jsonl"
+
             # Add to disk bucket
+            defn = self.definitions[trace.definition]
+            path = self.traces_path / defn.op_type / f"{defn.name}.jsonl"
             buckets[path].append(trace)
 
         # Write to disk
-        for path, traces in buckets.items():
-            append_jsonl_file(traces, path)
+        if self.root is not None:
+            for path, traces in buckets.items():
+                append_jsonl_file(traces, path)
+
+    def add_workload_blob_tensor(
+        self, def_name: str, workload_uuid: str, tensors: Dict[str, torch.Tensor]
+    ) -> str:
+        """Store a dict of workload blob tensors to a safetensors file, and return the saved file
+        path relative to the TraceSet root.
+
+        Parameters
+        ----------
+        def_name : str
+            The def name of the tensor.
+        workload_uuid : str
+            The workload uuid of the tensor.
+        tensors : Dict[str, torch.Tensor]
+            The dict of tensors to store.
+
+        Returns
+        -------
+        str
+            The file path of the saved tensor.
+
+        Raises
+        ------
+        ValueError
+            If the root path is not set, or the constructed tensor path already exists.
+
+        OSError
+            If writing to disk fails.
+        """
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        op_type = self.definitions[def_name].op_type
+        file_path = (
+            self.blob_workloads_path
+            / op_type
+            / def_name
+            / f"{def_name}_{workload_uuid}.safetensors"
+        )
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Throw error if the tensor path exists
+        if file_path.exists():
+            raise ValueError(f"Tensor save path already exists: {file_path}")
+        cpu_tensors = {k: (v.cpu() if v.is_cuda else v) for k, v in tensors.items()}
+        safetensors.torch.save_file(cpu_tensors, file_path)
+        return str(file_path.relative_to(self.root))
+
+    def get_workload_blob_tensor(self, path_str: str) -> Dict[str, torch.Tensor]:
+        """Get a workload blob tensor from disk to CPU.
+
+        Parameters
+        ----------
+        path_str : str
+            The file path of the tensor relative to the TraceSet root.
+
+        Returns
+        -------
+        Dict[str, torch.Tensor]
+            The dict of tensors from the file.
+        """
+        if self.root is None:
+            raise ValueError("Root path is not set")
+        file_path = self.root / path_str
+        if not file_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+        return safetensors.torch.load_file(file_path, device="cpu")
+
+    def add_workload_traces(self, traces: List[Trace]) -> None:
+        """Add workload traces to the TraceSet, and store the traces to disk.
+
+        Parameters
+        ----------
+        traces : List[Trace]
+            The traces to add to the TraceSet.
+        """
+        buckets: Dict[Path, List[Trace]] = defaultdict(list)
+        for trace in traces:
+            # Add to in-memory database
+            if trace.definition not in self.definitions:
+                raise ValueError(
+                    f"Add workload trace failed: Definition {trace.definition} "
+                    "not found in TraceSet"
+                )
+            self.workloads.setdefault(trace.definition, []).append(trace)
+
+            # Add to disk bucket
+            defn = self.definitions[trace.definition]
+            path = self.workloads_path / defn.op_type / f"{defn.name}.jsonl"
+            buckets[path].append(trace)
+
+        # Write to disk
+        if self.root is not None:
+            for path, traces in buckets.items():
+                append_jsonl_file(traces, path)

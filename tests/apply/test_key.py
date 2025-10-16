@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.apply.key import ApplyKey, ApplyKeyFactory
+from flashinfer_bench.apply.apply_key import ApplyKey, ApplyKeyFactory
 from flashinfer_bench.data import AxisConst, AxisVar, Definition, TensorSpec
 
 
@@ -30,7 +30,7 @@ def make_minimal_def() -> Definition:
 
 def test_applykey_encode_decode_equality():
     k = ApplyKey(axes=(("M", 2), ("N", 4)), feats=(("avg", 1.5), ("flag", True)))
-    s = k.encode
+    s = k.encode()
     # ensure stable json
     json.loads(s)
     k2 = ApplyKey.from_encoded(s)

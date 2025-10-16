@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from flashinfer_bench.apply import apply, disable_apply, enable_apply, set_runtime
+from flashinfer_bench.apply import apply, disable_apply, enable_apply, set_apply_runtime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -43,11 +43,11 @@ class DummyRuntime:
 def teardown_module(module):
     # Ensure global runtime is cleared after this module
     disable_apply()
-    set_runtime(None)
+    set_apply_runtime(None)
 
 
 def test_apply_imperative_when_disabled_calls_fallback():
-    set_runtime(None)
+    set_apply_runtime(None)
 
     def fb(**kw):
         return {"fb": True, "kw": kw}
@@ -57,14 +57,14 @@ def test_apply_imperative_when_disabled_calls_fallback():
 
 
 def test_apply_imperative_raises_without_fallback_when_disabled():
-    set_runtime(None)
+    set_apply_runtime(None)
     with pytest.raises(RuntimeError):
         apply("d", runtime_kwargs={"x": 1}, fallback=None)
 
 
 def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
     # Ensure no env auto-init and runtime is absent
-    set_runtime(None)
+    set_apply_runtime(None)
     monkeypatch.delenv("FIB_ENABLE_APPLY", raising=False)
     monkeypatch.delenv("FIB_DATASET_PATH", raising=False)
 
@@ -78,7 +78,7 @@ def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
 
 def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     rt = DummyRuntime()
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):
@@ -94,12 +94,12 @@ def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     assert f.__doc__ == "docstring here"
     assert isinstance(getattr(f, "__wrapped__", None), types.FunctionType)
     # cleanup
-    set_runtime(None)
+    set_apply_runtime(None)
 
 
 def test_apply_decorator_merge_conflicts_and_positional_overflow():
     rt = DummyRuntime()
-    set_runtime(rt)
+    set_apply_runtime(rt)
 
     @apply("foo")
     def g(a, b):
@@ -113,7 +113,7 @@ def test_apply_decorator_merge_conflicts_and_positional_overflow():
     with pytest.raises(TypeError):
         g(1, a=2)  # type: ignore[call-arg]
     # cleanup
-    set_runtime(None)
+    set_apply_runtime(None)
 
 
 class FakeTensor:
@@ -241,11 +241,11 @@ def _make_dataset(root: Path) -> None:
     save_jsonl_file(mul_traces, root / "traces" / "mul.jsonl")
 
 
-def test_end_to_end_apply_substitution(tmp_path, monkeypatch):
+def test_end_to_end_apply_substitution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Route caches (apply table + python builder) to test tmp dir
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_DIR", str(cache_dir))
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     # Build dataset tree
     ds_root = tmp_path / "dataset"

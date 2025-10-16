@@ -21,7 +21,12 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.logging import configure_logging, get_logger
-from flashinfer_bench.tracer import TracingRule, disable_tracing, enable_tracing, get_tracer
+from flashinfer_bench.tracing import (
+    TracingConfig,
+    disable_tracing,
+    enable_tracing,
+    get_tracing_runtime,
+)
 
 __version__ = "0.0.1"
 
@@ -35,9 +40,9 @@ __all__ = [
     "disable_apply",
     # Tracing API
     "enable_tracing",
-    "get_tracer",
+    "get_tracing_runtime",
     "disable_tracing",
-    "TracingRule",
+    "TracingConfig",
     "Definition",
     "Solution",
     "Trace",

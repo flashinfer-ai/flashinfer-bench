@@ -88,6 +88,10 @@ class TensorSpec(BaseModelWithDocstrings):
     """An optional human-readable description of this tensor's purpose and usage."""
 
 
+AxisSpec = Union[AxisConst, AxisVar]
+"""Union type representing all possible axis specifications."""
+
+
 class Definition(BaseModelWithDocstrings):
     """Complete definition of a computational workload.
 

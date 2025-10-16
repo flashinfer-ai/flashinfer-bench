@@ -1,6 +1,6 @@
 from __future__ import annotations
 
 from .benchmark import Benchmark
-from .config import BenchmarkConfig
+from .benchmark_config import BenchmarkConfig
 
 __all__ = ["Benchmark", "BenchmarkConfig"]

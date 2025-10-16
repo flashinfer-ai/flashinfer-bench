@@ -90,7 +90,7 @@ Writing tensors to file is **async** (background thread) to reduce runtime overh
 If you want to target a subset of kernels / customize policies:
 
 ```python
-import flashinfer_bench as fb
+import flashinfer_bench as fib
 
 # 1) Pick which kernels to trace and how
 from flashinfer_bench import TracingConfig
@@ -106,7 +106,7 @@ configs = {
 }
 
 # 2) Enable, run, then finalize
-with fb.enable_tracing(tracing_configs=configs, dataset_dir="/root/flashinfer-trace"):
+with fib.enable_tracing(dataset_path="/root/flashinfer-trace", tracing_configs=configs):
     run_engine()  # your inference loop
 ```
 
