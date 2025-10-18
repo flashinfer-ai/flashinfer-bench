@@ -85,6 +85,16 @@ def apply(
     ...     fallback=lambda **kw: torch.nn.functional.linear(**kw),
     ... )
     """
+    if runtime_kwargs is not None:
+        kwargs = dict(runtime_kwargs)
+        def_name = (
+            def_name_or_resolver
+            if isinstance(def_name_or_resolver, str)
+            else def_name_or_resolver(**kwargs)
+        )
+        print("apply input:", {"def_name": def_name, "kwargs": kwargs})
+    else:
+        print("apply decorator:", {"def_name_or_resolver": def_name_or_resolver})
     # Imperative
     if runtime_kwargs is not None:
         tracing_rt = get_tracing_runtime()

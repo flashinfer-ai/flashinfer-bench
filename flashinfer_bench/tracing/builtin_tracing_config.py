@@ -18,9 +18,6 @@ mla_paged_prefill_config = TracingConfig(
     filter_policy=lambda: AttentionDedupPolicy(k=1),
 )
 
-mla_ragged_prefill_config = TracingConfig(
-    input_dump_policy=["seq_indptr", "sm_scale"], filter_policy=lambda: AttentionDedupPolicy(k=1)
-)
 
 mla_paged_decode_config = TracingConfig(
     input_dump_policy=["kv_indptr", "kv_indices", "sm_scale"],
@@ -59,8 +56,6 @@ FULL_TRACING_CONFIGS = {
     "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_config,
     "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_config,
     "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_config,
-    "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_config,
-    "rmsnorm_h4096": axes_only_config,
     "fused_add_rmsnorm_h4096": axes_only_config,
 }
 
@@ -73,5 +68,4 @@ ATTN_ONLY_TRACING_CONFIGS = {
     "gqa_ragged_prefill_causal_h32_kv8_d128": gqa_ragged_prefill_config,
     "mla_paged_decode_h16_ckv512_kpe64_ps1": mla_paged_decode_config,
     "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": mla_paged_prefill_config,
-    "mla_ragged_prefill_causal_h16_qk192_vo128": mla_ragged_prefill_config,
 }

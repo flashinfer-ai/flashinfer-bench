@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply, get_apply_runtime
+from flashinfer_bench.apply import apply  # , get_apply_runtime
 from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_ragged_kv_layout_from_tensors,
@@ -49,8 +49,8 @@ class RaggedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
-                if get_apply_runtime() is None:
-                    return orig(inst, *args, **kwargs)
+                # if get_apply_runtime() is None:
+                #     return orig(inst, *args, **kwargs)
 
                 bound = binder.bind((inst, *args), kwargs)
                 ctx = self._store.get(inst)
@@ -73,8 +73,8 @@ class RaggedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
-                if get_apply_runtime() is None:
-                    return orig(inst, *args, **kwargs)
+                # if get_apply_runtime() is None:
+                #     return orig(inst, *args, **kwargs)
 
                 ctx = self._store.get(inst)
                 if not ctx:
