@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import * as d3 from "d3"
-import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardTrigger, HoverCardContent } from "@flashinfer-bench/ui"
+import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Pin as PinIcon, Undo2, HelpCircle } from "lucide-react"
 import type { CurvePoint } from "@/lib/analytics"
 
@@ -11,31 +11,33 @@ export type ScoreboardEntry = {
   percent: number
 }
 
-export type WinAtPCurvesProps = {
+export type FastAtPCurvesProps = {
   curves: Record<string, CurvePoint[]>
   visible: Set<string>
   onHoverP: (p: number | null) => void
   onPinP: (p: number | null) => void
   pinnedP: number | null
   baselineLabel: string
-  workloadCount: number
+  comparisonCount: number
   baselineAvailable: boolean
   colorFor: (name: string) => string
   scoreboard: ScoreboardEntry[]
+  countLabel?: string
 }
 
-export function WinAtPCurves({
+export function FastAtPCurves({
   curves,
   visible,
   onHoverP,
   onPinP,
   pinnedP,
   baselineLabel,
-  workloadCount,
+  comparisonCount,
   baselineAvailable,
   colorFor,
   scoreboard: _scoreboard,
-}: WinAtPCurvesProps) {
+  countLabel = "workloads",
+}: FastAtPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
   const hideHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -151,7 +153,7 @@ export function WinAtPCurves({
       <CardHeader className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CardTitle>Win@P Plot</CardTitle>
+            <CardTitle>Fast@p Plot</CardTitle>
             <HoverCard>
               <HoverCardTrigger asChild>
                 <button type="button" className="text-muted-foreground hover:text-foreground">
@@ -163,10 +165,10 @@ export function WinAtPCurves({
                   What&apos;s this?
                 </p>
                 <p className="mb-2 text-sm text-muted-foreground">
-                  Measures the portion of workloads this solution is faster than p*baseline_performance.
+                  Measures the portion of workloads this solution is faster than p × baseline performance.
                 </p>
                 <a
-                  href="/docs/win-at-p"
+                  href="/docs/fast-at-p"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-primary hover:underline"
@@ -187,7 +189,7 @@ export function WinAtPCurves({
           )}
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>n = {workloadCount} workloads</span>
+          <span>n = {comparisonCount} {countLabel}</span>
           <span>Baseline: {baselineLabel}</span>
         </div>
       </CardHeader>

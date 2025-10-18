@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
-import { WinAtPCurves } from "./win-at-p"
+import { FastAtPCurves } from "@/components/fast-at-p-chart"
 import { SolutionsList, type FilterChip } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
 import {
@@ -420,14 +420,14 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     <section id="solutions" className="space-y-6">
       <h2 className="text-2xl font-semibold">Results</h2>
 
-      <WinAtPCurves
+      <FastAtPCurves
         curves={filteredCurves?.curves || {}}
         visible={visibleSolutions}
         onHoverP={() => {}}
         onPinP={setPinnedP}
         pinnedP={pinnedP}
         baselineLabel={baselineDefault || fallbackBaseline || "Not specified"}
-        workloadCount={counts.workloads}
+        comparisonCount={counts.workloads}
         baselineAvailable={baselineReady}
         colorFor={colorFor}
         scoreboard={[]}

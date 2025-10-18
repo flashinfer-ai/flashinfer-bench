@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import { getDefinition, getSolutionsForDefinition, getTracesForDefinition, getAllDefinitions } from "@/lib/data-loader"
-import { computeCorrectnessSummaryForSolutions, computeWinAtPCurvesForSolutions, type BaselineConfig } from "@/lib/analytics"
+import { computeCorrectnessSummaryForSolutions, computeFastAtPCurvesForSolutions, type BaselineConfig } from "@/lib/analytics"
 import baselinesData from "@/data/baselines.json"
 import { DefinitionHeader } from "./header"
 import { AxesSignatureSection } from "./axes-sig"
@@ -42,7 +42,7 @@ export default async function TraceDetailPage({
     : undefined
 
   const correctness = computeCorrectnessSummaryForSolutions(traces, solutions)
-  const { curves, nWorkloads } = computeWinAtPCurvesForSolutions({
+  const { curves, nWorkloads } = computeFastAtPCurvesForSolutions({
     traces,
     solutions,
     baseline,

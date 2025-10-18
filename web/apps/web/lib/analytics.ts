@@ -18,6 +18,12 @@ export type CurvesResponse = {
   correctness: Record<string, CorrectnessSummary>
 }
 
+export type AuthorCurvesResponse = {
+  curves: Record<string, CurvePoint[]>
+  comparisonCounts: Record<string, number>
+  totalComparisons: number
+}
+
 type Grouped = Map<WorkloadGroupId, Trace[]>
 
 export type BaselineConfig = {
@@ -85,22 +91,27 @@ function baselineForDevice(device: string, baseline?: BaselineConfig): string | 
   return baseline.default ?? null
 }
 
-export function computeWinAtPCurvesForSolutions(params: {
+type SolutionGroupRatios = {
+  groupRatios: Map<WorkloadGroupId, Map<string, number>>
+  nWorkloads: number
+  baselineNames: Set<string>
+}
+
+function computeSolutionGroupRatios(params: {
   traces: Trace[]
   solutions: Solution[]
   baseline?: BaselineConfig
-  sampleCount?: number
-}): { curves: Record<string, CurvePoint[]>; nWorkloads: number } {
-  const { traces, solutions, baseline, sampleCount = 300 } = params
+}): SolutionGroupRatios {
+  const { traces, solutions, baseline } = params
   const solMap = solutionMap(solutions)
   const groups = buildWorkloadGroups(traces)
   const baselineNames = new Set<string>()
+  const groupRatios: Map<WorkloadGroupId, Map<string, number>> = new Map()
+
   if (baseline?.default) baselineNames.add(baseline.default)
   if (baseline?.devices) {
     for (const value of Object.values(baseline.devices)) baselineNames.add(value)
   }
-
-  const groupRatios: Map<WorkloadGroupId, Map<string, number>> = new Map()
 
   for (const [workloadId, groupTraces] of groups) {
     if (groupTraces.length === 0) continue
@@ -114,25 +125,39 @@ export function computeWinAtPCurvesForSolutions(params: {
     const baselineLatency = baselineTrace?.evaluation?.performance?.latency_ms
     if (typeof baselineLatency !== "number" || baselineLatency <= 0) continue
 
-    const ratios = new Map<string, number>()
     for (const trace of groupTraces) {
-      if (!trace.solution) continue
-      if (!solMap.has(trace.solution)) continue
-      if (trace.solution === baselineName) continue
+      const solutionName = trace.solution
+      if (!solutionName) continue
+      if (!solMap.has(solutionName)) continue
+      if (solutionName === baselineName) continue
       const candidateLatency = trace.evaluation?.performance?.latency_ms
       if (typeof candidateLatency !== "number" || candidateLatency <= 0) continue
-      ratios.set(trace.solution, baselineLatency / candidateLatency)
+      if (!groupRatios.has(workloadId)) groupRatios.set(workloadId, new Map())
+      groupRatios.get(workloadId)!.set(solutionName, baselineLatency / candidateLatency)
     }
-
-    if (ratios.size > 0) groupRatios.set(workloadId, ratios)
   }
 
-  const nWorkloads = groupRatios.size
+  return {
+    groupRatios,
+    nWorkloads: groupRatios.size,
+    baselineNames,
+  }
+}
+
+export function computeFastAtPCurvesForSolutions(params: {
+  traces: Trace[]
+  solutions: Solution[]
+  baseline?: BaselineConfig
+  sampleCount?: number
+}): { curves: Record<string, CurvePoint[]>; nWorkloads: number } {
+  const { traces, solutions, baseline, sampleCount = 300 } = params
+  const solMap = solutionMap(solutions)
+  const { groupRatios, nWorkloads, baselineNames } = computeSolutionGroupRatios({ traces, solutions, baseline })
   const samplePoints: number[] = []
   for (let i = 0; i < sampleCount; i++) samplePoints.push(i / (sampleCount - 1))
 
   const curves: Record<string, CurvePoint[]> = {}
-  for (const [solutionName, _] of solutionMap(solutions)) {
+  for (const [solutionName] of solMap) {
     if (baselineNames.has(solutionName)) continue
     const ratios: number[] = []
     for (const ratiosForGroup of groupRatios.values()) {
@@ -158,7 +183,7 @@ export function computeWinAtPCurvesForSolutions(params: {
   return { curves, nWorkloads }
 }
 
-export function computeWinAtPCurves(params: {
+export function computeFastAtPCurves(params: {
   traces: Trace[]
   solutions: Solution[]
   baseline?: BaselineConfig
@@ -166,8 +191,66 @@ export function computeWinAtPCurves(params: {
 }): CurvesResponse {
   const { traces, solutions, baseline, sampleCount } = params
   const correctness = computeCorrectnessSummaryForSolutions(traces, solutions)
-  const { curves, nWorkloads } = computeWinAtPCurvesForSolutions({ traces, solutions, baseline, sampleCount })
+  const { curves, nWorkloads } = computeFastAtPCurvesForSolutions({ traces, solutions, baseline, sampleCount })
   return { curves, nWorkloads, correctness }
+}
+
+export function computeFastAtPCurvesForAuthors(params: {
+  datasets: Array<{
+    traces: Trace[]
+    solutions: Solution[]
+    baseline?: BaselineConfig
+  }>
+  sampleCount?: number
+}): AuthorCurvesResponse {
+  const { datasets, sampleCount = 300 } = params
+  const authorRatios = new Map<string, number[]>()
+  const samplePoints: number[] = []
+  for (let i = 0; i < sampleCount; i++) samplePoints.push(i / (sampleCount - 1))
+
+  for (const dataset of datasets) {
+    const authorsBySolution = new Map<string, string>()
+    for (const solution of dataset.solutions) {
+      authorsBySolution.set(solution.name, solution.author)
+    }
+
+    const { groupRatios } = computeSolutionGroupRatios(dataset)
+    for (const ratios of groupRatios.values()) {
+      for (const [solutionName, ratio] of ratios.entries()) {
+        const author = authorsBySolution.get(solutionName)
+        if (!author) continue
+        if (!authorRatios.has(author)) authorRatios.set(author, [])
+        authorRatios.get(author)!.push(ratio)
+      }
+    }
+  }
+
+  const curves: Record<string, CurvePoint[]> = {}
+  const comparisonCounts: Record<string, number> = {}
+  let totalComparisons = 0
+
+  for (const [author, ratios] of authorRatios.entries()) {
+    ratios.sort((a, b) => a - b)
+    comparisonCounts[author] = ratios.length
+    totalComparisons += ratios.length
+
+    const points: CurvePoint[] = []
+    for (const p of samplePoints) {
+      let lo = 0
+      let hi = ratios.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (ratios[mid] < p) lo = mid + 1
+        else hi = mid
+      }
+      const count = ratios.length - lo
+      const percent = ratios.length > 0 ? (count / ratios.length) * 100 : 0
+      points.push({ p, percent })
+    }
+    curves[author] = points
+  }
+
+  return { curves, comparisonCounts, totalComparisons }
 }
 
 export type SolutionTraceComparison = {

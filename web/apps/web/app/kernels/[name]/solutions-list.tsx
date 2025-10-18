@@ -510,7 +510,7 @@ function SolutionTraceDetails({
         <Tabs value="faster">
           <TabsList>
             <TabsTrigger value="faster" disabled>
-              Win@p={pLabel} (0)
+              Fast@p={pLabel} (0)
             </TabsTrigger>
             <TabsTrigger value="slower" disabled>
               Lose@p={pLabel} (0)
@@ -538,7 +538,7 @@ function SolutionTraceDetails({
         }}
       >
         <TabsList>
-          <TabsTrigger value="faster">Win@p={pinnedP.toFixed(2)} ({counts.faster})</TabsTrigger>
+          <TabsTrigger value="faster">Fast@p={pinnedP.toFixed(2)} ({counts.faster})</TabsTrigger>
           <TabsTrigger value="slower">Lose@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
           <TabsTrigger value="incorrect">Incorrect ({counts.incorrect})</TabsTrigger>
         </TabsList>
