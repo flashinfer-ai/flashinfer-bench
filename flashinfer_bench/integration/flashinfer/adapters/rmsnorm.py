@@ -4,11 +4,9 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply  # , get_apply_runtime
+import flashinfer_bench.apply as apply_mod
 from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder
-
-# from flashinfer_bench.tracing import get_tracing_runtime
 
 
 def _def_name_resolver(weight):
@@ -32,13 +30,6 @@ class RMSNormAdapter:
         binder = ArgBinder.from_callable(orig)
 
         def wrapper(*args, **kwargs):
-            # rt_trace = get_tracing_runtime()
-            # rt_apply = get_apply_runtime()
-            # if rt_trace is None and rt_apply is None:
-            #     return orig(*args, **kwargs)
-            print("args:", args)
-            print("kwargs:", kwargs)
-
             bound = binder.bind(args, kwargs)
             input_tensor: torch.Tensor = bound["input"]
             residual: torch.Tensor = bound["residual"]
@@ -63,19 +54,10 @@ class RMSNormAdapter:
                 "weight": weight,
             }
 
-            # if rt_trace is not None:
-            #     rt_trace.collect(def_name, rk)
-            #     return orig(*args, **kwargs)
-            # elif rt_apply is not None:
-            #     # Fallback if no definition found
-            #     if def_name not in rt_apply._trace_set.definitions:
-            #         return orig(*args, **kwargs)
-
             def _fb(**_rk):
                 return orig(*args, **kwargs)
 
-            return apply(def_name, runtime_kwargs=rk, fallback=_fb)
-            # else:
-            #     return orig(*args, **kwargs)
+            ret = apply_mod.apply(def_name, runtime_kwargs=rk, fallback=_fb)
+            return ret
 
         return wrapper

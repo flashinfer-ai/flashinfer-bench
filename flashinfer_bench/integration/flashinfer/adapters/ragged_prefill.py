@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply  # , get_apply_runtime
+import flashinfer_bench.apply as apply_mod
 from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_ragged_kv_layout_from_tensors,
@@ -73,9 +73,6 @@ class RaggedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
-                # if get_apply_runtime() is None:
-                #     return orig(inst, *args, **kwargs)
-
                 ctx = self._store.get(inst)
                 if not ctx:
                     return orig(inst, *args, **kwargs)
@@ -116,9 +113,6 @@ class RaggedPrefillAdapter:
                 def_name = _def_name_resolver(
                     q, k_nhd, v_nhd, ctx["qo_indptr"], ctx["kv_indptr"], sm_scale
                 )
-                rt = get_apply_runtime()
-                if rt is None or def_name not in rt._trace_set.definitions:
-                    return orig(inst, *args, **kwargs)
 
                 rk: Dict[str, Any] = {
                     "q": q,
@@ -132,7 +126,7 @@ class RaggedPrefillAdapter:
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
+                ret = apply_mod.apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
 
                 output = None
                 lse = None
