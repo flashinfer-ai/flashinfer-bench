@@ -1,14 +1,14 @@
 {
-  "gemm_n_28672_k_4096": {
+  "gemm_n28672_k4096": {
     "default": "torch_matmul_655587"
   },
-  "gemm_n_4096_k_14336": {
+  "gemm_n4096_k14336": {
     "default": "torch_matmul_254647"
   },
-  "gemm_n_4096_k_4096": {
+  "gemm_n4096_k4096": {
     "default": "torch_matmul_0d13df"
   },
-  "gemm_n_6144_k_4096": {
+  "gemm_n6144_k4096": {
     "default": "torch_matmul_3b6488"
   },
   "gqa_paged_decode_h32_kv4_d128_ps1": {

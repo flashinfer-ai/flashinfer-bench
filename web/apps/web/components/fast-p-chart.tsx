@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import * as d3 from "d3"
 import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Pin as PinIcon, Undo2, HelpCircle } from "lucide-react"
+import { FastPLabel } from "@/components/fast-p-label"
 import type { CurvePoint } from "@/lib/analytics"
 
 export type ScoreboardEntry = {
@@ -11,7 +12,7 @@ export type ScoreboardEntry = {
   percent: number
 }
 
-export type FastAtPCurvesProps = {
+export type FastPCurvesProps = {
   curves: Record<string, CurvePoint[]>
   visible: Set<string>
   onHoverP: (p: number | null) => void
@@ -25,7 +26,7 @@ export type FastAtPCurvesProps = {
   countLabel?: string
 }
 
-export function FastAtPCurves({
+export function FastPCurves({
   curves,
   visible,
   onHoverP,
@@ -37,7 +38,7 @@ export function FastAtPCurves({
   colorFor,
   scoreboard: _scoreboard,
   countLabel = "workloads",
-}: FastAtPCurvesProps) {
+}: FastPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
   const hideHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -153,7 +154,11 @@ export function FastAtPCurves({
       <CardHeader className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CardTitle>Fast@p Plot</CardTitle>
+            <CardTitle>
+              <span className="inline-flex items-baseline gap-1">
+                <FastPLabel className="font-semibold" />
+              </span>
+            </CardTitle>
             <HoverCard>
               <HoverCardTrigger asChild>
                 <button type="button" className="text-muted-foreground hover:text-foreground">
@@ -165,10 +170,10 @@ export function FastAtPCurves({
                   What&apos;s this?
                 </p>
                 <p className="mb-2 text-sm text-muted-foreground">
-                  Measures the portion of workloads this solution is faster than p × baseline performance.
+                  <FastPLabel /> measures the portion of workloads this solution is faster than p × baseline performance.
                 </p>
                 <a
-                  href="/docs/fast-at-p"
+                  href="/docs/fast_p"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-primary hover:underline"

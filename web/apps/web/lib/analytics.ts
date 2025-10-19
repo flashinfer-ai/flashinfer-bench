@@ -24,6 +24,11 @@ export type AuthorCurvesResponse = {
   totalComparisons: number
 }
 
+export type AuthorCorrectnessResponse = {
+  stats: Array<CorrectnessSummary & { author: string }>
+  totals: CorrectnessSummary
+}
+
 type Grouped = Map<WorkloadGroupId, Trace[]>
 
 export type BaselineConfig = {
@@ -144,7 +149,7 @@ function computeSolutionGroupRatios(params: {
   }
 }
 
-export function computeFastAtPCurvesForSolutions(params: {
+export function computeFastPCurvesForSolutions(params: {
   traces: Trace[]
   solutions: Solution[]
   baseline?: BaselineConfig
@@ -183,7 +188,7 @@ export function computeFastAtPCurvesForSolutions(params: {
   return { curves, nWorkloads }
 }
 
-export function computeFastAtPCurves(params: {
+export function computeFastPCurves(params: {
   traces: Trace[]
   solutions: Solution[]
   baseline?: BaselineConfig
@@ -191,11 +196,11 @@ export function computeFastAtPCurves(params: {
 }): CurvesResponse {
   const { traces, solutions, baseline, sampleCount } = params
   const correctness = computeCorrectnessSummaryForSolutions(traces, solutions)
-  const { curves, nWorkloads } = computeFastAtPCurvesForSolutions({ traces, solutions, baseline, sampleCount })
+  const { curves, nWorkloads } = computeFastPCurvesForSolutions({ traces, solutions, baseline, sampleCount })
   return { curves, nWorkloads, correctness }
 }
 
-export function computeFastAtPCurvesForAuthors(params: {
+export function computeFastPCurvesForAuthors(params: {
   datasets: Array<{
     traces: Trace[]
     solutions: Solution[]
@@ -251,6 +256,46 @@ export function computeFastAtPCurvesForAuthors(params: {
   }
 
   return { curves, comparisonCounts, totalComparisons }
+}
+
+export function computeAuthorCorrectnessSummary(params: {
+  datasets: Array<{
+    traces: Trace[]
+    solutions: Solution[]
+  }>
+}): AuthorCorrectnessResponse {
+  const { datasets } = params
+  const aggregate = new Map<string, CorrectnessSummary>()
+  const totals: CorrectnessSummary = { total: 0, passed: 0, incorrect: 0, runtime_error: 0, other: 0 }
+
+  for (const dataset of datasets) {
+    const summary = computeCorrectnessSummaryForSolutions(dataset.traces, dataset.solutions)
+    for (const solution of dataset.solutions) {
+      const stats = summary[solution.name]
+      if (!stats) continue
+      const author = solution.author || "unknown"
+      const record = aggregate.get(author) ?? { total: 0, passed: 0, incorrect: 0, runtime_error: 0, other: 0 }
+      record.total += stats.total
+      record.passed += stats.passed
+      record.incorrect += stats.incorrect
+      record.runtime_error += stats.runtime_error
+      record.other += stats.other
+      aggregate.set(author, record)
+
+      totals.total += stats.total
+      totals.passed += stats.passed
+      totals.incorrect += stats.incorrect
+      totals.runtime_error += stats.runtime_error
+      totals.other += stats.other
+    }
+  }
+
+  const stats = Array.from(aggregate.entries()).map(([author, counts]) => ({
+    author,
+    ...counts,
+  }))
+
+  return { stats, totals }
 }
 
 export type SolutionTraceComparison = {

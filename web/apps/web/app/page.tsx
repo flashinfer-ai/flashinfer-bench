@@ -4,9 +4,9 @@ import { Button } from "@flashinfer-bench/ui"
 import { ArrowRight } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@flashinfer-bench/ui"
 import { ModelCard } from "@/components/model-card"
-import { LeaderboardSection } from "@/components/leaderboard-section"
+import { LeaderboardSection } from "@/app/leaderboard"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
-import { computeFastAtPCurvesForAuthors, type BaselineConfig } from "@/lib/analytics"
+import { computeFastPCurvesForAuthors, computeAuthorCorrectnessSummary, type BaselineConfig } from "@/lib/analytics"
 import baselinesData from "@/data/baselines.json"
 import { KernelsSection } from "./kernels"
 
@@ -34,6 +34,12 @@ export default async function HomePage() {
           }
         : undefined
 
+      const baselineNames = new Set<string>()
+      if (baseline?.default) baselineNames.add(baseline.default)
+      if (baseline?.devices) {
+        for (const value of Object.values(baseline.devices)) baselineNames.add(value)
+      }
+
       return {
         definition,
         solutions,
@@ -41,6 +47,7 @@ export default async function HomePage() {
         solutionCount: solutions.length,
         traceCount: traces.length,
         baseline,
+        baselineNames,
       }
     })
   )
@@ -51,23 +58,42 @@ export default async function HomePage() {
     traceCount,
   }))
 
-  const authorDatasets = definitionEntries
-    .filter((entry) => entry.solutions.length > 0 && entry.traces.length > 0)
-    .map((entry) => ({
+  const filteredEntries = definitionEntries.filter((entry) => entry.solutions.length > 0 && entry.traces.length > 0)
+
+  const excludedAuthors = new Set<string>()
+  for (const entry of definitionEntries) {
+    if (!entry.baselineNames || entry.baselineNames.size === 0) continue
+    for (const solution of entry.solutions) {
+      if (entry.baselineNames.has(solution.name) && solution.author) {
+        excludedAuthors.add(solution.author)
+      }
+    }
+  }
+
+  const fastDatasets = filteredEntries.map((entry) => ({
+    solutions: entry.solutions,
+    traces: entry.traces,
+    baseline: entry.baseline,
+  }))
+
+  const fastData = computeFastPCurvesForAuthors({
+    datasets: fastDatasets,
+    sampleCount: 300,
+  })
+
+  const correctnessData = computeAuthorCorrectnessSummary({
+    datasets: filteredEntries.map((entry) => ({
       solutions: entry.solutions,
       traces: entry.traces,
-      baseline: entry.baseline,
-    }))
-
-  const leaderboardData = computeFastAtPCurvesForAuthors({
-    datasets: authorDatasets,
-    sampleCount: 300,
+    })),
   })
 
   return (
     <div className="flex flex-col">
       <LeaderboardSection
-        data={leaderboardData}
+        fast={fastData}
+        correctness={correctnessData}
+        excludedAuthors={[...excludedAuthors]}
         baselineLabel="Per-definition baselines"
       />
 

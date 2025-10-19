@@ -32,6 +32,7 @@ import { ChevronDown, ChevronUp, Code2, Search, RotateCcw } from "lucide-react"
 import type { Solution, Trace } from "@/lib/schemas"
 import type { CorrectnessStats, SolutionFiltersState } from "./solutions-types"
 import type { SolutionTraceBuckets, SolutionTraceComparison } from "@/lib/analytics"
+import { FastPLabel } from "@/components/fast-p-label"
 import { cn } from "@flashinfer-bench/utils"
 
 const correctnessFallback: CorrectnessStats = {
@@ -273,7 +274,7 @@ export function SolutionsList({
                   size="icon"
                   onClick={handleOpenViewer}
                   aria-label={`Open ${solution.name} in viewer`}
-                  title="Open in viewer"
+                  title="View source code"
                 >
                   <Code2 className="h-4 w-4" />
                 </Button>
@@ -510,7 +511,10 @@ function SolutionTraceDetails({
         <Tabs value="faster">
           <TabsList>
             <TabsTrigger value="faster" disabled>
-              Fast@p={pLabel} (0)
+              <span className="inline-flex items-baseline gap-1">
+                <FastPLabel value={pLabel} />
+                <span>(0)</span>
+              </span>
             </TabsTrigger>
             <TabsTrigger value="slower" disabled>
               Lose@p={pLabel} (0)
@@ -538,7 +542,12 @@ function SolutionTraceDetails({
         }}
       >
         <TabsList>
-          <TabsTrigger value="faster">Fast@p={pinnedP.toFixed(2)} ({counts.faster})</TabsTrigger>
+          <TabsTrigger value="faster">
+            <span className="inline-flex items-baseline gap-1">
+              <FastPLabel value={pinnedP.toFixed(2)} />
+              <span>({counts.faster})</span>
+            </span>
+          </TabsTrigger>
           <TabsTrigger value="slower">Lose@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
           <TabsTrigger value="incorrect">Incorrect ({counts.incorrect})</TabsTrigger>
         </TabsList>
