@@ -20,6 +20,7 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
   const [copied, setCopied] = useState(false)
   const [editorHeight, setEditorHeight] = useState<number>(300)
   const editorRef = useRef<any>(null)
+  const isExpandedRef = useRef(isExpanded)
 
   // Max heights for collapsed and expanded states
   const COLLAPSED_MAX = 600
@@ -30,8 +31,9 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
     if (!editor) return
     const contentHeight = editor.getContentHeight?.() || 300
     setShowExpandButton(contentHeight > COLLAPSED_MAX)
+    const expanded = isExpandedRef.current
     setEditorHeight(
-      isExpanded
+      expanded
         ? Math.min(contentHeight, EXPANDED_MAX)
         : Math.min(contentHeight, COLLAPSED_MAX)
     )
@@ -51,7 +53,7 @@ export function DefinitionReference({ definition }: { definition: Definition }) 
   }
 
   useEffect(() => {
-    // Recompute when toggling expanded/collapsed
+    isExpandedRef.current = isExpanded
     updateHeights()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded])
