@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { LeaderboardSection } from "@/app/leaderboard"
+import { LeaderboardSection } from "@/app/leaderboard/section"
 import { ModelsSection } from "@/app/models"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
 import type { BaselineConfig } from "@/lib/analytics"
