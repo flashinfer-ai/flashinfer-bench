@@ -41,10 +41,8 @@ class RMSNormAdapter:
                 or residual.dtype != torch.bfloat16
                 or weight.dtype != torch.bfloat16
             ):
-                logger.warning("RMSNormAdapter: dtype not bfloat16, skipping")
                 return orig(*args, **kwargs)
             if input_tensor.shape != residual.shape or input_tensor.shape[1] != weight.shape[0]:
-                logger.warning("RMSNormAdapter: shape mismatch, skipping")
                 return orig(*args, **kwargs)
 
             def_name = _def_name_resolver(weight)
