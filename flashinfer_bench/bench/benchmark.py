@@ -58,13 +58,15 @@ class Benchmark:
         """
         return self._trace_set
 
-    def run_all(self, dump_traces: bool = True) -> TraceSet:
+    def run_all(self, dump_traces: bool = True, resume: bool = False) -> TraceSet:
         """Run benchmark for all solutions in the trace set.
 
         Parameters
         ----------
         dump_traces : bool, optional
             If True, store traces to the trace set and in the disk.
+        resume : bool, optional
+            If True, skip solutions that have already been evaluated for each workload.
 
         Returns
         -------
@@ -77,7 +79,8 @@ class Benchmark:
         definitions_to_run = self._trace_set.definitions.items()
         if self._config.definitions is not None:
             definitions_to_run = [
-                (name, defn) for name, defn in definitions_to_run 
+                (name, defn)
+                for name, defn in definitions_to_run
                 if name in self._config.definitions
             ]
             provided_defs = set(self._config.definitions)
@@ -100,14 +103,32 @@ class Benchmark:
 
             logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
 
+            existing_traces = set()  # (workload_uuid, solution_name)
+            if resume:
+                existing_def_traces = self._trace_set.traces.get(def_name, [])
+                for trace in existing_def_traces:
+                    if trace.solution and trace.evaluation:
+                        existing_traces.add((trace.workload.uuid, trace.solution))
+                if existing_traces:
+                    logger.info(f"Found {len(existing_traces)} existing traces for def={def_name}")
+
             workloads = self._trace_set.workloads.get(def_name, [])
+            def_traces: List[Trace] = []
 
             for wl_trace in workloads:
                 wl = wl_trace.workload
 
+                sols_to_run = sols
+                if resume:
+                    sols_to_run = [s for s in sols if (wl.uuid, s.name) not in existing_traces]
+
+                if not sols_to_run:
+                    logger.info(f"All solutions already evaluated for workload {wl.uuid}")
+                    continue
+
                 try:
                     results = self._runner.run_workload(
-                        defn, wl, sols, self._config, self._trace_set.root
+                        defn, wl, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
                     logger.error(f"Failed to run workload {wl.uuid}: {e}")
@@ -119,6 +140,7 @@ class Benchmark:
                     )
 
                     result_traces.append(trace)
+                    def_traces.append(trace)
 
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
@@ -129,6 +151,10 @@ class Benchmark:
                         logger.warning(
                             f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
                         )
+
+            if dump_traces and def_traces:
+                self._trace_set.add_traces(def_traces)
+                logger.info(f"Saved {len(def_traces)} traces for definition {def_name}")
 
         traces_by_def = defaultdict(list)
         for trace in result_traces:
@@ -151,8 +177,5 @@ class Benchmark:
             workloads=self._trace_set.workloads.copy(),
             traces=dict(traces_by_def),
         )
-
-        if dump_traces:
-            self._trace_set.add_traces(result_traces)
 
         return result_traceset

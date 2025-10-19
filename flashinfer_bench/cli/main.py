@@ -191,11 +191,18 @@ def run(args: argparse.Namespace):
             definitions=args.definitions,
             solutions=args.solutions,
             timeout_seconds=args.timeout,
-            devices=args.devices if hasattr(args, 'devices') else None,
+            devices=args.devices if hasattr(args, "devices") else None,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
-        benchmark.run_all(args.save_results)
+        resume = getattr(args, "resume", False)
+        if resume:
+            logger.info("Resume mode enabled: will skip already evaluated solutions")
+            if not args.save_results:
+                logger.warning(
+                    "Resume mode is enabled but --save-results is False. New results will not be saved!"
+                )
+        benchmark.run_all(args.save_results, resume=resume)
         message = "Benchmark run complete."
         if args.save_results:
             message += " Results saved."
@@ -256,6 +263,11 @@ def cli():
         help="Use IsolatedRunner instead of the default PersistentRunner",
     )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
+    run_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume run, skip already evaluated solution-workload jobs",
+    )
     run_parser.add_argument(
         "--definitions",
         type=str,

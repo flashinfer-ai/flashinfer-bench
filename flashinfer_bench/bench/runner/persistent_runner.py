@@ -398,10 +398,10 @@ class PersistentSubprocessWorker:
 
 class PersistentRunner(Runner):
     def __init__(
-        self, 
-        logger: logging.Logger, 
+        self,
+        logger: logging.Logger,
         log_dir: str = "/tmp/flashinfer_bench",
-        devices: Optional[List[str]] = None
+        devices: Optional[List[str]] = None,
     ) -> None:
         """Initialize the persistent runner with multiple workers.
 
@@ -433,7 +433,7 @@ class PersistentRunner(Runner):
                     self._logger.warning(f"Device {device} not available, skipping")
             if not self._available_devices:
                 raise RuntimeError(f"None of the specified devices {devices} are available")
-        
+
         self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
 
         self._curr_worker_idx = 0

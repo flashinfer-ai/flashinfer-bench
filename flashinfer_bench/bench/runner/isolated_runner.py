@@ -92,7 +92,7 @@ class SubprocessWorker:
 
         evaluation: Optional[Evaluation] = None
         start_time = time.time()
-        
+
         try:
             if parent_conn.poll(timeout=30.0):  # 30 seconds for startup
                 msg = parent_conn.recv()
@@ -112,7 +112,7 @@ class SubprocessWorker:
                 # Check if we've exceeded total timeout
                 elapsed = time.time() - start_time
                 remaining_timeout = max(1.0, cfg.timeout_seconds - elapsed)
-                
+
                 if elapsed >= cfg.timeout_seconds:
                     evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
@@ -121,7 +121,7 @@ class SubprocessWorker:
                         extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
                     )
                     break
-                
+
                 # Wait for message with remaining timeout
                 if parent_conn.poll(timeout=remaining_timeout):
                     msg = parent_conn.recv()
@@ -293,10 +293,10 @@ def _solution_worker_main(
 
 class IsolatedRunner(Runner):
     def __init__(
-        self, 
-        logger: logging.Logger, 
+        self,
+        logger: logging.Logger,
         log_dir: str = "/tmp/flashinfer_bench",
-        devices: Optional[List[str]] = None
+        devices: Optional[List[str]] = None,
     ) -> None:
         """Initialize the isolated runner with per device workers.
 
@@ -327,7 +327,7 @@ class IsolatedRunner(Runner):
                     self._logger.warning(f"Device {device} not available, skipping")
             if not self._available_devices:
                 raise RuntimeError(f"None of the specified devices {devices} are available")
-        
+
         self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
         self._curr_worker_idx = 0
 
