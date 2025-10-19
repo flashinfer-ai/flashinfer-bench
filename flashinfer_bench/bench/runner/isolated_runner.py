@@ -4,7 +4,6 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -12,15 +11,15 @@ import torch
 from torch import multiprocessing as mp
 
 import flashinfer_bench.utils as fib_utils
-from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import resolve_evaluator
+from flashinfer_bench.bench.utils import make_eval
 from flashinfer_bench.compile import Runnable, get_builder_registry
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import env_snapshot, redirect_stdio_to_file
+from flashinfer_bench.utils import redirect_stdio_to_file
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
-from .runner_utils import make_eval
 
 LOGGER = get_logger("MPRunner")
 
@@ -441,7 +440,7 @@ class IsolatedRunner(Runner):
         try:
             # Evaluate solutions round-robin across workers
             with ThreadPoolExecutor(max_workers=len(selected)) as pool:
-                sol_futs: Dict[str, any] = {}
+                sol_futs: Dict[str, Any] = {}
                 for i, sol in enumerate(solutions):
                     r = selected[i % len(selected)]
                     sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)

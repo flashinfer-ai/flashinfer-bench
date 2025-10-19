@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 import torch
 
-from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.data import Definition, Evaluation, Solution, Workload
 
 

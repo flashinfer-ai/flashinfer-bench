@@ -13,15 +13,15 @@ import torch
 from torch import multiprocessing as mp
 
 import flashinfer_bench.utils as fib_utils
-from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import resolve_evaluator
-from flashinfer_bench.compile import BuildError, Runnable, get_builder_registry
+from flashinfer_bench.bench.utils import make_eval
+from flashinfer_bench.compile import BuildError, get_builder_registry
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import redirect_stdio_to_file
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
-from .runner_utils import make_eval
 
 LOGGER = get_logger("PersistentRunner")
 
