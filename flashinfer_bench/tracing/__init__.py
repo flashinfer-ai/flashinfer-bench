@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from .builtin.policies import (
-    BUILTIN_DEDUP_POLICIES,
+    BUILTIN_FILTER_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
-    AttentionDedupPolicy,
+    AttentionFilterPolicy,
     InputDumpPolicyFunction,
     KeepAllPolicy,
     KeepFirstByAxesPolicy,
@@ -13,7 +13,7 @@ from .builtin.policies import (
     dump_none,
 )
 from .config import TracingConfig
-from .dedup_policy import DedupPolicy, DedupPolicyFactory
+from .filter_policy import FilterPolicy, FilterPolicyFactory
 from .runtime import TracingRuntime, get_tracing_runtime
 from .tracing import disable_tracing, enable_tracing
 from .workload_entry import WorkloadEntry
@@ -25,14 +25,14 @@ __all__ = [
     "TracingRuntime",
     "TracingConfig",
     "WorkloadEntry",
-    "DedupPolicy",
-    "DedupPolicyFactory",
+    "FilterPolicy",
+    "FilterPolicyFactory",
     "InputDumpPolicyFunction",
-    "BUILTIN_DEDUP_POLICIES",
+    "BUILTIN_FILTER_POLICIES",
     "KeepAllPolicy",
     "KeepFirstKPolicy",
     "KeepFirstByAxesPolicy",
-    "AttentionDedupPolicy",
+    "AttentionFilterPolicy",
     "BUILTIN_INPUT_DUMP_POLICIES",
     "dump_all",
     "dump_none",
