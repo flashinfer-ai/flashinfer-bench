@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import default as default_eval_module
 from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.evaluators import sampling as sampling_eval_module
