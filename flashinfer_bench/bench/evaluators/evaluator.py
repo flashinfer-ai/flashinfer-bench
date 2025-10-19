@@ -8,7 +8,7 @@ import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner.runner import DeviceBaseline
-from flashinfer_bench.bench.runner.runner_utils import make_eval
+from flashinfer_bench.bench.utils import make_eval
 from flashinfer_bench.compile import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import (

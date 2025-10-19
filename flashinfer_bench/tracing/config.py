@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union
 
-from .builtin.policies import (
+from flashinfer_bench.tracing.builtin.policies import (
     BUILTIN_DEDUP_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
     InputDumpPolicyFunction,
 )
-from .dedup_policy import DedupPolicy, DedupPolicyFactory
+from flashinfer_bench.tracing.dedup_policy import DedupPolicy, DedupPolicyFactory
 
 InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
 """Possible input_dump_policy literals."""

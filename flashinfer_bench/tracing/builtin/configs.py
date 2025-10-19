@@ -4,7 +4,8 @@ This module provides pre-configured TracingConfig instances for common use cases
 such as GEMM, attention kernels, etc.
 """
 
-from ..config import TracingConfig
+from flashinfer_bench.tracing.config import TracingConfig
+
 from .policies import AttentionDedupPolicy
 
 # ============================================================================
