@@ -22,9 +22,9 @@ class RMSNormAdapter:
         return [
             PatchSpec(
                 path="flashinfer.norm.fused_add_rmsnorm",
-                kind="function",
+                kind="method",
                 name="fused_add_rmsnorm",
-                ctx_key="fused_add_rmsnorm",
+                ctx_key="rmsnorm",
             )
         ]
 
@@ -71,14 +71,11 @@ class RMSNormAdapter:
             #     if def_name not in rt_apply._trace_set.definitions:
             #         return orig(*args, **kwargs)
 
-            #     def _fb(**_rk):
-            #         return orig(*args, **kwargs)
+            def _fb(**_rk):
+                return orig(*args, **kwargs)
 
-            #     ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
-            #     return ret
+            return apply(def_name, runtime_kwargs=rk, fallback=_fb)
             # else:
             #     return orig(*args, **kwargs)
-            ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
-            return ret
 
         return wrapper
