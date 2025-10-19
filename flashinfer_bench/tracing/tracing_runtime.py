@@ -17,7 +17,7 @@ from flashinfer_bench.data import (
 )
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import dtype_str_to_torch_dtype, torch_dtype_from_def
+from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
 
 from .builtin_tracing_config import FULL_TRACING_CONFIGS
 from .tracing_config import TracingConfig
@@ -215,7 +215,7 @@ class TracingRuntime:
 
         # Scalar input
         if shape_tuple is None:
-            python_dtype = torch_dtype_from_def(spec.dtype)
+            python_dtype = dtype_str_to_python_dtype(spec.dtype)
             if not isinstance(val, python_dtype):
                 logger.error(
                     f'Input "{name}" must be Python scalar of type {python_dtype.__name__},'

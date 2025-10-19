@@ -45,7 +45,7 @@ def dtype_str_to_torch_dtype(dtype_str: str) -> torch.dtype:
     return dtype
 
 
-def torch_dtype_from_def(dtype_str: str) -> Optional[type]:
+def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
     if not dtype_str:
         raise ValueError("dtype is None or empty")
     dtype = _DTYPE_STR_TO_PYTHON_DTYPE.get(dtype_str, None)
