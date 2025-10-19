@@ -6,8 +6,8 @@ import sys
 import pytest
 
 from flashinfer_bench.apply import ApplyConfig
-from flashinfer_bench.apply.apply_key import ApplyKeyFactory
-from flashinfer_bench.apply.apply_table import ApplyTable, _apply_table_dir
+from flashinfer_bench.apply.key import ApplyKeyFactory
+from flashinfer_bench.apply.table import ApplyTable, _apply_table_dir
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,

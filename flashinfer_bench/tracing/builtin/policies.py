@@ -8,41 +8,15 @@ This module contains:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, Hashable, List, Optional, Protocol
+from typing import Any, Callable, Dict, Hashable, List
 
 import torch
 
 from flashinfer_bench.logging import get_logger
+from flashinfer_bench.tracing.dedup_policy import DedupPolicyFactory
+from flashinfer_bench.tracing.workload_entry import WorkloadEntry
 
 logger = get_logger("TracingPolicy")
-
-
-# ============================================================================
-# WorkloadEntry
-# ============================================================================
-
-
-@dataclass
-class WorkloadEntry:
-    """In-memory buffer entry for collected workloads."""
-
-    def_name: str
-    """Name of the definition this workload entry belongs to."""
-
-    axes: Dict[str, int]
-    """Dictionary mapping axis names to their concrete integer values."""
-
-    inputs_to_dump: Dict[str, Any]
-    """Inputs to dump. Maps input name to the tensor to dump. This field will be further stored
-    to disk as a tensor blob."""
-
-    order: int
-    """Sequential order number for this entry in the collection process."""
-
-    cuda_graph_snapshot: Optional[Dict[str, Any]] = None
-    """CPU snapshot of tensors collected during CUDA Graph replay, if applicable."""
-
 
 # ============================================================================
 # TensorsDump Type Aliases and Functions
@@ -78,54 +52,6 @@ BUILTIN_INPUT_DUMP_POLICIES: Dict[str, InputDumpPolicyFunction] = {
     "dump_none": dump_none,
     "dump_int32": dump_int32,
 }
-
-
-# ============================================================================
-# DedupPolicy Protocol and Type Aliases
-# ============================================================================
-
-
-class DedupPolicy(Protocol):
-    """Protocol for workload deduplication policy.
-
-    A dedup policy maintains internal state and supports both online and offline
-    deduplication strategies. Entries are submitted one at a time via submit(),
-    and selected entries are retrieved via drain().
-    """
-
-    def submit(self, entry: WorkloadEntry) -> None:
-        """Submit a workload entry for deduplication consideration.
-
-        Parameters
-        ----------
-        entry : WorkloadEntry
-            The workload entry to submit.
-        """
-        ...
-
-    def drain(self) -> List[WorkloadEntry]:
-        """Drain and return all selected entries.
-
-        Returns
-        -------
-        List[WorkloadEntry]
-            List of entries that passed the deduplication policy.
-            After calling this method, the internal buffer is cleared.
-        """
-        ...
-
-    def reset(self) -> None:
-        """Reset the internal state of the deduplication policy.
-
-        This method should be called when starting a new deduplication session
-        to clear any cached state or statistics.
-        """
-        ...
-
-
-DedupPolicyFactory = Callable[[], DedupPolicy]
-"""Factory function for dedup policy."""
-
 
 # ============================================================================
 # Builtin DedupPolicy Implementations

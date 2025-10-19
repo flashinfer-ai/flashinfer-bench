@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,8 +11,8 @@ from flashinfer_bench.compile import Runnable, get_builder_registry
 from flashinfer_bench.data import Trace, TraceSet
 from flashinfer_bench.env import get_fib_cache_path
 
-from .apply_config import ApplyConfig
-from .apply_key import ApplyKey, ApplyKeyFactory
+from .config import ApplyConfig
+from .key import ApplyKey, ApplyKeyFactory
 
 
 def _apply_table_dir() -> Path:

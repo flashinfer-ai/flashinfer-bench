@@ -16,9 +16,9 @@ from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.tracing import get_tracing_runtime
 
-from .apply_config import ApplyConfig
-from .apply_key import ApplyKeyBuilder, ApplyKeyFactory
-from .apply_table import ApplyTable
+from .config import ApplyConfig
+from .key import ApplyKeyBuilder, ApplyKeyFactory
+from .table import ApplyTable
 
 logger = get_logger("ApplyRuntime")
 
