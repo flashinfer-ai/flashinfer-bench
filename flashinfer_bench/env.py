@@ -37,9 +37,10 @@ def get_fib_dataset_path() -> Path:
     Path
         The value of the FIB_DATASET_PATH environment variable.
     """
-    return os.environ.get(
-        "FIB_DATASET_PATH", Path.home() / ".cache" / "flashinfer_bench" / "dataset"
-    )
+    value = os.environ.get("FIB_DATASET_PATH")
+    if value:
+        return Path(value).expanduser()
+    return Path.home() / ".cache" / "flashinfer_bench" / "dataset"
 
 
 def get_fib_cache_path() -> Path:
@@ -50,4 +51,7 @@ def get_fib_cache_path() -> Path:
     Path
         The value of the FIB_CACHE_PATH environment variable.
     """
-    return os.environ.get("FIB_CACHE_PATH", Path.home() / ".cache" / "flashinfer_bench" / "cache")
+    value = os.environ.get("FIB_CACHE_PATH")
+    if value:
+        return Path(value).expanduser()
+    return Path.home() / ".cache" / "flashinfer_bench" / "cache"
