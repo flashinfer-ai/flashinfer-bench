@@ -21,7 +21,7 @@ from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch
 
 from .builtin.configs import FULL_TRACING_CONFIGS
 from .config import TracingConfig
-from .dedup_policy import DedupPolicy
+from .filter_policy import FilterPolicy
 from .workload_entry import WorkloadEntry
 
 logger = get_logger("TracingRuntime")
@@ -70,11 +70,11 @@ class TracingRuntime:
         # by tuple (input_name, dim_idx, axis_name).
         self._var_axes_table = self._init_var_axes_table()
 
-        # Create independent dedup policy instances for each definition
+        # Create independent filter policy instances for each definition
         # This ensures state isolation between definitions and runtime instances
-        self._dedup_policies: Dict[str, DedupPolicy] = {}
+        self._filter_policies: Dict[str, FilterPolicy] = {}
         for def_name, config in self._tracing_configs.items():
-            self._dedup_policies[def_name] = config.create_filter_policy()
+            self._filter_policies[def_name] = config.create_filter_policy()
 
         # Validate config keys exist in definitions
         for def_name in self._tracing_configs:
@@ -89,6 +89,10 @@ class TracingRuntime:
         logger.info("TracingRuntime Initialized")
         logger.info(f"  TraceSet root path: {self._trace_set.root}")
         logger.info(f"  Tracing configs: {len(self._tracing_configs)} definitions configured")
+
+        from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
+
+        install_flashinfer_integrations()
 
     def collect(self, def_name: str, runtime_args: Dict[str, Any]):
         """
@@ -167,8 +171,8 @@ class TracingRuntime:
                 # Deferred snapshot for CUDA Graph replay
                 self._cuda_graph_entries.append(entry)
             else:
-                # Submit entry directly to dedup policy for online filtering
-                filter_policy = self._dedup_policies.get(def_name)
+                # Submit entry directly to filter policy for online filtering
+                filter_policy = self._filter_policies.get(def_name)
                 if filter_policy is not None:
                     filter_policy.submit(entry)
 
@@ -306,7 +310,7 @@ class TracingRuntime:
         -----
         This method is called automatically when exiting cuda_graph_scope().
         It synchronizes CUDA execution, creates CPU copies of all deferred
-        tensors from CUDA Graph entries, and submits them to dedup policies.
+        tensors from CUDA Graph entries, and submits them to filter policies.
         The deferred entries buffer is cleared after processing.
         """
         # Synchronize CUDA before taking snapshots
@@ -324,8 +328,8 @@ class TracingRuntime:
             entry.cuda_graph_snapshot = snapshot
             entry.inputs_to_dump = snapshot
 
-            # Submit to dedup policy
-            filter_policy = self._dedup_policies.get(entry.def_name)
+            # Submit to filter policy
+            filter_policy = self._filter_policies.get(entry.def_name)
             if filter_policy is not None:
                 filter_policy.submit(entry)
 
@@ -376,7 +380,7 @@ class TracingRuntime:
 
     def flush(self):
         """
-        Drain selected entries from dedup policies and write to disk.
+        Drain selected entries from filter policies and write to disk.
         """
         # Stats
         num_selected_entries = 0
@@ -385,8 +389,8 @@ class TracingRuntime:
         if self._in_cuda_graph:
             raise RuntimeError("Cannot flush during CUDA Graph replay")
 
-        # Drain entries from each dedup policy and convert to traces
-        for filter_policy in self._dedup_policies.values():
+        # Drain entries from each filter policy and convert to traces
+        for filter_policy in self._filter_policies.values():
             # Drain selected entries from policy
             selected_entries = filter_policy.drain()
 
