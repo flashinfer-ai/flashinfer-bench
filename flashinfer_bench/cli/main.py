@@ -188,6 +188,10 @@ def run(args: argparse.Namespace):
             rtol=args.rtol,
             atol=args.atol,
             use_isolated_runner=args.use_isolated_runner,
+            definitions=args.definitions,
+            solutions=args.solutions,
+            timeout_seconds=args.timeout,
+            devices=args.devices if hasattr(args, 'devices') else None,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
@@ -252,6 +256,30 @@ def cli():
         help="Use IsolatedRunner instead of the default PersistentRunner",
     )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
+    run_parser.add_argument(
+        "--definitions",
+        type=str,
+        nargs="+",
+        help="List of definition names to run. If not specified, runs all definitions.",
+    )
+    run_parser.add_argument(
+        "--solutions",
+        type=str,
+        nargs="+",
+        help="List of solution names to run. If not specified, runs all solutions.",
+    )
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Timeout in seconds for each solution evaluation (default: 300)",
+    )
+    run_parser.add_argument(
+        "--devices",
+        type=str,
+        nargs="+",
+        help="List of devices to use (e.g. cuda:0 cuda:2). If not specified, uses all available devices.",
+    )
     run_parser.add_argument(
         "--local",
         type=Path,

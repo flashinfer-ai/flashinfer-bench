@@ -301,7 +301,7 @@ class PersistentSubprocessWorker:
         try:
             self._parent_conn.send(eval_msg)
 
-            if self._parent_conn.poll(timeout=300.0):
+            if self._parent_conn.poll(timeout=cfg.timeout_seconds):
                 try:
                     response = self._parent_conn.recv()
 
@@ -362,7 +362,7 @@ class PersistentSubprocessWorker:
                         extra_msg=error_msg,
                     )
             else:
-                error_msg = f"Evaluation timeout after 300 seconds for solution {sol.name}"
+                error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}"
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=self._device,
@@ -397,7 +397,12 @@ class PersistentSubprocessWorker:
 
 
 class PersistentRunner(Runner):
-    def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(
+        self, 
+        logger: logging.Logger, 
+        log_dir: str = "/tmp/flashinfer_bench",
+        devices: Optional[List[str]] = None
+    ) -> None:
         """Initialize the persistent runner with multiple workers.
 
         Parameters
@@ -406,6 +411,8 @@ class PersistentRunner(Runner):
             Logger instance for output.
         log_dir : str, optional
             Directory for log files, by default "/tmp/flashinfer_bench".
+        devices : Optional[List[str]], optional
+            List of devices to use (e.g. ["cuda:0", "cuda:2"]). If None, uses all available devices.
         """
         self._logger = logger
         self._log_dir = log_dir
@@ -414,7 +421,19 @@ class PersistentRunner(Runner):
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
 
-        self._available_devices = fib_utils.list_cuda_devices()
+        if devices is None:
+            self._available_devices = fib_utils.list_cuda_devices()
+        else:
+            all_devices = fib_utils.list_cuda_devices()
+            self._available_devices = []
+            for device in devices:
+                if device in all_devices:
+                    self._available_devices.append(device)
+                else:
+                    self._logger.warning(f"Device {device} not available, skipping")
+            if not self._available_devices:
+                raise RuntimeError(f"None of the specified devices {devices} are available")
+        
         self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
 
         self._curr_worker_idx = 0

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -21,6 +21,10 @@ class BenchmarkConfig:
     required_matched_ratio: Optional[float] = field(default=None)
     sampling_validation_trials: int = field(default=100)
     sampling_tvd_threshold: float = field(default=0.2)
+    definitions: Optional[List[str]] = field(default=None)
+    solutions: Optional[List[str]] = field(default=None)
+    timeout_seconds: int = field(default=300)
+    devices: Optional[List[str]] = field(default=None)
 
     def __post_init__(self):
         if self.warmup_runs < 0:
@@ -51,3 +55,17 @@ class BenchmarkConfig:
             raise ValueError("sampling_tvd_threshold must be between 0 and 1")
         if not isinstance(self.sampling_tvd_threshold, float):
             raise ValueError("sampling_tvd_threshold must be a float")
+        if self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be > 0")
+        if not isinstance(self.timeout_seconds, int):
+            raise ValueError("timeout_seconds must be an int")
+        if self.definitions is not None and not isinstance(self.definitions, list):
+            raise ValueError("definitions must be a list or None")
+        if self.solutions is not None and not isinstance(self.solutions, list):
+            raise ValueError("solutions must be a list or None")
+        if self.devices is not None:
+            if not isinstance(self.devices, list):
+                raise ValueError("devices must be a list or None")
+            for device in self.devices:
+                if not isinstance(device, str):
+                    raise ValueError("each device must be a string")

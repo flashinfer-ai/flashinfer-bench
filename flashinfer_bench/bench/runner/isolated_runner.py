@@ -91,15 +91,50 @@ class SubprocessWorker:
         proc.start()
 
         evaluation: Optional[Evaluation] = None
+        start_time = time.time()
+        
         try:
-            msg = parent_conn.recv()
-            if msg.get("cmd") != "READY":
-                raise RunnerFatalError(f"Worker failed to start, got: {msg}")
-            parent_conn.send({"ok": True})
+            if parent_conn.poll(timeout=30.0):  # 30 seconds for startup
+                msg = parent_conn.recv()
+                if msg.get("cmd") != "READY":
+                    raise RunnerFatalError(f"Worker failed to start, got: {msg}")
+                parent_conn.send({"ok": True})
+            else:
+                evaluation = make_eval(
+                    status=EvaluationStatus.RUNTIME_ERROR,
+                    device=self._device,
+                    log_path=log_path,
+                    extra_msg="Worker failed to start within 30 seconds",
+                )
+                return evaluation
 
             while True:
-                msg = parent_conn.recv()
-                cmd = msg.get("cmd")
+                # Check if we've exceeded total timeout
+                elapsed = time.time() - start_time
+                remaining_timeout = max(1.0, cfg.timeout_seconds - elapsed)
+                
+                if elapsed >= cfg.timeout_seconds:
+                    evaluation = make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=self._device,
+                        log_path=log_path,
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                    )
+                    break
+                
+                # Wait for message with remaining timeout
+                if parent_conn.poll(timeout=remaining_timeout):
+                    msg = parent_conn.recv()
+                    cmd = msg.get("cmd")
+                else:
+                    # Timeout
+                    evaluation = make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=self._device,
+                        log_path=log_path,
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                    )
+                    break
 
                 if cmd == "LOAN":
                     # Zero-effect copy via IPC handle
@@ -257,7 +292,12 @@ def _solution_worker_main(
 
 
 class IsolatedRunner(Runner):
-    def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(
+        self, 
+        logger: logging.Logger, 
+        log_dir: str = "/tmp/flashinfer_bench",
+        devices: Optional[List[str]] = None
+    ) -> None:
         """Initialize the isolated runner with per device workers.
 
         Parameters
@@ -266,14 +306,28 @@ class IsolatedRunner(Runner):
             Logger instance for output.
         log_dir : str, optional
             Directory for log files, by default "/tmp/flashinfer_bench".
+        devices : Optional[List[str]], optional
+            List of devices to use (e.g. ["cuda:0", "cuda:2"]). If None, uses all available devices.
         """
         self._logger = logger
+        self._log_dir = log_dir
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
 
-        # Initialize workers for all available CUDA devices
-        self._available_devices = fib_utils.list_cuda_devices()
+        if devices is None:
+            self._available_devices = fib_utils.list_cuda_devices()
+        else:
+            all_devices = fib_utils.list_cuda_devices()
+            self._available_devices = []
+            for device in devices:
+                if device in all_devices:
+                    self._available_devices.append(device)
+                else:
+                    self._logger.warning(f"Device {device} not available, skipping")
+            if not self._available_devices:
+                raise RuntimeError(f"None of the specified devices {devices} are available")
+        
         self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
         self._curr_worker_idx = 0
 
