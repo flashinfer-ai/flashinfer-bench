@@ -87,6 +87,13 @@ def apply(
     """
     # Imperative
     if runtime_kwargs is not None:
+        kwargs = dict(runtime_kwargs)
+        def_name = (
+            def_name_or_resolver
+            if isinstance(def_name_or_resolver, str)
+            else def_name_or_resolver(**kwargs)
+        )
+
         tracing_rt = get_tracing_runtime()
         if tracing_rt is not None:
             tracing_rt.collect(def_name, kwargs)
@@ -96,13 +103,6 @@ def apply(
             if fallback is None:
                 raise RuntimeError("Apply is not enabled and no fallback provided")
             return fallback(**kwargs)
-
-        kwargs = dict(runtime_kwargs)
-        def_name = (
-            def_name_or_resolver
-            if isinstance(def_name_or_resolver, str)
-            else def_name_or_resolver(**kwargs)
-        )
 
         return apply_rt.dispatch(def_name, kwargs, fallback)
 
