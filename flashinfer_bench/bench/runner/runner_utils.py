@@ -15,7 +15,7 @@ from flashinfer_bench.data import (
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import env_snapshot, flush_stdio_streams, torch_dtype_from_def
+from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot, flush_stdio_streams
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -141,7 +141,7 @@ def compute_frequency_distribution(
             out = runnable(**inp)
 
         output_names = list(defn.outputs.keys())
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
+        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
 
         out_normalized = normalize_outputs(
             out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
@@ -189,7 +189,7 @@ def load_safetensors(
         if list(t.shape) != expected[name]:
             raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
         # dtype check
-        expect_dtype = torch_dtype_from_def(defn.inputs[name].dtype)
+        expect_dtype = dtype_str_to_torch_dtype(defn.inputs[name].dtype)
         if t.dtype != expect_dtype:
             raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
 
@@ -209,7 +209,7 @@ def gen_inputs(
     out: Dict[str, Any] = {}
 
     for name, spec in defn.inputs.items():
-        dtype = torch_dtype_from_def(spec.dtype)
+        dtype = dtype_str_to_torch_dtype(spec.dtype)
 
         if name in wl.inputs and wl.inputs[name].type == "safetensors":
             if stensors is None or name not in stensors:

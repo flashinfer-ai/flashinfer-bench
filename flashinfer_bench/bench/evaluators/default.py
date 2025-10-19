@@ -26,7 +26,7 @@ from flashinfer_bench.data.trace import (
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import torch_dtype_from_def
+from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
 from .evaluator import Evaluator
 
@@ -45,7 +45,7 @@ class DefaultEvaluator(Evaluator):
         device: str,
         traceset_root: Optional[Path] = None,
     ) -> DeviceBaseline:
-        output_dtypes = {k: torch_dtype_from_def(v.dtype) for k, v in defn.outputs.items()}
+        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
         ref_runnable = get_builder_registry().build_reference(defn)
         loaded_stensors = (
             load_safetensors(defn, workload, traceset_root)
