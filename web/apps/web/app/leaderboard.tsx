@@ -179,7 +179,7 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
       <div className="container space-y-6 py-6 md:py-8">
         <div className="space-y-2">
           <h2 className="text-3xl font-semibold tracking-tight">Leaderboard</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground">
             Examine overall author performance across all kernels.
           </p>
         </div>
