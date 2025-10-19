@@ -5,7 +5,14 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@flashinfer-be
 import { ChevronDown, Crown, Eye, EyeOff } from "lucide-react"
 import { FastPCurves, type ScoreboardEntry } from "@/components/fast-p-chart"
 import { FastPLabel } from "@/components/fast-p-label"
-import type { AuthorCorrectnessResponse, AuthorCurvesResponse, CurvePoint } from "@/lib/analytics"
+import {
+  computeFastPCurvesForAuthors,
+  computeAuthorCorrectnessSummary,
+  type AuthorCorrectnessResponse,
+  type AuthorCurvesResponse,
+  type BaselineConfig,
+} from "@/lib/analytics"
+import type { Solution, Trace } from "@/lib/schemas"
 import { cn } from "@flashinfer-bench/utils"
 
 const DEFAULT_PIN = 0.95
@@ -31,20 +38,66 @@ function buildScoreboard(curves: Record<string, CurvePoint[]>, p: number, exclud
   })
 }
 
+type LeaderboardEntry = {
+  solutions: Solution[]
+  traces: Trace[]
+  baseline?: BaselineConfig
+  baselineNames: string[]
+}
+
 type LeaderboardSectionProps = {
-  fast: AuthorCurvesResponse
-  correctness: AuthorCorrectnessResponse
-  excludedAuthors: string[]
+  entries: LeaderboardEntry[]
   baselineLabel: string
   initialPinnedP?: number
 }
 
-export function LeaderboardSection({ fast, correctness, excludedAuthors, baselineLabel, initialPinnedP = DEFAULT_PIN }: LeaderboardSectionProps) {
+export function LeaderboardSection({ entries, baselineLabel, initialPinnedP = DEFAULT_PIN }: LeaderboardSectionProps) {
   const [pinnedP, setPinnedP] = useState<number | null>(initialPinnedP)
   const [isListExpanded, setIsListExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState<"fast" | "correctness">("fast")
 
-  const excludedSet = useMemo(() => new Set(excludedAuthors), [excludedAuthors])
+  const filteredEntries = useMemo(
+    () => entries.filter((entry) => entry.solutions.length > 0 && entry.traces.length > 0),
+    [entries]
+  )
+
+  const excludedSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const entry of entries) {
+      const baselineNames = new Set(entry.baselineNames || [])
+      if (baselineNames.size === 0) continue
+      for (const solution of entry.solutions) {
+        if (baselineNames.has(solution.name) && solution.author) {
+          set.add(solution.author)
+        }
+      }
+    }
+    return set
+  }, [entries])
+
+  const fast: AuthorCurvesResponse = useMemo(
+    () =>
+      computeFastPCurvesForAuthors({
+        datasets: filteredEntries.map((entry) => ({
+          solutions: entry.solutions,
+          traces: entry.traces,
+          baseline: entry.baseline,
+        })),
+        sampleCount: 300,
+      }),
+    [filteredEntries]
+  )
+
+  const correctness: AuthorCorrectnessResponse = useMemo(
+    () =>
+      computeAuthorCorrectnessSummary({
+        datasets: filteredEntries.map((entry) => ({
+          solutions: entry.solutions,
+          traces: entry.traces,
+        })),
+      }),
+    [filteredEntries]
+  )
 
   const initialScoreboard = useMemo(() => buildScoreboard(fast.curves, initialPinnedP, excludedSet), [fast.curves, initialPinnedP, excludedSet])
 
@@ -162,18 +215,6 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
   }, [correctness, excludedSet])
 
   const maxPassRate = correctnessRanking.length > 0 ? correctnessRanking[0].passRate : 0
-  const { filteredPassed, filteredTotal } = useMemo(() => {
-    let passed = 0
-    let total = 0
-    for (const entry of correctnessRanking) {
-      passed += entry.passed
-      total += entry.total
-    }
-    return { filteredPassed: passed, filteredTotal: total }
-  }, [correctnessRanking])
-
-  const overallPassRate = filteredTotal > 0 ? filteredPassed / filteredTotal : 0
-
   return (
     <section>
       <div className="container space-y-6 py-6 md:py-8">
@@ -234,9 +275,10 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
                           {scoreboard[0].name}
                         </span>
                       </div>
-                      <span className="flex items-center gap-1">
-                        {scoreboard[0].percent.toFixed(1)}% win
-                      </span>
+                  <span className="flex items-center gap-1">
+                    {scoreboard[0].percent.toFixed(1)}%
+                    <FastPLabel className="text-xs text-muted-foreground" value={pinnedTarget.toFixed(2)} />
+                  </span>
                     </>
                   ) : (
                     <span>No authors available</span>
@@ -289,7 +331,8 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
-                              {percent}% win
+                              {percent}%
+                              <FastPLabel className="text-xs" value={pinnedTarget.toFixed(2)} />
                             </span>
                             {isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </div>
