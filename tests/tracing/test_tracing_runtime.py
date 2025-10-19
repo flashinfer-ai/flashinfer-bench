@@ -38,8 +38,8 @@ def test_runtime_creates_independent_policies_per_definition(minimal_traceset: T
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
 
-    policy1 = runtime._dedup_policies["def1"]
-    policy2 = runtime._dedup_policies["def2"]
+    policy1 = runtime._filter_policies["def1"]
+    policy2 = runtime._filter_policies["def2"]
 
     assert policy1 is not policy2
     assert policy1.k == 2
@@ -57,12 +57,12 @@ def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
     entry1 = WorkloadEntry(def_name="def1", axes={"n": 10}, inputs_to_dump={}, order=0)
     entry2 = WorkloadEntry(def_name="def2", axes={"m": 20}, inputs_to_dump={}, order=1)
 
-    runtime._dedup_policies["def1"].submit(entry1)
-    runtime._dedup_policies["def1"].submit(entry1)
-    runtime._dedup_policies["def2"].submit(entry2)
+    runtime._filter_policies["def1"].submit(entry1)
+    runtime._filter_policies["def1"].submit(entry1)
+    runtime._filter_policies["def2"].submit(entry2)
 
-    assert len(runtime._dedup_policies["def1"].entries) == 2
-    assert len(runtime._dedup_policies["def2"].entries) == 1
+    assert len(runtime._filter_policies["def1"].entries) == 2
+    assert len(runtime._filter_policies["def2"].entries) == 1
 
 
 def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
@@ -73,8 +73,8 @@ def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     runtime1 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
     runtime2 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
 
-    policy1 = runtime1._dedup_policies["def1"]
-    policy2 = runtime2._dedup_policies["def1"]
+    policy1 = runtime1._filter_policies["def1"]
+    policy2 = runtime2._filter_policies["def1"]
 
     assert policy1 is not policy2
 
@@ -87,7 +87,7 @@ def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
 
 
 def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
-    """Test that entries are submitted to dedup policy immediately during collect."""
+    """Test that entries are submitted to filter policy immediately during collect."""
     import torch
 
     config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
@@ -100,7 +100,7 @@ def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
         runtime.collect("def1", {"x": torch.zeros(10)})
 
     # Verify policy has exactly 2 entries
-    policy = runtime._dedup_policies["def1"]
+    policy = runtime._filter_policies["def1"]
     assert len(policy.entries) == 2
 
     # Flush and verify drain works

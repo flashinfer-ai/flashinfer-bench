@@ -51,4 +51,7 @@ def get_fib_cache_path() -> Path:
     Path
         The value of the FIB_CACHE_PATH environment variable.
     """
-    return os.environ.get("FIB_CACHE_PATH", Path.home() / ".cache" / "flashinfer_bench" / "cache")
+    value = os.environ.get("FIB_CACHE_PATH")
+    if value:
+        return Path(value).expanduser()
+    return Path.home() / ".cache" / "flashinfer_bench" / "cache"

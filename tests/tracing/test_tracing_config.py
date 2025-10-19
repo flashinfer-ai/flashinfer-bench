@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from flashinfer_bench.tracing import (
-    BUILTIN_DEDUP_POLICIES,
+    BUILTIN_FILTER_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
     KeepAllPolicy,
     KeepFirstByAxesPolicy,
@@ -61,7 +61,7 @@ def test_builtin_policies_create_correct_types():
 
 
 # ============================================================================
-# Tests for Builtin DedupPolicy Implementations
+# Tests for Builtin FilterPolicy Implementations
 # ============================================================================
 
 
@@ -173,13 +173,13 @@ def test_keep_first_by_axes_policy_reset():
     assert drained[0].order == 1
 
 
-def test_builtin_dedup_policies_completeness():
+def test_builtin_filter_policies_completeness():
     """Test that all builtin policy factories are registered."""
     expected_literals = ["keep_all", "keep_first", "keep_first_by_axes"]
 
     for literal in expected_literals:
-        assert literal in BUILTIN_DEDUP_POLICIES
-        factory = BUILTIN_DEDUP_POLICIES[literal]
+        assert literal in BUILTIN_FILTER_POLICIES
+        factory = BUILTIN_FILTER_POLICIES[literal]
         policy = factory()
         # Verify it has the protocol methods
         assert hasattr(policy, "submit")

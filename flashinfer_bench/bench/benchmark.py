@@ -7,7 +7,7 @@ from flashinfer_bench.compile import get_builder_registry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
 from flashinfer_bench.logging import get_logger
 
-from .benchmark_config import BenchmarkConfig
+from .config import BenchmarkConfig
 from .runner import IsolatedRunner, PersistentRunner
 
 logger = get_logger("Benchmark")

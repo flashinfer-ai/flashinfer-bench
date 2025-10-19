@@ -8,7 +8,7 @@ import torch
 from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.bench.runner import IsolatedRunner
 from flashinfer_bench.bench.runner.isolated_runner import SubprocessWorker
-from flashinfer_bench.bench.runner.runner_utils import (
+from flashinfer_bench.bench.utils import (
     _rand_tensor,
     compute_error_stats,
     gen_inputs,

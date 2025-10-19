@@ -49,9 +49,6 @@ class RaggedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
-                # if get_apply_runtime() is None:
-                #     return orig(inst, *args, **kwargs)
-
                 bound = binder.bind((inst, *args), kwargs)
                 ctx = self._store.get(inst)
 

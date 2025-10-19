@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.apply.apply_key import ApplyKey, ApplyKeyFactory
+from flashinfer_bench.apply.key import ApplyKey, ApplyKeyFactory
 from flashinfer_bench.data import AxisConst, AxisVar, Definition, TensorSpec
 
 

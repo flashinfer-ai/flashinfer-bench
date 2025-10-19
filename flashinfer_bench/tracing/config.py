@@ -3,20 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Union
 
-from .tracing_policy import (
-    BUILTIN_DEDUP_POLICIES,
+from flashinfer_bench.tracing.builtin.policies import (
+    BUILTIN_FILTER_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
-    DedupPolicy,
-    DedupPolicyFactory,
     InputDumpPolicyFunction,
 )
+from flashinfer_bench.tracing.filter_policy import FilterPolicy, FilterPolicyFactory
 
 InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
 """Possible input_dump_policy literals."""
 
 
-DedupPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes", "keep_none"]
-"""Possible dedup policy literals."""
+FilterPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes", "keep_none"]
+"""Possible filter policy literals."""
 
 
 @dataclass
@@ -30,11 +29,11 @@ class TracingConfig:
     - InputDumpPolicyFunction: custom function that selects tensors from runtime arguments
     """
 
-    filter_policy: Union[DedupPolicyLiteral, DedupPolicyFactory]
+    filter_policy: Union[FilterPolicyLiteral, FilterPolicyFactory]
     """Deduplication policy factory. Can be a string literal for built-in policies or a factory
     function for custom policies. Can be:
-    - DedupPolicyLiteral: string literal for built-in policies
-    - DedupPolicyFactory: custom factory function that creates a dedup policy instance
+    - FilterPolicyLiteral: string literal for built-in policies
+    - FilterPolicyFactory: custom factory function that creates a filter policy instance
     """
 
     def __post_init__(self):
@@ -51,20 +50,20 @@ class TracingConfig:
 
         # Resolve filter_policy literal
         if isinstance(self.filter_policy, str):
-            factory = BUILTIN_DEDUP_POLICIES.get(self.filter_policy)
+            factory = BUILTIN_FILTER_POLICIES.get(self.filter_policy)
             if factory is None:
                 raise ValueError(
                     f"Unknown filter_policy literal: {self.filter_policy}. "
-                    f"Must be one of {list(BUILTIN_DEDUP_POLICIES.keys())}"
+                    f"Must be one of {list(BUILTIN_FILTER_POLICIES.keys())}"
                 )
             self.filter_policy = factory
 
-    def create_filter_policy(self) -> DedupPolicy:
-        """Create a new dedup policy instance.
+    def create_filter_policy(self) -> FilterPolicy:
+        """Create a new filter policy instance.
 
         Returns
         -------
-        DedupPolicy
+        FilterPolicy
             A new policy instance with independent state.
         """
         if callable(self.filter_policy):

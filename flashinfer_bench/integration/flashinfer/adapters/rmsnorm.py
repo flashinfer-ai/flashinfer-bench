@@ -20,7 +20,7 @@ class RMSNormAdapter:
         return [
             PatchSpec(
                 path="flashinfer.norm.fused_add_rmsnorm",
-                kind="method",
+                kind="function",
                 name="fused_add_rmsnorm",
                 ctx_key="rmsnorm",
             )

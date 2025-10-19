@@ -4,8 +4,9 @@ This module provides pre-configured TracingConfig instances for common use cases
 such as GEMM, attention kernels, etc.
 """
 
-from .tracing_config import TracingConfig
-from .tracing_policy import AttentionDedupPolicy
+from flashinfer_bench.tracing.config import TracingConfig
+
+from .policies import AttentionFilterPolicy
 
 # ============================================================================
 # TracingConfig Presets
@@ -15,28 +16,28 @@ gemm_config = TracingConfig(input_dump_policy="dump_none", filter_policy="keep_f
 
 mla_paged_prefill_config = TracingConfig(
     input_dump_policy=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    filter_policy=lambda: AttentionDedupPolicy(k=1),
+    filter_policy=lambda: AttentionFilterPolicy(k=1),
 )
 
 
 mla_paged_decode_config = TracingConfig(
     input_dump_policy=["kv_indptr", "kv_indices", "sm_scale"],
-    filter_policy=lambda: AttentionDedupPolicy(k=1),
+    filter_policy=lambda: AttentionFilterPolicy(k=1),
 )
 
 gqa_paged_prefill_config = TracingConfig(
     input_dump_policy=["qo_indptr", "kv_indptr", "kv_indices", "sm_scale"],
-    filter_policy=lambda: AttentionDedupPolicy(k=1),
+    filter_policy=lambda: AttentionFilterPolicy(k=1),
 )
 
 gqa_ragged_prefill_config = TracingConfig(
     input_dump_policy=["qo_indptr", "kv_indptr", "sm_scale"],
-    filter_policy=lambda: AttentionDedupPolicy(k=1),
+    filter_policy=lambda: AttentionFilterPolicy(k=1),
 )
 
 gqa_paged_decode_config = TracingConfig(
     input_dump_policy=["kv_indptr", "kv_indices", "sm_scale"],
-    filter_policy=lambda: AttentionDedupPolicy(k=1),
+    filter_policy=lambda: AttentionFilterPolicy(k=1),
 )
 
 all_dump_config = TracingConfig(input_dump_policy="dump_all", filter_policy="keep_all")
