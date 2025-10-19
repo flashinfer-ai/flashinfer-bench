@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-import flashinfer_bench.apply as apply_mod
+import flashinfer_bench.apply as apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder
 
@@ -57,7 +57,7 @@ class RMSNormAdapter:
             def _fb(**_rk):
                 return orig(*args, **kwargs)
 
-            ret = apply_mod.apply(def_name, runtime_kwargs=rk, fallback=_fb)
+            ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
             return ret
 
         return wrapper

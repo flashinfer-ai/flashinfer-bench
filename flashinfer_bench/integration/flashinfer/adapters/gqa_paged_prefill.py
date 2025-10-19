@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-import flashinfer_bench.apply as apply_mod
+import flashinfer_bench.apply as apply
 from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_paged_kv_layout_from_tensors,
@@ -134,7 +134,7 @@ class GQAPagedPrefillAdapter:
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply_mod.apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
 
                 output = None
                 lse = None

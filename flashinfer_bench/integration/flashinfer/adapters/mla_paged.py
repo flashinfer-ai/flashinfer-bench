@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-import flashinfer_bench.apply as apply_mod
+import flashinfer_bench.apply as apply
 from flashinfer_bench.integration.flashinfer.common import pick_sm_scale_mla, write_back_outputs
 from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
@@ -142,11 +142,6 @@ class MLAPagedAdapter:
                         sm_scale,
                     )
 
-                rt = get_apply_runtime()
-                # Fallback if no definition found
-                if def_name not in rt._trace_set.definitions:
-                    return orig(inst, *args, **kwargs)
-
                 if is_decode:
                     rk: Dict[str, Any] = {
                         "q_nope": q_nope,
@@ -172,7 +167,7 @@ class MLAPagedAdapter:
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply_mod.apply(def_name, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
 
                 output = None
                 lse = None
