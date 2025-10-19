@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
 from flashinfer_bench.bench.runner.runner_utils import (
     compute_error_stats,
@@ -16,7 +16,7 @@ from flashinfer_bench.bench.runner.runner_utils import (
     normalize_outputs,
 )
 from flashinfer_bench.bench.utils import time_runnable
-from flashinfer_bench.compile.registry import get_builder_registry
+from flashinfer_bench.compile import get_builder_registry
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import (

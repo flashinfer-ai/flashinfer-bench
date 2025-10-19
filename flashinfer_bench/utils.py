@@ -1,11 +1,12 @@
 import os
 import platform
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
 
 from flashinfer_bench.data import Environment
+from flashinfer_bench.data.definition import DType
 
 _DTYPE_STR_TO_TORCH_DTYPE = {
     "float32": torch.float32,
