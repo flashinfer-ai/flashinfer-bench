@@ -3,8 +3,8 @@ from typing import Dict, Optional
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.logging import get_logger
 
-from .tracing_config import TracingConfig
-from .tracing_runtime import TracingRuntime, get_tracing_runtime, set_tracing_runtime
+from .config import TracingConfig
+from .runtime import TracingRuntime, get_tracing_runtime, set_tracing_runtime
 
 logger = get_logger("Tracing")
 

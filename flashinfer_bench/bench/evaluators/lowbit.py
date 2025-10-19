@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from typing_extensions import override
 
-from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators.default import DefaultEvaluator
 from flashinfer_bench.bench.runner.runner_utils import (
     compute_error_stats,

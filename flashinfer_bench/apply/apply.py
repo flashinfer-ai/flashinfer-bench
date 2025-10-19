@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.tracing import get_tracing_runtime
 
-from .apply_config import ApplyConfig
-from .apply_runtime import ApplyRuntime, get_apply_runtime, set_apply_runtime
+from .config import ApplyConfig
+from .runtime import ApplyRuntime, get_apply_runtime, set_apply_runtime
 
 
 # Decorator mode

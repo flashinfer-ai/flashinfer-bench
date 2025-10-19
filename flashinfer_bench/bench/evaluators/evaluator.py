@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from flashinfer_bench.bench.benchmark_config import BenchmarkConfig
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner.runner import DeviceBaseline
 from flashinfer_bench.bench.runner.runner_utils import make_eval
 from flashinfer_bench.compile import Runnable

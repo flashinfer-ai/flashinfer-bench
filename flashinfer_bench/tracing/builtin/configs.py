@@ -4,8 +4,8 @@ This module provides pre-configured TracingConfig instances for common use cases
 such as GEMM, attention kernels, etc.
 """
 
-from .tracing_config import TracingConfig
-from .tracing_policy import AttentionDedupPolicy
+from ..config import TracingConfig
+from .policies import AttentionDedupPolicy
 
 # ============================================================================
 # TracingConfig Presets
