@@ -40,7 +40,7 @@ def get_fib_dataset_path() -> Path:
     value = os.environ.get("FIB_DATASET_PATH")
     if value:
         return Path(value).expanduser()
-    return Path.home() / ".cache" / "flashinfer_bench" / "dataset"
+    return Path(Path.home() / ".cache" / "flashinfer_bench" / "dataset")
 
 
 def get_fib_cache_path() -> Path:

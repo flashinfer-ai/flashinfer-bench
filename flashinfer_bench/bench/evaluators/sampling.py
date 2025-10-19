@@ -22,7 +22,7 @@ from flashinfer_bench.compile.builder_registry import get_builder_registry
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import Correctness, Evaluation, EvaluationStatus, Workload
-from flashinfer_bench.utils import dtype_str_to_python_dtype
+from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
 
 class SamplingEvaluator(DefaultEvaluator):
@@ -101,7 +101,7 @@ class SamplingEvaluator(DefaultEvaluator):
         params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
 
         output_names = list(defn.outputs.keys())
-        output_dtypes = {k: dtype_str_to_python_dtype(v.dtype) for k, v in defn.outputs.items()}
+        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
 
         # Validate correct sampling token set
         for _ in range(cfg.sampling_validation_trials):
@@ -220,7 +220,7 @@ def _compute_frequency_distribution(
             out = runnable(**inputs)
 
         output_names = list(defn.outputs.keys())
-        output_dtypes = {k: dtype_str_to_python_dtype(v.dtype) for k, v in defn.outputs.items()}
+        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
 
         out_normalized = normalize_outputs(
             out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
