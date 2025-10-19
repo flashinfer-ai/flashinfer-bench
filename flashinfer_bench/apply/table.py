@@ -23,7 +23,7 @@ def _apply_table_dir() -> Path:
     Path
         The apply table cache directory path.
     """
-    return get_fib_cache_path() / "apply_table"
+    return Path(get_fib_cache_path()) / "apply_table"
 
 
 @dataclass

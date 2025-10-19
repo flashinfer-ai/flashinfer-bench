@@ -97,6 +97,7 @@ def apply(
         tracing_rt = get_tracing_runtime()
         if tracing_rt is not None:
             tracing_rt.collect(def_name, kwargs)
+            tracing_rt.flush()
 
         apply_rt = get_apply_runtime()
         if apply_rt is None:

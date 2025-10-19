@@ -68,7 +68,6 @@ class PatchManager:
             return True  # already patched (idempotent)
 
         wrapper = wrapper_factory(spec, original)
-
         setattr(owner, attr, wrapper)
         self._originals[key] = original
         return True

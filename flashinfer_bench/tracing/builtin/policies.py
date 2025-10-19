@@ -1,7 +1,7 @@
 """Deduplication policies and tensor dump functions for workload tracing.
 
 This module contains:
-- DedupPolicy protocol and all builtin implementations
+- FilterPolicy protocol and all builtin implementations
 - TensorsDumpFunction and all builtin implementations
 - Type aliases and factory functions
 """
@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Hashable, List
 import torch
 
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.tracing.dedup_policy import DedupPolicyFactory
+from flashinfer_bench.tracing.filter_policy import FilterPolicyFactory
 from flashinfer_bench.tracing.workload_entry import WorkloadEntry
 
 logger = get_logger("TracingPolicy")
@@ -54,7 +54,7 @@ BUILTIN_INPUT_DUMP_POLICIES: Dict[str, InputDumpPolicyFunction] = {
 }
 
 # ============================================================================
-# Builtin DedupPolicy Implementations
+# Builtin FilterPolicy Implementations
 # ============================================================================
 
 
@@ -143,7 +143,7 @@ class KeepFirstByAxesPolicy:
         self.entries.clear()
 
 
-class AttentionDedupPolicy:
+class AttentionFilterPolicy:
     # This policy is not done and not need to be tested yet.
     """Deduplicate by average sequence length computed from indptr tensors.
 
@@ -234,7 +234,7 @@ class KeepNonePolicy:
         pass
 
 
-BUILTIN_DEDUP_POLICIES: Dict[str, DedupPolicyFactory] = {
+BUILTIN_FILTER_POLICIES: Dict[str, FilterPolicyFactory] = {
     "keep_all": lambda: KeepAllPolicy(),
     "keep_first": lambda: KeepFirstKPolicy(k=1),
     "keep_first_by_axes": lambda: KeepFirstByAxesPolicy(k=1),

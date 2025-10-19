@@ -16,7 +16,7 @@ from flashinfer_bench.bench.utils import (
     make_eval,
     normalize_outputs,
 )
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile.registry import get_builder_registry
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import (
