@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-import flashinfer_bench.apply as apply
+from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.flashinfer.common import pick_sm_scale_mla, write_back_outputs
 from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
