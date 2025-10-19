@@ -11,6 +11,7 @@ import {
   type AuthorCorrectnessResponse,
   type AuthorCurvesResponse,
   type BaselineConfig,
+  type CurvePoint,
 } from "@/lib/analytics"
 import type { Solution, Trace } from "@/lib/schemas"
 import { cn } from "@flashinfer-bench/utils"
