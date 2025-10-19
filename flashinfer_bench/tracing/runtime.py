@@ -86,9 +86,9 @@ class TracingRuntime:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        logger.info("TracingRuntime Initialized")
-        logger.info(f"  TraceSet root path: {self._trace_set.root}")
-        logger.info(f"  Tracing configs: {len(self._tracing_configs)} definitions configured")
+        logger.debug("TracingRuntime Initialized")
+        logger.debug(f"  TraceSet root path: {self._trace_set.root}")
+        logger.debug(f"  Tracing configs: {len(self._tracing_configs)} definitions configured")
 
         from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
 
@@ -118,7 +118,7 @@ class TracingRuntime:
         - Tensor validation fails (wrong shape, dtype, etc.)
         - Axis inference fails
         """
-        logger.info(f"Tracing '{def_name}'")
+        logger.debug(f"Tracing '{def_name}'")
         tracing_config = self._tracing_configs.get(def_name)
         if tracing_config is None:
             logger.error(f"Tracing config not configured for {def_name}, skipping")
