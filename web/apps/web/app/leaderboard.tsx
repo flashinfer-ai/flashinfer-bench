@@ -235,7 +235,7 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
                         </span>
                       </div>
                       <span className="flex items-center gap-1">
-                        {scoreboard[0].percent.toFixed(1)}% faster
+                        {scoreboard[0].percent.toFixed(1)}% win
                       </span>
                     </>
                   ) : (
@@ -289,10 +289,8 @@ export function LeaderboardSection({ fast, correctness, excludedAuthors, baselin
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
-                              {percent}%
-                              faster
+                              {percent}% win
                             </span>
-                            <span>{comparisons} comps</span>
                             {isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </div>
                         </button>
