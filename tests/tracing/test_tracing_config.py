@@ -18,26 +18,26 @@ from flashinfer_bench.tracing import (
 
 
 def test_factory_creates_independent_instances():
-    """Test that dedup_policy factory creates independent instances."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy="keep_all")
-    policy1 = config.create_dedup_policy()
-    policy2 = config.create_dedup_policy()
+    """Test that filter_policy factory creates independent instances."""
+    config = TracingConfig(input_dump_policy=[], filter_policy="keep_all")
+    policy1 = config.create_filter_policy()
+    policy2 = config.create_filter_policy()
     assert policy1 is not policy2
 
 
 def test_factory_with_lambda():
     """Test that lambda factories work correctly."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstByAxesPolicy(k=5))
-    policy = config.create_dedup_policy()
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstByAxesPolicy(k=5))
+    policy = config.create_filter_policy()
     assert isinstance(policy, KeepFirstByAxesPolicy)
     assert policy.k == 5
 
 
 def test_state_isolation_between_policies():
     """Test that policy instances have isolated state."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
-    policy1 = config.create_dedup_policy()
-    policy2 = config.create_dedup_policy()
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
+    policy1 = config.create_filter_policy()
+    policy2 = config.create_filter_policy()
 
     entry = WorkloadEntry(def_name="test", axes={}, inputs_to_dump={}, order=0)
 
@@ -55,8 +55,8 @@ def test_builtin_policies_create_correct_types():
     ]
 
     for literal, expected_type in configs:
-        config = TracingConfig(input_dump_policy=[], dedup_policy=literal)
-        policy = config.create_dedup_policy()
+        config = TracingConfig(input_dump_policy=[], filter_policy=literal)
+        policy = config.create_filter_policy()
         assert isinstance(policy, expected_type)
 
 
@@ -243,7 +243,7 @@ def test_builtin_input_dump_policies_completeness():
 
 def test_tracing_config_with_literal_input_dump_policy():
     """Test TracingConfig with string literal for input_dump_policy."""
-    config = TracingConfig(input_dump_policy="dump_all", dedup_policy="keep_all")
+    config = TracingConfig(input_dump_policy="dump_all", filter_policy="keep_all")
 
     # After __post_init__, should be resolved to function
     assert callable(config.input_dump_policy)
@@ -256,7 +256,7 @@ def test_tracing_config_with_literal_input_dump_policy():
 
 def test_tracing_config_with_list_input_dump_policy():
     """Test TracingConfig with static list for input_dump_policy."""
-    config = TracingConfig(input_dump_policy=["tensor1", "tensor2"], dedup_policy="keep_all")
+    config = TracingConfig(input_dump_policy=["tensor1", "tensor2"], filter_policy="keep_all")
 
     inputs = {"tensor1": torch.zeros(5), "tensor2": torch.ones(3), "tensor3": torch.zeros(2)}
     result = config.get_inputs_to_dump(inputs)
@@ -269,7 +269,7 @@ def test_tracing_config_with_callable_input_dump_policy():
     def custom_dump(inputs):
         return [name for name in inputs.keys() if name.startswith("test_")]
 
-    config = TracingConfig(input_dump_policy=custom_dump, dedup_policy="keep_all")
+    config = TracingConfig(input_dump_policy=custom_dump, filter_policy="keep_all")
 
     inputs = {"test_a": torch.zeros(5), "other": torch.ones(3), "test_b": torch.zeros(2)}
     result = config.get_inputs_to_dump(inputs)
@@ -279,13 +279,13 @@ def test_tracing_config_with_callable_input_dump_policy():
 def test_tracing_config_invalid_input_dump_policy_literal():
     """Test TracingConfig raises error for invalid input_dump_policy literal."""
     with pytest.raises(ValueError, match="Unknown input_dump_policy literal"):
-        TracingConfig(input_dump_policy="invalid_literal", dedup_policy="keep_all")
+        TracingConfig(input_dump_policy="invalid_literal", filter_policy="keep_all")
 
 
-def test_tracing_config_invalid_dedup_policy_literal():
-    """Test TracingConfig raises error for invalid dedup_policy literal."""
-    with pytest.raises(ValueError, match="Unknown dedup_policy literal"):
-        TracingConfig(input_dump_policy=[], dedup_policy="invalid_policy")
+def test_tracing_config_invalid_filter_policy_literal():
+    """Test TracingConfig raises error for invalid filter_policy literal."""
+    with pytest.raises(ValueError, match="Unknown filter_policy literal"):
+        TracingConfig(input_dump_policy=[], filter_policy="invalid_policy")
 
 
 def test_tracing_config_get_inputs_to_dump_validation():
@@ -295,7 +295,7 @@ def test_tracing_config_get_inputs_to_dump_validation():
     def bad_dump_func(inputs):
         return ["nonexistent_tensor"]
 
-    config = TracingConfig(input_dump_policy=bad_dump_func, dedup_policy="keep_all")
+    config = TracingConfig(input_dump_policy=bad_dump_func, filter_policy="keep_all")
     inputs = {"real_tensor": torch.zeros(5)}
 
     with pytest.raises(ValueError, match="not in runtime_args"):
@@ -309,11 +309,11 @@ def test_tracing_config_all_literal_combinations():
 
     for dump_lit in dump_literals:
         for policy_lit in policy_literals:
-            config = TracingConfig(input_dump_policy=dump_lit, dedup_policy=policy_lit)
+            config = TracingConfig(input_dump_policy=dump_lit, filter_policy=policy_lit)
             assert config is not None
             # Should be resolved to callables
             assert callable(config.input_dump_policy)
-            assert callable(config.dedup_policy)
+            assert callable(config.filter_policy)
 
 
 if __name__ == "__main__":

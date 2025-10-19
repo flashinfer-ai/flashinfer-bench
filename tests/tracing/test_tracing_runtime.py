@@ -33,7 +33,7 @@ def minimal_traceset(tmp_path: Path) -> TraceSet:
 
 def test_runtime_creates_independent_policies_per_definition(minimal_traceset: TraceSet):
     """Test that each definition gets an independent policy instance."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
@@ -48,7 +48,7 @@ def test_runtime_creates_independent_policies_per_definition(minimal_traceset: T
 
 def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
     """Test that policies for different definitions have isolated state."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
@@ -67,7 +67,7 @@ def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
 
 def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     """Test that multiple runtimes can share the same TracingConfig without conflicts."""
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
     runtime1 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
@@ -90,7 +90,7 @@ def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
     """Test that entries are submitted to dedup policy immediately during collect."""
     import torch
 
-    config = TracingConfig(input_dump_policy=[], dedup_policy=lambda: KeepFirstKPolicy(k=2))
+    config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
     runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)

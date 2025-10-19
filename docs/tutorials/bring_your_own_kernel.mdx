@@ -97,7 +97,7 @@ from flashinfer_bench import TracingConfig
 
 gqa_tracing = TracingConfig(
     tensor_dump_policy="dump_non_float",   # keep scalar and int tensors; skip large float payloads
-    dedup_policy="shape_only",             # save first occurrence per input-shape signature
+    filter_policy="shape_only",             # save first occurrence per input-shape signature
 )
 
 configs = {
@@ -113,7 +113,7 @@ with fib.enable_tracing(dataset_path="/root/flashinfer-trace", tracing_configs=c
 **Policies you can use right away:**
 
 * `tensor_dump_policy`: `"dump_all"`, `"dump_none"`, `"dump_non_float"`, or a list of input names to dump.
-* `dedup_policy`: `"keep_all"`, `"shape_only"`, `"keep_first_k"` (e.g., first k calls), or a custom callable `Workload -> key`.
+* `filter_policy`: `"keep_all"`, `"shape_only"`, `"keep_first_k"` (e.g., first k calls), or a custom callable `Workload -> key`.
   These reduce disk/time while keeping representative samples.
 
 ## Component 4: `evaluation`
@@ -317,7 +317,7 @@ apply_cfgs = {
 trace_cfgs = {
     "gqa_paged_decode_h32_kv4_d128_ps1": TracingConfig(
         tensor_dump_policy="dump_non_float",
-        dedup_policy="shape_only",
+        filter_policy="shape_only",
     ),
 }
 
