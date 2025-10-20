@@ -1,11 +1,14 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import * as d3 from "d3"
 import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
 import { Pin as PinIcon, Undo2, HelpCircle } from "lucide-react"
 import { FastPLabel } from "@/components/fast-p-label"
 import type { CurvePoint } from "@/lib/analytics"
+
+const LEGEND_MAX_ITEMS = 10
+const LEGEND_NAME_MAX_LENGTH = 14
 
 export type ScoreboardEntry = {
   name: string
@@ -43,6 +46,26 @@ export function FastPCurves({
   const hintShownRef = useRef(false)
   const hideHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showPinHint, setShowPinHint] = useState(false)
+  const [hoveredLegend, setHoveredLegend] = useState<string | null>(null)
+  const legendItems = useMemo(() => {
+    const items: Array<{ name: string; displayName: string; color: string }> = []
+    for (const name of Array.from(visible)) {
+      if (!curves[name]) continue
+      const displayName =
+        name.length > LEGEND_NAME_MAX_LENGTH ? `${name.slice(0, LEGEND_NAME_MAX_LENGTH)}...` : name
+      items.push({ name, displayName, color: colorFor(name) })
+      if (items.length >= LEGEND_MAX_ITEMS) break
+    }
+    return items
+  }, [curves, visible, colorFor])
+
+  const totalVisible = useMemo(
+    () => Array.from(visible).filter((name) => Boolean(curves[name])).length,
+    [curves, visible]
+  )
+
+  const remainingLegendCount = Math.max(totalVisible - legendItems.length, 0)
+  const legendContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (pinnedP != null) {
@@ -76,13 +99,16 @@ export function FastPCurves({
 
     for (const [name, points] of Object.entries(curves)) {
       if (!visible.has(name)) continue
+      const isHighlighted = !hoveredLegend || hoveredLegend === name
+      const strokeWidth = isHighlighted ? 2.4 : 1.2
+      const strokeOpacity = hoveredLegend ? (isHighlighted ? 1 : 0.25) : 0.95
       svg
         .append("path")
         .datum(points)
         .attr("fill", "none")
         .attr("stroke", colorFor(name))
-        .attr("stroke-width", 1.8)
-        .attr("opacity", 0.95)
+        .attr("stroke-width", strokeWidth)
+        .attr("opacity", strokeOpacity)
         .attr("d", line as any)
         .append("title")
         .text(name)
@@ -147,12 +173,12 @@ export function FastPCurves({
       overlay.on("mousemove", null).on("mouseleave", null).on("click", null)
       svg.selectAll("*").remove()
     }
-  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP])
+  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, hoveredLegend])
 
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <CardTitle>
               <span className="inline-flex items-baseline gap-1">
@@ -183,8 +209,59 @@ export function FastPCurves({
               </HoverCardContent>
             </HoverCard>
           </div>
+          <div
+            className="flex flex-1 justify-center"
+            ref={legendContainerRef}
+            onMouseLeave={() => setHoveredLegend(null)}
+          >
+            {legendItems.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-y-2 text-xs">
+                {legendItems.map((item, index) => {
+                  const isHovered = hoveredLegend === item.name
+                  return (
+                    <Fragment key={item.name}>
+                      <span
+                        className={`inline-flex items-center rounded-full bg-muted px-2 py-1 font-medium transition-colors ${isHovered ? "text-primary" : "text-foreground"}`}
+                        title={item.name}
+                        onMouseEnter={() => setHoveredLegend(item.name)}
+                        onFocus={() => setHoveredLegend(item.name)}
+                        onBlur={() => {
+                          requestAnimationFrame(() => {
+                            if (!legendContainerRef.current) return
+                            if (!legendContainerRef.current.contains(document.activeElement)) {
+                              setHoveredLegend(null)
+                            }
+                          })
+                        }}
+                        tabIndex={0}
+                        role="button"
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full mr-1"
+                          style={{ backgroundColor: item.color }}
+                          aria-hidden="true"
+                        />
+                        <span className="whitespace-nowrap">{item.displayName}</span>
+                      </span>
+                      {index < legendItems.length - 1 && (
+                        <span
+                          className="inline-block h-1 w-3 flex-shrink-0 pointer-events-none"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </Fragment>
+                  )
+                })}
+                {remainingLegendCount > 0 && (
+                  <span className="text-muted-foreground">
+                    +{remainingLegendCount} more
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           {pinnedP != null && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="ml-auto flex items-center gap-2 text-sm">
               <PinIcon className="h-4 w-4 text-sky-500" />
               <span>p = {pinnedP.toFixed(2)}</span>
               <Button variant="ghost" size="sm" onClick={() => onPinP(null)}>
