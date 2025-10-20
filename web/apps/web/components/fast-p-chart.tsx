@@ -32,6 +32,7 @@ export type FastPCurvesProps = {
   highlightContext?: "drawer" | "list"
   onInspectHighlighted?: () => void
   correctness?: Record<string, CorrectnessSummary>
+  hideBaselineLabel?: boolean
 }
 
 type PreviewState = {
@@ -74,6 +75,7 @@ export function FastPCurves({
   highlightContext = "drawer",
   onInspectHighlighted,
   correctness,
+  hideBaselineLabel = false,
 }: FastPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
@@ -83,6 +85,7 @@ export function FastPCurves({
   const [domainMax, setDomainMax] = useState(1)
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const MIN_DOMAIN = 0.1
+  const pinnedDisplay = pinnedP != null ? pinnedP.toFixed(2) : "—"
   const legendItems = useMemo(() => {
     const items: Array<{ name: string; displayName: string; color: string }> = []
     for (const name of Array.from(visible)) {
@@ -416,19 +419,17 @@ export function FastPCurves({
               </div>
             )}
           </div>
-          {pinnedP != null && (
-            <div className="ml-auto flex items-center gap-2 text-sm">
-              <PinIcon className="h-4 w-4 text-sky-500" />
-              <span>p = {pinnedP.toFixed(2)}</span>
-              <Button variant="ghost" size="sm" onClick={() => onPinP(null)}>
-                <Undo2 className="h-4 w-4 mr-1" />Unpin
-              </Button>
-            </div>
-          )}
+          <div className={`ml-auto flex w-[240px] items-center justify-end gap-2 text-sm ${pinnedP != null ? "" : "invisible pointer-events-none"}`}>
+            <PinIcon className="h-4 w-4 text-sky-500" />
+            <span>p = {pinnedDisplay}</span>
+            <Button variant="ghost" size="sm" onClick={() => onPinP(null)}>
+              <Undo2 className="h-4 w-4 mr-1" />Unpin
+            </Button>
+          </div>
         </div>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>n = {comparisonCount} {countLabel}</span>
-          <span>Baseline: {baselineLabel}</span>
+          {!hideBaselineLabel && <span>Baseline: {baselineLabel}</span>}
         </div>
       </CardHeader>
       <CardContent>

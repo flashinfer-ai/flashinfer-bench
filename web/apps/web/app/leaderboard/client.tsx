@@ -321,6 +321,7 @@ export function LeaderboardClient({
               highlightContext="drawer"
               onInspectHighlighted={inspectHighlightedAuthor}
               correctness={correctnessByAuthor}
+              hideBaselineLabel
             />
 
             <div className="rounded-lg border bg-card/50">
