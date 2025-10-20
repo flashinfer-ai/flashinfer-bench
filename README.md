@@ -1,6 +1,19 @@
-# FlashInfer-Bench
+<div align="center" id="top">
 
-**FlashInfer-Bench** is a lightweight, extensible benchmarking suite for evaluating low-level kernel implementations of model inference workloads. It is centered around the `Trace` artifact — a detailed record of a workload execution. It enables systematic comparison of kernel implementations with correctness and performance metrics.
+<img src="web/packages/ui/src/brand/fib_logo.png" alt="logo" width="400" margin="10px"></img>
+
+[![Documentation](https://img.shields.io/badge/docs-latest-green)](https://bench.flashinfer.ai/docs/)
+[![License](https://img.shields.io/badge/license-apache_2-blue)](https://github.com/flashinfer-ai/flashinfer-bench/blob/main/LICENCE)
+[![PyPI](https://img.shields.io/pypi/v/flashinfer-bench)](https://pypi.org/project/flashinfer-bench/)
+
+**Building the Virtuous Cycle for AI-driven LLM Systems**
+
+[Get Started](#get-started) | [Documentation](https://bench.flashinfer.ai/docs/) | [Blogpost](https://flashinfer.ai/2025/10/16/flashinfer-bench.html)
+</div>
+
+**FlashInfer-Bench** is a benchmark suite and production workflow designed to build a virtuous cycle of self-improving AI systems.
+
+It is part of a broader initiative to build the *virtuous cycle of AI improving AI systems* — enabling AI agents and engineers to collaboratively optimize the very kernels that power large language models.
 
 ## Installation
 
@@ -13,84 +26,31 @@ pip install flashinfer-bench
 Import FlashInfer-Bench:
 
 ```python
-import flashinfer_bench as fib
+import flashinfer_bench
 ```
 
-## Dataset Layout
+## Get Started
 
-Each dataset is organized as follows:
+This [guide](https://bench.flashinfer.ai/docs/start/quick_start) shows you how to use FlashInfer-Bench python module with the FlashInfer-Trace dataset.
 
-```
-dataset/
-├── definitions/         # One JSON file per workload definition
-├── solutions/           # One JSON file per solution implementation
-└── traces/              # Benchmark results
-```
+## FlashInfer Trace Dataset
 
-* Each **Definition** describes a computation task and reference logic.
-* Each **Solution** specifies a kernel or agent implementation for a definition.
-* Each **Trace** records a benchmark result: input config, performance, correctness, environment, etc.
+We provide an official dataset called **FlashInfer-Trace** with kernels and workloads in real-world AI system deployment environments. FlashInfer-Bench can use this dataset to measure and compare the performance of kernels. It follows the [FlashInfer Trace Schema](https://bench.flashinfer.ai/docs/flashinfer_trace/flashinfer_trace).
 
-You can load the full dataset using:
+The official dataset is on HuggingFace: https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
 
-```python
-from flashinfer_bench import TraceSet
-trace_set = TraceSet.from_path("./dataset")
-```
+## Collaborators
 
-## Command Line Interface (CLI)
+Our collaborators include:
 
-FlashInfer-Bench provides a CLI for running benchmarks and analyzing results.
+<div align="center">
 
-### Usage
+[<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/nvidia.svg" height=50/>](https://github.com/NVIDIA/TensorRT-LLM)
+&emsp;
+[<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/gpu_mode.png" height=50/>](https://github.com/gpu-mode)
+&emsp;
+[<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/sglang.png" height=50/>](https://github.com/sgl-project/sglang)
+&emsp;
+[<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/vllm.png" height=50/>](https://github.com/vllm-project/vllm)
 
-#### Options
-- `--local <PATH>`: Specifies one or more local paths to load traces from. Can be used multiple times.
-- `--hub`: Load the latest traces from the FlashInfer Hub (not yet implemented).
-- `--warmup-runs <N>`: Number of warmup runs for benchmarking (default: 10).
-- `--iterations <N>`: Number of benchmark iterations (default: 50).
-- `--device <DEVICE>`: Device to run benchmarks on (default: cuda:0).
-- `--log-level <LEVEL>`: Logging level (default: INFO).
-- `--save-results` / `--no-save-results`: Whether to save results after running (default: save).
-
-#### Example
-
-```bash
-# Run benchmarks on a dataset
-flashinfer-bench run --local ./dataset
-
-# Print a summary of traces
-flashinfer-bench report summary --local ./dataset
-
-# Find the best solution for each definition
-flashinfer-bench report best --local ./dataset
-```
-
-## Benchmarking Kernels
-
-You can run local benchmarks using the `Benchmark` runner, which scans your dataset for all available definitions and solutions, executes them, and appends resulting traces to the `TraceSet`.
-
-It also supports single-solution execution via `.run_solution(...)`.
-
-```python
-from flashinfer_bench import Benchmark, BenchmarkConfig, TraceSet
-
-traces = TraceSet.from_path("./dataset")
-config = BenchmarkConfig(warmup_runs=5, iterations=20)
-benchmark = Benchmark(traces, config)
-
-benchmark.run_all()
-
-# Accessing results
-print(traces.summary())
-```
-
-## Schema
-
-Each of the core entities is modeled as a dataclass:
-
-* **Definition**: Workload specification with axes, inputs, outputs, and a reference implementation.
-* **Solution**: A concrete implementation with source files and a launch entry point.
-* **Trace**: A benchmark result of a solution on a specific workload input.
-
-See [`schema/`](./schema/) for full documentation.
+</div>
