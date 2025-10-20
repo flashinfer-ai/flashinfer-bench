@@ -125,7 +125,18 @@ def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    
+    needs_newline_prefix = False
+    if path.exists() and path.stat().st_size > 0:
+        with open(path, "rb") as f:
+            f.seek(-1, 2)
+            last_char = f.read(1)
+            needs_newline_prefix = last_char != b'\n'
+    
     with open(path, "a", encoding="utf-8") as f:
+        if needs_newline_prefix:
+            f.write("\n")
+        
         object_strs = [obj.model_dump_json(indent=None) for obj in objects]
         output_str = "\n".join(object_strs) + "\n"
         f.write(output_str)
