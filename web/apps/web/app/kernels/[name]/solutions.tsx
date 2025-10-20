@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
 import { FastPCurves } from "@/components/fast-p-chart"
-import { SolutionsList, type FilterChip } from "./solutions-list"
+import { SolutionsList, type FilterChip, getSolutionElementId } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
 import {
   computeBaselineTraceComparisons,
@@ -34,13 +34,23 @@ function matchesSolutionFilters(solution: Solution, filters: SolutionFiltersStat
 function buildScoreMap(curves: CurvesPayload | null, p: number): Record<string, number> {
   const map: Record<string, number> = {}
   if (!curves) return map
+
   for (const [name, points] of Object.entries(curves.curves || {})) {
     if (!points.length) {
       map[name] = 0
       continue
     }
-    const index = Math.round(Math.max(0, Math.min(1, p)) * (points.length - 1))
-    map[name] = points[index]?.percent ?? 0
+    const minP = points[0].p
+    const maxP = points[points.length - 1].p
+    const target = Math.min(Math.max(p, minP), maxP)
+    let lo = 0
+    let hi = points.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (points[mid].p < target) lo = mid + 1
+      else hi = mid
+    }
+    map[name] = points[lo]?.percent ?? 0
   }
   return map
 }
@@ -90,6 +100,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
   const [sfState, setSfState] = useState<SolutionFiltersState>(initialSF)
   const [visibleSolutions, setVisibleSolutions] = useState<Set<string>>(new Set())
   const [expandedSolution, setExpandedSolution] = useState<string | null>(null)
+  const [highlightedSolution, setHighlightedSolution] = useState<string | null>(null)
   const [pinnedP, setPinnedP] = useState<number | null>(DEFAULT_PIN)
   const initialSolutionsRef = useRef<string[] | null>(null)
   const initialExpandedRef = useRef<string | null>(null)
@@ -199,7 +210,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     const pParam = params.get("p")
     if (initialVisible.length) initialSolutionsRef.current = initialVisible
     if (initialExpanded) initialExpandedRef.current = initialExpanded
-    if (pParam != null) setPinnedP(Math.max(0, Math.min(1, Number(pParam))))
+    if (pParam != null) setPinnedP(Math.max(0, Number(pParam)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -305,6 +316,23 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
       return next
     })
   }, [filteredSolutions])
+
+  useEffect(() => {
+    if (!highlightedSolution) return
+    if (!filteredSolutions.some((solution) => solution.name === highlightedSolution)) {
+      setHighlightedSolution(null)
+    }
+  }, [filteredSolutions, highlightedSolution])
+
+  useEffect(() => {
+    if (!highlightedSolution) return
+    setVisibleSolutions((current) => {
+      if (current.has(highlightedSolution)) return current
+      const next = new Set(current)
+      next.add(highlightedSolution)
+      return next
+    })
+  }, [highlightedSolution])
 
   useEffect(() => {
     if (expandedSolution && expandedSolution !== baselineSolutionName && !filteredSolutions.some((s) => s.name === expandedSolution)) {
@@ -416,6 +444,31 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     [filteredCurves]
   )
 
+  const focusSolution = useCallback((name: string) => {
+    const exists = displaySolutions.some((solution) => solution.name === name)
+    if (!exists) return
+    setExpandedSolution(name)
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        const element = document.getElementById(getSolutionElementId(name))
+        if (!element) return
+        const headerOffset = 122
+        const rect = element.getBoundingClientRect()
+        const targetY = rect.top + window.scrollY - headerOffset
+        window.scrollTo({ top: targetY, behavior: "smooth" })
+      })
+    }
+  }, [displaySolutions])
+
+  const inspectHighlightedSolution = useCallback(() => {
+    if (!highlightedSolution) return
+    focusSolution(highlightedSolution)
+  }, [focusSolution, highlightedSolution])
+
+  const handleHoverP = useCallback((value: number | null) => {
+    void value
+  }, [])
+
   return (
     <section id="solutions" className="space-y-6">
       <h2 className="text-2xl font-semibold">Results</h2>
@@ -423,7 +476,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
       <FastPCurves
         curves={filteredCurves?.curves || {}}
         visible={visibleSolutions}
-        onHoverP={() => {}}
+        onHoverP={handleHoverP}
         onPinP={setPinnedP}
         pinnedP={pinnedP}
         baselineLabel={baselineDefault || fallbackBaseline || "Not specified"}
@@ -431,6 +484,11 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
         baselineAvailable={baselineReady}
         colorFor={colorFor}
         scoreboard={[]}
+        highlighted={highlightedSolution}
+        onHighlightChange={setHighlightedSolution}
+        highlightContext="list"
+        onInspectHighlighted={inspectHighlightedSolution}
+        correctness={filteredCurves?.correctness || {}}
       />
 
       <SolutionsList
