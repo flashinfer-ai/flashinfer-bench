@@ -61,10 +61,10 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col">
-      <LeaderboardSection
+      {/* <LeaderboardSection
         entries={leaderboardEntries}
         baselineLabel="Per-definition baselines"
-      />
+      /> */}
 
       <ModelsSection models={models} />
 
