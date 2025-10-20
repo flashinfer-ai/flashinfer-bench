@@ -11,6 +11,35 @@ The general workflow for submitting a change is:
 3. Push your changes to your fork and **open a pull request** to the main repository. Please provide a clear description of your changes and link to the relevant issue if one exists.
 4. **Iterate on the pull request** by responding to feedback from reviewers until the change is ready to be merged.
 
+## **Pull Request Naming Convention**
+
+To maintain consistency and clarity, please follow this naming convention for your pull requests:
+
+```
+<type>: <brief description>
+```
+
+**Available types:**
+
+* `feat`: A new feature or enhancement
+* `fix`: A bug fix
+* `perf`: Performance improvement
+* `refactor`: Code refactoring without changing functionality
+* `test`: Adding or updating tests
+* `docs`: Documentation changes
+* `style`: Code style changes (formatting, whitespace, etc.)
+* `build`: Changes to build system or dependencies
+* `ci`: Changes to CI/CD configuration
+* `chore`: Maintenance tasks and other changes
+
+**Examples:**
+
+* `feat: add FP8 kernel benchmark`
+* `fix: correct memory allocation in attention kernel`
+* `perf: optimize fused MoE throughput`
+* `docs: update installation guide`
+* `test: add unit tests for decode kernel`
+
 ## **Review**
 
 Once you've opened a pull request, the review process begins:
