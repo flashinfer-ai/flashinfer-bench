@@ -213,6 +213,11 @@ export function LeaderboardClient({
     setSelectedAuthor(null)
   }, [])
 
+  const handleLegendClick = useCallback((author: string) => {
+    setIsListExpanded(true)
+    openAuthorDetail(author)
+  }, [openAuthorDetail])
+
   const pinnedLabel = pinnedTarget.toFixed(2)
 
   const correctnessRanking = useMemo(() => {
@@ -271,6 +276,7 @@ export function LeaderboardClient({
               colorFor={colorFor}
               scoreboard={scoreboard}
               countLabel="comparisons"
+              onLegendClick={handleLegendClick}
             />
 
             <div className="rounded-lg border bg-card/50">

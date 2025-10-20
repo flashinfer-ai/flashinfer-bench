@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@flashinfer-bench/ui"
 import type { Definition, Solution, Trace } from "@/lib/schemas"
 import { FastPCurves } from "@/components/fast-p-chart"
-import { SolutionsList, type FilterChip } from "./solutions-list"
+import { SolutionsList, type FilterChip, getSolutionElementId } from "./solutions-list"
 import { useSearchParams } from "next/navigation"
 import {
   computeBaselineTraceComparisons,
@@ -416,6 +416,22 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     [filteredCurves]
   )
 
+  const handleLegendClick = useCallback((name: string) => {
+    const exists = displaySolutions.some((solution) => solution.name === name)
+    if (!exists) return
+    setExpandedSolution(name)
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        const element = document.getElementById(getSolutionElementId(name))
+        if (!element) return
+        const headerOffset = 122
+        const rect = element.getBoundingClientRect()
+        const targetY = rect.top + window.scrollY - headerOffset
+        window.scrollTo({ top: targetY, behavior: "smooth" })
+      })
+    }
+  }, [displaySolutions])
+
   return (
     <section id="solutions" className="space-y-6">
       <h2 className="text-2xl font-semibold">Results</h2>
@@ -431,6 +447,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
         baselineAvailable={baselineReady}
         colorFor={colorFor}
         scoreboard={[]}
+        onLegendClick={handleLegendClick}
       />
 
       <SolutionsList

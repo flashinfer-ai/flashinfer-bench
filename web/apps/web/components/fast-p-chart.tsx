@@ -8,7 +8,7 @@ import { FastPLabel } from "@/components/fast-p-label"
 import type { CurvePoint } from "@/lib/analytics"
 
 const LEGEND_MAX_ITEMS = 10
-const LEGEND_NAME_MAX_LENGTH = 14
+const LEGEND_NAME_MAX_LENGTH = 12
 
 export type ScoreboardEntry = {
   name: string
@@ -27,6 +27,7 @@ export type FastPCurvesProps = {
   colorFor: (name: string) => string
   scoreboard: ScoreboardEntry[]
   countLabel?: string
+  onLegendClick?: (name: string) => void
 }
 
 export function FastPCurves({
@@ -41,6 +42,7 @@ export function FastPCurves({
   colorFor,
   scoreboard: _scoreboard,
   countLabel = "workloads",
+  onLegendClick,
 }: FastPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
@@ -218,10 +220,15 @@ export function FastPCurves({
               <div className="flex flex-wrap items-center justify-center gap-y-2 text-xs">
                 {legendItems.map((item, index) => {
                   const isHovered = hoveredLegend === item.name
+                  const interactive = Boolean(onLegendClick)
                   return (
                     <Fragment key={item.name}>
                       <span
-                        className={`inline-flex items-center rounded-full bg-muted px-2 py-1 font-medium transition-colors ${isHovered ? "text-primary" : "text-foreground"}`}
+                        className={[
+                          "inline-flex items-center rounded-full bg-muted px-2 py-1 text-foreground transition-colors",
+                          interactive ? "cursor-pointer hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" : "",
+                          isHovered ? "text-primary" : "",
+                        ].filter(Boolean).join(" ")}
                         title={item.name}
                         onMouseEnter={() => setHoveredLegend(item.name)}
                         onFocus={() => setHoveredLegend(item.name)}
@@ -233,8 +240,16 @@ export function FastPCurves({
                             }
                           })
                         }}
-                        tabIndex={0}
-                        role="button"
+                        tabIndex={interactive ? 0 : -1}
+                        role={interactive ? "button" : undefined}
+                        aria-label={interactive ? `Inspect ${item.name}` : undefined}
+                        onClick={interactive ? () => onLegendClick?.(item.name) : undefined}
+                        onKeyDown={interactive ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            onLegendClick?.(item.name)
+                          }
+                        } : undefined}
                       >
                         <span
                           className="h-2.5 w-2.5 rounded-full mr-1"

@@ -118,6 +118,10 @@ function FilterDropdown({ label, selections, options, onToggle }: FilterDropdown
   )
 }
 
+export function getSolutionElementId(name: string): string {
+  return `solution-${name.replace(/[^a-zA-Z0-9-_]/g, "_")}`
+}
+
 export type SolutionsListProps = {
   solutions: Solution[]
   visibleSolutions: Set<string>
@@ -199,8 +203,10 @@ export function SolutionsList({
       window.open(`/viewer?solution=${encodeURIComponent(solutionId)}`, "_blank")
     }
 
+    const elementId = getSolutionElementId(solution.name)
+
     return (
-      <div key={solution.name} className="rounded-lg border">
+      <div key={solution.name} id={elementId} data-solution-name={solution.name} className="rounded-lg border">
         <div
           role="button"
           tabIndex={0}
@@ -511,13 +517,10 @@ function SolutionTraceDetails({
         <Tabs value="faster">
           <TabsList>
             <TabsTrigger value="faster" disabled>
-              <span className="inline-flex items-baseline gap-1">
-                <FastPLabel value={pLabel} />
-                <span>(0)</span>
-              </span>
+              Faster@p={pLabel} (0)
             </TabsTrigger>
             <TabsTrigger value="slower" disabled>
-              Lose@p={pLabel} (0)
+              Slower@p={pLabel} (0)
             </TabsTrigger>
             <TabsTrigger value="incorrect" disabled>
               Incorrect (0)
@@ -543,12 +546,9 @@ function SolutionTraceDetails({
       >
         <TabsList>
           <TabsTrigger value="faster">
-            <span className="inline-flex items-baseline gap-1">
-              <FastPLabel value={pinnedP.toFixed(2)} />
-              <span>({counts.faster})</span>
-            </span>
+            Faster@p={pinnedP.toFixed(2)} ({counts.faster})
           </TabsTrigger>
-          <TabsTrigger value="slower">Lose@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
+          <TabsTrigger value="slower">Slower@p={pinnedP.toFixed(2)} ({counts.slower})</TabsTrigger>
           <TabsTrigger value="incorrect">Incorrect ({counts.incorrect})</TabsTrigger>
         </TabsList>
         <div className="mt-4">
