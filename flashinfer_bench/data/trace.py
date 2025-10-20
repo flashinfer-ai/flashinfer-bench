@@ -142,6 +142,8 @@ class EvaluationStatus(str, Enum):
     """Solution encountered a runtime error during execution."""
     COMPILE_ERROR = "COMPILE_ERROR"
     """Solution failed to compile or build successfully."""
+    TIMEOUT = "TIMEOUT"
+    """Evaluation did not complete within the configured timeout."""
 
 
 class Evaluation(BaseModelWithDocstrings):
