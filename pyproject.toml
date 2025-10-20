@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "setuptools_scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "flashinfer-bench"
-version = "0.1.0rc1"
+dynamic = ["version"]
 description = "FlashInfer-Bench - AI for AI Infrastructure for Accelerating AI Deployment"
 readme = "README.md"
 requires-python = ">=3.9,<4.0"
@@ -89,3 +89,7 @@ strict = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra"
+
+[tool.setuptools_scm]
+version_scheme = "python-simplified-semver"
+fallback_version = "0.0.0.dev0"
