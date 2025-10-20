@@ -32,9 +32,17 @@ const LIST_MAX_HEIGHT = 288 // 18rem
 
 function sampleCurve(points: CurvePoint[] | undefined, p: number): number {
   if (!points || points.length === 0) return 0
-  const clamped = Math.max(0, Math.min(1, p))
-  const index = Math.round(clamped * (points.length - 1))
-  return points[index]?.percent ?? 0
+  const minP = points[0].p
+  const maxP = points[points.length - 1].p
+  const target = Math.min(Math.max(p, minP), maxP)
+  let lo = 0
+  let hi = points.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (points[mid].p < target) lo = mid + 1
+    else hi = mid
+  }
+  return points[lo]?.percent ?? 0
 }
 
 function buildScoreboard(curves: Record<string, CurvePoint[]>, p: number, excludedAuthors: Set<string>): ScoreboardEntry[] {

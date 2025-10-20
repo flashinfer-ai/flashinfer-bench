@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import * as d3 from "d3"
 import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
-import { Pin as PinIcon, Undo2, HelpCircle } from "lucide-react"
+import { Pin as PinIcon, Undo2, HelpCircle, RotateCcw } from "lucide-react"
 import { FastPLabel } from "@/components/fast-p-label"
 import type { CurvePoint } from "@/lib/analytics"
 
@@ -49,6 +49,8 @@ export function FastPCurves({
   const hideHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showPinHint, setShowPinHint] = useState(false)
   const [hoveredLegend, setHoveredLegend] = useState<string | null>(null)
+  const [domainMax, setDomainMax] = useState(1)
+  const MIN_DOMAIN = 0.1
   const legendItems = useMemo(() => {
     const items: Array<{ name: string; displayName: string; color: string }> = []
     for (const name of Array.from(visible)) {
@@ -68,6 +70,26 @@ export function FastPCurves({
 
   const remainingLegendCount = Math.max(totalVisible - legendItems.length, 0)
   const legendContainerRef = useRef<HTMLDivElement | null>(null)
+  const maxDomainP = useMemo(() => {
+    let maxVal = 1
+    for (const name of visible) {
+      const points = curves[name]
+      if (!points || points.length === 0) continue
+      const candidate = points[points.length - 1]?.p ?? 0
+      if (Number.isFinite(candidate)) {
+        maxVal = Math.max(maxVal, candidate)
+      }
+    }
+    return Math.max(1, maxVal)
+  }, [curves, visible])
+
+  useEffect(() => {
+    setDomainMax((prev) => {
+      const initial = prev ?? 1
+      const target = Math.min(Math.max(initial, MIN_DOMAIN), maxDomainP)
+      return Number.isFinite(target) ? target : 1
+    })
+  }, [maxDomainP])
 
   useEffect(() => {
     if (pinnedP != null) {
@@ -82,7 +104,8 @@ export function FastPCurves({
 
   useEffect(() => {
     const chartSize = { width: 1000, height: 360, marginLeft: 48, marginRight: 16, marginTop: 16, marginBottom: 36 }
-    const xScale = d3.scaleLinear().domain([0, 1]).range([chartSize.marginLeft, chartSize.width - chartSize.marginRight])
+    const domainUpper = Math.min(domainMax, maxDomainP)
+    const xScale = d3.scaleLinear().domain([0, domainUpper]).range([chartSize.marginLeft, chartSize.width - chartSize.marginRight])
     const yScale = d3.scaleLinear().domain([0, 100]).range([chartSize.height - chartSize.marginBottom, chartSize.marginTop])
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
@@ -135,7 +158,7 @@ export function FastPCurves({
       .style("cursor", pinnedP != null ? "default" : "crosshair")
       .on("mousemove", function (event) {
         const [mouseX] = d3.pointer(event as any)
-        const pValue = Math.max(0, Math.min(1, xScale.invert(mouseX)))
+        const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(mouseX)))
         onHoverP(pValue)
         verticalLine.style("display", null).attr("x1", mouseX).attr("x2", mouseX)
 
@@ -155,7 +178,7 @@ export function FastPCurves({
       })
       .on("click", function (event) {
         const [mouseX] = d3.pointer(event as any)
-        const pValue = Math.max(0, Math.min(1, xScale.invert(mouseX)))
+        const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(mouseX)))
         onPinP(pValue)
       })
 
@@ -171,11 +194,27 @@ export function FastPCurves({
         .attr("stroke-width", 2)
     }
 
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const delta = event.deltaY
+      if (Number.isNaN(delta) || delta === 0) return
+      const direction = delta > 0 ? 1 : -1
+      const percentStep = 0.08
+      const current = Math.min(domainMax, maxDomainP)
+      const proposed = current * (1 + percentStep * direction)
+      const clamped = Math.max(MIN_DOMAIN, Math.min(proposed, maxDomainP))
+      setDomainMax(clamped)
+    }
+
+    const element = svgRef.current
+    element?.addEventListener("wheel", handleWheel, { passive: false })
+
     return () => {
       overlay.on("mousemove", null).on("mouseleave", null).on("click", null)
       svg.selectAll("*").remove()
+      element?.removeEventListener("wheel", handleWheel)
     }
-  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, hoveredLegend])
+  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, hoveredLegend, maxDomainP, domainMax])
 
   return (
     <Card>
@@ -305,6 +344,40 @@ export function FastPCurves({
               <span className="text-sm text-muted-foreground">Baseline not available</span>
             </div>
           )}
+        </div>
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <FastPLabel />range
+            </span>
+            <button
+                type="button"
+                onClick={() => setDomainMax(1)}
+                className="inline-flex h-5 w-5 items-center justify-center rounded border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                aria-label="Reset range to 1×"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+          </div>
+          <input
+            type="range"
+            min={MIN_DOMAIN}
+            max={maxDomainP}
+            step={0.01}
+            value={Math.min(domainMax, maxDomainP)}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (!Number.isFinite(next)) return
+              setDomainMax(Math.min(Math.max(next, MIN_DOMAIN), maxDomainP))
+            }}
+            className="w-full accent-primary"
+            aria-label="Adjust max speedup range"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>{MIN_DOMAIN.toFixed(2)}×</span>
+            <span>{Math.min(domainMax, maxDomainP).toFixed(2)}×</span>
+            <span>{maxDomainP.toFixed(2)}×</span>
+          </div>
         </div>
       </CardContent>
     </Card>

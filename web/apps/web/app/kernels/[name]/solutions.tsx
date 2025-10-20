@@ -34,13 +34,23 @@ function matchesSolutionFilters(solution: Solution, filters: SolutionFiltersStat
 function buildScoreMap(curves: CurvesPayload | null, p: number): Record<string, number> {
   const map: Record<string, number> = {}
   if (!curves) return map
+
   for (const [name, points] of Object.entries(curves.curves || {})) {
     if (!points.length) {
       map[name] = 0
       continue
     }
-    const index = Math.round(Math.max(0, Math.min(1, p)) * (points.length - 1))
-    map[name] = points[index]?.percent ?? 0
+    const minP = points[0].p
+    const maxP = points[points.length - 1].p
+    const target = Math.min(Math.max(p, minP), maxP)
+    let lo = 0
+    let hi = points.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (points[mid].p < target) lo = mid + 1
+      else hi = mid
+    }
+    map[name] = points[lo]?.percent ?? 0
   }
   return map
 }
@@ -199,7 +209,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     const pParam = params.get("p")
     if (initialVisible.length) initialSolutionsRef.current = initialVisible
     if (initialExpanded) initialExpandedRef.current = initialExpanded
-    if (pParam != null) setPinnedP(Math.max(0, Math.min(1, Number(pParam))))
+    if (pParam != null) setPinnedP(Math.max(0, Number(pParam)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

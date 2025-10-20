@@ -100,6 +100,7 @@ type SolutionGroupRatios = {
   groupRatios: Map<WorkloadGroupId, Map<string, number>>
   nWorkloads: number
   baselineNames: Set<string>
+  maxRatio: number
 }
 
 function computeSolutionGroupRatios(params: {
@@ -112,6 +113,7 @@ function computeSolutionGroupRatios(params: {
   const groups = buildWorkloadGroups(traces)
   const baselineNames = new Set<string>()
   const groupRatios: Map<WorkloadGroupId, Map<string, number>> = new Map()
+  let maxRatio = 1
 
   if (baseline?.default) baselineNames.add(baseline.default)
   if (baseline?.devices) {
@@ -138,7 +140,9 @@ function computeSolutionGroupRatios(params: {
       const candidateLatency = trace.evaluation?.performance?.latency_ms
       if (typeof candidateLatency !== "number" || candidateLatency <= 0) continue
       if (!groupRatios.has(workloadId)) groupRatios.set(workloadId, new Map())
-      groupRatios.get(workloadId)!.set(solutionName, baselineLatency / candidateLatency)
+      const ratio = baselineLatency / candidateLatency
+      maxRatio = Math.max(maxRatio, ratio)
+      groupRatios.get(workloadId)!.set(solutionName, ratio)
     }
   }
 
@@ -146,6 +150,7 @@ function computeSolutionGroupRatios(params: {
     groupRatios,
     nWorkloads: groupRatios.size,
     baselineNames,
+    maxRatio,
   }
 }
 
@@ -157,9 +162,16 @@ export function computeFastPCurvesForSolutions(params: {
 }): { curves: Record<string, CurvePoint[]>; nWorkloads: number } {
   const { traces, solutions, baseline, sampleCount = 300 } = params
   const solMap = solutionMap(solutions)
-  const { groupRatios, nWorkloads, baselineNames } = computeSolutionGroupRatios({ traces, solutions, baseline })
+  const { groupRatios, nWorkloads, baselineNames, maxRatio } = computeSolutionGroupRatios({ traces, solutions, baseline })
+  const sampleMax = Math.max(1, maxRatio)
+  const adjustedCount = Math.min(5000, Math.max(sampleCount, Math.ceil(sampleCount * sampleMax)))
   const samplePoints: number[] = []
-  for (let i = 0; i < sampleCount; i++) samplePoints.push(i / (sampleCount - 1))
+  if (adjustedCount <= 1) {
+    samplePoints.push(sampleMax)
+  } else {
+    const step = sampleMax / (adjustedCount - 1)
+    for (let i = 0; i < adjustedCount; i++) samplePoints.push(step * i)
+  }
 
   const curves: Record<string, CurvePoint[]> = {}
   for (const [solutionName] of solMap) {
@@ -210,8 +222,8 @@ export function computeFastPCurvesForAuthors(params: {
 }): AuthorCurvesResponse {
   const { datasets, sampleCount = 300 } = params
   const authorRatios = new Map<string, number[]>()
+  let overallMaxRatio = 1
   const samplePoints: number[] = []
-  for (let i = 0; i < sampleCount; i++) samplePoints.push(i / (sampleCount - 1))
 
   for (const dataset of datasets) {
     const authorsBySolution = new Map<string, string>()
@@ -219,7 +231,8 @@ export function computeFastPCurvesForAuthors(params: {
       authorsBySolution.set(solution.name, solution.author)
     }
 
-    const { groupRatios } = computeSolutionGroupRatios(dataset)
+    const { groupRatios, maxRatio } = computeSolutionGroupRatios(dataset)
+    overallMaxRatio = Math.max(overallMaxRatio, maxRatio)
     for (const ratios of groupRatios.values()) {
       for (const [solutionName, ratio] of ratios.entries()) {
         const author = authorsBySolution.get(solutionName)
@@ -228,6 +241,15 @@ export function computeFastPCurvesForAuthors(params: {
         authorRatios.get(author)!.push(ratio)
       }
     }
+  }
+
+  const sampleMax = Math.max(1, overallMaxRatio)
+  const adjustedCount = Math.min(5000, Math.max(sampleCount, Math.ceil(sampleCount * sampleMax)))
+  if (adjustedCount <= 1) {
+    samplePoints.push(sampleMax)
+  } else {
+    const step = sampleMax / (adjustedCount - 1)
+    for (let i = 0; i < adjustedCount; i++) samplePoints.push(step * i)
   }
 
   const curves: Record<string, CurvePoint[]> = {}
