@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@flashinfer-bench/ui"
-import { ChevronDown, ChevronUp, Code2, Search, RotateCcw } from "lucide-react"
+import { ChevronDown, ChevronUp, Code2, Eye, EyeOff, Search, RotateCcw } from "lucide-react"
 import type { Solution, Trace } from "@/lib/schemas"
 import type { CorrectnessStats, SolutionFiltersState } from "./solutions-types"
 import type { SolutionTraceBuckets, SolutionTraceComparison } from "@/lib/analytics"
@@ -264,16 +264,23 @@ export function SolutionsList({
               </div>
               <div className="flex items-center gap-2">
                 {!isBaseline && (
-                  <input
-                    type="checkbox"
-                    checked={isVisible}
-                    onClick={(event: MouseEvent<HTMLInputElement>) =>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      isVisible ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    aria-pressed={isVisible}
+                    aria-label={isVisible ? `Hide ${solution.name}` : `Show ${solution.name}`}
+                    title={isVisible ? "Hide from chart" : "Show on chart"}
+                    onClick={(event: MouseEvent<HTMLButtonElement>) => {
                       event.stopPropagation()
-                    }
-                    onChange={() => onToggleSolution(solution.name)}
-                    className="h-4 w-4"
-                    aria-label={`toggle ${solution.name}`}
-                  />
+                      onToggleSolution(solution.name)
+                    }}
+                  >
+                    {isVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  </Button>
                 )}
                 <Button
                   variant="ghost"

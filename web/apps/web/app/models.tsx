@@ -9,6 +9,8 @@ type ModelsSectionProps = {
 }
 
 export function ModelsSection({ models }: ModelsSectionProps) {
+  const showViewAll = models.length > 3
+
   return (
     <section className="container space-y-6 py-8 md:py-12">
       <div className="flex items-center justify-between">
@@ -18,11 +20,13 @@ export function ModelsSection({ models }: ModelsSectionProps) {
             Explore model architectures and their kernel implementations
           </p>
         </div>
-        <Button asChild variant="ghost">
-          <Link href="/models">
-            View all <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
+        {showViewAll && (
+          <Button asChild variant="ghost">
+            <Link href="/models">
+              View all <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        )}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {models.map((model) => (

@@ -506,7 +506,7 @@ export function FastPCurves({
         <div className="mt-4 flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-2">
-              <FastPLabel />range
+              P range
             </span>
             <button
                 type="button"

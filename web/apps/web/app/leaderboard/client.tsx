@@ -7,7 +7,13 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@flashinfer-be
 import { ChevronDown, ChevronRight, Crown, Eye, EyeOff, X } from "lucide-react"
 import { FastPCurves, type ScoreboardEntry } from "@/components/fast-p-chart"
 import { FastPLabel } from "@/components/fast-p-label"
-import type { AuthorCorrectnessResponse, AuthorCurvesResponse, CurvePoint, CorrectnessSummary } from "@/lib/analytics"
+import type {
+  AuthorCorrectnessResponse,
+  AuthorCurvesResponse,
+  CurvePoint,
+  CorrectnessSummary,
+  CoverageStats,
+} from "@/lib/analytics"
 import type { Definition } from "@/lib/schemas"
 import { cn } from "@flashinfer-bench/utils"
 
@@ -16,6 +22,8 @@ type DefinitionAuthorDetail = {
   curves: Record<string, CurvePoint[]>
   comparisonCounts: Record<string, number>
   totalComparisons: number
+  totalWorkloads: number
+  coverage: Record<string, CoverageStats>
   solutionNamesByAuthor: Record<string, string[]>
 }
 
@@ -23,6 +31,8 @@ type DefinitionDetail = {
   definition: Definition
   curve: CurvePoint[]
   comparisonCount: number
+  totalWorkloads: number
+  coverage?: CoverageStats
   solutionNames: string[]
 }
 
@@ -86,7 +96,7 @@ export function LeaderboardClient({
   const authorDefinitionMap = useMemo(() => {
     const map = new Map<string, DefinitionDetail[]>()
     for (const detail of definitionAuthorDetails) {
-      const { definition, curves, comparisonCounts, solutionNamesByAuthor } = detail
+      const { definition, curves, comparisonCounts, totalWorkloads, coverage, solutionNamesByAuthor } = detail
       for (const [author, curve] of Object.entries(curves)) {
         if (excludedSet.has(author)) continue
         const entries = map.get(author) ?? []
@@ -94,6 +104,8 @@ export function LeaderboardClient({
           definition,
           curve,
           comparisonCount: comparisonCounts[author] ?? 0,
+          coverage: coverage[author],
+          totalWorkloads,
           solutionNames: solutionNamesByAuthor[author] ?? [],
         })
         map.set(author, entries)
@@ -145,6 +157,22 @@ export function LeaderboardClient({
     () => buildScoreboard(fast.curves, pinnedTarget, excludedSet),
     [fast.curves, pinnedTarget, excludedSet]
   )
+  const totalWorkloads = fast.totalWorkloads ?? 0
+  const coverageMap = fast.coverage ?? {}
+
+  const formatCoverage = useCallback((stats?: CoverageStats | null) => {
+    if (!stats) return null
+    const attempted = stats.attempted ?? 0
+    const total = stats.total ?? 0
+    const percentValue = total > 0 ? (attempted / total) * 100 : 0
+    return {
+      percentText: percentValue.toFixed(1),
+    }
+  }, [])
+
+  const champion = scoreboard[0]
+  const championCoverageInfo = formatCoverage(champion ? coverageMap[champion.name] : undefined)
+  const championPercent = champion ? champion.percent.toFixed(1) : "0.0"
 
   const selectedAuthorDefinitions = useMemo(() => {
     if (!selectedAuthor) return []
@@ -311,11 +339,11 @@ export function LeaderboardClient({
               onPinP={handlePinP}
               pinnedP={pinnedP}
               baselineLabel={baselineLabel}
-              comparisonCount={fast.totalComparisons}
-              baselineAvailable={fast.totalComparisons > 0}
+              comparisonCount={totalWorkloads}
+              baselineAvailable={totalWorkloads > 0}
               colorFor={colorFor}
               scoreboard={scoreboard}
-              countLabel="comparisons"
+              countLabel="workloads"
               highlighted={highlightedAuthor}
               onHighlightChange={setHighlightedAuthor}
               highlightContext="drawer"
@@ -339,12 +367,15 @@ export function LeaderboardClient({
                       <div className="flex items-center gap-2">
                         <span className="flex items-center gap-1 font-medium text-foreground">
                           <Crown className="h-3.5 w-3.5 text-amber-500" />
-                          {scoreboard[0].name}
+                          {champion?.name}
                         </span>
                       </div>
-                      <span className="flex items-center gap-1">
-                        {scoreboard[0].percent.toFixed(1)}% win
-                      </span>
+                      <span className="flex items-center gap-1">{championPercent}% win</span>
+                      {championCoverageInfo && (
+                        <span className="text-muted-foreground">
+                          · {championCoverageInfo.percentText}% evaluated
+                        </span>
+                      )}
                     </>
                   ) : (
                     <span>No authors available</span>
@@ -358,10 +389,10 @@ export function LeaderboardClient({
                   <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground">
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => setTopN(DEFAULT_VISIBLE)}>
-                        Plot top {DEFAULT_VISIBLE}
+                        Show top {DEFAULT_VISIBLE}
                       </Button>
                       <Button size="sm" variant="outline" onClick={showAll}>
-                        Plot all
+                        Show all
                       </Button>
                       <Button size="sm" variant="ghost" onClick={clearAll}>
                         Clear
@@ -375,7 +406,7 @@ export function LeaderboardClient({
                     {scoreboard.map((entry, index) => {
                       const isActive = visibleAuthors.has(entry.name)
                       const percent = entry.percent.toFixed(1)
-                      const comparisons = fast.comparisonCounts[entry.name] ?? 0
+                      const coverageInfo = formatCoverage(coverageMap[entry.name])
                       const isSelected = isDrawerOpen && selectedAuthor === entry.name
                       const isHighlighted = highlightedAuthor === entry.name
                       const baseTextClass =
@@ -412,21 +443,21 @@ export function LeaderboardClient({
                               <span className={cn("flex items-center gap-1", baseTextClass)}>
                                 {percent}% win
                               </span>
-                              {comparisons > 0 && (
-                                <span className="hidden md:inline text-muted-foreground">
-                                  {comparisons} comps
+                              {coverageInfo && (
+                                <span className="text-muted-foreground">
+                                  · {coverageInfo.percentText}% evaluated
                                 </span>
                               )}
                               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground" />
                             </div>
                           </div>
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             className={cn(
-                              "inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
-                              isActive
-                                ? "border-primary/40 bg-primary/10 text-primary"
-                                : "border-transparent text-muted-foreground hover:bg-muted/70"
+                              "h-8 w-8 rounded-md",
+                              isActive ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground"
                             )}
                             aria-pressed={isActive}
                             aria-label={isActive ? `Hide ${entry.name}` : `Show ${entry.name}`}
@@ -436,7 +467,7 @@ export function LeaderboardClient({
                             }}
                           >
                             {isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                          </button>
+                          </Button>
                         </div>
                       )
                     })}
@@ -511,8 +542,8 @@ function AuthorDetailDrawer({ open, author, definitions, pinnedTarget, onOpenCha
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm" />
-        <Dialog.Content className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l bg-background shadow-xl focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out" />
+        <Dialog.Content className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md translate-x-full flex-col border-l bg-background shadow-xl focus:outline-none data-[state=open]:translate-x-0 data-[state=open]:animate-drawer-in data-[state=closed]:animate-drawer-out">
           <header className="flex items-center justify-between border-b px-6 py-4">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">
@@ -540,23 +571,32 @@ function AuthorDetailDrawer({ open, author, definitions, pinnedTarget, onOpenCha
               </p>
             ) : (
               <div className="space-y-3">
-                {definitions.map(({ definition, curve, comparisonCount, solutionNames, winPercent }) => (
-                  <Link
-                    key={definition.name}
-                    href={`/kernels/${definition.name}`}
-                    className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors hover:border-primary hover:bg-primary/5"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <p className="truncate text-sm font-semibold">{definition.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {winPercent.toFixed(1)}% win
-                        {comparisonCount ? ` · ${comparisonCount} comparisons` : ""}
-                        {solutionNames.length ? ` · ${solutionNames.length} solutions` : ""}
-                      </p>
-                    </div>
-                    <Sparkline curve={curve} className="text-primary" />
-                  </Link>
-                ))}
+                {definitions.map(({ definition, curve, comparisonCount, totalWorkloads, solutionNames, coverage, winPercent }) => {
+                  const solutionCount = solutionNames.length
+                  const attempted = coverage?.attempted ?? comparisonCount
+                  const totalSlots = coverage?.total ?? (solutionCount > 0 ? totalWorkloads * solutionCount : 0)
+                  const percentValue = coverage?.percent ?? (totalSlots > 0 ? (attempted / totalSlots) * 100 : 0)
+                  const coverageLabel = `${percentValue.toFixed(1)}% evaluated`
+                  const metaPrimary = `${winPercent.toFixed(1)}% win · ${coverageLabel}`
+                  const metaSecondary = solutionNames.length ? `${solutionNames.length} solutions` : null
+                  return (
+                    <Link
+                      key={definition.name}
+                      href={`/kernels/${definition.name}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors hover:border-primary hover:bg-primary/5"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm font-semibold">{definition.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {metaPrimary}
+                          {metaSecondary && <br />}
+                          {metaSecondary}
+                        </p>
+                      </div>
+                      <Sparkline curve={curve} className="text-primary" />
+                    </Link>
+                  )
+                })}
               </div>
             )}
           </div>

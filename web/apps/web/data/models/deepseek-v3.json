@@ -1,152 +1,173 @@
 {
-  "id": "deepseek-v3",
-  "name": "DeepSeek V3/R1",
-  "description": "DeepSeek V3 and R1 models.",
-  "modules": {
-      "DeepseekV3ForCausalLM": {
-          "count": 1,
-          "type": "block"
-      },
-      "embed_tokens": {
-          "count": 1,
-          "parent": "DeepseekV3ForCausalLM",
-          "type": "layer",
-          "definitions": []
-      },
-      "DeepseekV3DecoderLayer": {
-          "count": 61,
-          "parent": "DeepseekV3ForCausalLM",
-          "type": "block"
-      },
-      "input_layernorm": {
-          "count": 61,
-          "parent": "DeepseekV3DecoderLayer",
-          "type": "layer",
-          "definitions": [
-              "rmsnorm_h7168",
-              "fused_add_rmsnorm_h7168"
-          ]
-      },
-      "self_attn": {
-          "count": 61,
-          "parent": "DeepseekV3DecoderLayer",
-          "type": "block"
-      },
-      "fused_qkv_a_proj_with_mqa": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": []
-      },
-      "q_a_layernorm": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": [
-              "rmsnorm_h1536"
-          ]
-      },
-      "q_b_proj": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": []
-      },
-      "kv_a_layernorm": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": [
-              "rmsnorm_h512"
-          ]
-      },
-      "kv_b_proj": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": []
-      },
-      "rotary_emb": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": []
-      },
-      "attn_mla": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": [
-              "mla_ragged_prefill_causal_h16_qk192_vo128",
-              "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1",
-              "mla_paged_decode_h16_ckv512_kpe64_ps1"
-          ]
-      },
-      "o_proj": {
-          "count": 61,
-          "parent": "self_attn",
-          "type": "layer",
-          "definitions": []
-      },
-      "post_attention_layernorm": {
-          "count": 61,
-          "parent": "DeepseekV3DecoderLayer",
-          "type": "layer",
-          "definitions": [
-              "rmsnorm_h7168",
-              "fused_add_rmsnorm_h7168"
-          ]
-      },
-      "mlp": {
-          "count": 61,
-          "parent": "DeepseekV3DecoderLayer",
-          "type": "block"
-      },
-      "mlp_dense": {
-          "count": 31,
-          "parent": "mlp",
-          "type": "block"
-      },
-      "gate_up_proj": {
-          "count": 31,
-          "parent": "mlp_dense",
-          "type": "layer",
-          "definitions": []
-      },
-      "act_fn": {
-          "count": 31,
-          "parent": "mlp_dense",
-          "type": "layer",
-          "definitions": []
-      },
-      "down_proj": {
-          "count": 31,
-          "parent": "mlp_dense",
-          "type": "layer",
-          "definitions": []
-      },
-      "moe": {
-          "count": 30,
-          "parent": "mlp",
-          "type": "block"
-      },
-      "moe_gate": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
-      "moe_topk": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
-      "moe_experts": { "count": 30, "parent": "moe", "type": "layer", "definitions": [] },
-      "norm": {
-          "count": 1,
-          "parent": "DeepseekV3ForCausalLM",
-          "type": "layer",
-          "definitions": [
-              "rmsnorm_h7168",
-              "fused_add_rmsnorm_h7168"
-          ]
-      },
-      "lm_head": {
-          "count": 1,
-          "parent": "DeepseekV3ForCausalLM",
-          "type": "layer",
-          "definitions": []
-      }
-  }
+    "id": "deepseek-v3",
+    "name": "DeepSeek V3/R1",
+    "description": "DeepSeek V3 and R1 models.",
+    "modules": {
+        "DeepseekV3ForCausalLM": {
+            "count": 1,
+            "type": "block"
+        },
+        "embed_tokens": {
+            "count": 1,
+            "parent": "DeepseekV3ForCausalLM",
+            "type": "layer",
+            "definitions": []
+        },
+        "DeepseekV3DecoderLayer": {
+            "count": 61,
+            "parent": "DeepseekV3ForCausalLM",
+            "type": "block"
+        },
+        "input_layernorm": {
+            "count": 61,
+            "parent": "DeepseekV3DecoderLayer",
+            "type": "layer",
+            "definitions": [
+                "rmsnorm_h7168",
+                "fused_add_rmsnorm_h7168"
+            ]
+        },
+        "self_attn": {
+            "count": 61,
+            "parent": "DeepseekV3DecoderLayer",
+            "type": "block"
+        },
+        "fused_qkv_a_proj_with_mqa": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": []
+        },
+        "q_a_layernorm": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": [
+                "rmsnorm_h1536"
+            ]
+        },
+        "q_b_proj": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": []
+        },
+        "kv_a_layernorm": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": [
+                "rmsnorm_h512"
+            ]
+        },
+        "kv_b_proj": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": []
+        },
+        "rotary_emb": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": []
+        },
+        "attn_mla": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": [
+                "mla_ragged_prefill_causal_h16_qk192_vo128",
+                "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1",
+                "mla_paged_decode_h16_ckv512_kpe64_ps1"
+            ]
+        },
+        "o_proj": {
+            "count": 61,
+            "parent": "self_attn",
+            "type": "layer",
+            "definitions": []
+        },
+        "post_attention_layernorm": {
+            "count": 61,
+            "parent": "DeepseekV3DecoderLayer",
+            "type": "layer",
+            "definitions": [
+                "rmsnorm_h7168",
+                "fused_add_rmsnorm_h7168"
+            ]
+        },
+        "mlp": {
+            "count": 61,
+            "parent": "DeepseekV3DecoderLayer",
+            "type": "block"
+        },
+        "mlp_dense": {
+            "count": 31,
+            "parent": "mlp",
+            "type": "block"
+        },
+        "gate_up_proj": {
+            "count": 31,
+            "parent": "mlp_dense",
+            "type": "layer",
+            "definitions": []
+        },
+        "act_fn": {
+            "count": 31,
+            "parent": "mlp_dense",
+            "type": "layer",
+            "definitions": []
+        },
+        "down_proj": {
+            "count": 31,
+            "parent": "mlp_dense",
+            "type": "layer",
+            "definitions": []
+        },
+        "moe": {
+            "count": 30,
+            "parent": "mlp",
+            "type": "block"
+        },
+        "moe_gate": {
+            "count": 30,
+            "parent": "moe",
+            "type": "layer",
+            "definitions": [
+                "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048"
+            ]
+        },
+        "moe_topk": {
+            "count": 30,
+            "parent": "moe",
+            "type": "layer",
+            "definitions": [
+                "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048"
+            ]
+        },
+        "moe_experts": {
+            "count": 30,
+            "parent": "moe",
+            "type": "layer",
+            "definitions": [
+                "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048"
+            ]
+        },
+        "norm": {
+            "count": 1,
+            "parent": "DeepseekV3ForCausalLM",
+            "type": "layer",
+            "definitions": [
+                "rmsnorm_h7168",
+                "fused_add_rmsnorm_h7168"
+            ]
+        },
+        "lm_head": {
+            "count": 1,
+            "parent": "DeepseekV3ForCausalLM",
+            "type": "layer",
+            "definitions": []
+        }
+    }
 }

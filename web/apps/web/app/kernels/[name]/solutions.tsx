@@ -13,8 +13,10 @@ import {
 } from "@/lib/analytics"
 import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-types"
 import baselinesData from "@/data/baselines.json"
+import { FastPLabel } from "@/components/fast-p-label"
 
 const DEFAULT_MAX_VISIBLE = 10
+const DEFAULT_INITIAL_VISIBLE = 5
 const DEFAULT_PIN = 0.95
 
 const initialSF: SolutionFiltersState = { languages: [], authors: [], targets: [], search: "" }
@@ -229,7 +231,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
         )
       )
 
-    const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.min(3, ranked.length || 0))
+    const desiredCount = Math.min(DEFAULT_MAX_VISIBLE, Math.min(DEFAULT_INITIAL_VISIBLE, ranked.length || 0))
     const fromUrl = initialSolutionsRef.current
     const selected = new Set<string>()
 
@@ -470,8 +472,13 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
   }, [])
 
   return (
-    <section id="solutions" className="space-y-6">
-      <h2 className="text-2xl font-semibold">Results</h2>
+    <section id="solutions" className="space-y-4">
+      <div>
+        <h2 className="text-2xl font-semibold">Results</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Top-5 solutions at <FastPLabel className="font-medium" value={0.95} /> are displayed by default.
+        </p>
+      </div>
 
       <FastPCurves
         curves={filteredCurves?.curves || {}}

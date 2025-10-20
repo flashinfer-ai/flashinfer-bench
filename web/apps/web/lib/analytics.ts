@@ -22,11 +22,19 @@ export type AuthorCurvesResponse = {
   curves: Record<string, CurvePoint[]>
   comparisonCounts: Record<string, number>
   totalComparisons: number
+  totalWorkloads: number
+  coverage: Record<string, CoverageStats>
 }
 
 export type AuthorCorrectnessResponse = {
   stats: Array<CorrectnessSummary & { author: string }>
   totals: CorrectnessSummary
+}
+
+export type CoverageStats = {
+  attempted: number
+  total: number
+  percent: number
 }
 
 type Grouped = Map<WorkloadGroupId, Trace[]>
@@ -132,18 +140,28 @@ function computeSolutionGroupRatios(params: {
     const baselineLatency = baselineTrace?.evaluation?.performance?.latency_ms
     if (typeof baselineLatency !== "number" || baselineLatency <= 0) continue
 
+    // Track all candidate outcomes for this workload; failures contribute ratio 0
+    const ratioMap: Map<string, number> = new Map()
+
     for (const trace of groupTraces) {
       const solutionName = trace.solution
       if (!solutionName) continue
       if (!solMap.has(solutionName)) continue
       if (solutionName === baselineName) continue
+
+      const status = trace.evaluation?.status
       const candidateLatency = trace.evaluation?.performance?.latency_ms
-      if (typeof candidateLatency !== "number" || candidateLatency <= 0) continue
-      if (!groupRatios.has(workloadId)) groupRatios.set(workloadId, new Map())
-      const ratio = baselineLatency / candidateLatency
-      maxRatio = Math.max(maxRatio, ratio)
-      groupRatios.get(workloadId)!.set(solutionName, ratio)
+      const passed = status === "PASSED" && typeof candidateLatency === "number" && candidateLatency > 0
+      if (passed) {
+        const ratio = baselineLatency / candidateLatency
+        maxRatio = Math.max(maxRatio, ratio)
+        ratioMap.set(solutionName, ratio)
+      } else if (!ratioMap.has(solutionName)) {
+        ratioMap.set(solutionName, 0)
+      }
     }
+
+    groupRatios.set(workloadId, ratioMap)
   }
 
   return {
@@ -178,7 +196,9 @@ export function computeFastPCurvesForSolutions(params: {
     if (baselineNames.has(solutionName)) continue
     const ratios: number[] = []
     for (const ratiosForGroup of groupRatios.values()) {
-      ratios.push(ratiosForGroup.get(solutionName) ?? 0)
+      const value = ratiosForGroup.get(solutionName)
+      if (value == null) continue
+      ratios.push(value)
     }
     ratios.sort((a, b) => a - b)
     const points: CurvePoint[] = []
@@ -191,7 +211,8 @@ export function computeFastPCurvesForSolutions(params: {
         else hi = mid
       }
       const count = ratios.length - lo
-      const percent = nWorkloads > 0 ? (count / nWorkloads) * 100 : 0
+      const total = ratios.length
+      const percent = total > 0 ? (count / total) * 100 : 0
       points.push({ p, percent })
     }
     curves[solutionName] = points
@@ -222,23 +243,42 @@ export function computeFastPCurvesForAuthors(params: {
 }): AuthorCurvesResponse {
   const { datasets, sampleCount = 300 } = params
   const authorRatios = new Map<string, number[]>()
+  const authorAttempts = new Map<string, number>()
+  const authorTotals = new Map<string, number>()
   let overallMaxRatio = 1
   const samplePoints: number[] = []
+  let totalWorkloads = 0
 
   for (const dataset of datasets) {
-    const authorsBySolution = new Map<string, string>()
-    for (const solution of dataset.solutions) {
-      authorsBySolution.set(solution.name, solution.author)
+    const { groupRatios, maxRatio, baselineNames } = computeSolutionGroupRatios(dataset)
+    overallMaxRatio = Math.max(overallMaxRatio, maxRatio)
+    totalWorkloads += groupRatios.size
+    if (groupRatios.size === 0) continue
+
+    const candidateSolutions = dataset.solutions.filter(
+      (solution) => solution.author && !baselineNames.has(solution.name)
+    )
+
+    const solutionsPerAuthor = new Map<string, number>()
+    for (const solution of candidateSolutions) {
+      const author = solution.author!
+      solutionsPerAuthor.set(author, (solutionsPerAuthor.get(author) ?? 0) + 1)
     }
 
-    const { groupRatios, maxRatio } = computeSolutionGroupRatios(dataset)
-    overallMaxRatio = Math.max(overallMaxRatio, maxRatio)
+    const workloads = groupRatios.size
+    for (const [author, count] of solutionsPerAuthor.entries()) {
+      const total = workloads * count
+      authorTotals.set(author, (authorTotals.get(author) ?? 0) + total)
+    }
+
     for (const ratios of groupRatios.values()) {
-      for (const [solutionName, ratio] of ratios.entries()) {
-        const author = authorsBySolution.get(solutionName)
-        if (!author) continue
+      for (const solution of candidateSolutions) {
+        const author = solution.author!
+        const ratio = ratios.get(solution.name)
+        if (ratio == null) continue
         if (!authorRatios.has(author)) authorRatios.set(author, [])
         authorRatios.get(author)!.push(ratio)
+        authorAttempts.set(author, (authorAttempts.get(author) ?? 0) + 1)
       }
     }
   }
@@ -277,7 +317,16 @@ export function computeFastPCurvesForAuthors(params: {
     curves[author] = points
   }
 
-  return { curves, comparisonCounts, totalComparisons }
+  const coverage: Record<string, CoverageStats> = {}
+  const authors = new Set([...authorTotals.keys(), ...authorAttempts.keys()])
+  for (const author of authors) {
+    const attempted = authorAttempts.get(author) ?? 0
+    const total = authorTotals.get(author) ?? 0
+    const percent = total > 0 ? (attempted / total) * 100 : 0
+    coverage[author] = { attempted, total, percent }
+  }
+
+  return { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage }
 }
 
 export function computeAuthorCorrectnessSummary(params: {
