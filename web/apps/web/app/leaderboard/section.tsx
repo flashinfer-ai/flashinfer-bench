@@ -4,9 +4,11 @@ import {
   computeAuthorCorrectnessSummary,
   type BaselineConfig,
 } from "@/lib/analytics"
-import type { Solution, Trace } from "@/lib/schemas"
+import type { Solution, Trace, Definition } from "@/lib/schemas"
+import type { CurvePoint } from "@/lib/analytics"
 
 type LeaderboardEntry = {
+  definition: Definition
   solutions: Solution[]
   traces: Trace[]
   baseline?: BaselineConfig
@@ -17,6 +19,14 @@ type LeaderboardSectionProps = {
   entries: LeaderboardEntry[]
   baselineLabel: string
   initialPinnedP?: number
+}
+
+type DefinitionAuthorDetail = {
+  definition: Definition
+  curves: Record<string, CurvePoint[]>
+  comparisonCounts: Record<string, number>
+  totalComparisons: number
+  solutionNamesByAuthor: Record<string, string[]>
 }
 
 export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: LeaderboardSectionProps) {
@@ -49,6 +59,35 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
     })),
   })
 
+  const definitionAuthorDetails: DefinitionAuthorDetail[] = filteredEntries.map((entry) => {
+    const { curves, comparisonCounts, totalComparisons } = computeFastPCurvesForAuthors({
+      datasets: [
+        {
+          solutions: entry.solutions,
+          traces: entry.traces,
+          baseline: entry.baseline,
+        },
+      ],
+      sampleCount: 300,
+    })
+
+    const solutionNamesByAuthor = entry.solutions.reduce<Record<string, string[]>>((acc, solution) => {
+      if (!solution.author) return acc
+      const list = acc[solution.author] ?? []
+      list.push(solution.name)
+      acc[solution.author] = list
+      return acc
+    }, {})
+
+    return {
+      definition: entry.definition,
+      curves,
+      comparisonCounts,
+      totalComparisons,
+      solutionNamesByAuthor,
+    }
+  })
+
   return (
     <LeaderboardClient
       fast={fast}
@@ -56,6 +95,7 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
       excludedAuthors={[...excludedAuthors]}
       baselineLabel={baselineLabel}
       initialPinnedP={initialPinnedP}
+      definitionAuthorDetails={definitionAuthorDetails}
     />
   )
 }

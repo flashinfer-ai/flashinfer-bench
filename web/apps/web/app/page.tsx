@@ -52,6 +52,7 @@ export default async function HomePage() {
   }))
 
   const leaderboardEntries = definitionEntries.map((entry) => ({
+    definition: entry.definition,
     solutions: entry.solutions,
     traces: entry.traces,
     baseline: entry.baseline,
