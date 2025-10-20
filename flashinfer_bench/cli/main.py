@@ -190,8 +190,7 @@ def run(args: argparse.Namespace):
             use_isolated_runner=args.use_isolated_runner,
             definitions=args.definitions,
             solutions=args.solutions,
-            timeout_seconds=args.timeout,
-            devices=args.devices if hasattr(args, "devices") else None,
+            timeout_seconds=args.timeout
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
@@ -285,12 +284,6 @@ def cli():
         type=int,
         default=300,
         help="Timeout in seconds for each solution evaluation (default: 300)",
-    )
-    run_parser.add_argument(
-        "--devices",
-        type=str,
-        nargs="+",
-        help="List of devices to use (e.g. cuda:0 cuda:2). If not specified, uses all available devices.",
     )
     run_parser.add_argument(
         "--local",
