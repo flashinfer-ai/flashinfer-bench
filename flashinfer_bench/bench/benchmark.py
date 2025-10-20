@@ -58,13 +58,15 @@ class Benchmark:
         """
         return self._trace_set
 
-    def run_all(self, dump_traces: bool = True) -> TraceSet:
+    def run_all(self, dump_traces: bool = True, resume: bool = False) -> TraceSet:
         """Run benchmark for all solutions in the trace set.
 
         Parameters
         ----------
         dump_traces : bool, optional
             If True, store traces to the trace set and in the disk.
+        resume : bool, optional
+            If True, skip solutions that have already been evaluated for each workload.
 
         Returns
         -------
@@ -74,22 +76,59 @@ class Benchmark:
         """
         result_traces: List[Trace] = []
 
-        for def_name, defn in self._trace_set.definitions.items():
+        definitions_to_run = self._trace_set.definitions.items()
+        if self._config.definitions is not None:
+            definitions_to_run = [
+                (name, defn)
+                for name, defn in definitions_to_run
+                if name in self._config.definitions
+            ]
+            provided_defs = set(self._config.definitions)
+            existing_defs = set(self._trace_set.definitions.keys())
+            missing_defs = provided_defs - existing_defs
+            if missing_defs:
+                logger.warning(f"Definitions not found in trace set: {sorted(missing_defs)}")
+
+        for def_name, defn in definitions_to_run:
             sols = self._trace_set.solutions.get(def_name, [])
             if not sols:
                 logger.warning(f"No solutions found for def={def_name}, skipping definition")
                 continue
 
+            if self._config.solutions is not None:
+                sols = [s for s in sols if s.name in self._config.solutions]
+                if not sols:
+                    logger.info(f"No matching solutions for def={def_name} after filtering")
+                    continue
+
             logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
 
+            existing_traces = set()  # (workload_uuid, solution_name)
+            if resume:
+                existing_def_traces = self._trace_set.traces.get(def_name, [])
+                for trace in existing_def_traces:
+                    if trace.solution and trace.evaluation:
+                        existing_traces.add((trace.workload.uuid, trace.solution))
+                if existing_traces:
+                    logger.info(f"Found {len(existing_traces)} existing traces for def={def_name}")
+
             workloads = self._trace_set.workloads.get(def_name, [])
+            def_traces: List[Trace] = []
 
             for wl_trace in workloads:
                 wl = wl_trace.workload
 
+                sols_to_run = sols
+                if resume:
+                    sols_to_run = [s for s in sols if (wl.uuid, s.name) not in existing_traces]
+
+                if not sols_to_run:
+                    logger.info(f"All solutions already evaluated for workload {wl.uuid}")
+                    continue
+
                 try:
                     results = self._runner.run_workload(
-                        defn, wl, sols, self._config, self._trace_set.root
+                        defn, wl, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
                     logger.error(f"Failed to run workload {wl.uuid}: {e}")
@@ -101,6 +140,7 @@ class Benchmark:
                     )
 
                     result_traces.append(trace)
+                    def_traces.append(trace)
 
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
@@ -112,9 +152,22 @@ class Benchmark:
                             f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
                         )
 
+            if dump_traces and def_traces:
+                self._trace_set.add_traces(def_traces)
+                logger.info(f"Saved {len(def_traces)} traces for definition {def_name}")
+
         traces_by_def = defaultdict(list)
         for trace in result_traces:
             traces_by_def[trace.definition].append(trace)
+
+        if self._config.solutions is not None:
+            provided_sols = set(self._config.solutions)
+            existing_sols = set()
+            for sols_list in self._trace_set.solutions.values():
+                existing_sols.update(s.name for s in sols_list)
+            missing_sols = provided_sols - existing_sols
+            if missing_sols:
+                logger.warning(f"Solutions not found in trace set: {sorted(missing_sols)}")
 
         # Create a new TraceSet with the results
         result_traceset = TraceSet(
@@ -124,8 +177,5 @@ class Benchmark:
             workloads=self._trace_set.workloads.copy(),
             traces=dict(traces_by_def),
         )
-
-        if dump_traces:
-            self._trace_set.add_traces(result_traces)
 
         return result_traceset
