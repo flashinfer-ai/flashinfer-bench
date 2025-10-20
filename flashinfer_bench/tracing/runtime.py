@@ -118,7 +118,7 @@ class TracingRuntime:
         - Tensor validation fails (wrong shape, dtype, etc.)
         - Axis inference fails
         """
-        logger.info(f"Collecting '{def_name}' traces...")
+        logger.debug(f"Tracing '{def_name}'")
         tracing_config = self._tracing_configs.get(def_name)
         if tracing_config is None:
             logger.error(f"Tracing config not configured for {def_name}, skipping")
