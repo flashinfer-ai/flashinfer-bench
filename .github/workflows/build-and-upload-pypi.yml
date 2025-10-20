@@ -11,68 +11,51 @@ on:
       - published
 
 jobs:
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  test:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        include:
-          - {os: ubuntu-latest, arch: x86_64, build: 'cp*-manylinux*'}
-          - {os: ubuntu-24.04-arm, arch: aarch64, build: 'cp*-manylinux*'}
-          - {os: windows-latest, arch: AMD64, build: 'cp*'}
-          - {os: macos-14, arch: arm64, build: 'cp*'}
-          - {os: macos-15-intel, arch: x86_64, build: 'cp*',}
-
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
     steps:
-      - uses: astral-sh/setup-uv@v4
-
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 0
 
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.22.0
-        env:
-          CIBW_ARCHS_MACOS: ${{ matrix.arch }}
-          CIBW_ARCHS_LINUX: ${{ matrix.arch }}
-          CIBW_ARCHS_WINDOWS: ${{ matrix.arch }}
-          CIBW_BUILD: ${{ matrix.build }}
-          CIBW_SKIP: 'cp36-* cp37-* cp38-*'  # Skip Python 3.6-3.8 and PyPy
-          CIBW_TEST_COMMAND: python -c "import flashinfer_bench; print(flashinfer_bench.__version__)"
-          CIBW_BUILD_VERBOSITY: 1
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/setup-python@v5
         with:
-          name: cibw-wheels-${{ matrix.os }}-${{ matrix.arch }}-${{ strategy.job-index }}
-          path: ./wheelhouse/*.whl
+          python-version: ${{ matrix.python-version }}
 
-  build_sdist:
-    name: Build source distribution
+      - name: Install and test
+        run: |
+          pip install -e .
+          python -c "import flashinfer_bench; print(f'Version: {flashinfer_bench.__version__}')"
+
+  build:
+    name: Build distribution
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Build sdist
-        run: pipx run build --sdist
-
-      - name: Check metadata
-        run: pipx run twine check dist/*
-
-      - name: List dist files
-        run: ls -lh dist/
+      - name: Build
+        run: |
+          pipx run build
+          pipx run twine check dist/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-sdist
-          path: dist/*.tar.gz
+          name: dist
+          path: dist/*
 
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -82,12 +65,10 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          # unpacks all CIBW artifacts into dist/
-          pattern: cibw-*
+          name: dist
           path: dist
-          merge-multiple: true
 
-      - name: Generate artifact attestation for sdist and wheels
+      - name: Generate artifact attestation for sdist and wheel
         uses: actions/attest-build-provenance@v1
         with:
           subject-path: dist/*
