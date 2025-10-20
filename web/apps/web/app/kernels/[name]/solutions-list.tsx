@@ -119,7 +119,7 @@ function FilterDropdown({ label, selections, options, onToggle }: FilterDropdown
 }
 
 export function getSolutionElementId(name: string): string {
-  return `solution-${name.replace(/[^a-zA-Z0-9-_]/g, "_")}`
+  return `solution-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`
 }
 
 export type SolutionsListProps = {
