@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List
 
 import torch
 
-from flashinfer_bench.apply import apply, get_apply_runtime
+from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.flashinfer.common import (
     infer_kv_layout_from_args,
     infer_paged_kv_layout_from_tensors,
@@ -50,9 +50,6 @@ class GQAPagedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def plan_wrapper(inst, *args, **kwargs):
-                if get_apply_runtime() is None:
-                    return orig(inst, *args, **kwargs)
-
                 bound = binder.bind((inst, *args), kwargs)
                 ctx = self._store.get(inst)
 
@@ -76,9 +73,6 @@ class GQAPagedPrefillAdapter:
             binder = ArgBinder.from_callable(orig)
 
             def run_wrapper(inst, *args, **kwargs):
-                if get_apply_runtime() is None:
-                    return orig(inst, *args, **kwargs)
-
                 ctx = self._store.get(inst)
                 # No plan context; fall back immediately
                 if not ctx:
@@ -125,10 +119,6 @@ class GQAPagedPrefillAdapter:
                     ctx["kv_indices"],
                     sm_scale,
                 )
-                rt = get_apply_runtime()
-                # Fallback if no definition found
-                if rt is None or def_name not in rt._trace_set.definitions:
-                    return orig(inst, *args, **kwargs)
 
                 rk: Dict[str, Any] = {
                     "q": q,

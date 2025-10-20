@@ -3,10 +3,10 @@ from typing import Callable, List, Protocol
 from flashinfer_bench.tracing.workload_entry import WorkloadEntry
 
 
-class DedupPolicy(Protocol):
+class FilterPolicy(Protocol):
     """Protocol for workload deduplication policy.
 
-    A dedup policy maintains internal state and supports both online and offline
+    A filter policy maintains internal state and supports both online and offline
     deduplication strategies. Entries are submitted one at a time via submit(),
     and selected entries are retrieved via drain().
     """
@@ -41,5 +41,5 @@ class DedupPolicy(Protocol):
         ...
 
 
-DedupPolicyFactory = Callable[[], DedupPolicy]
-"""Factory function for dedup policy."""
+FilterPolicyFactory = Callable[[], FilterPolicy]
+"""Factory function for filter policy."""
