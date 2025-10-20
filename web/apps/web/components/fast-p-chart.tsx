@@ -334,21 +334,27 @@ export function FastPCurves({
                   <HelpCircle className="h-4 w-4" />
                 </button>
               </HoverCardTrigger>
-              <HoverCardContent className="w-72 text-sm">
+              <HoverCardContent className="w-96 text-sm">
                 <p className="text-xs font-medium text-primary">
                   What&apos;s this?
                 </p>
                 <p className="mb-2 text-sm text-muted-foreground">
                   <FastPLabel /> measures the portion of workloads this solution is faster than p × baseline performance.
                 </p>
-                <a
+                <p className="text-xs font-medium text-primary">
+                  Disclaimer
+                </p>
+                <p className="mb-2 text-sm text-muted-foreground">
+                  The <FastPLabel /> metric is subject to various caveats and limitations. We recognize that baseline choice, implementation details, and environment variability may yield results that differ from real-world behavior. We recommend interpreting this result with caution, and we are manually reviewing all data points with positive speedups and auditing the benchmarking process to ensure accurate reporting.
+                </p>
+                {/* <a
                   href="/docs/fast_p"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-primary hover:underline"
                 >
                   Read the full docs →
-                </a>
+                </a> */}
               </HoverCardContent>
             </HoverCard>
           </div>
