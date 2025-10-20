@@ -3,6 +3,7 @@ import {
   computeFastPCurvesForAuthors,
   computeAuthorCorrectnessSummary,
   type BaselineConfig,
+  type CoverageStats,
 } from "@/lib/analytics"
 import type { Solution, Trace, Definition } from "@/lib/schemas"
 import type { CurvePoint } from "@/lib/analytics"
@@ -26,6 +27,8 @@ type DefinitionAuthorDetail = {
   curves: Record<string, CurvePoint[]>
   comparisonCounts: Record<string, number>
   totalComparisons: number
+  totalWorkloads: number
+  coverage: Record<string, CoverageStats>
   solutionNamesByAuthor: Record<string, string[]>
 }
 
@@ -60,7 +63,7 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
   })
 
   const definitionAuthorDetails: DefinitionAuthorDetail[] = filteredEntries.map((entry) => {
-    const { curves, comparisonCounts, totalComparisons } = computeFastPCurvesForAuthors({
+    const { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage } = computeFastPCurvesForAuthors({
       datasets: [
         {
           solutions: entry.solutions,
@@ -84,6 +87,8 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
       curves,
       comparisonCounts,
       totalComparisons,
+      totalWorkloads,
+      coverage,
       solutionNamesByAuthor,
     }
   })

@@ -100,6 +100,7 @@ export const EvaluationSchema = z.object({
   correctness: z.object({
                   max_relative_error: z.number(),
                   max_absolute_error: z.number(),
+                  extra: z.record(z.string(), z.any()).nullable().optional(),
                 }).nullable(),
   performance: z.object({
                   latency_ms: z.number(),

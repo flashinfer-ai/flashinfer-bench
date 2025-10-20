@@ -17,6 +17,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css"
 import Link from "next/link"
 import { Badge, Card, CardContent } from "@flashinfer-bench/ui"
+import { cn } from "@flashinfer-bench/utils"
 import { Package, Layers, ChevronDown, ChevronRight } from "lucide-react"
 import { Model, Module } from "@/lib/schemas"
 import { getChildren } from "@/lib/model-utils"
@@ -37,9 +38,16 @@ function ModelNode({ data, selected }: NodeProps<ModelNodeData>) {
   const [expanded, setExpanded] = useState(false)
   const hasChildren = data.children && data.children.length > 0
   const isBlock = data.moduleType === "block"
+  const isTraced = (data.definitions?.length ?? 0) > 0
+
+  const cardClasses = cn(
+    "w-[250px] min-w-[250px] max-w-[250px] border transition-colors",
+    isTraced ? "border-primary/50 bg-primary/5" : "border-border",
+    (selected || data.highlighted) && "ring-2 ring-primary"
+  )
 
   return (
-    <Card className={`min-w-[200px] ${selected ? 'ring-2 ring-primary' : ''} ${data.highlighted ? 'ring-2 ring-yellow-500' : ''}`}>
+    <Card className={cardClasses}>
       <CardContent className="p-3">
         <div className="space-y-2">
           {/* Header */}
@@ -80,13 +88,15 @@ function ModelNode({ data, selected }: NodeProps<ModelNodeData>) {
           {data.definitions && data.definitions.length > 0 && (
             <div className="pt-1 space-y-1">
               {data.definitions.map((definition) => (
-                <div key={definition} className="text-xs truncate">
+                <div key={definition} className="text-xs leading-tight">
                   <Link
                     href={`/kernels/${definition}`}
-                    className="text-primary hover:underline truncate"
+                    className="text-primary hover:underline inline-flex max-w-full items-center gap-1"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {definition}
+                    <span className="truncate" title={definition}>
+                      {definition.length > 34 ? `${definition.slice(0, 34)}…` : definition}
+                    </span>
                   </Link>
                 </div>
               ))}
@@ -108,7 +118,8 @@ function ModelNode({ data, selected }: NodeProps<ModelNodeData>) {
             type="target"
             position={Position.Top}
             id="target"
-            className="w-2 h-2"
+            className="w-2 h-2 border-none"
+            style={{ background: isTraced ? "#2563eb" : "#9ca3af" }}
           />
         )}
         {hasChildren && (
@@ -116,7 +127,8 @@ function ModelNode({ data, selected }: NodeProps<ModelNodeData>) {
             type="source"
             position={Position.Bottom}
             id="source"
-            className="w-2 h-2"
+            className="w-2 h-2 border-none"
+            style={{ background: isTraced ? "#2563eb" : "#9ca3af" }}
           />
         )}
       </CardContent>
@@ -236,10 +248,9 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
               target: name,
               targetHandle: "target",
               type: "smoothstep",
-              animated: (moduleData.definitions?.length ?? 0) > 0,
               style: {
-                strokeWidth: (moduleData.definitions?.length ?? 0) > 0 ? 2 : 1,
-                stroke: (moduleData.definitions?.length ?? 0) > 0 ? "#3b82f6" : "#94a3b8",
+                strokeWidth: 1.5,
+                stroke: "#CBD5F5",
               },
             })
           }
@@ -273,9 +284,8 @@ export function ModelArchOverview({ model }: ModelFlowProps) {
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            if ((node.data?.definitions?.length ?? 0) > 0) return "#3b82f6"
-            if (node.data?.moduleType === "block") return "#10b981"
-            return "#94a3b8"
+            if ((node.data?.definitions?.length ?? 0) > 0) return "#2563eb"
+            return "#CBD5F5"
           }}
           nodeStrokeWidth={3}
           pannable

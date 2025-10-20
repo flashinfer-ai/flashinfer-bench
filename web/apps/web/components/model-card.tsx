@@ -3,7 +3,7 @@
 import React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Cpu, Copy, Check, Filter } from "lucide-react"
+import { Copy, Check, Filter } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressCircle, Button } from "@flashinfer-bench/ui"
 import { Model } from "@/lib/schemas"
 
@@ -46,8 +46,7 @@ export function ModelCard({ model, href }: ModelCardProps) {
       <Card className="hover:shadow-lg hover:border-primary transition-all cursor-pointer h-full">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 flex-1 min-w-0">
-              <Cpu className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+            <div className="flex items-center flex-1 min-w-0">
               <div className="group flex items-center gap-2 min-w-0">
                 <CardTitle className="text-lg truncate">{model.name}</CardTitle>
                 <button

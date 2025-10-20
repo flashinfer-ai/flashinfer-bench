@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Editor as MonacoEditor } from "@monaco-editor/react"
-import { Button, Card, toast } from "@flashinfer-bench/ui"
+import { Badge, Button, Card, toast } from "@flashinfer-bench/ui"
 import { ArrowLeft, Copy, Download, Check, Plus, FileText, Code } from "lucide-react"
-import type { Trace, WorkloadInput } from "@/lib/schemas"
+import type { Axis, Definition, Solution, Tensor, Trace, WorkloadInput } from "@/lib/schemas"
 
 interface ViewerProps {
   data: any
@@ -181,27 +181,6 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
     setJsonText(JSON.stringify(data, null, 2))
   }
 
-  const insertSourceFile = () => {
-    const newFileName = `new_file_${Object.keys(sourceCode).length + 1}.py`
-    setSourceCode(prev => ({
-      ...prev,
-      [newFileName]: "# New source file\n"
-    }))
-    setActiveSourceFile(newFileName)
-  }
-
-  const removeSourceFile = (path: string) => {
-    const newSourceCode = { ...sourceCode }
-    delete newSourceCode[path]
-    setSourceCode(newSourceCode)
-
-    // Switch to another file if the active one was removed
-    if (path === activeSourceFile) {
-      const remaining = Object.keys(newSourceCode)
-      setActiveSourceFile(remaining[0] || "")
-    }
-  }
-
   const exportToJson = () => {
     const mergedData = getParsedJson()
     if (!mergedData) {
@@ -245,6 +224,417 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
     }
   }
 
+  const definitionData = isDefinition ? (data as Definition) : null
+  const axesEntries = definitionData ? Object.entries(definitionData.axes || {}) : []
+  const inputEntries = definitionData ? Object.entries(definitionData.inputs || {}) : []
+  const outputEntries = definitionData ? Object.entries(definitionData.outputs || {}) : []
+  const constraintEntries = definitionData?.constraints ?? []
+  const tagList = definitionData?.tags ?? []
+  const solutionData = isSolution ? (data as Solution) : null
+  const spec = solutionData?.spec ?? null
+  const targetHardware = spec?.target_hardware ?? []
+  const dependencies = spec?.dependencies ?? []
+  const buildCommands = spec?.build_commands ?? []
+  const sourceCount = Object.keys(sourceCode).length
+
+  const formatAxisSummary = (axis: Axis) => {
+    if (axis.type === "const") {
+      return `const = ${axis.value}`
+    }
+    const suffix = axis.parent ? ` (parent: ${axis.parent})` : ""
+    return `variable${suffix}`
+  }
+
+  const formatTensorShape = (tensor: Tensor) => {
+    if (!tensor.shape || tensor.shape.length === 0) return "Unspecified"
+    return tensor.shape.join(" × ")
+  }
+
+  const languageForFile = (path: string) => {
+    const lower = path.toLowerCase()
+    if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "typescript"
+    if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "javascript"
+    if (lower.endsWith(".py")) return "python"
+    if (lower.endsWith(".rs")) return "rust"
+    if (lower.endsWith(".sh")) return "shell"
+    if (lower.endsWith(".md")) return "markdown"
+    if (lower.endsWith(".json")) return "json"
+    if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "yaml"
+    if (lower.endsWith(".toml")) return "toml"
+    if (lower.endsWith(".sql")) return "sql"
+    if (
+      lower.endsWith(".cu") ||
+      lower.endsWith(".cuh") ||
+      lower.endsWith(".cpp") ||
+      lower.endsWith(".cc") ||
+      lower.endsWith(".hpp") ||
+      lower.endsWith(".h") ||
+      lower.endsWith(".c")
+    )
+      return "cpp"
+    return "plaintext"
+  }
+
+  const codePanel = (
+    <Card className="p-4 flex flex-col h-full">
+      <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+        <Code className="h-5 w-5" />
+        {isDefinition ? "Reference Implementation" : "Source Code"}
+      </h3>
+
+      <div className="flex-1 flex flex-col min-h-0">
+        {isDefinition ? (
+          <div className="border rounded-lg overflow-hidden h-full">
+            <MonacoEditor
+              height="100%"
+              defaultLanguage="python"
+              value={referenceCode}
+              onChange={(value) => setReferenceCode(value || "")}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: "on",
+                wordWrap: "on",
+                automaticLayout: true,
+              }}
+            />
+          </div>
+        ) : isSolution ? (
+          activeSourceFile ? (
+            <div className="border rounded-lg overflow-hidden h-full">
+              <MonacoEditor
+                height="100%"
+                language={languageForFile(activeSourceFile)}
+                value={sourceCode[activeSourceFile] || ""}
+                onChange={(value) =>
+                  setSourceCode((prev) => ({
+                    ...prev,
+                    [activeSourceFile]: value || "",
+                  }))
+                }
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: "on",
+                  wordWrap: "on",
+                  automaticLayout: true,
+                }}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              Select a source file to view its contents.
+            </div>
+          )
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            No code content found.
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+
+  const definitionPanel = isDefinition && definitionData ? (
+    <Card className="p-6 flex h-full flex-col space-y-4 overflow-hidden">
+      <h3 className="text-lg font-semibold">Definition Summary</h3>
+
+      <div className="space-y-3 text-sm text-muted-foreground break-words">
+        <div>
+          <span className="text-foreground font-medium">Name:</span>{" "}
+          <span className="font-mono text-foreground">{definitionData.name}</span>
+        </div>
+        <div>
+          <span className="text-foreground font-medium">Op Type:</span>{" "}
+          <span className="uppercase tracking-wide text-muted-foreground">{definitionData.op_type}</span>
+        </div>
+        {definitionData.description && (
+          <div>
+            <span className="text-foreground font-medium">Description:</span>
+            <p className="mt-1 whitespace-pre-wrap">{definitionData.description}</p>
+          </div>
+        )}
+        {tagList.length > 0 && (
+          <div>
+            <span className="text-foreground font-medium">Tags:</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {tagList.map((tag) => (
+                <Badge key={tag} variant="outline">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-auto pr-2 text-sm text-muted-foreground space-y-4">
+        <div>
+          <p className="text-foreground font-medium">Axes</p>
+          {axesEntries.length ? (
+            <ul className="ml-4 list-disc space-y-1">
+              {axesEntries.map(([name, axis]) => {
+                const axisDetails = axis as Axis
+                return (
+                  <li key={name}>
+                    <span className="font-mono text-foreground">{name}</span>: {formatAxisSummary(axisDetails)}
+                    {axisDetails.description ? (
+                      <span className="block ml-4 text-xs text-muted-foreground">{axisDetails.description}</span>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p>No axes specified.</p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-foreground font-medium">Inputs</p>
+          {inputEntries.length ? (
+            <ul className="ml-4 list-disc space-y-2">
+              {inputEntries.map(([name, tensor]) => {
+                const tensorDetails = tensor as Tensor
+                return (
+                  <li key={name}>
+                    <span className="font-mono text-foreground">{name}</span>: {tensorDetails.dtype}
+                    <span className="ml-2 text-muted-foreground">[{formatTensorShape(tensorDetails)}]</span>
+                    {tensorDetails.description ? (
+                      <span className="block ml-4 text-xs text-muted-foreground">{tensorDetails.description}</span>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p>No inputs specified.</p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-foreground font-medium">Outputs</p>
+          {outputEntries.length ? (
+            <ul className="ml-4 list-disc space-y-2">
+              {outputEntries.map(([name, tensor]) => {
+                const tensorDetails = tensor as Tensor
+                return (
+                  <li key={name}>
+                    <span className="font-mono text-foreground">{name}</span>: {tensorDetails.dtype}
+                    <span className="ml-2 text-muted-foreground">[{formatTensorShape(tensorDetails)}]</span>
+                    {tensorDetails.description ? (
+                      <span className="block ml-4 text-xs text-muted-foreground">{tensorDetails.description}</span>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p>No outputs specified.</p>
+          )}
+        </div>
+
+        {constraintEntries.length > 0 && (
+          <div>
+            <p className="text-foreground font-medium">Constraints</p>
+            <ul className="ml-4 list-disc space-y-1">
+              {constraintEntries.map((constraint, index) => (
+                <li key={`${constraint}-${index}`} className="break-words">
+                  {constraint}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
+  ) : null
+
+  const solutionPanel = isSolution && solutionData ? (
+    <Card className="p-6 flex h-full flex-col space-y-4 overflow-hidden">
+      <h3 className="text-lg font-semibold">Solution Summary</h3>
+
+      <div className="space-y-3 text-sm text-muted-foreground break-words">
+        <div>
+          <span className="text-foreground font-medium">Name:</span>{" "}
+          <span className="font-mono text-foreground">{solutionData.name}</span>
+        </div>
+        <div>
+          <span className="text-foreground font-medium">Definition:</span>{" "}
+          {solutionData.definition ? (
+            <Link
+              href={`/kernels/${encodeURIComponent(solutionData.definition)}`}
+              className="text-primary hover:underline inline-flex items-center gap-1"
+            >
+              <span>{solutionData.definition}</span>
+            </Link>
+          ) : (
+            "-"
+          )}
+        </div>
+        <div>
+          <span className="text-foreground font-medium">Author:</span>{" "}
+          <span>{solutionData.author}</span>
+        </div>
+        {spec && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-foreground font-medium">Language:</span>
+            <Badge variant="outline" className="uppercase tracking-wide">
+              {spec.language}
+            </Badge>
+          </div>
+        )}
+        {solutionData.description && (
+          <div>
+            <span className="text-foreground font-medium">Description:</span>
+            <p className="mt-1 whitespace-pre-wrap">{solutionData.description}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-auto pr-2 text-sm text-muted-foreground space-y-4">
+        {targetHardware.length > 0 && (
+          <div>
+            <p className="text-foreground font-medium">Target Hardware</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {targetHardware.map((target) => (
+                <Badge key={target} variant="outline">
+                  {target}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {spec?.entry_point && (
+          <div>
+            <p className="text-foreground font-medium">Entry Point</p>
+            <p className="mt-1 font-mono text-foreground break-words">{spec.entry_point}</p>
+          </div>
+        )}
+
+        {sourceCount > 0 && (
+          <div>
+            <p className="text-foreground font-medium">Source Files</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.keys(sourceCode).map((path) => (
+                <Button
+                  key={path}
+                  variant={activeSourceFile === path ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 justify-start font-mono"
+                  onClick={() => setActiveSourceFile(path)}
+                >
+                  {path}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dependencies.length > 0 && (
+          <div>
+            <p className="text-foreground font-medium">Dependencies</p>
+            <ul className="ml-4 list-disc space-y-1">
+              {dependencies.map((dependency) => (
+                <li key={dependency} className="break-words">
+                  {dependency}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {buildCommands.length > 0 && (
+          <div>
+            <p className="text-foreground font-medium">Build Commands</p>
+            <ul className="ml-4 list-disc space-y-1">
+              {buildCommands.map((command, index) => (
+                <li key={`${command}-${index}`} className="break-words font-mono text-xs text-foreground">
+                  {command}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
+  ) : null
+
+  const jsonPanel = (
+    <Card className="p-4 flex flex-col h-full">
+      <div>
+        <h3 className="text-lg font-semibold flex items-center gap-2 mb-2">
+          <FileText className="h-5 w-5" />
+          JSON Configuration (Live Preview)
+        </h3>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          {isDefinition ? (
+            <>
+              <Button size="sm" variant="outline" onClick={insertAxis}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Axis
+              </Button>
+              <Button size="sm" variant="outline" onClick={insertInput}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Input
+              </Button>
+              <Button size="sm" variant="outline" onClick={insertOutput}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Output
+              </Button>
+              <Button size="sm" variant="outline" onClick={insertConstraint}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Constraint
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="outline" onClick={insertDependency}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Dependency
+              </Button>
+              <Button size="sm" variant="outline" onClick={insertTargetHardware}>
+                <Plus className="h-3 w-3 mr-1" />
+                Add Target Hardware
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {jsonError && (
+        <div className="text-sm text-destructive bg-destructive/10 p-2 rounded mb-4">
+          JSON Error: {jsonError}
+        </div>
+      )}
+
+      <div className="border rounded-lg overflow-hidden flex-1">
+        <MonacoEditor
+          height="100%"
+          defaultLanguage="json"
+          value={jsonText}
+          onChange={(value) => setJsonText(value || "")}
+          theme="vs-dark"
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: "on",
+            wordWrap: "on",
+            automaticLayout: true,
+            formatOnPaste: true,
+            formatOnType: true,
+          }}
+        />
+      </div>
+    </Card>
+  )
+
+  const metaPanel = definitionPanel ?? solutionPanel ?? jsonPanel
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -264,164 +654,9 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4" style={{ height: "calc(100vh - 200px)" }}>
-        {/* Code Editor on Left */}
-        <Card className="p-4 flex flex-col h-full">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Code className="h-5 w-5" />
-              {isDefinition ? "Reference Implementation" : "Source Code"}
-            </h3>
-            {isSolution && (
-              <Button size="sm" onClick={insertSourceFile} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add File
-              </Button>
-            )}
-          </div>
-
-          <div className="flex-1 flex flex-col min-h-0">
-            {isDefinition ? (
-              <div className="border rounded-lg overflow-hidden h-full">
-                <MonacoEditor
-                  height="100%"
-                  defaultLanguage="python"
-                  value={referenceCode}
-                  onChange={(value) => setReferenceCode(value || "")}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: "on",
-                    wordWrap: "on",
-                    automaticLayout: true,
-                  }}
-                />
-              </div>
-            ) : isSolution && Object.keys(sourceCode).length > 0 ? (
-              <div className="flex flex-col h-full space-y-2">
-                <div className="flex gap-2 flex-wrap">
-                  {Object.keys(sourceCode).map((path) => (
-                    <div key={path} className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant={activeSourceFile === path ? "default" : "outline"}
-                        onClick={() => setActiveSourceFile(path)}
-                      >
-                        {path}
-                      </Button>
-                      {Object.keys(sourceCode).length > 1 && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => removeSourceFile(path)}
-                          className="h-8 w-8 p-0"
-                        >
-                          ×
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {activeSourceFile && (
-                  <div className="border rounded-lg overflow-hidden flex-1">
-                    <MonacoEditor
-                      height="100%"
-                      language={activeSourceFile.endsWith('.py') ? 'python' : 'plaintext'}
-                      value={sourceCode[activeSourceFile] || ""}
-                      onChange={(value) => setSourceCode(prev => ({
-                        ...prev,
-                        [activeSourceFile]: value || ""
-                      }))}
-                      theme="vs-dark"
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        lineNumbers: "on",
-                        wordWrap: "on",
-                        automaticLayout: true,
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                No code content found.
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* JSON Configuration on Right */}
-        <Card className="p-4 flex flex-col h-full">
-          <div>
-            <h3 className="text-lg font-semibold flex items-center gap-2 mb-2">
-              <FileText className="h-5 w-5" />
-              JSON Configuration (Live Preview)
-            </h3>
-
-            {/* Quick Action Buttons */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              {isDefinition ? (
-                <>
-                  <Button size="sm" variant="outline" onClick={insertAxis}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Axis
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={insertInput}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Input
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={insertOutput}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Output
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={insertConstraint}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Constraint
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button size="sm" variant="outline" onClick={insertDependency}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Dependency
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={insertTargetHardware}>
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Target Hardware
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {jsonError && (
-            <div className="text-sm text-destructive bg-destructive/10 p-2 rounded mb-4">
-              JSON Error: {jsonError}
-            </div>
-          )}
-
-          <div className="border rounded-lg overflow-hidden flex-1">
-            <MonacoEditor
-              height="100%"
-              defaultLanguage="json"
-              value={jsonText}
-              onChange={(value) => setJsonText(value || "")}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: "on",
-                wordWrap: "on",
-                automaticLayout: true,
-                formatOnPaste: true,
-                formatOnType: true,
-              }}
-            />
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" style={{ height: "calc(100vh - 200px)" }}>
+        {metaPanel}
+        {codePanel}
       </div>
     </div>
   )
@@ -440,6 +675,15 @@ function formatNumber(value: number | null | undefined, digits = 3) {
   return value.toExponential(2)
 }
 
+function formatExtraValue(value: unknown): string {
+  if (value == null) return "null"
+  if (typeof value === "number") return formatNumber(value)
+  if (typeof value === "boolean") return value ? "true" : "false"
+  if (typeof value === "string") return value
+  if (Array.isArray(value) || typeof value === "object") return JSON.stringify(value)
+  return String(value)
+}
+
 function TraceViewer({ data, onBack }: TraceViewerProps) {
   const evaluation = data?.evaluation ?? null
   const performance = evaluation?.performance ?? null
@@ -449,6 +693,9 @@ function TraceViewer({ data, onBack }: TraceViewerProps) {
   const inputs = (data?.workload?.inputs ?? {}) as Record<string, WorkloadInput>
   const libs = (environment?.libs ?? {}) as Record<string, string>
   const definitionName = data?.definition || ""
+  const log = typeof evaluation?.log === "string" ? evaluation.log : null
+  const showLogPanel = log !== null && log !== ""
+  const correctnessExtra = correctness ? correctness.extra ?? null : null
 
   const status = evaluation?.status || "N/A"
   const statusTone = status === "PASSED" ? "text-emerald-600" : status.includes("INCORRECT") ? "text-amber-600" : status.includes("ERROR") ? "text-red-600" : "text-muted-foreground"
@@ -488,12 +735,14 @@ function TraceViewer({ data, onBack }: TraceViewerProps) {
                 <span className="text-foreground font-medium">Timestamp:</span> {evaluation.timestamp}
               </div>
             )}
-            {evaluation?.log && (
+            {typeof log === "string" && (
               <div>
                 <span className="text-foreground font-medium">Log:</span>
-                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-sm">
-                  {evaluation.log}
-                </pre>
+                {log === "" ? (
+                  <span className="ml-1 font-mono text-muted-foreground">empty</span>
+                ) : (
+                  <span className="ml-1 text-muted-foreground">View log below.</span>
+                )}
               </div>
             )}
             {performance && (
@@ -512,6 +761,19 @@ function TraceViewer({ data, onBack }: TraceViewerProps) {
                 <ul className="ml-4 list-disc space-y-1">
                   <li>Max absolute error: {formatNumber(correctness.max_absolute_error)}</li>
                   <li>Max relative error: {formatNumber(correctness.max_relative_error)}</li>
+                  {correctnessExtra && typeof correctnessExtra === "object" && Object.keys(correctnessExtra).length > 0 && (
+                    <li>
+                      Extra:
+                      <ul className="ml-4 list-disc space-y-1">
+                        {Object.entries(correctnessExtra).map(([key, value]) => (
+                          <li key={key}>
+                            <span className="font-mono text-foreground">{key}</span>:{" "}
+                            <span className="break-all">{formatExtraValue(value)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )}
                 </ul>
               </div>
             )}
@@ -581,6 +843,28 @@ function TraceViewer({ data, onBack }: TraceViewerProps) {
           </div>
         </Card>
       </div>
+
+      {showLogPanel && (
+        <Card className="p-4 space-y-3">
+          <h3 className="text-lg font-semibold">Log</h3>
+          <div className="border rounded-lg overflow-hidden">
+            <MonacoEditor
+              height="320px"
+              defaultLanguage="plaintext"
+              value={log}
+              theme="vs-dark"
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: "on",
+                wordWrap: "on",
+                automaticLayout: true,
+              }}
+            />
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

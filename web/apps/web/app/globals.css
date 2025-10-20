@@ -70,6 +70,66 @@
   }
 }
 
+@keyframes drawer-in {
+  from {
+    transform: translate3d(100%, 0, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-out {
+  from {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-drawer-in {
+  animation: drawer-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@utility animate-drawer-out {
+  animation: drawer-out 0.2s cubic-bezier(0.7, 0, 0.84, 0);
+  animation-fill-mode: both;
+}
+
+@utility animate-overlay-in {
+  animation: overlay-in 0.16s ease-out;
+  animation-fill-mode: both;
+}
+
+@utility animate-overlay-out {
+  animation: overlay-out 0.16s ease-in;
+  animation-fill-mode: both;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
