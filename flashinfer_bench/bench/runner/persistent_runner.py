@@ -301,7 +301,7 @@ class PersistentSubprocessWorker:
         try:
             self._parent_conn.send(eval_msg)
 
-            if self._parent_conn.poll(timeout=300.0):
+            if self._parent_conn.poll(timeout=cfg.timeout_seconds):
                 try:
                     response = self._parent_conn.recv()
 
@@ -362,9 +362,9 @@ class PersistentSubprocessWorker:
                         extra_msg=error_msg,
                     )
             else:
-                error_msg = f"Evaluation timeout after 300 seconds for solution {sol.name}"
+                error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}"
                 return make_eval(
-                    status=EvaluationStatus.RUNTIME_ERROR,
+                    status=EvaluationStatus.TIMEOUT,
                     device=self._device,
                     log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
                     extra_msg=error_msg,
