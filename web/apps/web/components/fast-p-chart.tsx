@@ -1,11 +1,11 @@
 "use client"
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import * as d3 from "d3"
 import { Card, CardContent, CardHeader, CardTitle, Button, HoverCard, HoverCardContent, HoverCardTrigger } from "@flashinfer-bench/ui"
-import { Pin as PinIcon, Undo2, HelpCircle, RotateCcw } from "lucide-react"
+import { Pin as PinIcon, Undo2, HelpCircle, RotateCcw, Info, X } from "lucide-react"
 import { FastPLabel } from "@/components/fast-p-label"
-import type { CurvePoint } from "@/lib/analytics"
+import type { CorrectnessSummary, CurvePoint } from "@/lib/analytics"
 
 const LEGEND_MAX_ITEMS = 10
 const LEGEND_NAME_MAX_LENGTH = 12
@@ -27,7 +27,34 @@ export type FastPCurvesProps = {
   colorFor: (name: string) => string
   scoreboard: ScoreboardEntry[]
   countLabel?: string
-  onLegendClick?: (name: string) => void
+  highlighted?: string | null
+  onHighlightChange?: (name: string | null) => void
+  highlightContext?: "drawer" | "list"
+  onInspectHighlighted?: () => void
+  correctness?: Record<string, CorrectnessSummary>
+}
+
+type PreviewState = {
+  p: number
+  percent: number
+  xPercent: number
+  yPercent: number
+  anchor: "left" | "right"
+}
+
+function sampleCurve(points: CurvePoint[] | undefined, p: number): number {
+  if (!points || points.length === 0) return 0
+  const minP = points[0].p
+  const maxP = points[points.length - 1].p
+  const target = Math.min(Math.max(p, minP), maxP)
+  let lo = 0
+  let hi = points.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (points[mid].p < target) lo = mid + 1
+    else hi = mid
+  }
+  return points[lo]?.percent ?? 0
 }
 
 export function FastPCurves({
@@ -42,7 +69,11 @@ export function FastPCurves({
   colorFor,
   scoreboard: _scoreboard,
   countLabel = "workloads",
-  onLegendClick,
+  highlighted,
+  onHighlightChange,
+  highlightContext = "drawer",
+  onInspectHighlighted,
+  correctness,
 }: FastPCurvesProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const hintShownRef = useRef(false)
@@ -50,6 +81,7 @@ export function FastPCurves({
   const [showPinHint, setShowPinHint] = useState(false)
   const [hoveredLegend, setHoveredLegend] = useState<string | null>(null)
   const [domainMax, setDomainMax] = useState(1)
+  const [preview, setPreview] = useState<PreviewState | null>(null)
   const MIN_DOMAIN = 0.1
   const legendItems = useMemo(() => {
     const items: Array<{ name: string; displayName: string; color: string }> = []
@@ -103,6 +135,10 @@ export function FastPCurves({
   }, [pinnedP])
 
   useEffect(() => {
+    setPreview(null)
+  }, [highlighted])
+
+  useEffect(() => {
     const chartSize = { width: 1000, height: 360, marginLeft: 48, marginRight: 16, marginTop: 16, marginBottom: 36 }
     const domainUpper = Math.min(domainMax, maxDomainP)
     const xScale = d3.scaleLinear().domain([0, domainUpper]).range([chartSize.marginLeft, chartSize.width - chartSize.marginRight])
@@ -122,11 +158,14 @@ export function FastPCurves({
       .y((point) => yScale(point.percent))
       .curve(d3.curveStepAfter)
 
+    const highlightedVisible = highlighted && visible.has(highlighted) ? highlighted : null
+
     for (const [name, points] of Object.entries(curves)) {
       if (!visible.has(name)) continue
-      const isHighlighted = !hoveredLegend || hoveredLegend === name
+      const activeLegend = hoveredLegend ?? highlightedVisible
+      const isHighlighted = !activeLegend || activeLegend === name
       const strokeWidth = isHighlighted ? 2.4 : 1.2
-      const strokeOpacity = hoveredLegend ? (isHighlighted ? 1 : 0.25) : 0.95
+      const strokeOpacity = activeLegend ? (isHighlighted ? 1 : 0.2) : 0.95
       svg
         .append("path")
         .datum(points)
@@ -148,6 +187,14 @@ export function FastPCurves({
       .attr("stroke-dasharray", "4,4")
       .style("display", "none")
 
+    const previewDot = crosshair
+      .append("circle")
+      .attr("r", 4)
+      .attr("fill", highlightedVisible ? colorFor(highlightedVisible) : "#0ea5e9")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5)
+      .style("display", "none")
+
     const overlay = svg
       .append("rect")
       .attr("x", chartSize.marginLeft)
@@ -157,10 +204,32 @@ export function FastPCurves({
       .attr("fill", "transparent")
       .style("cursor", pinnedP != null ? "default" : "crosshair")
       .on("mousemove", function (event) {
-        const [mouseX] = d3.pointer(event as any)
-        const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(mouseX)))
-        onHoverP(pValue)
-        verticalLine.style("display", null).attr("x1", mouseX).attr("x2", mouseX)
+    const svgElement = svgRef.current
+    if (!svgElement) return
+    const [rawX] = d3.pointer(event as any, svgElement)
+    const boundedX = Math.max(chartSize.marginLeft, Math.min(rawX, chartSize.width - chartSize.marginRight))
+    const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(boundedX)))
+    onHoverP(pValue)
+    verticalLine.style("display", null).attr("x1", boundedX).attr("x2", boundedX)
+
+    const highlightName = highlighted && visible.has(highlighted) ? highlighted : null
+    if (highlightName) {
+      const points = curves[highlightName]
+      const percent = sampleCurve(points, pValue)
+      const yCoord = yScale(percent)
+      previewDot
+        .style("display", null)
+        .attr("cx", boundedX)
+        .attr("cy", yCoord)
+        .attr("fill", colorFor(highlightName))
+      const anchor = boundedX > chartSize.width * 0.6 ? "right" : "left"
+      const xPercent = (boundedX / chartSize.width) * 100
+      const yPercent = (yCoord / chartSize.height) * 100
+      setPreview({ p: pValue, percent, xPercent, yPercent, anchor })
+    } else {
+      previewDot.style("display", "none")
+      setPreview(null)
+    }
 
         if (pinnedP == null && !hintShownRef.current) {
           hintShownRef.current = true
@@ -175,10 +244,13 @@ export function FastPCurves({
       .on("mouseleave", function () {
         onHoverP(null)
         verticalLine.style("display", "none")
+        previewDot.style("display", "none")
+        setPreview(null)
       })
       .on("click", function (event) {
-        const [mouseX] = d3.pointer(event as any)
-        const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(mouseX)))
+        const [rawX] = d3.pointer(event as any, svgRef.current)
+        const boundedX = Math.max(chartSize.marginLeft, Math.min(rawX, chartSize.width - chartSize.marginRight))
+        const pValue = Math.max(0, Math.min(domainUpper, xScale.invert(boundedX)))
         onPinP(pValue)
       })
 
@@ -214,7 +286,34 @@ export function FastPCurves({
       svg.selectAll("*").remove()
       element?.removeEventListener("wheel", handleWheel)
     }
-  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, hoveredLegend, maxDomainP, domainMax])
+  }, [curves, visible, pinnedP, colorFor, onHoverP, onPinP, hoveredLegend, maxDomainP, domainMax, highlighted])
+
+  const highlightedVisible = highlighted && visible.has(highlighted) ? highlighted : null
+
+  const correctnessInfo = useMemo(() => {
+    if (!highlightedVisible || !correctness) return null
+    const summary = correctness[highlightedVisible]
+    if (!summary || summary.total === 0) return null
+    const percent = (summary.passed / summary.total) * 100
+    return { summary, percent }
+  }, [correctness, highlightedVisible])
+
+  const previewStyle = useMemo<CSSProperties | null>(() => {
+    if (!preview) return null
+    const baseLeft = preview.anchor === "right" ? `calc(${preview.xPercent}% - 12px)` : `calc(${preview.xPercent}% + 12px)`
+    const transform = preview.anchor === "right" ? "translate(-100%, -50%)" : "translateY(-50%)"
+    return {
+      left: baseLeft,
+      top: `${preview.yPercent}%`,
+      transform,
+    }
+  }, [preview])
+
+  const handleLegendActivate = (name: string) => {
+    if (!onHighlightChange) return
+    const next = highlighted === name ? null : name
+    onHighlightChange(next)
+  }
 
   return (
     <Card>
@@ -259,14 +358,16 @@ export function FastPCurves({
               <div className="flex flex-wrap items-center justify-center gap-y-2 text-xs">
                 {legendItems.map((item, index) => {
                   const isHovered = hoveredLegend === item.name
-                  const interactive = Boolean(onLegendClick)
+                  const isActive = highlightedVisible === item.name
+                  const interactive = Boolean(onHighlightChange)
                   return (
                     <Fragment key={item.name}>
                       <span
                         className={[
-                          "inline-flex items-center rounded-full bg-muted px-2 py-1 text-foreground transition-colors",
-                          interactive ? "cursor-pointer hover:bg-primary/10 hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" : "",
-                          isHovered ? "text-primary" : "",
+                          "inline-flex items-center rounded-full border border-transparent bg-muted px-2 py-1 text-foreground transition-colors",
+                          interactive ? "cursor-pointer hover:border-primary hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" : "",
+                          isHovered ? "border-primary bg-primary/10 text-primary" : "",
+                          isActive ? "border-primary text-primary" : "",
                         ].filter(Boolean).join(" ")}
                         title={item.name}
                         onMouseEnter={() => setHoveredLegend(item.name)}
@@ -281,12 +382,13 @@ export function FastPCurves({
                         }}
                         tabIndex={interactive ? 0 : -1}
                         role={interactive ? "button" : undefined}
-                        aria-label={interactive ? `Inspect ${item.name}` : undefined}
-                        onClick={interactive ? () => onLegendClick?.(item.name) : undefined}
+                        aria-pressed={interactive ? isActive : undefined}
+                        aria-label={interactive ? `Toggle highlight for ${item.name}` : undefined}
+                        onClick={interactive ? () => handleLegendActivate(item.name) : undefined}
                         onKeyDown={interactive ? (event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault()
-                            onLegendClick?.(item.name)
+                            handleLegendActivate(item.name)
                           }
                         } : undefined}
                       >
@@ -331,6 +433,30 @@ export function FastPCurves({
       </CardHeader>
       <CardContent>
         <div className="relative">
+          {highlightedVisible && (
+            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+              {onInspectHighlighted && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={onInspectHighlighted}
+                  aria-label={highlightContext === "list" ? "Open solution detail" : "Open author drawer"}
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => onHighlightChange?.(null)}
+                aria-label="Reset highlight"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
           {showPinHint && pinnedP == null && baselineAvailable && (
             <div className="absolute right-4 top-4 z-10 rounded-md bg-background/95 px-3 py-2 text-xs shadow">
               Click to pin p
@@ -342,6 +468,37 @@ export function FastPCurves({
           {!baselineAvailable && (
             <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 backdrop-blur-sm">
               <span className="text-sm text-muted-foreground">Baseline not available</span>
+            </div>
+          )}
+          {highlightedVisible && preview && previewStyle && (
+            <div
+              className="pointer-events-none absolute z-20"
+              style={previewStyle}
+            >
+              <div className="min-w-[220px] rounded-md border bg-background/95 px-3 py-2 text-xs shadow">
+                <div className="flex items-center justify-between gap-2 font-medium text-foreground">
+                  <span className="truncate">{highlightedVisible}</span>
+                  <span className="whitespace-nowrap text-muted-foreground">p = {preview.p.toFixed(2)}</span>
+                </div>
+                <div className="mt-1 space-y-0.5 text-muted-foreground">
+                  <div>
+                    <span className="font-medium text-foreground">{preview.percent.toFixed(1)}%</span>
+                    <span className="ml-1">win rate</span>
+                  </div>
+                  {correctnessInfo ? (
+                    <div>
+                      <span className="font-medium text-foreground">
+                        {correctnessInfo.percent.toFixed(1)}%
+                      </span>
+                      <span className="ml-1">correct ({correctnessInfo.summary.passed}/{correctnessInfo.summary.total})</span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] italic text-muted-foreground/80">
+                      Correctness unavailable
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

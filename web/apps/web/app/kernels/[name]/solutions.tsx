@@ -100,6 +100,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
   const [sfState, setSfState] = useState<SolutionFiltersState>(initialSF)
   const [visibleSolutions, setVisibleSolutions] = useState<Set<string>>(new Set())
   const [expandedSolution, setExpandedSolution] = useState<string | null>(null)
+  const [highlightedSolution, setHighlightedSolution] = useState<string | null>(null)
   const [pinnedP, setPinnedP] = useState<number | null>(DEFAULT_PIN)
   const initialSolutionsRef = useRef<string[] | null>(null)
   const initialExpandedRef = useRef<string | null>(null)
@@ -317,6 +318,23 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
   }, [filteredSolutions])
 
   useEffect(() => {
+    if (!highlightedSolution) return
+    if (!filteredSolutions.some((solution) => solution.name === highlightedSolution)) {
+      setHighlightedSolution(null)
+    }
+  }, [filteredSolutions, highlightedSolution])
+
+  useEffect(() => {
+    if (!highlightedSolution) return
+    setVisibleSolutions((current) => {
+      if (current.has(highlightedSolution)) return current
+      const next = new Set(current)
+      next.add(highlightedSolution)
+      return next
+    })
+  }, [highlightedSolution])
+
+  useEffect(() => {
     if (expandedSolution && expandedSolution !== baselineSolutionName && !filteredSolutions.some((s) => s.name === expandedSolution)) {
       setExpandedSolution(null)
     }
@@ -426,7 +444,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     [filteredCurves]
   )
 
-  const handleLegendClick = useCallback((name: string) => {
+  const focusSolution = useCallback((name: string) => {
     const exists = displaySolutions.some((solution) => solution.name === name)
     if (!exists) return
     setExpandedSolution(name)
@@ -442,6 +460,15 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
     }
   }, [displaySolutions])
 
+  const inspectHighlightedSolution = useCallback(() => {
+    if (!highlightedSolution) return
+    focusSolution(highlightedSolution)
+  }, [focusSolution, highlightedSolution])
+
+  const handleHoverP = useCallback((value: number | null) => {
+    void value
+  }, [])
+
   return (
     <section id="solutions" className="space-y-6">
       <h2 className="text-2xl font-semibold">Results</h2>
@@ -449,7 +476,7 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
       <FastPCurves
         curves={filteredCurves?.curves || {}}
         visible={visibleSolutions}
-        onHoverP={() => {}}
+        onHoverP={handleHoverP}
         onPinP={setPinnedP}
         pinnedP={pinnedP}
         baselineLabel={baselineDefault || fallbackBaseline || "Not specified"}
@@ -457,7 +484,11 @@ export function SolutionsSection({ definition, solutions, traces, precomputed }:
         baselineAvailable={baselineReady}
         colorFor={colorFor}
         scoreboard={[]}
-        onLegendClick={handleLegendClick}
+        highlighted={highlightedSolution}
+        onHighlightChange={setHighlightedSolution}
+        highlightContext="list"
+        onInspectHighlighted={inspectHighlightedSolution}
+        correctness={filteredCurves?.correctness || {}}
       />
 
       <SolutionsList

@@ -7,7 +7,7 @@ import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@flashinfer-be
 import { ChevronDown, ChevronRight, Crown, Eye, EyeOff, X } from "lucide-react"
 import { FastPCurves, type ScoreboardEntry } from "@/components/fast-p-chart"
 import { FastPLabel } from "@/components/fast-p-label"
-import type { AuthorCorrectnessResponse, AuthorCurvesResponse, CurvePoint } from "@/lib/analytics"
+import type { AuthorCorrectnessResponse, AuthorCurvesResponse, CurvePoint, CorrectnessSummary } from "@/lib/analytics"
 import type { Definition } from "@/lib/schemas"
 import { cn } from "@flashinfer-bench/utils"
 
@@ -79,6 +79,7 @@ export function LeaderboardClient({
   const [activeTab, setActiveTab] = useState<"fast" | "correctness">("fast")
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [highlightedAuthor, setHighlightedAuthor] = useState<string | null>(null)
 
   const excludedSet = useMemo(() => new Set(excludedAuthors), [excludedAuthors])
 
@@ -121,6 +122,23 @@ export function LeaderboardClient({
       return filtered
     })
   }, [fast.curves, initialScoreboard, excludedSet])
+
+  useEffect(() => {
+    if (!highlightedAuthor) return
+    setVisibleAuthors((prev) => {
+      if (prev.has(highlightedAuthor)) return prev
+      const next = new Set(prev)
+      next.add(highlightedAuthor)
+      return next
+    })
+  }, [highlightedAuthor])
+
+  useEffect(() => {
+    if (!highlightedAuthor) return
+    if (!fast.curves[highlightedAuthor]) {
+      setHighlightedAuthor(null)
+    }
+  }, [fast.curves, highlightedAuthor])
 
   const pinnedTarget = pinnedP ?? initialPinnedP
   const scoreboard = useMemo(
@@ -221,10 +239,11 @@ export function LeaderboardClient({
     setSelectedAuthor(null)
   }, [])
 
-  const handleLegendClick = useCallback((author: string) => {
+  const inspectHighlightedAuthor = useCallback(() => {
+    if (!highlightedAuthor) return
     setIsListExpanded(true)
-    openAuthorDetail(author)
-  }, [openAuthorDetail])
+    openAuthorDetail(highlightedAuthor)
+  }, [highlightedAuthor, openAuthorDetail])
 
   const pinnedLabel = pinnedTarget.toFixed(2)
 
@@ -247,12 +266,26 @@ export function LeaderboardClient({
 
   const maxPassRate = correctnessRanking.length > 0 ? correctnessRanking[0].passRate : 0
 
+  const correctnessByAuthor = useMemo(() => {
+    const map: Record<string, CorrectnessSummary> = {}
+    for (const entry of correctness.stats) {
+      map[entry.author] = {
+        total: entry.total,
+        passed: entry.passed,
+        incorrect: entry.incorrect,
+        runtime_error: entry.runtime_error,
+        other: entry.other,
+      }
+    }
+    return map
+  }, [correctness.stats])
+
   return (
     <section>
       <div className="container space-y-6 py-6 md:py-8">
         <div className="space-y-2">
           <h2 className="text-3xl font-semibold tracking-tight">Leaderboard</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground">
             Examine overall author performance across every kernel definition and workload.
           </p>
         </div>
@@ -269,8 +302,7 @@ export function LeaderboardClient({
 
           <TabsContent value="fast" className="space-y-6">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Pinned p: {pinnedLabel}</span>
-              <span>Pin a different p on the chart to see the ranking at that threshold.</span>
+              <span>Click on the chart to pin a different p and see the ranking at that threshold.</span>
             </div>
             <FastPCurves
               curves={fast.curves}
@@ -284,7 +316,11 @@ export function LeaderboardClient({
               colorFor={colorFor}
               scoreboard={scoreboard}
               countLabel="comparisons"
-              onLegendClick={handleLegendClick}
+              highlighted={highlightedAuthor}
+              onHighlightChange={setHighlightedAuthor}
+              highlightContext="drawer"
+              onInspectHighlighted={inspectHighlightedAuthor}
+              correctness={correctnessByAuthor}
             />
 
             <div className="rounded-lg border bg-card/50">
@@ -340,13 +376,16 @@ export function LeaderboardClient({
                       const percent = entry.percent.toFixed(1)
                       const comparisons = fast.comparisonCounts[entry.name] ?? 0
                       const isSelected = isDrawerOpen && selectedAuthor === entry.name
-                      const baseTextClass = isActive || isSelected ? "text-primary" : "text-muted-foreground"
+                      const isHighlighted = highlightedAuthor === entry.name
+                      const baseTextClass =
+                        isActive || isSelected || isHighlighted ? "text-primary" : "text-muted-foreground"
                       return (
                         <div
                           key={entry.name}
                           className={cn(
-                            "group flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-                            isActive || isSelected ? "bg-primary/5 text-primary" : "hover:bg-muted/60"
+                            "group flex w-full cursor-pointer items-center gap-2 rounded-md border border-transparent px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                            isActive || isSelected ? "bg-primary/5 text-primary" : "hover:bg-muted/60",
+                            isHighlighted ? "border-primary/60" : ""
                           )}
                           role="button"
                           tabIndex={0}
@@ -382,18 +421,18 @@ export function LeaderboardClient({
                           </div>
                           <button
                             type="button"
-                            aria-pressed={isActive}
-                            aria-label={isActive ? `Hide ${entry.name}` : `Show ${entry.name}`}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              toggleAuthor(entry.name)
-                            }}
                             className={cn(
                               "inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
                               isActive
                                 ? "border-primary/40 bg-primary/10 text-primary"
                                 : "border-transparent text-muted-foreground hover:bg-muted/70"
                             )}
+                            aria-pressed={isActive}
+                            aria-label={isActive ? `Hide ${entry.name}` : `Show ${entry.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              toggleAuthor(entry.name)
+                            }}
                           >
                             {isActive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                           </button>
