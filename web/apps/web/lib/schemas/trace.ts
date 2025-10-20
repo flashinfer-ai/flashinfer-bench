@@ -94,7 +94,7 @@ export const WorkloadSchema = z.object({
 export const EvaluationSchema = z.object({
   status: z.enum([
     'PASSED', 'INCORRECT_SHAPE', 'INCORRECT_NUMERICAL', 'INCORRECT_DTYPE',
-    'RUNTIME_ERROR', 'COMPILE_ERROR'
+    'RUNTIME_ERROR', 'COMPILE_ERROR', 'TIMEOUT'
   ]),
   log: z.string().default(''),
   correctness: z.object({
