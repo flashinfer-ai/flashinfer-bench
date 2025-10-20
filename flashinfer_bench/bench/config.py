@@ -24,7 +24,6 @@ class BenchmarkConfig:
     definitions: Optional[List[str]] = field(default=None)
     solutions: Optional[List[str]] = field(default=None)
     timeout_seconds: int = field(default=300)
-    devices: Optional[List[str]] = field(default=None)
 
     def __post_init__(self):
         if self.warmup_runs < 0:
@@ -63,9 +62,3 @@ class BenchmarkConfig:
             raise ValueError("definitions must be a list or None")
         if self.solutions is not None and not isinstance(self.solutions, list):
             raise ValueError("solutions must be a list or None")
-        if self.devices is not None:
-            if not isinstance(self.devices, list):
-                raise ValueError("devices must be a list or None")
-            for device in self.devices:
-                if not isinstance(device, str):
-                    raise ValueError("each device must be a string")

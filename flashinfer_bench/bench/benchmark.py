@@ -41,9 +41,9 @@ class Benchmark:
         self._config = config if config is not None else BenchmarkConfig()
 
         if self._config.use_isolated_runner:
-            self._runner = IsolatedRunner(logger, self._config.log_dir, self._config.devices)
+            self._runner = IsolatedRunner(logger, self._config.log_dir)
         else:
-            self._runner = PersistentRunner(logger, self._config.log_dir, self._config.devices)
+            self._runner = PersistentRunner(logger, self._config.log_dir)
 
         # Setup registry
         self._registry = get_builder_registry()
