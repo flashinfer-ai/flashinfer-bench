@@ -1,1 +1,76 @@
 # Quick Start
+
+This guide shows you how to use FlashInfer-Bench python module with the FlashInfer-Trace dataset.
+FlashInfer-Trace Dataset: https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
+
+## Benchmarking
+
+### Via CLI
+
+Run benchmarks on a local trace dataset:
+
+```bash
+flashinfer-bench run --local /path/to/flashinfer-trace
+```
+
+#### Custom Options
+
+```bash
+# Run with custom configuration
+flashinfer-bench run --local /path/to/flashinfer-trace \
+  --warmup-runs 10 \
+  --iterations 100 \
+  --num-trials 5 \
+  --rtol 1e-3 \
+  --atol 1e-3
+
+# Run specific definitions or solutions
+flashinfer-bench run --local /path/to/flashinfer-trace \
+  --definitions gemm_n5120_k2048 rmsnorm_h128 \
+  --solutions solution_name_1 solution_name_2...
+
+# Resume interrupted runs
+flashinfer-bench run --local /path/to/flashinfer-trace --resume
+```
+
+#### View Results
+
+```bash
+# View summary statistics
+flashinfer-bench report summary --local /path/to/flashinfer-trace
+
+# Find best solutions
+flashinfer-bench report best --local /path/to/flashinfer-trace
+
+# Visualize results as a table
+flashinfer-bench report visualize --local /path/to/flashinfer-trace
+```
+
+### Via Python API
+
+```python
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
+from flashinfer_bench.data import TraceSet
+
+# Load trace dataset
+trace_set = TraceSet.from_path("/path/to/flashinfer-trace")
+
+# Configure benchmark
+config = BenchmarkConfig(
+    warmup_runs=10,
+    iterations=100,
+    num_trials=5,
+    rtol=1e-3,
+    atol=1e-3,
+)
+
+# Run benchmark
+benchmark = Benchmark(trace_set, config)
+benchmark.run_all(save_results=True)
+
+# Get best solution for a definition, e.g. gemm_n5120_k2048
+best_trace = trace_set.get_best_trace("gemm_n5120_k2048")
+if best_trace:
+    print(f"Best solution: {best_trace.solution}")
+    print(f"Speedup: {best_trace.evaluation.performance.speedup_factor:.2f}×")
+```
