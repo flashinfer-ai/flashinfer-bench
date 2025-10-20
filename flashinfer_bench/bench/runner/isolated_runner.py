@@ -91,15 +91,49 @@ class SubprocessWorker:
         proc.start()
 
         evaluation: Optional[Evaluation] = None
+        start_time = time.time()
         try:
-            msg = parent_conn.recv()
-            if msg.get("cmd") != "READY":
-                raise RunnerFatalError(f"Worker failed to start, got: {msg}")
-            parent_conn.send({"ok": True})
+            if parent_conn.poll(timeout=30.0):  # 30 seconds for startup
+                msg = parent_conn.recv()
+                if msg.get("cmd") != "READY":
+                    raise RunnerFatalError(f"Worker failed to start, got: {msg}")
+                parent_conn.send({"ok": True})
+            else:
+                evaluation = make_eval(
+                    status=EvaluationStatus.TIMEOUT,
+                    device=self._device,
+                    log_path=log_path,
+                    extra_msg="Worker failed to start within 30 seconds",
+                )
+                return evaluation
 
             while True:
-                msg = parent_conn.recv()
-                cmd = msg.get("cmd")
+                # Check if we've exceeded total timeout
+                elapsed = time.time() - start_time
+                remaining_timeout = max(1.0, cfg.timeout_seconds - elapsed)
+
+                if elapsed >= cfg.timeout_seconds:
+                    evaluation = make_eval(
+                        status=EvaluationStatus.TIMEOUT,
+                        device=self._device,
+                        log_path=log_path,
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                    )
+                    break
+
+                # Wait for message with remaining timeout
+                if parent_conn.poll(timeout=remaining_timeout):
+                    msg = parent_conn.recv()
+                    cmd = msg.get("cmd")
+                else:
+                    # Timeout
+                    evaluation = make_eval(
+                        status=EvaluationStatus.TIMEOUT,
+                        device=self._device,
+                        log_path=log_path,
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                    )
+                    break
 
                 if cmd == "LOAN":
                     # Zero-effect copy via IPC handle
