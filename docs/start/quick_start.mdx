@@ -33,18 +33,6 @@ flashinfer-bench run --local /path/to/flashinfer-trace \
 flashinfer-bench run --local /path/to/flashinfer-trace --resume
 ```
 
-#### View Results
-
-```bash
-# View summary statistics
-flashinfer-bench report summary --local /path/to/flashinfer-trace
-
-# Find best solutions
-flashinfer-bench report best --local /path/to/flashinfer-trace
-
-# Visualize results as a table
-flashinfer-bench report visualize --local /path/to/flashinfer-trace
-```
 
 ### Via Python API
 
@@ -74,3 +62,38 @@ if best_trace:
     print(f"Best solution: {best_trace.solution}")
     print(f"Speedup: {best_trace.evaluation.performance.speedup_factor:.2f}×")
 ```
+
+How to use FlashInfer-Bench to automatically trace and optimize FlashInfer operations with custom kernels.
+
+## Tracing and Apply Overview
+
+FlashInfer-Bench provides two key capabilities:
+1. **Tracing**: Automatically capture workload from your FlashInfer calls
+2. **Apply**: Automatically substitute optimized custom kernels for FlashInfer operations
+
+With adapters already written for FlashInfer, you can enable these features with minimal code changes.
+
+## Basic Usage with Apply
+
+The simplest way to use FlashInfer-Bench is through environment variables. Once you've installed FlashInfer-Bench, you can enable tracing and apply by:
+
+1. **Import `flashinfer_bench`** before importing FlashInfer
+2. **Set environment variables** to control behavior
+
+### Example: Drop-in Optimization
+
+```python
+import flashinfer_bench  # Import to install adapters
+from flashinfer.norm import fused_add_rmsnorm
+
+# Your FlashInfer code runs as normal
+# But optimized kernels are automatically applied when available
+```
+
+### Environment Variables
+
+Control FlashInfer-Bench behavior with these environment variables:
+
+- **`FIB_ENABLE_TRACING=1`**: Enable workload tracing to collect performance data
+- **`FIB_ENABLE_APPLY=1`**: Enable automatic kernel substitution  
+- **`FIB_DATASET_PATH=/path/to/dataset`**: Specify where trace data and custom kernels are stored (default: `~/.cache/flashinfer_bench/dataset`)
