@@ -190,7 +190,7 @@ def run(args: argparse.Namespace):
             use_isolated_runner=args.use_isolated_runner,
             definitions=args.definitions,
             solutions=args.solutions,
-            timeout_seconds=args.timeout
+            timeout_seconds=args.timeout,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark for: {path}")
