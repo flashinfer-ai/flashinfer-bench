@@ -38,6 +38,10 @@ MANIFEST
 !web/**/lib/
 !web/**/lib/**
 
+# Sphinx
+.sphinx-deps
+web/**/public
+
 .claude
 .vscode
 
