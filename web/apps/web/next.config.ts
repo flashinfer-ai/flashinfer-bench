@@ -56,10 +56,6 @@ const nextConfig: NextConfig = {
         ],
         destination: `${DOCS_ORIGIN}/_next/image/:path*`,
       },
-      {
-        source: '/socket.io',
-        destination: `${DOCS_ORIGIN}/socket.io`,
-      },
     ]
   },
   async headers() {
