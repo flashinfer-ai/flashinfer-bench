@@ -138,9 +138,9 @@ function buildSphinxDocs() {
     cwd: SPHINX_SRC,
     env: {
       ...process.env,
-      LC_ALL: "C.UTF-8",
-      LANG: "C.UTF-8",
-      LC_CTYPE: "C.UTF-8",
+      LC_ALL: "C",
+      LANG: "C",
+      LC_CTYPE: "C",
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
       PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter),
