@@ -16,11 +16,11 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/docs',
-        destination: `${DOCS_ORIGIN}`,
+        destination: `${DOCS_ORIGIN}/docs`,
       },
       {
         source: '/docs/:path*',
-        destination: `${DOCS_ORIGIN}/:path*`,
+        destination: `${DOCS_ORIGIN}/docs/:path*`,
       },
       // Mintlify assets currently load from the `/mintlify-assets` and `/_mintlify` prefixes.
       // Proxy them while the docs microfrontend is disabled. Remove when reverting.
