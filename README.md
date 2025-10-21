@@ -35,7 +35,7 @@ This [guide](https://bench.flashinfer.ai/docs/start/quick_start) shows you how t
 
 ## FlashInfer Trace Dataset
 
-We provide an official dataset called **FlashInfer-Trace** with kernels and workloads in real-world AI system deployment environments. FlashInfer-Bench can use this dataset to measure and compare the performance of kernels. It follows the [FlashInfer Trace Schema](https://bench.flashinfer.ai/docs/flashinfer_trace/).
+We provide an official dataset called **FlashInfer-Trace** with kernels and workloads in real-world AI system deployment environments. FlashInfer-Bench can use this dataset to measure and compare the performance of kernels. It follows the [FlashInfer Trace Schema](https://bench.flashinfer.ai/docs/flashinfer-trace).
 
 The official dataset is on HuggingFace: https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
 
