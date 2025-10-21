@@ -15,8 +15,8 @@ import tomli
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-root = Path(__file__).parents[1].resolve()
-sys.path.insert(0, str(root))
+repo_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(repo_root))
 os.environ["BUILD_DOC"] = "1"
 
 project = "FlashInfer-Bench"
@@ -35,11 +35,11 @@ def _compute_version() -> str:
         return v
     if scm_get_version is not None:
         try:
-            return scm_get_version(root=str(root), fallback_version="0.0.0")
+            return scm_get_version(root=str(repo_root), fallback_version="0.0.0")
         except Exception:
             pass
     try:
-        with open("../../pyproject.toml", "rb") as f:
+        with open(repo_root / "pyproject.toml", "rb") as f:
             data = tomli.load(f)
         v = data.get("project", {}).get("version")
         if v:
