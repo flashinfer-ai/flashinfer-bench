@@ -1,6 +1,4 @@
-import math
 
-import pytest
 import torch
 
 from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
@@ -40,7 +38,6 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
 
     # small shapes
     B = 2
-    M = 3
     H = 8
 
     device = torch.device("cpu")
