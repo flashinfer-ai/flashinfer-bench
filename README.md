@@ -26,7 +26,7 @@ pip install flashinfer-bench
 Import FlashInfer-Bench:
 
 ```python
-import flashinfer_bench
+import flashinfer_bench as fib
 ```
 
 ## Get Started
@@ -52,5 +52,7 @@ Our collaborators include:
 [<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/sglang.png" height=50/>](https://github.com/sgl-project/sglang)
 &emsp;
 [<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/vllm.png" height=50/>](https://github.com/vllm-project/vllm)
+&emsp;
+[<img src="https://raw.githubusercontent.com/mlc-ai/XGrammar-web-assets/refs/heads/main/repo/bosch.svg" height=50/>](https://www.bosch.com/)
 
 </div>
