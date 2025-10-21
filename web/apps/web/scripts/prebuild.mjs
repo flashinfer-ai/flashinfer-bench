@@ -127,6 +127,10 @@ function buildSphinxDocs() {
     "--target", ".sphinx-deps",
   ], { cwd: SPHINX_SRC })
 
+  const vendored = path.join(SPHINX_DEPS, "flashinfer_bench")
+  rmSync(vendored, { recursive: true, force: true })
+  cpSync(path.join(repoRoot, "flashinfer_bench"), vendored, { recursive: true })
+
   // 2) Build dirhtml
   rmSync(SPHINX_BUILD, { recursive: true, force: true })
   runCmd("python3", [
@@ -140,7 +144,7 @@ function buildSphinxDocs() {
       ...process.env,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
-      PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH, repoRoot].filter(Boolean).join(path.delimiter),
+      PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter),
       BUILD_DOC: "1",
       FLASHINFER_BUILDING_DOCS: "1",
     },
