@@ -196,133 +196,109 @@ After benchmarking is done, the results can be used to rank solutions, visualize
    * Use runtime substitution to dispatch to the **best** ranked Solution for the current shapes.
 
 
-## End-to-end “apply” (ties Trace back to serving)
+## End-to-end "apply"
 
-**Decorator form:**
-
-```python
-import torch, torch.nn.functional as F
-import flashinfer
-
-@flashinfer.apply(lambda A, B: f"gemm_n_{B.shape[0]}_k_{B.shape[1]}")
-def gemm(A, B):
-    return F.linear(A, B)  # fallback/reference or a simple baseline
-```
-
-**Turn on runtime substitution:**
+With `apply`, we can dynamically replace the kernels in the FlashInfer API with the best-performing ones from our traces. With adapters already written for FlashInfer, you can enable integration with minimal code changes.
 
 ```bash
 export FIB_ENABLE_APPLY=1
+export FIB_DATASET_PATH=/path/to/flashinfer-trace
 python serve_or_benchmark.py
 ```
 
-At call time, `apply` looks up the **Definition** (by name or via the lambda), matches the current **workload** (axes +, when required, data properties), and dispatches to the **best** `Solution` according to your recorded **Traces** (with correctness constraints and numeric tolerances enforced).
+At call time, `apply` looks up the Definition, matches the current workload (axes and input data properties), and dispatches to the best Solution according to our Traces (with correctness constraints and numeric tolerances enforced).
 
-### Advanced Usage: Supporting kernels that don’t align with the Definition
+### Supporting kernels that don't align with the Definition with adapters
 
-Sometimes your production call site can’t be decorated directly—e.g., wrappers that keep internal state across `plan()`/`run()` like `BatchPrefillWithPagedKVCacheWrapper`. In these cases the function you call at runtime doesn’t match the kernel definition’s flat signature, so the decorator can’t attach cleanly. Use the imperative form instead.
+Sometimes your production call site can't be decorated directly—e.g., wrappers that keep internal state across `plan()`/`run()` like `BatchPrefillWithPagedKVCacheWrapper`. FlashInfer-Bench provides built-in adapters for common FlashInfer kernels, and you can also use the imperative `apply()` API for custom integration patterns.
 
-#### Imperative `apply(...)` API
+#### Built-in FlashInfer Integration (Recommended)
 
-Use the function form of `apply` anywhere you call the kernel. It will (1) in **apply** mode: look up the best Solution for the current workload and call it; (2) in **tracing** mode: record the workload, then run the fallback; (3) otherwise: just call the fallback.
+FlashInfer-Bench automatically patches common FlashInfer kernels when you enable apply. No manual decoration needed:
+
+**How it works:** When you call `enable_apply()`, FlashInfer-Bench automatically installs lightweight adapters that:
+1. Intercept FlashInfer wrapper methods (`plan` and `run`)
+2. Extract runtime parameters and match them to definitions
+3. Dispatch to the best-performing solution from your traces
+4. Fall back to the original FlashInfer implementation if no suitable solution exists
+
+**Supported kernels:**
+- `flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper` (page_size=1)
+- `flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper` (causal=True, page_size=1)
+- `flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper` (causal=True)
+- `flashinfer.norm.fused_add_rmsnorm`
+
+See `flashinfer_bench/integration/flashinfer/adapters/` for the complete list and implementation details.
+
+#### Imperative `apply()` API (Custom Integration)
+
+For custom kernels or integration patterns not covered by the built-in adapters, use the function form of `apply`:
 
 ```python
-import flashinfer
+from flashinfer_bench import apply
 
-result = flashinfer.apply(
-    name: Union[str, Callable[..., str]],
-    fallback_function: Callable[..., Any],
-    *args,       # All arguments must follow the **kernel definition’s interface
-    **kwargs,
+result = apply(
+    def_name_or_resolver: Union[str, Callable[..., str]],
+    runtime_kwargs: Dict[str, Any],              # All arguments must follow the **kernel definition's interface
+    fallback: Optional[Callable[..., Any]] = None,
 )
 ```
 
-#### Example: stateful paged-attention wrapper → imperative `apply`
+**Parameters:**
+- `def_name_or_resolver`: The kernel definition name (e.g., `"gemm_bf16"`) or a resolver function that maps runtime arguments to a definition name.
+- `runtime_kwargs`: Dictionary of keyword arguments to pass to the selected kernel. Must match the kernel definition's interface.
+- `fallback`: Optional fallback function to invoke when no matching kernel is found in the Trace database.
 
-In this example, the FlashInfer attention wrapper carries state from `plan()` into `run()`, while the FlashInfer-Bench definition exposes a single `attention(init_params, plan_params, run_params)` entry point. Bridge them with a small monkey-patch that reconstructs the original flow as the fallback:
+#### Example: Creating custom adapters (advanced)
 
+If you want to create reusable adapters similar to the built-in FlashInfer integrations, study the real implementations:
+- `flashinfer_bench/integration/flashinfer/adapters/gqa_paged_decode.py`
+- `flashinfer_bench/integration/flashinfer/adapters/rmsnorm.py`
+
+Key pattern:
+1. Use `ContextStore` to preserve state across `plan()`/`run()` calls
+2. Extract parameters in the `plan` wrapper and store them in context
+3. In the `run` wrapper, retrieve stored params and call `apply()` with `runtime_kwargs`
+4. Provide a fallback lambda that calls the original implementation
+5. Register your adapter with the `PatchManager`
+
+Example structure from the RMSNorm adapter:
 ```python
-# Original wrapper shape (state lives across plan/run)
-class AttentionWrapper:
-    def __init__(self, init_params): ...
-    def plan(self, plan_params):
-        self.state = compute_state(plan_params)
-    def run(self, run_params):
-        return call_flashinfer_kernel(run_params, self.state)
+from flashinfer_bench.apply import apply
+from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.utils import ArgBinder
 
-# FlashInfer-Bench-side definition interface we want to target:
-def attention(init_params, plan_params, run_params):
-    return attention_kernel(init_params, plan_params, run_params)
-# (covers Q, K, V, page_size, page_indptr, etc.)
+def _def_name_resolver(weight):
+    return f"fused_add_rmsnorm_h{weight.shape[0]}"
+
+class RMSNormAdapter:
+    def targets(self):
+        return [
+            PatchSpec(
+                path="flashinfer.norm.fused_add_rmsnorm",
+                kind="function",
+                name="fused_add_rmsnorm",
+                ctx_key="rmsnorm",
+            )
+        ]
+    
+    def make_wrapper(self, spec, orig):
+        binder = ArgBinder.from_callable(orig)
+        
+        def wrapper(*args, **kwargs):
+            bound = binder.bind(args, kwargs)
+            
+            # Compatibility checks
+            if bound["input"].dtype != torch.bfloat16:
+                return orig(*args, **kwargs)
+            
+            rk = {
+                "hidden_states": bound["input"],
+                "residual": bound["residual"],
+                "weight": bound["weight"],
+            }
+            
+            return apply(_def_name_resolver, runtime_kwargs=rk, fallback=lambda **_: orig(*args, **kwargs))
+        
+        return wrapper
 ```
-
-```python
-# Monkey patch to route run() through flashinfer.apply
-old_init, old_plan, old_run = (
-    AttentionWrapper.__init__,
-    AttentionWrapper.plan,
-    AttentionWrapper.run,
-)
-
-def new_init(self: AttentionWrapper, init_params):
-    def fallback(init_params, plan_params, run_params):
-        w = AttentionWrapper.__new__(AttentionWrapper)
-        old_init(w, init_params)
-        old_plan(w, plan_params)
-        return old_run(w, run_params)
-    self.init_params = init_params
-    self._fallback = fallback
-
-def new_plan(self: AttentionWrapper, plan_params):
-    self.plan_params = plan_params
-
-def new_run(self: AttentionWrapper, run_params):
-    return flashinfer.apply(
-        "attention",              # or a lambda resolver if the def varies by shape
-        self._fallback,
-        self.init_params,
-        self.plan_params,
-        run_params,
-    )
-
-AttentionWrapper.__init__ = new_init
-AttentionWrapper.plan = new_plan
-AttentionWrapper.run = new_run
-```
-
-This preserves wrapper state while letting **apply** choose the best solution (and still trace workloads when enabled).
-
-#### Alternative: avoid monkey-patching (shim inside the class)
-
-If you can edit the wrapper, define a tiny adapter that flattens `(init, plan, run)` into the definition’s signature and call `flashinfer.apply(...)` directly inside `run()`. Same behavior, fewer moving parts.
-
-#### Scope & tips
-
-* Make sure your adapter/fallback **matches the Definition I/O** exactly.
-* Group `init_params`, `plan_params`, and `run_params` so they cover the definition’s required tensors (e.g., `Q, K, V, page_size, page_indptr`).
-* When definitions vary by shape, pass a **`name` lambda** (e.g., derive hidden size from weights) to resolve the correct Definition at call time.
-
-## Related customization you can enable
-
-* **Apply/trace only selected kernels** via configs (context managers or code APIs), if you don’t want blanket substitution/tracing:
-
-```python
-from flashinfer_bench import enable_apply, enable_tracing, ApplyConfig, TracingConfig
-
-apply_cfgs = {
-    "gemm_n_4096_k_14336": ApplyConfig(max_atol=1e-5, max_rtol=1e-5),
-    "gqa_paged_decode_h32_kv4_d128_ps1": ApplyConfig(),  # defaults OK
-}
-trace_cfgs = {
-    "gqa_paged_decode_h32_kv4_d128_ps1": TracingConfig(
-        tensor_dump_policy="dump_non_float",
-        filter_policy="shape_only",
-    ),
-}
-
-with enable_apply(apply_configs=apply_cfgs):
-    with enable_tracing(tracing_configs=trace_cfgs):
-        run_engine()
-```
-
-  This limits substitution/tracing to kernels you care about and mirrors the env-var flow.
