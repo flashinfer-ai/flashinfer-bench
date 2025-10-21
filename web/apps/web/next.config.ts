@@ -16,8 +16,9 @@ const nextConfig: NextConfig = {
     return [
 
       // Sphinx documentation
-      { source: '/docs/api/python',        destination: '/pyapi/index.html' },
-      { source: '/docs/api/python/:path*', destination: '/pyapi/:path*' },
+      { source: '/docs/api',                destination: '/pyapi/index.html' },
+      { source: '/docs/api/python',         destination: '/pyapi/index.html' },
+      { source: '/docs/api/:path*',         destination: '/pyapi/:path*' },
 
       // Mintlify documentation
       { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },
