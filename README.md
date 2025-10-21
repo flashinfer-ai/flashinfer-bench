@@ -27,6 +27,8 @@ Import FlashInfer-Bench:
 
 ```python
 import flashinfer_bench as fib
+
+print(fib.__version__)
 ```
 
 ## Get Started
