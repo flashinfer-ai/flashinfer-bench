@@ -1,12 +1,10 @@
 import { promises as fs } from "fs"
 import path from "path"
-import { Definition, Solution, Trace, CanonicalWorkload, Model } from "./schemas"
+import modelsData from "@/data/models"
+import type { Definition, Solution, Trace, Model } from "./schemas"
 
 // Get the flashinfer-trace path from environment or use default
 const FLASHINFER_TRACE_PATH = process.env.FLASHINFER_TRACE_PATH || "/tmp/flashinfer-trace"
-const MODELS_DATA_PATH = process.env.MODELS_DATA_PATH || "./data/models"
-const CANONICAL_WORKLOADS_PATH = process.env.CANONICAL_WORKLOADS_PATH || "./data/canonical-workloads"
-
 // Helper to resolve paths relative to the project root
 function getDataPath(subPath: string): string {
   const basePath = path.resolve(FLASHINFER_TRACE_PATH)
@@ -167,47 +165,9 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
 
 // Load models from local data (since these are UI-specific)
 export async function getAllModels(): Promise<Model[]> {
-  const modelsDir = path.join(process.cwd(), MODELS_DATA_PATH)
-
-  try {
-    const files = await fs.readdir(modelsDir)
-    const models = await Promise.all(
-      files
-        .filter(file => file.endsWith(".json"))
-        .map(async file => {
-          const content = await fs.readFile(path.join(modelsDir, file), "utf-8")
-          return JSON.parse(content) as Model
-        })
-    )
-
-    return models
-  } catch (error) {
-    console.error("Failed to load models:", error)
-    return []
-  }
+  return modelsData
 }
 
 export async function getModel(id: string): Promise<Model | null> {
-  try {
-    const content = await fs.readFile(
-      path.join(process.cwd(), MODELS_DATA_PATH, `${id}.json`),
-      "utf-8"
-    )
-    return JSON.parse(content) as Model
-  } catch {
-    return null
-  }
-}
-
-// Load canonical workloads from local data
-export async function getCanonicalWorkloads(type: string): Promise<CanonicalWorkload[]> {
-  try {
-    const content = await fs.readFile(
-      path.join(process.cwd(), CANONICAL_WORKLOADS_PATH, `${type}.json`),
-      "utf-8"
-    )
-    return JSON.parse(content) as CanonicalWorkload[]
-  } catch {
-    return []
-  }
+  return modelsData.find(model => model.id === id) ?? null
 }

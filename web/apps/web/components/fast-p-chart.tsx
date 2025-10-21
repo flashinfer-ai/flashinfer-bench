@@ -345,7 +345,7 @@ export function FastPCurves({
                   Disclaimer
                 </p>
                 <p className="mb-2 text-sm text-muted-foreground">
-                  The <FastPLabel /> metric is subject to various caveats and limitations. We recognize that baseline choice, implementation details, and environment variability may yield results that differ from real-world behavior. We recommend interpreting this result with caution, and we are manually reviewing all data points with positive speedups and auditing the benchmarking process to ensure accurate reporting.
+                 We recommend interpreting this result with caution. We are still manually reviewing all data points with positive speedups and auditing the benchmarking process to ensure accurate reporting.
                 </p>
                 {/* <a
                   href="/docs/fast_p"

@@ -3,7 +3,7 @@ import { LeaderboardSection } from "@/app/leaderboard/section"
 import { ModelsSection } from "@/app/models"
 import { getAllDefinitions, getAllModels, getSolutionsForDefinition, getTracesForDefinition } from "@/lib/data-loader"
 import type { BaselineConfig } from "@/lib/analytics"
-import baselinesData from "@/data/baselines.json"
+import baselinesData from "@/data/baselines"
 import { KernelsSection } from "./kernels"
 
 export default async function HomePage() {

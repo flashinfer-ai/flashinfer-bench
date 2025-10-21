@@ -12,7 +12,7 @@ import {
   type SolutionTraceBuckets,
 } from "@/lib/analytics"
 import type { CurvesPayload, SolutionFiltersState, CorrectnessStats } from "./solutions-types"
-import baselinesData from "@/data/baselines.json"
+import baselinesData from "@/data/baselines"
 import { FastPLabel } from "@/components/fast-p-label"
 
 const DEFAULT_MAX_VISIBLE = 10

@@ -1,9 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
-    "FLASHINFER_TRACE_PATH",
-    "MODELS_DATA_PATH",
-    "CANONICAL_WORKLOADS_PATH"
+    "FLASHINFER_TRACE_PATH"
   ],
   "globalDependencies": ["**/.env.*local"],
   "tasks": {
