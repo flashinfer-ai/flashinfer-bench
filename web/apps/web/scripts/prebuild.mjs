@@ -138,7 +138,11 @@ function buildSphinxDocs() {
     cwd: SPHINX_SRC,
     env: {
       ...process.env,
+      LC_ALL: "en_US.UTF-8",
+      LANG: "en_US.UTF-8",
+      LC_CTYPE: "en_US.UTF-8",
       PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8",
       PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter),
       BUILD_DOC: "1",
       FLASHINFER_BUILDING_DOCS: "1",
