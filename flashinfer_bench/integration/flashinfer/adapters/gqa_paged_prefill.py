@@ -110,16 +110,6 @@ class GQAPagedPrefillAdapter:
 
                 sm_scale = ctx.get("sm_scale")
 
-                def_name = _def_name_resolver(
-                    q,
-                    k_cache,
-                    v_cache,
-                    ctx["qo_indptr"],
-                    ctx["kv_indptr"],
-                    ctx["kv_indices"],
-                    sm_scale,
-                )
-
                 rk: Dict[str, Any] = {
                     "q": q,
                     "k_cache": k_cache,

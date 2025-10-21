@@ -106,11 +106,6 @@ class RaggedPrefillAdapter:
 
                 sm_scale = ctx.get("sm_scale")
 
-                # Fallback if no definition found
-                def_name = _def_name_resolver(
-                    q, k_nhd, v_nhd, ctx["qo_indptr"], ctx["kv_indptr"], sm_scale
-                )
-
                 rk: Dict[str, Any] = {
                     "q": q,
                     "k": k_nhd,
