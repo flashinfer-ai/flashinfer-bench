@@ -281,24 +281,24 @@ class RMSNormAdapter:
                 ctx_key="rmsnorm",
             )
         ]
-    
+
     def make_wrapper(self, spec, orig):
         binder = ArgBinder.from_callable(orig)
-        
+
         def wrapper(*args, **kwargs):
             bound = binder.bind(args, kwargs)
-            
+
             # Compatibility checks
             if bound["input"].dtype != torch.bfloat16:
                 return orig(*args, **kwargs)
-            
+
             rk = {
                 "hidden_states": bound["input"],
                 "residual": bound["residual"],
                 "weight": bound["weight"],
             }
-            
+
             return apply(_def_name_resolver, runtime_kwargs=rk, fallback=lambda **_: orig(*args, **kwargs))
-        
+
         return wrapper
 ```
