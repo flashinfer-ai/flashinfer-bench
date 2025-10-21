@@ -485,7 +485,7 @@ export function LeaderboardClient({
                 <div className="space-y-4">
                   {correctnessRanking.map((entry, index) => {
                     const percent = (entry.passRate * 100).toFixed(1)
-                    const width = maxPassRate > 0 ? `${(entry.passRate / maxPassRate) * 100}%` : "0%"
+                    const width = maxPassRate > 0 ? `${entry.passRate * 100}%` : "0%"
                     return (
                       <div key={entry.author} className="space-y-2">
                         <div className="flex items-center justify-between text-sm font-medium">
