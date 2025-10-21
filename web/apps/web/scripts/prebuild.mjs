@@ -7,7 +7,7 @@ import process from "node:process"
 
 const DEFAULT_REPO = "https://github.com/flashinfer-ai/flashinfer-trace"
 const repo = process.env.FLASHINFER_TRACE_REPO ?? DEFAULT_REPO
-const ref = process.env.FLASHINFER_TRACE_REF ?? "origin/main"
+const ref = process.env.FLASHINFER_TRACE_REF ?? "origin/upd-baseline"
 const token = process.env.GH_TOKEN
 
 const datasetRootEnv = process.env.FLASHINFER_TRACE_PATH ?? "/tmp/flashinfer-trace"
