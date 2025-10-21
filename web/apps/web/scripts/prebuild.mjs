@@ -140,7 +140,7 @@ function buildSphinxDocs() {
       ...process.env,
       PYTHONUTF8: "1",
       PYTHONIOENCODING: "utf-8",
-      PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter),
+      PYTHONPATH: [SPHINX_DEPS, process.env.PYTHONPATH, repoRoot].filter(Boolean).join(path.delimiter),
       BUILD_DOC: "1",
       FLASHINFER_BUILDING_DOCS: "1",
     },
