@@ -1,9 +1,7 @@
 import type { NextConfig } from 'next'
-// import { withMicrofrontends } from '@vercel/microfrontends/next/config'
 
 const DOCS_ORIGIN =
   process.env.DOCS_ORIGIN ??
-  // Revert to 'http://localhost:3030' when re-enabling the docs microfrontend.
   'https://flashinfer-bench.mintlify.app'
 
 const nextConfig: NextConfig = {
@@ -71,5 +69,4 @@ const nextConfig: NextConfig = {
   },
 }
 
-// export default withMicrofrontends(nextConfig)
 export default nextConfig

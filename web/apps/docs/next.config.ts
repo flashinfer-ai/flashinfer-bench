@@ -1,5 +1,4 @@
 import type { NextConfig } from 'next'
-import { withMicrofrontends } from '@vercel/microfrontends/next/config'
 import nextra from 'nextra'
 
 const withNextra = nextra({})
@@ -14,4 +13,4 @@ const config: NextConfig = {
   ],
 }
 
-export default withMicrofrontends(withNextra(config))
+export default withNextra(config)
