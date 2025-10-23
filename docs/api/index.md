@@ -5,5 +5,6 @@
 :caption: API Reference
 
 rst/apply
+rst/tracing
 rst/schema
 ```
