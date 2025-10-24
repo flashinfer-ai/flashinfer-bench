@@ -1,4 +1,3 @@
-
 import torch
 
 from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
