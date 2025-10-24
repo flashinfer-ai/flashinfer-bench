@@ -33,7 +33,7 @@ print(fib.__version__)
 
 ## Get Started
 
-This [guide](https://bench.flashinfer.ai/docs/start/quick_start) shows you how to use FlashInfer-Bench python module with the FlashInfer-Trace dataset.
+This [guide](https://bench.flashinfer.ai/docs/start/quickstart) shows you how to use FlashInfer-Bench python module with the FlashInfer-Trace dataset.
 
 ## FlashInfer Trace Dataset
 
