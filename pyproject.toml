@@ -7,7 +7,7 @@ name = "flashinfer-bench"
 dynamic = ["version"]
 description = "FlashInfer-Bench - AI for AI Infrastructure for Accelerating AI Deployment"
 readme = "README.md"
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 license = { text = "Apache License 2.0" }
 authors = [{ name = "FlashInfer team" }]
 keywords = ["deep-learning", "inference", "benchmark", "flashinfer", "gpu"]
@@ -17,7 +17,6 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -57,7 +56,7 @@ include = ["flashinfer_bench*"]
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py310", "py311", "py312"]
 skip-magic-trailing-comma = true
 
 [tool.isort]
@@ -67,7 +66,7 @@ line_length = 100
 [tool.ruff]
 include = ["flashinfer_bench/**/*.py", "tests/**/*.py"]
 line-length = 100
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).
@@ -81,7 +80,7 @@ select = ["C", "E", "F", "W", "TID252"]
 "flashinfer_bench/compile/builders/triton_builder.py" = ["F401"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 ignore_missing_imports = true
 strict = true
 
