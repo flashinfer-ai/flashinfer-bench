@@ -241,13 +241,6 @@ export function LeaderboardClient({
     })
   }, [])
 
-  const setTopN = useCallback(
-    (n: number) => {
-      setVisibleAuthors(new Set(scoreboard.slice(0, n).map((entry) => entry.name)))
-    },
-    [scoreboard]
-  )
-
   const showAll = useCallback(() => {
     const authors = Object.keys(fast.curves).filter((name) => !excludedSet.has(name))
     setVisibleAuthors(new Set(authors))
@@ -388,8 +381,11 @@ export function LeaderboardClient({
                 <div className="border-t px-4 pb-2">
                   <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground">
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setTopN(DEFAULT_VISIBLE)}>
-                        Show top {DEFAULT_VISIBLE}
+                      <Button size="sm" variant="outline" onClick={() => setPinnedP(1.0)}>
+                        Set p=1.0
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setPinnedP(0.7)}>
+                        Set p=0.7
                       </Button>
                       <Button size="sm" variant="outline" onClick={showAll}>
                         Show all
@@ -485,7 +481,7 @@ export function LeaderboardClient({
                 <div className="space-y-4">
                   {correctnessRanking.map((entry, index) => {
                     const percent = (entry.passRate * 100).toFixed(1)
-                    const width = maxPassRate > 0 ? `${(entry.passRate / maxPassRate) * 100}%` : "0%"
+                    const width = maxPassRate > 0 ? `${entry.passRate * 100}%` : "0%"
                     return (
                       <div key={entry.author} className="space-y-2">
                         <div className="flex items-center justify-between text-sm font-medium">

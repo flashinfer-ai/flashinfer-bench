@@ -5,12 +5,12 @@ import { spawnSync } from "node:child_process"
 import path from "node:path"
 import process from "node:process"
 
-const DEFAULT_REPO = "https://github.com/flashinfer-ai/flashinfer-trace"
-const repo = process.env.FLASHINFER_TRACE_REPO ?? DEFAULT_REPO
-const ref = process.env.FLASHINFER_TRACE_REF ?? "origin/main"
+const DEFAULT_REPO = "https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace"
+const repo = process.env.FIB_DATASET_REPO ?? DEFAULT_REPO
+const ref = process.env.FIB_DATASET_REF ?? "origin/main"
 const token = process.env.GH_TOKEN
 
-const datasetRootEnv = process.env.FLASHINFER_TRACE_PATH ?? "/tmp/flashinfer-trace"
+const datasetRootEnv = process.env.FIB_DATASET_PATH ?? "/tmp/flashinfer-trace"
 const datasetRoot = path.isAbsolute(datasetRootEnv)
   ? datasetRootEnv
   : path.resolve(process.cwd(), datasetRootEnv)
@@ -40,15 +40,11 @@ function ensureDataset() {
   mkdirSync(path.dirname(datasetRoot), { recursive: true })
 
   if (!existsSync(datasetRoot)) {
-    console.log(`[prebuild] Cloning dataset from ${repo}`)
+    console.log(`[prebuild] ${datasetRoot} does not exist; cloning from ${repo}:${ref}`)
     run("git", ["clone", "--depth=1", authRepo, datasetRoot])
+    run("git", ["-C", datasetRoot, "reset", "--hard", ref])
     return
   }
-
-  console.log("[prebuild] Refreshing existing dataset checkout")
-  run("git", ["-C", datasetRoot, "fetch", "--all", "--prune"])
-  run("git", ["-C", datasetRoot, "reset", "--hard", ref])
-  run("git", ["-C", datasetRoot, "clean", "-fd"])
 }
 
 try {
