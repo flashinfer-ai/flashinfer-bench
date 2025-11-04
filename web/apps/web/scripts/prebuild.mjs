@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process"
 import path from "node:path"
 import process from "node:process"
 
-const DEFAULT_REPO = "https://github.com/flashinfer-ai/flashinfer-trace"
+const DEFAULT_REPO = "https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace"
 const repo = process.env.FIB_DATASET_REPO ?? DEFAULT_REPO
 const ref = process.env.FIB_DATASET_REF ?? "origin/main"
 const token = process.env.GH_TOKEN
