@@ -12,26 +12,15 @@ const nextConfig: NextConfig = {
   ],
   async rewrites() {
     return [
-      {
-        source: '/docs',
-        destination: `${DOCS_ORIGIN}/docs`,
-      },
-      {
-        source: '/docs/:path*',
-        destination: `${DOCS_ORIGIN}/docs/:path*`,
-      },
-      // Mintlify assets currently load from the `/mintlify-assets` and `/_mintlify` prefixes.
-      // Proxy them while the docs microfrontend is disabled. Remove when reverting.
-      {
-        source: '/mintlify-assets/:path*',
-        destination: `${DOCS_ORIGIN}/mintlify-assets/:path*`,
-      },
-      {
-        source: '/_mintlify/:path*',
-        destination: `${DOCS_ORIGIN}/_mintlify/:path*`,
-      },
-      // Mintlify serves assets from the root `/_next` paths. We proxy them when requested from the docs
-      // section to avoid clashing with the main app's assets.
+      // Sphinx documentation
+      { source: '/docs/api/python',         destination: '/docs/api/python/index.html' },
+      // Mintlify documentation
+      { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },
+      { source: '/docs/:path*', destination: `${DOCS_ORIGIN}/docs/:path*` },
+      // Mintlify assets
+      { source: '/mintlify-assets/:path*', destination: `${DOCS_ORIGIN}/mintlify-assets/:path*` },
+      { source: '/_mintlify/:path*', destination: `${DOCS_ORIGIN}/_mintlify/:path*` },
+      // Mintlify next assets
       {
         source: '/_next/static/:path*',
         has: [
@@ -58,6 +47,14 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: '/docs/api/python/:all*(css|js|png|jpg|gif|svg|ico|woff|woff2)',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/docs/api/python/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=60' }],
+      },
       {
         source: '/:path*',
         headers: [
