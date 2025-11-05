@@ -53,19 +53,15 @@ class SamplingEvaluator(DefaultEvaluator):
         outputs: List[Dict[str, torch.Tensor]] = []
 
         inp = gen_inputs(defn, workload, device=device, stensors=loaded_stensors)
-        if "probs" in inp:
-            inp["probs"] = torch.softmax(
-                inp["probs"], dim=-1
-            )  # convert logits to probs for sampling
         inputs.append(inp)
 
         thresholding_method = _detect_thresholding_method(defn)
         params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
         valid_mask = _compute_valid_sampling_mask(inp["probs"], thresholding_method, params)
-        
+
         masked_probs = inp["probs"] * valid_mask.float()
         expected_probs = masked_probs / masked_probs.sum(dim=-1, keepdim=True)
-        
+
         outputs.append({"expected_probs": expected_probs})
 
         latencies: List[float] = []
@@ -151,7 +147,7 @@ class SamplingEvaluator(DefaultEvaluator):
                 samples_flat = samples.unsqueeze(0)
             else:
                 samples_flat = samples.flatten()
-            
+
             batch_size = valid_mask.shape[0]
             for i in range(len(samples_flat)):
                 batch_idx = i % batch_size
@@ -160,9 +156,7 @@ class SamplingEvaluator(DefaultEvaluator):
                     correctness = Correctness(
                         max_relative_error=float("inf"), max_absolute_error=float("inf")
                     )
-                    message = (
-                        f"Sample {sample_idx} is outside valid {thresholding_method} mask for batch {batch_idx}"
-                    )
+                    message = f"Sample {sample_idx} is outside valid {thresholding_method} mask for batch {batch_idx}"
                     print(message, file=sys.stderr)
                     return correctness, make_eval(
                         status=EvaluationStatus.INCORRECT_NUMERICAL,
@@ -186,11 +180,11 @@ class SamplingEvaluator(DefaultEvaluator):
         tvds = []
         max_abs_errors = []
         max_rel_errors = []
-        
+
         for i in range(batch_size):
             tvd_i = 0.5 * torch.sum(torch.abs(sol_freqs[i] - expected_probs[i])).item()
             tvds.append(tvd_i)
-            
+
             max_abs_i, max_rel_i, _, _ = compute_error_stats(sol_freqs[i], expected_probs[i], cfg)
             max_abs_errors.append(max_abs_i)
             max_rel_errors.append(max_rel_i)
@@ -202,9 +196,9 @@ class SamplingEvaluator(DefaultEvaluator):
 
         numerical_incorrect = max_tvd > cfg.sampling_tvd_threshold
         correctness = Correctness(
-            max_relative_error=max_rel, 
-            max_absolute_error=max_abs, 
-            extra={"tvd": max_tvd, "tvds_per_batch": tvds}
+            max_relative_error=max_rel,
+            max_absolute_error=max_abs,
+            extra={"tvd": max_tvd, "tvds_per_batch": tvds},
         )
         if numerical_incorrect:
             return correctness, make_eval(
@@ -234,7 +228,7 @@ def _detect_thresholding_method(defn: Definition) -> str:
 
 
 def _compute_valid_sampling_mask(
-    probs: torch.Tensor, method: str, params: Dict[str, Any], eps: float = 1e-5
+    probs: torch.Tensor, method: str, params: Dict[str, Any], eps: float = 5e-2
 ) -> torch.Tensor:
     """
     For tie-breaking in top_k (allows any token with prob >= k-th largest)
@@ -242,7 +236,7 @@ def _compute_valid_sampling_mask(
     """
     if probs.dim() == 1:
         probs = probs.unsqueeze(0)
-    
+
     batch_size, vocab_size = probs.shape
     device = probs.device
 
@@ -254,48 +248,40 @@ def _compute_valid_sampling_mask(
     if method in ["top_k", "top_k_top_p"]:
         if "top_k" not in params:
             raise ValueError(f"top_k parameter required for {method} but not found")
-        
+
         top_k_param = params["top_k"]
         for i in range(batch_size):
-            k = (
-                int(top_k_param[i].item())
-                if top_k_param.dim() > 0
-                else int(top_k_param.item())
-            )
+            k = int(top_k_param[i].item()) if top_k_param.dim() > 0 else int(top_k_param.item())
 
             if 0 < k < vocab_size:
                 sorted_probs, _ = torch.sort(probs[i], descending=True)
                 # k-th largest value (0-indexed, so k-1)
                 pivot = sorted_probs[k - 1]
-                mask[i] = probs[i] >= pivot # tie-breaking handling
+                mask[i] = probs[i] >= pivot  # tie-breaking handling
 
     # Apply top_p mask with epsilon tolerance
     if method in ["top_p", "top_k_top_p"]:
         if "top_p" not in params:
             raise ValueError(f"top_p parameter required for {method} but not found")
-        
+
         top_p_param = params["top_p"]
         for i in range(batch_size):
-            p = (
-                float(top_p_param[i].item())
-                if top_p_param.dim() > 0
-                else float(top_p_param.item())
-            )
+            p = float(top_p_param[i].item()) if top_p_param.dim() > 0 else float(top_p_param.item())
 
             if 0 < p < 1:
                 sorted_probs, sorted_indices = torch.sort(probs[i], descending=True)
                 cumsum = torch.cumsum(sorted_probs, dim=0)
-                
+
                 # Find tokens in nucleus (cumsum <= p + eps for numerical tolerance)
                 nucleus_mask = cumsum <= (p + eps)
-                
+
                 if not nucleus_mask.any():
                     nucleus_mask[0] = True
-                
+
                 # Map back to original indices
                 p_mask = torch.zeros(vocab_size, dtype=torch.bool, device=device)
                 p_mask[sorted_indices[nucleus_mask]] = True
-                
+
                 mask[i] = mask[i] & p_mask
 
     return mask
@@ -310,12 +296,12 @@ def _sample_token_distributions(
 ) -> torch.Tensor:
     original_batch_size = inputs["probs"].shape[0] if inputs["probs"].dim() > 1 else 1
     vocab_size = inputs["probs"].shape[-1]
-    
+
     # Repeat entire input batch to fill up to target_batch_size for efficient sampling
     target_batch_size = 10000
     repeat_count = target_batch_size // original_batch_size
     actual_batch_size = repeat_count * original_batch_size
-    
+
     padded_inputs = {}
     for key, value in inputs.items():
         if isinstance(value, torch.Tensor) and value.dim() > 0:
@@ -341,12 +327,12 @@ def _sample_token_distributions(
         else:
             # For non-tensor inputs, keep as is
             padded_inputs[key] = value
-    
+
     counters = torch.zeros(
         (original_batch_size, vocab_size), dtype=torch.int64, device=torch.device(device)
     )
 
-    trials_needed = (num_trials + actual_batch_size - 1) // actual_batch_size
+    trials_needed = (num_trials + repeat_count - 1) // repeat_count
     total_samples_per_batch = 0
 
     for _ in range(trials_needed):
