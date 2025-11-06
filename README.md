@@ -9,7 +9,7 @@
 **Building the Virtuous Cycle for AI-driven LLM Systems**
 
 [Get Started](#get-started) | [Documentation](https://bench.flashinfer.ai/docs/) | [Blogpost](https://flashinfer.ai/2025/10/21/flashinfer-bench.html)
-</div>
+| [Slack (#flashinfer-bench channel)](https://join.slack.com/t/flashinfer/shared_invite/zt-379wct3hc-D5jR~1ZKQcU00WHsXhgvtA) </div>
 
 **FlashInfer-Bench** is a benchmark suite and production workflow designed to build a virtuous cycle of self-improving AI systems.
 
