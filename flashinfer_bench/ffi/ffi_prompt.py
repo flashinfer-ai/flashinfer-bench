@@ -150,7 +150,7 @@ void Process2D(tvm::ffi::TensorView x) {
   int64_t height = x.size(0);
   int64_t width = x.size(1);
   float* data = static_cast<float*>(x.data_ptr());
-  
+
   // If contiguous (row-major), access as: data[i * width + j]
   TVM_FFI_ICHECK(x.IsContiguous()) << "Expected contiguous tensor";
 }
@@ -192,17 +192,17 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
   TVM_FFI_ICHECK_EQ(x.ndim(), 1) << "x must be 1D";
   TVM_FFI_ICHECK_EQ(y.ndim(), 1) << "y must be 1D";
   TVM_FFI_ICHECK_EQ(x.size(0), y.size(0)) << "Shape mismatch";
-  
+
   // Get data pointers
   float* x_data = static_cast<float*>(x.data_ptr());
   float* y_data = static_cast<float*>(y.data_ptr());
   int64_t n = x.size(0);
-  
+
   // Get CUDA stream from environment
   DLDevice dev = x.device();
   cudaStream_t stream = static_cast<cudaStream_t>(
       TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-  
+
   // Launch kernel
   int64_t threads = 256;
   int64_t blocks = (n + threads - 1) / threads;
@@ -251,17 +251,17 @@ void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
   TVM_FFI_ICHECK_EQ(x.ndim(), 1) << "x must be 1D";
   TVM_FFI_ICHECK_EQ(y.ndim(), 1) << "y must be 1D";
   TVM_FFI_ICHECK_EQ(x.size(0), y.size(0)) << "Shape mismatch";
-  
+
   // Get data pointers
   float* x_data = static_cast<float*>(x.data_ptr());
   float* y_data = static_cast<float*>(y.data_ptr());
   int64_t n = x.size(0);
-  
+
   // Get CUDA stream from environment
   DLDevice dev = x.device();
   cudaStream_t stream = static_cast<cudaStream_t>(
       TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-  
+
   // Launch kernel
   int64_t threads = 256;
   int64_t blocks = (n + threads - 1) / threads;
@@ -284,7 +284,7 @@ A managed n-dimensional array with reference counting.
 **Methods:**
 - `void* data_ptr() const` - Returns raw data pointer
 - `DLDevice device() const` - Returns device info (`.device_type`, `.device_id`)
-- `int32_t ndim() const` - Returns number of dimensions  
+- `int32_t ndim() const` - Returns number of dimensions
 - `DLDataType dtype() const` - Returns data type (`.code`, `.bits`, `.lanes`)
 - `ShapeView shape() const` - Returns shape array (indexable: `shape()[0]`, `shape()[1]`, ...)
 - `ShapeView strides() const` - Returns strides array
@@ -306,7 +306,7 @@ A managed n-dimensional array with reference counting.
 - `DLManagedTensorVersioned* ToDLPackVersioned() const` - Convert to versioned DLPack
 - `const DLTensor* GetDLTensorPtr() const` - Get underlying DLTensor pointer
 
-### TensorView Class  
+### TensorView Class
 Non-owning lightweight view of a Tensor. Kernel entrypoints should use `tvm::ffi::TensorView` (or `const TensorView&`) for tensor inputs/outputs.
 
 **Constructors:**
@@ -509,7 +509,7 @@ TVM_FFI_ICHECK_NOTNULL(ptr) << "ptr must not be null"  // ptr != nullptr
 ### Stream Management
 ```cpp
 // Set current stream for a device
-int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id, 
+int TVMFFIEnvSetStream(int32_t device_type, int32_t device_id,
                        TVMFFIStreamHandle stream,
                        TVMFFIStreamHandle* opt_out_original_stream)
 
@@ -522,7 +522,7 @@ cudaStream_t stream = static_cast<cudaStream_t>(
     TVMFFIEnvGetStream(dev.device_type, dev.device_id));
 ```
 
-### Tensor Allocation  
+### Tensor Allocation
 ```cpp
 // Set DLPack allocator (TLS or global)
 int TVMFFIEnvSetDLPackManagedTensorAllocator(
@@ -577,7 +577,7 @@ void MyKernel(tvm::ffi::TensorView x) {
   DLDataType dt = x.dtype();
   TVM_FFI_ICHECK_EQ(dt.code, kDLFloat) << "Expected float dtype";
   TVM_FFI_ICHECK_EQ(dt.bits, 32) << "Expected 32-bit dtype";
-  
+
   // Or for user-facing errors:
   if (dt.code != kDLFloat || dt.bits != 32) {
     TVM_FFI_THROW(TypeError) << "Expected float32, got "
@@ -603,10 +603,10 @@ void Process2D(tvm::ffi::TensorView x) {
   int64_t height = x.size(0);
   int64_t width = x.size(1);
   float* data = static_cast<float*>(x.data_ptr());
-  
+
   // If contiguous (row-major), access as: data[i * width + j]
   TVM_FFI_ICHECK(x.IsContiguous()) << "Expected contiguous tensor";
-  
+
   // With strides:
   int64_t stride0 = x.stride(0);
   int64_t stride1 = x.stride(1);
@@ -638,7 +638,7 @@ void CreateOutput(tvm::ffi::TensorView input) {
   ffi::ShapeView shape = input.shape();
   DLDataType dtype = input.dtype();
   DLDevice device = input.device();
-  
+
   // Use environment allocator
   ffi::Tensor output = ffi::Tensor::FromEnvAlloc(
       TVMFFIEnvTensorAlloc, shape, dtype, device);
