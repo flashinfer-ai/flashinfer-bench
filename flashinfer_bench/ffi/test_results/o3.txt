@@ -1,0 +1,141 @@
+Model: o3
+================================================================================
+
+Generated Code:
+================================================================================
+// File: elementwise_add.cu
+//
+// Simple element-wise addition kernel exported through TVM-FFI
+//   c[i] = a[i] + b[i]
+//
+// Build example (CUDA >= 11):
+// nvcc -std=c++17 -O2 --shared -Xcompiler -fPIC elementwise_add.cu -o libelementwise_add.so
+//
+// ------------------------------------------------------------------------------
+
+#include <cuda_runtime.h>
+
+#include <tvm/ffi/container/tensor.h>   // TensorView
+#include <tvm/ffi/extra/c_env_api.h>    // TVMFFIEnvGetStream
+#include <tvm/ffi/function.h>           // TVM_FFI_DLL_EXPORT_TYPED_FUNC
+#include <tvm/ffi/error.h>              // ICHECK / THROW helpers
+
+namespace tvm_add {
+
+/*!
+ * \brief CUDA kernel: c[i] = a[i] + b[i]
+ */
+__global__ void ElementwiseAddKernel(const float* a,
+                                     const float* b,
+                                     float* c,
+                                     int64_t n) {
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    c[idx] = a[idx] + b[idx];
+  }
+}
+
+/*!
+ * \brief Host wrapper visible to TVM-FFI.
+ *
+ * Signature:  void(TensorView a, TensorView b, TensorView c)
+ */
+void ElementwiseAdd(tvm::ffi::TensorView a,
+                    tvm::ffi::TensorView b,
+                    tvm::ffi::TensorView c) {
+  /* ---------------------- Input validation ---------------------- */
+  // 1-D check
+  if (a.ndim() != 1 || b.ndim() != 1 || c.ndim() != 1) {
+    TVM_FFI_THROW(ValueError)
+        << "All tensors must be 1-D. Got ndim = "
+        << a.ndim() << ", " << b.ndim() << ", " << c.ndim();
+  }
+
+  // dtype check (float32 only)
+  auto check_f32 = [](const tvm::ffi::TensorView& t, const char* name) {
+    DLDataType dt = t.dtype();
+    if (dt.code != kDLFloat || dt.bits != 32 || dt.lanes != 1) {
+      TVM_FFI_THROW(TypeError)
+          << "Tensor " << name << " must be float32. "
+          << "Got (code=" << static_cast<int>(dt.code)
+          << ", bits=" << dt.bits
+          << ", lanes=" << dt.lanes << ")";
+    }
+  };
+  check_f32(a, "a");
+  check_f32(b, "b");
+  check_f32(c, "c");
+
+  // size / shape check
+  int64_t n = a.size(0);
+  if (b.size(0) != n || c.size(0) != n) {
+    TVM_FFI_THROW(ValueError)
+        << "Mismatched tensor sizes: "
+        << "a=" << a.size(0) << ", "
+        << "b=" << b.size(0) << ", "
+        << "c=" << c.size(0);
+  }
+
+  // device check (all on same CUDA device)
+  DLDevice dev_a = a.device();
+  DLDevice dev_b = b.device();
+  DLDevice dev_c = c.device();
+  if (dev_a.device_type != kDLCUDA || dev_b.device_type != kDLCUDA ||
+      dev_c.device_type != kDLCUDA) {
+    TVM_FFI_THROW(RuntimeError)
+        << "All tensors must reside on CUDA device. "
+        << "Device types: a=" << dev_a.device_type
+        << ", b=" << dev_b.device_type
+        << ", c=" << dev_c.device_type;
+  }
+  if (dev_a.device_id != dev_b.device_id ||
+      dev_a.device_id != dev_c.device_id) {
+    TVM_FFI_THROW(RuntimeError)
+        << "All tensors must be on the same CUDA device. "
+        << "Device IDs: a=" << dev_a.device_id
+        << ", b=" << dev_b.device_id
+        << ", c=" << dev_c.device_id;
+  }
+
+  // Optional: require contiguous memory for simplest access pattern
+  if (!a.IsContiguous() || !b.IsContiguous() || !c.IsContiguous()) {
+    TVM_FFI_THROW(ValueError) << "All tensors must be contiguous.";
+  }
+
+  /* -------------------- Launch CUDA kernel ---------------------- */
+  if (n == 0) return;  // nothing to do
+
+  const float* a_ptr = static_cast<const float*>(a.data_ptr());
+  const float* b_ptr = static_cast<const float*>(b.data_ptr());
+  float*       c_ptr = static_cast<float*>(c.data_ptr());
+
+  const int threads = 256;
+  const int blocks  = static_cast<int>((n + threads - 1) / threads);
+
+  // Get stream managed by runtime
+  cudaStream_t stream = static_cast<cudaStream_t>(
+      TVMFFIEnvGetStream(dev_a.device_type, dev_a.device_id));
+
+  ElementwiseAddKernel<<<blocks, threads, 0, stream>>>(a_ptr, b_ptr, c_ptr, n);
+
+#ifndef NDEBUG
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    TVM_FFI_THROW(RuntimeError)
+        << "CUDA kernel launch failed: " << cudaGetErrorString(err);
+  }
+#endif
+}
+
+}  // namespace tvm_add
+
+// -----------------------------------------------------------------------------
+// TVM-FFI export
+// -----------------------------------------------------------------------------
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(elementwise_add, tvm_add::ElementwiseAdd);
+
+Test Results:
+================================================================================
+Compilation: SUCCESS
+Test 1 (small tensor): PASS
+Test 2 (large tensor): PASS

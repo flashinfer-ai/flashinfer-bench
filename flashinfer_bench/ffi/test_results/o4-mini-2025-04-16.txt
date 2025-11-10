@@ -1,0 +1,122 @@
+Model: o4-mini-2025-04-16
+================================================================================
+
+Generated Code:
+================================================================================
+// File: elementwise_add.cu
+
+#include <tvm/ffi/container/tensor.h>    // TensorView
+#include <tvm/ffi/extra/c_env_api.h>     // TVMFFIEnvGetStream
+#include <tvm/ffi/function.h>            // TVM_FFI_DLL_EXPORT_TYPED_FUNC
+#include <tvm/ffi/error.h>               // TVM_FFI_ICHECK, TVM_FFI_THROW
+#include <cuda_runtime.h>                // cudaStream_t
+
+// CUDA kernel: c[i] = a[i] + b[i]
+__global__ void ElementwiseAddKernel(const float* a,
+                                     const float* b,
+                                     float*       c,
+                                     int64_t      n) {
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x
+                + threadIdx.x;
+  if (idx < n) {
+    c[idx] = a[idx] + b[idx];
+  }
+}
+
+// Host wrapper exposed via TVM FFI
+void ElementwiseAdd(tvm::ffi::TensorView a,
+                    tvm::ffi::TensorView b,
+                    tvm::ffi::TensorView c) {
+  // 1) Dimensionality checks
+  if (a.ndim() != 1) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: expected 1D tensor for `a`, got "
+        << a.ndim() << "D";
+  }
+  if (b.ndim() != 1) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: expected 1D tensor for `b`, got "
+        << b.ndim() << "D";
+  }
+  if (c.ndim() != 1) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: expected 1D tensor for `c`, got "
+        << c.ndim() << "D";
+  }
+
+  int64_t n = a.size(0);
+  if (b.size(0) != n) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: size mismatch — `a` has length "
+        << n << " but `b` has length " << b.size(0);
+  }
+  if (c.size(0) != n) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: size mismatch — `a` has length "
+        << n << " but `c` has length " << c.size(0);
+  }
+
+  // 2) DType checks (float32)
+  auto da = a.dtype();
+  if (da.code != kDLFloat || da.bits != 32 || da.lanes != 1) {
+    TVM_FFI_THROW(TypeError)
+        << "elementwise_add: expected float32 dtype for `a`";
+  }
+  auto db = b.dtype();
+  if (db.code != kDLFloat || db.bits != 32 || db.lanes != 1) {
+    TVM_FFI_THROW(TypeError)
+        << "elementwise_add: expected float32 dtype for `b`";
+  }
+  auto dc = c.dtype();
+  if (dc.code != kDLFloat || dc.bits != 32 || dc.lanes != 1) {
+    TVM_FFI_THROW(TypeError)
+        << "elementwise_add: expected float32 dtype for `c`";
+  }
+
+  // 3) (Optional) Contiguity checks
+  TVM_FFI_ICHECK(a.IsContiguous()) << "elementwise_add: `a` must be contiguous";
+  TVM_FFI_ICHECK(b.IsContiguous()) << "elementwise_add: `b` must be contiguous";
+  TVM_FFI_ICHECK(c.IsContiguous()) << "elementwise_add: `c` must be contiguous";
+
+  // 4) Device checks
+  DLDevice dev = a.device();
+  if (dev.device_type != kDLCUDA) {
+    TVM_FFI_THROW(RuntimeError)
+        << "elementwise_add: only CUDA device supported";
+  }
+  if (b.device().device_type != dev.device_type ||
+      b.device().device_id   != dev.device_id) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: `b` must be on the same CUDA device as `a`";
+  }
+  if (c.device().device_type != dev.device_type ||
+      c.device().device_id   != dev.device_id) {
+    TVM_FFI_THROW(ValueError)
+        << "elementwise_add: `c` must be on the same CUDA device as `a`";
+  }
+
+  // 5) Pointers
+  const float* a_ptr = static_cast<const float*>(a.data_ptr());
+  const float* b_ptr = static_cast<const float*>(b.data_ptr());
+  float*       c_ptr = static_cast<float*>(c.data_ptr());
+
+  // 6) Get CUDA stream from TVM runtime
+  cudaStream_t stream =
+      static_cast<cudaStream_t>(TVMFFIEnvGetStream(dev.device_type,
+                                                  dev.device_id));
+
+  // 7) Launch kernel
+  constexpr int THREADS = 256;
+  int blocks = static_cast<int>((n + THREADS - 1) / THREADS);
+  ElementwiseAddKernel<<<blocks, THREADS, 0, stream>>>(
+      a_ptr, b_ptr, c_ptr, n);
+}
+
+// Export for TVM FFI under the name "elementwise_add"
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(elementwise_add, ElementwiseAdd);
+
+Test Results:
+================================================================================
+Compilation: SUCCESS
+Test 1 (small tensor): PASS
+Test 2 (large tensor): PASS
