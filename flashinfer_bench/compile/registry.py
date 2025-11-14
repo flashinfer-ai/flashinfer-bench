@@ -52,11 +52,13 @@ _registry: BuilderRegistry | None = None
 def get_builder_registry() -> BuilderRegistry:
     global _registry
     if _registry is None:
-        from .builders import CUDABuilder, PythonBuilder, TritonBuilder
+        from .builders import CUDABuilder, PythonBuilder, TritonBuilder, TVMFFIBuilder
 
         py = PythonBuilder()
         triton = TritonBuilder(py_builder=py)
-        cuda = CUDABuilder()
+        tvm_ffi = TVMFFIBuilder()
+        cuda = CUDABuilder()  # Fallback for backward compatibility
 
-        _registry = BuilderRegistry((py, triton, cuda))
+        # Priority: Python > Triton > TVM-FFI > CUDA (pybind11)
+        _registry = BuilderRegistry((py, triton, tvm_ffi, cuda))
     return _registry

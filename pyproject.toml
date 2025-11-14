@@ -23,7 +23,13 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["torch==2.8.0", "pydantic>=2.0.0", "safetensors>=0.5.0", "flashinfer-python>=0.3.1"]
+dependencies = [
+  "torch==2.8.0",
+  "pydantic>=2.0.0",
+  "safetensors>=0.5.0",
+  "flashinfer-python>=0.3.1",
+  "apache-tvm-ffi>=0.1.2",
+]
 
 [project.urls]
 Homepage = "https://bench.flashinfer.ai"
