@@ -54,6 +54,11 @@ def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
     return dtype
 
 
+def is_cuda_available() -> bool:
+    """Check if CUDA is available."""
+    return torch.cuda.is_available()
+
+
 def list_cuda_devices() -> List[str]:
     n = torch.cuda.device_count()
     return [f"cuda:{i}" for i in range(n)]

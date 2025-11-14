@@ -111,7 +111,8 @@ class Definition(BaseModelWithDocstrings):
     inputs: Dict[NonEmptyString, TensorSpec]
     """Named input tensors required by this kernel."""
     outputs: Dict[NonEmptyString, TensorSpec]
-    """Named output tensors produced by this kernel."""
+    """Named output tensors produced by this kernel. The names of the output must not overlap with
+    the names of the inputs."""
     reference: NonEmptyString
     """Reference implementation code. It defines the compute logic of the kernel. Must be a valid
     Python code with a 'run' function that takes the input tensors and returns the output tensors.
@@ -189,7 +190,8 @@ class Definition(BaseModelWithDocstrings):
                         )
         return self
 
-    def get_const_axes(self) -> Dict[str, int]:
+    @cached_property
+    def const_axes(self) -> Dict[str, int]:
         """Get all constant axes and their values.
 
         Returns
@@ -199,7 +201,8 @@ class Definition(BaseModelWithDocstrings):
         """
         return {name: axis.value for name, axis in self.axes.items() if isinstance(axis, AxisConst)}
 
-    def get_var_axes(self) -> List[str]:
+    @cached_property
+    def var_axes(self) -> List[str]:
         """Get all variable axis names.
 
         Returns
@@ -210,7 +213,7 @@ class Definition(BaseModelWithDocstrings):
         return [name for name, axis in self.axes.items() if isinstance(axis, AxisVar)]
 
     @cached_property
-    def get_var_axes_bindings(self) -> Dict[str, Tuple[str, int]]:
+    def var_axes_bindings(self) -> Dict[str, Tuple[str, int]]:
         """Get the bindings of variable axes to input tensor dimensions.
 
         Determines which input tensor and dimension index corresponds to each
@@ -232,6 +235,48 @@ class Definition(BaseModelWithDocstrings):
                 if isinstance(ax_def, AxisVar) and axis not in bindings:
                     bindings[axis] = (inp_name, dim_idx)
         return bindings
+
+    def get_var_values(self, input_shapes: Dict[str, List[int]]) -> Dict[str, int]:
+        """Get concrete variable axis values from input shapes.
+
+        Parameters
+        ----------
+        input_shapes : Dict[str, List[int]]
+            Dictionary mapping input tensor names to their concrete shapes.
+
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary mapping variable axis names to their concrete values.
+
+        Raises
+        ------
+        ValueError
+            If a required variable axis value is missing from input_shapes, or a axis occurs in
+            multiple input tensors, but the values are not consistent.
+        """
+        var_values: Dict[str, int] = {}
+        for name, spec in self.inputs.items():
+            if spec.shape is None:  # scalar, no shape
+                continue
+            for dim_idx, axis_name in enumerate(spec.shape):
+                if axis_name in self.axes and self.axes[axis_name].type == "var":
+                    cur_axis_value = input_shapes[name][dim_idx]
+                    if axis_name in var_values:
+                        if var_values[axis_name] != cur_axis_value:
+                            raise ValueError(
+                                f"Axis '{axis_name}' has different values for different input "
+                                f"tensors: {var_values[axis_name]} and {cur_axis_value}"
+                            )
+                    else:
+                        var_values[axis_name] = cur_axis_value
+
+        if len(var_values) != len(self.var_axes):
+            raise ValueError(
+                f"Missing values for variable axes: "
+                f"{set(self.var_axes) - set(var_values.keys())}"
+            )
+        return var_values
 
     def _get_shapes(
         self, tensors: Dict[str, TensorSpec], var_values: Optional[Dict[str, int]] = None
