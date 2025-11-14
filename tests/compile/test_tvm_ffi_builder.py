@@ -1,7 +1,6 @@
 """Tests for TVMFFIBuilder."""
 
 import os
-import pathlib
 import time
 
 import pytest
@@ -273,10 +272,6 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_two_cpu, add_two_cpu);
 
     torch.testing.assert_close(output1, output2, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(output1, input_tensor + 2.0, rtol=1e-5, atol=1e-5)
-
-
-test_caching_cpu()
-exit()
 
 
 def test_call_dest_cpu() -> None:
