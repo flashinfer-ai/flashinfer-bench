@@ -215,11 +215,37 @@ export function LeaderboardClient({
   const colorFor = useCallback(
     (name: string) => {
       if (colorMap.has(name)) return colorMap.get(name) as string
+
+      // Calculate hash to get initial color preference
       let hash = 0
       for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-      const color = palette[hash % palette.length]
-      colorMap.set(name, color)
-      return color
+      const preferredIndex = hash % palette.length
+
+      // Find which colors are already in use
+      const usedColors = new Set(colorMap.values())
+
+      // Try preferred color first
+      let color = palette[preferredIndex]
+      if (!usedColors.has(color)) {
+        colorMap.set(name, color)
+        return color
+      }
+
+      // If preferred color is taken, find the next available color
+      for (let i = 0; i < palette.length; i++) {
+        const candidateIndex = (preferredIndex + i) % palette.length
+        const candidateColor = palette[candidateIndex]
+        if (!usedColors.has(candidateColor)) {
+          colorMap.set(name, candidateColor)
+          return candidateColor
+        }
+      }
+
+      // Fallback: if all colors are used, cycle through palette
+      const fallbackIndex = colorMap.size % palette.length
+      const fallbackColor = palette[fallbackIndex]
+      colorMap.set(name, fallbackColor)
+      return fallbackColor
     },
     [colorMap, palette]
   )
