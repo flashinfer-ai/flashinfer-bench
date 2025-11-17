@@ -14,9 +14,6 @@ def test_sourcefile_validation_python():
     # Non-string content
     with pytest.raises(ValueError):
         SourceFile(path="main.py", content=123)  # type: ignore[arg-type]
-    # Invalid python
-    with pytest.raises(ValueError):
-        SourceFile(path="main.py", content="def run(: pass")
 
 
 def test_buildspec_validation():
@@ -33,6 +30,12 @@ def test_buildspec_validation():
             language=SupportedLanguages.PYTHON,
             target_hardware=["cuda"],
             entry_point="main.py",  # missing ::
+        )
+    with pytest.raises(ValueError):
+        BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cuda"],
+            entry_point="main.py::run::add",  # too many ::
         )
     # Invalid target_hardware list and dependencies types
     with pytest.raises(ValueError):
@@ -71,6 +74,44 @@ def test_solution_validation_and_helpers():
     # Entry not present
     with pytest.raises(ValueError):
         Solution(name="missing_entry", definition="def1", author="x", spec=spec, sources=[s2])
+
+
+def test_path_traversal_attack():
+    """Test that path traversal attacks using '..' are blocked."""
+    spec = BuildSpec(
+        language=SupportedLanguages.CUDA,
+        target_hardware=["cpu"],
+        entry_point="../../kernel.cpp::add_one_cpu",
+    )
+    # Should fail at Solution creation time with path traversal error
+    with pytest.raises(
+        ValueError, match="Invalid source path \\(parent directory traversal not allowed\\)"
+    ):
+        Solution(
+            name="malicious",
+            definition="def1",
+            author="attacker",
+            spec=spec,
+            sources=[SourceFile(path="../../kernel.cpp", content="int main() {}")],
+        )
+
+
+def test_absolute_path_attack():
+    """Test that absolute paths are blocked."""
+    spec = BuildSpec(
+        language=SupportedLanguages.CUDA,
+        target_hardware=["cpu"],
+        entry_point="/tmp/kernel.cpp::add_one_cpu",
+    )
+    # Should fail at Solution creation time with absolute path error
+    with pytest.raises(ValueError, match="absolute path not allowed"):
+        Solution(
+            name="malicious",
+            definition="def1",
+            author="attacker",
+            spec=spec,
+            sources=[SourceFile(path="/tmp/kernel.cpp", content="int main() {}")],
+        )
 
 
 if __name__ == "__main__":

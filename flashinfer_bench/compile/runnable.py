@@ -59,7 +59,13 @@ class TVMFFIRunnable(Runnable):
         )
         output_shapes = self._definition.get_output_shapes(var_values)
         output_tensors: Dict[str, torch.Tensor] = {}
-        device = next(iter(kwargs.values())).device if len(kwargs) > 0 else "cpu"
+
+        # Determine device from input tensors
+        devices = {v.device for v in kwargs.values() if hasattr(v, "device")}
+        if len(devices) > 1:
+            raise ValueError("All input tensors must be on the same device")
+        device = devices.pop() if devices else "cpu"
+
         for name, shape in output_shapes.items():
             output_tensors[name] = torch.empty(
                 shape, dtype=dtype_str_to_torch_dtype(self._definition.outputs[name].dtype)
@@ -75,8 +81,3 @@ class TVMFFIRunnable(Runnable):
     def call_dest(self, **kwargs: Any) -> None:
         """Call the underlying function with destination passing style."""
         self._fn(**kwargs)
-
-    def close(self) -> None:
-        if self._closer:
-            self._closer()
-            self._closer = None
