@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
 import sys
 from importlib import resources
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from flashinfer_bench.compile.builder import (
     Builder,
@@ -16,21 +17,14 @@ from flashinfer_bench.compile.builder import (
 )
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data import Definition, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.utils import is_cuda_available
 
 CUDA_ALLOWED_EXTS = [".cu", ".cpp", ".cc", ".cxx", ".c"]
 
-
-def _verify_cuda() -> bool:
-    try:
-        import torch
-        import torch.utils.cpp_extension
-
-        return torch.cuda.is_available()
-    except ImportError:
-        return False
+logger = logging.getLogger(__name__)
 
 
-def _get_package_paths(pkg_name: str, lib_names: List[str] = None):
+def _get_package_paths(pkg_name: str, lib_names: Optional[List[str]] = None):
     include_path = None
     ldflags = []
 
@@ -64,8 +58,11 @@ def _get_package_paths(pkg_name: str, lib_names: List[str] = None):
                     ldflags = [f"/LIBPATH:{lib_path}"] + lib_names
 
     except Exception:
-        # TODO(shanli): add logger to print warning
-        pass
+        logger.warning(
+            "Failed to discover resources for CUDA package '%s'; continuing without it.",
+            pkg_name,
+            exc_info=True,
+        )
 
     return include_path, ldflags
 
@@ -125,7 +122,7 @@ class CUDABuilder(Builder):
     @classmethod
     def _get_cuda_available(cls) -> bool:
         if cls._cuda_available is None:
-            cls._cuda_available = _verify_cuda()
+            cls._cuda_available = is_cuda_available()
         return cls._cuda_available
 
     def __init__(self) -> None:
@@ -142,16 +139,19 @@ class CUDABuilder(Builder):
         return f"cuda::{create_pkg_name(solution)}"
 
     def _make_closer(self):
-        # We keep build dirs for torch extension caching. The temp dirs can be cleaned by calling `clear_cache` on program exit.
+        # We keep build dirs for torch extension caching. The temp dirs can be cleaned by
+        # calling `clear_cache` on program exit.
         return lambda: None
 
     def _build(self, defn: Definition, sol: Solution) -> Runnable:
         # CUDA solutions must provide a C/CUDA symbol as entry point.
-        # If user prefer a Python wrapper, set language to `python` and ensure compilation and binding are properly handled.
+        # If user prefer a Python wrapper, set language to `python` and ensure compilation and
+        # binding are properly handled.
         entry_file_extension = "." + sol.spec.entry_point.split("::")[0].split(".")[-1]
         if entry_file_extension not in CUDA_ALLOWED_EXTS:
             raise BuildError(
-                f"Entry file type not recognized. Must be one of {CUDA_ALLOWED_EXTS}, got {entry_file_extension}."
+                f"Entry file type not recognized. Must be one of {CUDA_ALLOWED_EXTS}, "
+                f"got {entry_file_extension}."
             )
 
         if not self._get_cuda_available():
@@ -184,7 +184,8 @@ class CUDABuilder(Builder):
                 inc_path = self._extra_include_paths.get(dep)
                 if not inc_path:
                     raise BuildError(
-                        f"{dep} is not available in the current environment but referenced by {sol.name}"
+                        f"{dep} is not available in the current environment but referenced "
+                        f"by {sol.name}"
                     )
                 extra_include_paths.append(inc_path)
                 ldflags = self._extra_ldflags.get(dep)

@@ -40,8 +40,8 @@ def test_tensorspec_validation():
 def test_definition_basic_validation(sample_reference_code):
     d = make_minimal_definition(sample_reference_code)
     assert d.name == "def1"
-    assert set(d.get_const_axes().keys()) == {"N"}
-    assert set(d.get_var_axes()) == {"M"}
+    assert set(d.const_axes.keys()) == {"N"}
+    assert set(d.var_axes) == {"M"}
 
 
 def test_definition_axis_reference_checks(sample_reference_code):
