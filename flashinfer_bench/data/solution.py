@@ -1,6 +1,5 @@
 """Strong-typed data definitions for solution implementations."""
 
-import ast
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -35,26 +34,27 @@ class SourceFile(BaseModelWithDocstrings):
     path: NonEmptyString
     """The relative path of the file, including its name and extension (e.g., 'src/kernel.cu',
     'main.py'). When compiling the solution, a temporary solution source directory will be
-    created, and the file will be placed according to this path."""
+    created, and the file will be placed according to this path. The path should not contain
+    parent directory traversal ("..")."""
     content: NonEmptyString
     """The complete text content of the source file."""
 
     @model_validator(mode="after")
-    def _validate_python_syntax(self) -> "SourceFile":
-        """Validate Python syntax for .py files.
+    def _validate_source_path(self) -> "SourceFile":
+        """Validate source path for security.
 
         Raises
         ------
         ValueError
-            If the file is a Python file and contains invalid syntax.
+            If the path contains security issues (absolute paths or path traversal).
         """
-        if self.path.endswith(".py"):
-            try:
-                ast.parse(self.content, mode="exec")
-            except SyntaxError as e:
-                raise ValueError(f"SourceFile content must be valid Python code: {e}") from e
-
-        # TODO(shanli): syntax validation for other languages
+        src_path = Path(self.path)
+        if src_path.is_absolute():
+            raise ValueError(f"Invalid source path (absolute path not allowed): {self.path}")
+        if ".." in src_path.parts:
+            raise ValueError(
+                f"Invalid source path (parent directory traversal not allowed): {self.path}"
+            )
         return self
 
 
@@ -86,9 +86,11 @@ class BuildSpec(BaseModelWithDocstrings):
         ValueError
             If entry_point doesn't follow the required format.
         """
-        if "::" not in self.entry_point:
-            raise ValueError("spec.entry_point must be '<relative_file.py>::<function_name>'")
-        # TODO(shanli): validations against entry file existence and function existence
+        if self.entry_point.count("::") != 1:
+            raise ValueError(
+                f"Invalid entry point format: {self.entry_point}. Expected "
+                '"<file_path>::<function_name>".'
+            )
         return self
 
 
@@ -116,23 +118,15 @@ class Solution(BaseModelWithDocstrings):
 
     @model_validator(mode="after")
     def _validate_source_path_entry_point(self) -> "Solution":
-        """Validate source file paths for uniqueness and security.
+        """Validate source file paths for uniqueness and entry file existence.
 
         Raises
         ------
         ValueError
-            If duplicate source file paths are found, the entry point file is not found in the
-            sources, or paths contain security issues (absolute paths or path traversal).
+            If duplicate source file paths are found or the entry file is not found in the sources.
         """
         seen_paths = set()
         for source in self.sources:
-            # Security check: prevent path traversal attacks
-            src_path = Path(source.path)
-            if src_path.is_absolute():
-                raise ValueError(f"Invalid source path (absolute path not allowed): {source.path}")
-            if ".." in src_path.parts:
-                raise ValueError(f"Invalid source path (path traversal not allowed): {source.path}")
-
             # Check for duplicates
             if source.path in seen_paths:
                 raise ValueError(f"Duplicate source path '{source.path}'")
