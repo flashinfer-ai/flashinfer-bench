@@ -10,11 +10,11 @@ The implementation must use TVM FFI bindings and conform to the Solution JSON sc
 
 ## Target Operation
 
-**Operation**: General Matrix Multiply (GEMM)  
-**Formula**: `C = A @ B.T`  
+**Operation**: General Matrix Multiply (GEMM)
+**Formula**: `C = A @ B.T`
 **Shapes**:
 - A: `[M, K]` where M is variable, K = 4096
-- B: `[N, K]` where N = 4096, K = 4096  
+- B: `[N, K]` where N = 4096, K = 4096
 - C: `[M, N]` (output)
 - **Data type**: `float16` (FP16)
 
@@ -277,7 +277,7 @@ __global__ void gemm_kernel(
     // - WMMA/Tensor Core operations
     // - Coalesced memory access
     // - Proper synchronization
-    
+
     // C = A @ B.T
     // A is [M, 4096], B is [4096, 4096], C is [M, 4096]
 }
@@ -290,11 +290,11 @@ void gemm_n4096_k4096_launch(
     cudaStream_t stream
 ) {
     if (M <= 0) return;
-    
+
     dim3 block(256);
     dim3 grid((GEMM_N_CONST + BLOCK_N - 1) / BLOCK_N,
               (M + BLOCK_M - 1) / BLOCK_M);
-    
+
     gemm_kernel<<<grid, block, 0, stream>>>(A, B, C, M);
 }
 ```
@@ -313,19 +313,19 @@ void run(tvm::ffi::TensorView A, tvm::ffi::TensorView B, tvm::ffi::TensorView C)
     TVM_FFI_ICHECK_EQ(A.ndim(), 2) << "A must be 2D";
     TVM_FFI_ICHECK_EQ(B.ndim(), 2) << "B must be 2D";
     TVM_FFI_ICHECK_EQ(C.ndim(), 2) << "C must be 2D";
-    
+
     // Get dimensions
     int64_t M = A.size(0);
     int64_t K = A.size(1);
     int64_t N = B.size(0);
-    
+
     // Check shapes
     TVM_FFI_ICHECK_EQ(K, 4096) << "A.shape[1] must be 4096 (K)";
     TVM_FFI_ICHECK_EQ(N, 4096) << "B.shape[0] must be 4096 (N)";
     TVM_FFI_ICHECK_EQ(B.size(1), 4096) << "B.shape[1] must be 4096 (K)";
     TVM_FFI_ICHECK_EQ(C.size(0), M) << "C.shape[0] must match A.shape[0] (M)";
     TVM_FFI_ICHECK_EQ(C.size(1), N) << "C.shape[1] must be 4096 (N)";
-    
+
     // Check data types (float16)
     TVM_FFI_ICHECK_EQ(A.dtype().code, kDLFloat) << "A must be float type";
     TVM_FFI_ICHECK_EQ(A.dtype().bits, 16) << "A must be float16";
@@ -333,22 +333,22 @@ void run(tvm::ffi::TensorView A, tvm::ffi::TensorView B, tvm::ffi::TensorView C)
     TVM_FFI_ICHECK_EQ(B.dtype().bits, 16) << "B must be float16";
     TVM_FFI_ICHECK_EQ(C.dtype().code, kDLFloat) << "C must be float type";
     TVM_FFI_ICHECK_EQ(C.dtype().bits, 16) << "C must be float16";
-    
+
     // Check device (must be CUDA)
     TVM_FFI_ICHECK_EQ(A.device().device_type, kDLCUDA) << "A must be on CUDA";
     TVM_FFI_ICHECK_EQ(B.device().device_type, kDLCUDA) << "B must be on CUDA";
     TVM_FFI_ICHECK_EQ(C.device().device_type, kDLCUDA) << "C must be on CUDA";
-    
+
     // Get data pointers
     const __half* A_data = static_cast<const __half*>(A.data_ptr());
     const __half* B_data = static_cast<const __half*>(B.data_ptr());
     __half* C_data = static_cast<__half*>(C.data_ptr());
-    
+
     // Get CUDA stream from TVM FFI environment
     DLDevice dev = A.device();
     cudaStream_t stream = static_cast<cudaStream_t>(
         TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-    
+
     // Launch kernel
     gemm_n4096_k4096_launch(A_data, B_data, C_data, static_cast<int>(M), stream);
 }
@@ -416,4 +416,3 @@ This agent.md provides complete instructions for generating a CUDA GEMM kernel i
 - **Validation**: Use `TVM_FFI_ICHECK_*` macros for input validation
 - **Stream management**: Get stream via `TVMFFIEnvGetStream()`
 - **Output**: Write complete JSON to `Example-FlashInfer-Trace/solutions/agent_vibecode_gemm.json`
-

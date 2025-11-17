@@ -180,7 +180,7 @@ def test_model(model_name: str, output_dir: Path):
             with open(output_file, "a") as f:
                 f.write("Test Results:\n")
                 f.write("=" * 80 + "\n")
-                f.write(f"Compilation: SUCCESS\n")
+                f.write("Compilation: SUCCESS\n")
                 f.write(f"Test 1 (small tensor): {'PASS' if test1_passed else 'FAIL'}\n")
                 f.write(f"Test 2 (large tensor): {'PASS' if test2_passed else 'FAIL'}\n")
 
@@ -201,7 +201,7 @@ def test_model(model_name: str, output_dir: Path):
             with open(output_file, "a") as f:
                 f.write("Test Results:\n")
                 f.write("=" * 80 + "\n")
-                f.write(f"Compilation: FAILED\n")
+                f.write("Compilation: FAILED\n")
                 f.write(f"Error: {str(e)}\n")
 
             return {

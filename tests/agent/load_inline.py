@@ -1,6 +1,3 @@
-import re
-from pathlib import Path
-
 import torch
 import tvm_ffi.cpp
 from tvm_ffi import Module
@@ -39,6 +36,12 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, tvm_ffi_example_cuda::AddOne);
 def main():
     mod: Module = tvm_ffi.cpp.load_inline(name="add_one_cuda", cuda_sources=cuda_source)
     print("Compilation successful")
+
+    x = torch.randn(8).cuda()
+    y = torch.randn(8).cuda()
+    print(x)
+    mod.add_one_cuda(x, y)
+    print(y)
 
 
 if __name__ == "__main__":

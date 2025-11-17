@@ -1,8 +1,3 @@
-"""
-Test script to re-test previously generated CUDA kernels from test_results directory.
-Reads .txt files containing generated code and runs the same test cases.
-"""
-
 import re
 from pathlib import Path
 
@@ -12,15 +7,9 @@ from tvm_ffi import Module
 
 
 def extract_code_from_file(file_path: Path) -> tuple[str, str]:
-    """Extract model name and generated code from a test result file.
-
-    Returns:
-        tuple: (model_name, code)
-    """
     with open(file_path, "r") as f:
         content = f.read()
 
-    # Extract model name
     model_match = re.search(r"Model: (.+?)\n", content)
     model_name = model_match.group(1) if model_match else file_path.stem
 
