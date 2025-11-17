@@ -26,7 +26,9 @@ class Language(Enum):
     """Enum representing source code languages supported by the builder."""
 
     CUDA = "cuda"
+    """The solution's language is CUDA"""
     CPP = "cpp"
+    """The solution's language is C/C++"""
 
 
 class TvmFfiBuilder(Builder):
