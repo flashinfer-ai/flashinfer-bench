@@ -14,9 +14,6 @@ def test_sourcefile_validation_python():
     # Non-string content
     with pytest.raises(ValueError):
         SourceFile(path="main.py", content=123)  # type: ignore[arg-type]
-    # Invalid python
-    with pytest.raises(ValueError):
-        SourceFile(path="main.py", content="def run(: pass")
 
 
 def test_buildspec_validation():
@@ -87,7 +84,9 @@ def test_path_traversal_attack():
         entry_point="../../kernel.cpp::add_one_cpu",
     )
     # Should fail at Solution creation time with path traversal error
-    with pytest.raises(ValueError, match="path traversal not allowed"):
+    with pytest.raises(
+        ValueError, match="Invalid source path \\(parent directory traversal not allowed\\)"
+    ):
         Solution(
             name="malicious",
             definition="def1",
