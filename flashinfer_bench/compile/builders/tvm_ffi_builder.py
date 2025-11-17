@@ -29,7 +29,7 @@ class Language(Enum):
     CPP = "cpp"
 
 
-class TVMFFIBuilder(Builder):
+class TvmFfiBuilder(Builder):
     """Builder using TVM-FFI with automatic caching and supports multi-process and multi-threaded
     compilation. The result is framework agnostic and supports DLPack interop with PyTorch, JAX,
     etc.
@@ -354,6 +354,8 @@ class TVMFFIBuilder(Builder):
         if can_use_cached:
             output_lib_path = str(build_path / f"{key}.so")
         else:
+            # Ensure build directory exists before creating file lock
+            build_path.mkdir(parents=True, exist_ok=True)
             with FileLock(build_path / self._LOCK_FILE_NAME):
                 # Double-check after acquiring lock (another process may have built it)
                 if self._can_use_cached(build_path, key, sol):
