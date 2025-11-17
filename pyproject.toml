@@ -93,7 +93,7 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra"
+addopts = "-rA --durations=0 --ignore=3rdparty"
 
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
