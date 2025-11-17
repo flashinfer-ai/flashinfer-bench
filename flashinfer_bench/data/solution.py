@@ -2,6 +2,7 @@
 
 import ast
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 from pydantic import Field, model_validator
@@ -115,16 +116,24 @@ class Solution(BaseModelWithDocstrings):
 
     @model_validator(mode="after")
     def _validate_source_path_entry_point(self) -> "Solution":
-        """Validate that all source file paths are unique.
+        """Validate source file paths for uniqueness and security.
 
         Raises
         ------
         ValueError
-            If duplicate source file paths are found, or the entry point file is not found in the
-            sources.
+            If duplicate source file paths are found, the entry point file is not found in the
+            sources, or paths contain security issues (absolute paths or path traversal).
         """
         seen_paths = set()
         for source in self.sources:
+            # Security check: prevent path traversal attacks
+            src_path = Path(source.path)
+            if src_path.is_absolute():
+                raise ValueError(f"Invalid source path (absolute path not allowed): {source.path}")
+            if ".." in src_path.parts:
+                raise ValueError(f"Invalid source path (path traversal not allowed): {source.path}")
+
+            # Check for duplicates
             if source.path in seen_paths:
                 raise ValueError(f"Duplicate source path '{source.path}'")
             seen_paths.add(source.path)
@@ -133,7 +142,6 @@ class Solution(BaseModelWithDocstrings):
 
         if entry_file not in seen_paths:
             raise ValueError(f"Entry source file '{entry_file}' not found in sources")
-        # TODO(shanli): stronger validation for entry file and function
 
         return self
 

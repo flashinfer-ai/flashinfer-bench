@@ -125,8 +125,9 @@ class TvmFfiBuilder(Builder):
         """
         return get_fib_cache_path() / self._BUILD_DIR_NAME / key
 
-    def _can_use_cached(self, path: Path, key: str, sol: Solution) -> bool:
-        """Check if cached .so can be used by comparing source files and .so existence.
+    def _check_sources(self, path: Path, key: str, sol: Solution) -> bool:
+        """Check if the source code is vaild, and if the cached .so can be used by comparing source
+        files and .so existence.
 
         Returns True (can use cached .so) only if:
         1. The compiled .so file exists
@@ -143,8 +144,8 @@ class TvmFfiBuilder(Builder):
 
         Returns
         -------
-        bool
-            True if cached .so can be used, False if compilation is needed
+        can_use_cached : bool
+            True if the cached .so can be used, False if compilation is needed
         """
         # Check if build directory exists
         if not path.exists():
@@ -159,6 +160,12 @@ class TvmFfiBuilder(Builder):
 
         # Check if all files exist and content is identical
         for src in sol.sources:
+            # Defensive assertion: the path in the solution should be validated by the Solution
+            # model validator, but we add this defensive assertion to be safe.
+            src_path_obj = Path(src.path)
+            assert not src_path_obj.is_absolute(), f"Absolute path detected: {src.path}"
+            assert ".." not in src_path_obj.parts, f"Path traversal detected: {src.path}"
+
             src_path = path / src.path
 
             if not src_path.exists():
@@ -230,6 +237,11 @@ class TvmFfiBuilder(Builder):
         cuda_files: List[str] = []
 
         for src in sol.sources:
+            # Defensive assertion: path should be validated at Solution creation time
+            src_path_obj = Path(src.path)
+            assert not src_path_obj.is_absolute(), f"Absolute path detected: {src.path}"
+            assert ".." not in src_path_obj.parts, f"Path traversal detected: {src.path}"
+
             src_path = path / src.path
 
             # Ensure parent directories exist
@@ -349,7 +361,7 @@ class TvmFfiBuilder(Builder):
         build_path = self._get_build_path(key)
         entry_symbol = self._get_entry_symbol(sol)
         language = self._detect_language(sol)
-        can_use_cached = self._can_use_cached(build_path, key, sol)
+        can_use_cached = self._check_sources(build_path, key, sol)
 
         # Check if cached .so can be used
         # This checking and rebuilding is thread-safe through the FileLock
@@ -360,7 +372,7 @@ class TvmFfiBuilder(Builder):
             build_path.mkdir(parents=True, exist_ok=True)
             with FileLock(build_path / self._LOCK_FILE_NAME):
                 # Double-check after acquiring lock (another process may have built it)
-                if self._can_use_cached(build_path, key, sol):
+                if self._check_sources(build_path, key, sol):
                     output_lib_path = str(build_path / f"{key}.so")
                 else:
                     cpp_files, cuda_files = self._write_sources(build_path, sol)
