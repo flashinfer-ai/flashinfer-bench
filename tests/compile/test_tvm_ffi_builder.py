@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from flashinfer_bench.compile.builder import BuildError
-from flashinfer_bench.compile.builders.tvm_ffi_builder import TvmFfiBuilder
+from flashinfer_bench.compile.builders.tvm_ffi_builder import TVMFFIBuilder
 from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, SupportedLanguages
 
 
@@ -119,7 +119,7 @@ def test_build_cpp_cpu() -> None:
     )
 
     # Build and run
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
     # Test execution with torch tensors - runnable returns output
@@ -166,7 +166,7 @@ def test_build_cuda_gpu() -> None:
     )
 
     # Build and run
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
     # Test execution with torch tensors - runnable returns output
@@ -186,7 +186,7 @@ def test_build_cuda_gpu() -> None:
 
 def test_can_build_cuda() -> None:
     """Test that TVMFFIBuilder can build CUDA solutions."""
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
 
     cuda_solution = Solution(
         name="test_cuda",
@@ -206,7 +206,7 @@ def test_can_build_cuda() -> None:
 
 def test_can_build_non_cuda() -> None:
     """Test that TVMFFIBuilder rejects non-CUDA solutions."""
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
 
     python_solution = Solution(
         name="test_python",
@@ -249,7 +249,7 @@ def test_caching_builder_level() -> None:
     )
 
     # First build
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     time_start = time.monotonic()
     runnable1 = builder.build(definition, solution)
     time_end = time.monotonic()
@@ -298,14 +298,14 @@ def test_caching_cross_builder() -> None:
     )
 
     # First build
-    builder1 = TvmFfiBuilder()
+    builder1 = TVMFFIBuilder()
     time_start = time.monotonic()
     runnable1 = builder1.build(definition, solution)
     time_end = time.monotonic()
     print(f"Time taken to build: {(time_end - time_start) * 1000} ms")
 
     # Second build should load from cache
-    builder2 = TvmFfiBuilder()
+    builder2 = TVMFFIBuilder()
     time_start = time.monotonic()
     runnable2 = builder2.build(definition, solution)
     time_end = time.monotonic()
@@ -349,7 +349,7 @@ def test_call_dest_cpu() -> None:
     )
 
     # Build
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
     # Manually allocate input and output tensors
@@ -399,7 +399,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(actual_function, actual_function);
         description="Invalid entry point test",
     )
 
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     with pytest.raises(BuildError):
         builder.build(definition, invalid_solution)
 
@@ -431,7 +431,7 @@ def test_no_sources() -> None:
         description="No sources test",
     )
 
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     with pytest.raises(BuildError, match="No CUDA or C\\+\\+ sources"):
         builder.build(definition, no_sources_solution)
 
@@ -465,7 +465,7 @@ def test_source_in_subdirectory() -> None:
     )
 
     # Build and run
-    builder = TvmFfiBuilder()
+    builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
     # Test execution

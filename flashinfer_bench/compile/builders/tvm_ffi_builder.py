@@ -31,7 +31,7 @@ class Language(Enum):
     """The solution's language is C/C++"""
 
 
-class TvmFfiBuilder(Builder):
+class TVMFFIBuilder(Builder):
     """Builder using TVM-FFI with automatic caching and supports multi-process and multi-threaded
     compilation. The result is framework agnostic and supports DLPack interop with PyTorch, JAX,
     etc.
