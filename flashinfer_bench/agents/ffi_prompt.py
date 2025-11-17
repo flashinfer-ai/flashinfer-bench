@@ -240,11 +240,11 @@ void MyKernel(tvm::ffi::TensorView input, tvm::ffi::TensorView output) {
   int64_t channels = input.size(1);
   int64_t height = input.size(2);
   int64_t width = input.size(3);
-  
+
   // Get data pointer
   float* in_data = static_cast<float*>(input.data_ptr());
   float* out_data = static_cast<float*>(output.data_ptr());
-  
+
   // Check device
   DLDevice dev = input.device();
   if (dev.device_type == kDLCUDA) {
@@ -262,8 +262,8 @@ void MyKernel(tvm::ffi::TensorView input, tvm::ffi::TensorView output) {
 **Static Factory Methods:**
 ```cpp
 // From DLPack
-static Tensor FromDLPack(DLManagedTensor* tensor, 
-                         size_t require_alignment = 0, 
+static Tensor FromDLPack(DLManagedTensor* tensor,
+                         size_t require_alignment = 0,
                          bool require_contiguous = false)
 
 static Tensor FromDLPackVersioned(DLManagedTensorVersioned* tensor,
@@ -272,8 +272,8 @@ static Tensor FromDLPackVersioned(DLManagedTensorVersioned* tensor,
 
 // Allocate from environment (recommended for kernel outputs)
 static Tensor FromEnvAlloc(int (*env_alloc)(DLTensor*, TVMFFIObjectHandle*),
-                          ffi::ShapeView shape, 
-                          DLDataType dtype, 
+                          ffi::ShapeView shape,
+                          DLDataType dtype,
                           DLDevice device)
 
 // Example: Allocate tensor using environment allocator
@@ -437,7 +437,7 @@ for (int64_t d : dims) {
 
 **Purpose:** Hash map container with copy-on-write semantics. Similar to `std::unordered_map`.
 
-**Type Parameters:** 
+**Type Parameters:**
 - `K` (key type) must be hashable and compatible with Any
 - `V` (value type) must be compatible with Any
 
@@ -776,7 +776,7 @@ kDLFloat8_e5m2 = 7
 DLDataType StringToDLDataType(const String& str)
 // Examples: "float32", "int64", "float16", "uint8"
 
-// DLDataType to String  
+// DLDataType to String
 String DLDataTypeToString(DLDataType dtype)
 
 // Get type code as string (internal)
@@ -819,7 +819,7 @@ String dtype_str = DLDataTypeToString(dt);  // "float32"
 class Error : public std::exception {
 public:
   Error(std::string kind, std::string message, std::string backtrace);
-  
+
   std::string kind() const;                    // Error category
   std::string message() const;                 // Error message
   std::string backtrace() const;               // Stack trace
@@ -901,12 +901,12 @@ void MyKernel(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
   if (x.ndim() != 2) {
     TVM_FFI_THROW(ValueError) << "Expected 2D tensor, got " << x.ndim() << "D";
   }
-  
+
   DLDataType dt = x.dtype();
   if (dt.code != kDLFloat || dt.bits != 32) {
     TVM_FFI_THROW(TypeError) << "Expected float32, got " << DLDataTypeToString(dt);
   }
-  
+
   // Internal consistency checks
   TVM_FFI_ICHECK_EQ(x.size(1), y.size(0)) << "Dimension mismatch for matmul";
 }
@@ -923,7 +923,7 @@ void MyKernel(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(export_name, cpp_function)
 
 // Example:
-void MyKernel(tvm::ffi::TensorView a, tvm::ffi::TensorView b) { 
+void MyKernel(tvm::ffi::TensorView a, tvm::ffi::TensorView b) {
   // kernel implementation
 }
 
@@ -972,24 +972,24 @@ public:
   // Get global function by name
   static std::optional<Function> GetGlobal(std::string_view name);
   static Function GetGlobalRequired(std::string_view name);  // Throws if not found
-  
+
   // Set global function
   static void SetGlobal(std::string_view name, Function func, bool override = false);
-  
+
   // List all global function names
   static std::vector<String> ListGlobalNames();
-  
+
   // Remove global function
   static void RemoveGlobal(const String& name);
-  
+
   // Call function with arguments
   template<typename... Args>
   Any operator()(Args&&... args) const;
-  
+
   // Create from typed function
   template<typename TCallable>
   static Function FromTyped(TCallable callable);
-  
+
   template<typename TCallable>
   static Function FromTyped(TCallable callable, std::string name);
 };
@@ -1035,20 +1035,20 @@ class Module {
 public:
   // Load module from file
   static Module LoadFromFile(const String& file_name);
-  
+
   // Get function from module
   Optional<Function> GetFunction(const String& name, bool query_imports = true);
-  
+
   // Check if function exists
   bool ImplementsFunction(const String& name, bool query_imports = true);
-  
+
   // Get function metadata
   Optional<String> GetFunctionDoc(const String& name, bool query_imports = true);
   Optional<String> GetFunctionMetadata(const String& name, bool query_imports = true);
-  
+
   // Import another module
   void ImportModule(const Module& other);
-  
+
   // Export module
   void WriteToFile(const String& file_name, const String& format) const;
   Bytes SaveToBytes() const;
@@ -1104,7 +1104,7 @@ if (opt_func.defined()) {
 TVMFFIStreamHandle TVMFFIEnvGetStream(int32_t device_type, int32_t device_id)
 
 // Set current CUDA stream for device
-int TVMFFIEnvSetStream(int32_t device_type, 
+int TVMFFIEnvSetStream(int32_t device_type,
                        int32_t device_id,
                        TVMFFIStreamHandle stream,
                        TVMFFIStreamHandle* opt_out_original_stream)
@@ -1134,7 +1134,7 @@ int TVMFFIEnvSetDLPackManagedTensorAllocator(
 
 // Usage: Allocate output tensor
 ffi::Tensor output = ffi::Tensor::FromEnvAlloc(
-    TVMFFIEnvTensorAlloc, 
+    TVMFFIEnvTensorAlloc,
     shape,   // ffi::ShapeView
     dtype,   // DLDataType
     device   // DLDevice
@@ -1200,23 +1200,23 @@ void Add(tvm::ffi::TensorView a, tvm::ffi::TensorView b, tvm::ffi::TensorView c)
   TVM_FFI_ICHECK_EQ(c.ndim(), 1) << "c must be 1D";
   TVM_FFI_ICHECK_EQ(a.size(0), b.size(0)) << "Shape mismatch";
   TVM_FFI_ICHECK_EQ(a.size(0), c.size(0)) << "Shape mismatch";
-  
+
   // Check dtype
   if (a.dtype().code != kDLFloat || a.dtype().bits != 32) {
     TVM_FFI_THROW(TypeError) << "Expected float32 tensor";
   }
-  
+
   // Get data
   float* a_data = static_cast<float*>(a.data_ptr());
   float* b_data = static_cast<float*>(b.data_ptr());
   float* c_data = static_cast<float*>(c.data_ptr());
   int64_t n = a.size(0);
-  
+
   // Get CUDA stream
   DLDevice dev = a.device();
   cudaStream_t stream = static_cast<cudaStream_t>(
       TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-  
+
   // Launch kernel
   int64_t threads = 256;
   int64_t blocks = (n + threads - 1) / threads;
@@ -1233,20 +1233,20 @@ void Process2D(tvm::ffi::TensorView input, tvm::ffi::TensorView output) {
   // Validate
   TVM_FFI_ICHECK_EQ(input.ndim(), 2) << "Expected 2D tensor";
   TVM_FFI_ICHECK_EQ(output.ndim(), 2) << "Expected 2D tensor";
-  
+
   // Get dimensions
   int64_t height = input.size(0);
   int64_t width = input.size(1);
   TVM_FFI_ICHECK_EQ(output.size(0), height);
   TVM_FFI_ICHECK_EQ(output.size(1), width);
-  
+
   // Check contiguous
   TVM_FFI_ICHECK(input.IsContiguous()) << "Input must be contiguous";
-  
+
   // Access with strides (more general)
   int64_t stride_h = input.stride(0);
   int64_t stride_w = input.stride(1);
-  
+
   // For contiguous tensors: element[i][j] at data[i * stride_h + j * stride_w]
 }
 ```
@@ -1254,12 +1254,12 @@ void Process2D(tvm::ffi::TensorView input, tvm::ffi::TensorView output) {
 ## Pattern 3: Allocating Output Tensors
 
 ```cpp
-tvm::ffi::Tensor AllocateOutput(tvm::ffi::TensorView input, 
+tvm::ffi::Tensor AllocateOutput(tvm::ffi::TensorView input,
                                 tvm::ffi::ShapeView output_shape) {
   // Create output with same device and dtype as input
   DLDevice device = input.device();
   DLDataType dtype = input.dtype();
-  
+
   // Allocate using environment allocator
   tvm::ffi::Tensor output = tvm::ffi::Tensor::FromEnvAlloc(
       TVMFFIEnvTensorAlloc,
@@ -1267,7 +1267,7 @@ tvm::ffi::Tensor AllocateOutput(tvm::ffi::TensorView input,
       dtype,
       device
   );
-  
+
   return output;
 }
 
@@ -1275,10 +1275,10 @@ tvm::ffi::Tensor AllocateOutput(tvm::ffi::TensorView input,
 void MyKernel(tvm::ffi::TensorView input) {
   // Create output shape
   Shape out_shape = {input.size(0), input.size(1) * 2};
-  
+
   // Allocate
   Tensor output = AllocateOutput(input, out_shape);
-  
+
   // Now use output.data_ptr() in kernel
 }
 ```
@@ -1288,7 +1288,7 @@ void MyKernel(tvm::ffi::TensorView input) {
 ```cpp
 void UniversalKernel(tvm::ffi::TensorView input, tvm::ffi::TensorView output) {
   DLDevice dev = input.device();
-  
+
   switch (dev.device_type) {
     case kDLCUDA: {
       // CUDA implementation
@@ -1323,13 +1323,13 @@ void ConfigurableKernel(tvm::ffi::TensorView input,
   // Extract config with defaults
   int64_t block_size = config.Get("block_size", 256);
   int64_t num_threads = config.Get("num_threads", 1024);
-  
+
   // Or check if key exists
   if (config.count("custom_param") > 0) {
     int64_t custom = config.at("custom_param");
     // use custom
   }
-  
+
   // Launch with config
   // ...
 }
@@ -1341,15 +1341,15 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(configurable_kernel, ConfigurableKernel);
 
 ```cpp
 // Return tuple
-tvm::ffi::Tuple<tvm::ffi::Tensor, int64_t, float> 
+tvm::ffi::Tuple<tvm::ffi::Tensor, int64_t, float>
 ComputeWithStats(tvm::ffi::TensorView input) {
   // Allocate output
   tvm::ffi::Tensor output = AllocateOutput(input, input.shape());
-  
+
   // Compute statistics
   int64_t count = input.numel();
   float mean = 0.0f;  // ... compute mean
-  
+
   // Return multiple values
   return {output, count, mean};
 }
@@ -1363,7 +1363,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(compute_with_stats, ComputeWithStats);
 void BatchProcess(tvm::ffi::Array<tvm::ffi::TensorView> inputs,
                  tvm::ffi::Array<tvm::ffi::TensorView> outputs) {
   TVM_FFI_ICHECK_EQ(inputs.size(), outputs.size()) << "Size mismatch";
-  
+
   for (size_t i = 0; i < inputs.size(); ++i) {
     TensorView in = inputs[i];
     TensorView out = outputs[i];
@@ -1423,7 +1423,7 @@ TVM_FFI_ICHECK(tensor.IsContiguous());
 DLDevice dev = tensor.device();
 cudaStream_t stream = static_cast<cudaStream_t>(
     TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-    
+
 float* data = static_cast<float*>(tensor.data_ptr());
 int64_t n = tensor.numel();
 
@@ -1866,4 +1866,3 @@ void CreateOutput(tvm::ffi::TensorView input) {
 }
 ```
 """
-
