@@ -431,7 +431,7 @@ def test_no_sources() -> None:
         description="No sources test",
     )
 
-    builder = TVMFFIBuilder()
+    builder = TvmFfiBuilder()
     with pytest.raises(BuildError, match="No CUDA or C\\+\\+ sources"):
         builder.build(definition, no_sources_solution)
 
