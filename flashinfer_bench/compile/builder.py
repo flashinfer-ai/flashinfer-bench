@@ -42,7 +42,7 @@ def create_pkg_name(sol: Solution, prefix: str = "") -> str:
         h.update(src.path.encode())
         h.update(src.content.encode())
 
-    return prefix + s + "_" + h.hexdigest()[:4]
+    return prefix + s + "_" + h.hexdigest()[:6]
 
 
 class BuildError(RuntimeError):

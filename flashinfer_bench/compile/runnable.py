@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
 
+from flashinfer_bench.data import Definition
+from flashinfer_bench.utils import dtype_str_to_torch_dtype
+
 
 class Runnable:
     def __init__(
-        self,
-        fn: Callable[..., Any],
-        closer: Callable[[], None],
-        meta: Optional[Dict[str, Any]] = None,
+        self, fn: Callable[..., Any], closer: Optional[Callable[[], None]], meta: Dict[str, Any]
     ) -> None:
         """A runnable callable with a required resource closer.
 
@@ -16,7 +16,7 @@ class Runnable:
         """
         self._fn = fn
         self._closer: Optional[Callable[[], None]] = closer
-        self.meta: Dict[str, Any] = dict(meta or {})
+        self.meta: Dict[str, Any] = meta
 
     def __call__(self, **kwargs: Any) -> Any:
         """
@@ -36,3 +36,47 @@ class Runnable:
                 self._closer()
             finally:
                 self._closer = None
+
+
+class TVMFFIRunnable(Runnable):
+    def __init__(
+        self,
+        fn: Callable[..., Any],
+        closer: Optional[Callable[[], None]],
+        meta: Dict[str, Any],
+        definition: Definition,
+    ) -> None:
+        super().__init__(fn, closer, meta)
+        self._definition = definition
+
+    def __call__(self, **kwargs: Any) -> Any:
+        import torch
+
+        # Allocate output tensors first
+
+        var_values = self._definition.get_var_values(
+            {name: list(tensor.shape) for name, tensor in kwargs.items()}
+        )
+        output_shapes = self._definition.get_output_shapes(var_values)
+        output_tensors: Dict[str, torch.Tensor] = {}
+        device = next(iter(kwargs.values())).device if len(kwargs) > 0 else "cpu"
+        for name, shape in output_shapes.items():
+            output_tensors[name] = torch.empty(
+                shape, dtype=dtype_str_to_torch_dtype(self._definition.outputs[name].dtype)
+            ).to(device)
+
+        self.call_dest(**kwargs, **output_tensors)
+
+        results = list(output_tensors.values())
+        if len(results) == 1:
+            return results[0]
+        return results
+
+    def call_dest(self, **kwargs: Any) -> None:
+        """Call the underlying function with destination passing style."""
+        self._fn(**kwargs)
+
+    def close(self) -> None:
+        if self._closer:
+            self._closer()
+            self._closer = None

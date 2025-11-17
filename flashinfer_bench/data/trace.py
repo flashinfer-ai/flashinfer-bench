@@ -43,7 +43,8 @@ class SafetensorsInput(BaseModelWithDocstrings):
     type: Literal["safetensors"] = "safetensors"
     """The input type identifier for safetensors data."""
     path: NonEmptyString
-    """Path to the safetensors file containing the tensor data."""
+    """Path to the safetensors file containing the tensor data. The path is relative to the root
+    path of the TraceSet."""
     tensor_key: NonEmptyString
     """Key identifier for the specific tensor within the safetensors file."""
 
