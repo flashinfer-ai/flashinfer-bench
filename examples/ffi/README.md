@@ -1,0 +1,69 @@
+# FlashInfer Bench (TVM-FFI) Kernel Distribution Example
+
+This directory contains examples demonstrating how to build, distribute, and load agent generated CUDA kernels using TVM-FFI across different environments.
+
+## Installation Prerequisites
+
+### Python Dependencies
+```bash
+pip install flashinfer-bench tvm-ffi torch
+```
+
+### For JAX Example
+```bash
+pip install jax jax-tvm-ffi
+```
+
+### For C++ Example
+- CUDA Toolkit
+- TVM-FFI C++ headers and libraries
+- C++17 compatible compiler
+
+## Usage
+
+### 1. Generate Kernel with Agent
+
+Use your preferred coding agent to generate a GEMM kernel solution following `agent_vibecode.md`. Or use the provided example vibecoded kernel using gpt-5-2025-08-07.
+
+### 2. Build and Distribute
+```bash
+cd /flashinfer-bench/examples/ffi
+python distribute_kernel.py
+```
+
+This builds the kernel and extracts `kernel.so` to `distributed/` folder.
+
+### 3. Run Examples
+
+**JAX:**
+```bash
+python jax_example.py
+```
+
+**PyTorch:**
+```bash
+python pytorch_example.py
+```
+
+**C++:**
+```bash
+make run
+```
+
+Each example loads the distributed kernel, executes it, and prints output shape and elements.
+
+## How It Works
+
+The kernel is built using `TVMFFIBuilder`, producing a self-contained `.so` file. This binary can be loaded across different runtimes:
+
+- **JAX**: Uses `tvm_ffi.load_module()` and `jax.ffi.ffi_call()`
+- **PyTorch**: Uses `torch.utils.cpp_extension.load()` with custom CUDA extensions
+- **C++**: Uses `ffi::Module::LoadFromFile()`
+
+The same `.so` file works across all frameworks without recompilation.
+
+## Notes
+
+- Kernels use destination-passing style (pre-allocated outputs)
+- All examples use CUDA tensors on GPU device 0
+- Entry point format: `file.cu::function_name`

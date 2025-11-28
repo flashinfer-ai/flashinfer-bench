@@ -173,7 +173,7 @@ The output JSON must conform to the Solution schema and be written to:
 
 ```json
 {
-  "name": "agent_vibecode_gemm",
+  "name": "agent_example_gemm",
   "definition": "gemm_n4096_k4096",
   "description": "High-performance CUDA GEMM implementation for C = A @ B.T using TVM FFI bindings",
   "author": "vibecode-agent",
