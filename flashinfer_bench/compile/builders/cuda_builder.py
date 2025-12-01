@@ -70,7 +70,7 @@ def _get_package_paths(pkg_name: str, lib_names: Optional[List[str]] = None):
 CUDA_DEPS = {
     "cublas": ("nvidia.cublas", ["cublas", "cublasLt"]),
     "cudnn": ("nvidia.cudnn", ["cudnn"]),
-    "cutlass": ("flashinfer_bench._deps.cutlass", None),  # Header-only
+    "cutlass": ("flashinfer_bench.thirdparty.cutlass", None),  # Header-only
 }
 
 

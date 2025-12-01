@@ -15,6 +15,8 @@ class BuilderRegistry:
         if not builders:
             raise ValueError("BuilderRegistry requires at least one builder")
         self._builders: Tuple[Builder, ...] = builders
+        # Cache: solution_name -> builder to avoid repeated can_build checks
+        self._solution_to_builder: dict[str, Builder] = {}
 
     def clear(self) -> None:
         for b in self._builders:
@@ -22,11 +24,16 @@ class BuilderRegistry:
                 b.clear_cache()
             except Exception:
                 pass
+        self._solution_to_builder.clear()
 
     def build(self, defn: Definition, sol: Solution) -> Runnable:
+        builder = self._solution_to_builder.get(sol.name)
+        if builder is not None:
+            return builder.build(defn, sol)
+
         for builder in self._builders:
-            # Choose the first
             if builder.can_build(sol):
+                self._solution_to_builder[sol.name] = builder
                 return builder.build(defn, sol)
         raise BuildError(f"No registered builder can build solution '{sol.name}'")
 

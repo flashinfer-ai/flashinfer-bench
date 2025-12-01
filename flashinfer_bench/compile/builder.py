@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import tempfile
@@ -31,18 +30,10 @@ def write_sources_to_temp(base: str, sources: list[SourceFile], pkg: Optional[st
 
 
 def create_pkg_name(sol: Solution, prefix: str = "") -> str:
-    # Normalize the solution name
     s = re.sub(r"[^0-9a-zA-Z_]", "_", sol.name)
     if not s or s[0].isdigit():
         s = "_" + s
-
-    # Hash the sources
-    h = hashlib.sha1()
-    for src in sol.sources:
-        h.update(src.path.encode())
-        h.update(src.content.encode())
-
-    return prefix + s + "_" + h.hexdigest()[:6]
+    return prefix + s
 
 
 class BuildError(RuntimeError):

@@ -14,53 +14,12 @@ from flashinfer_bench.compile import get_builder_registry
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.tracing import get_tracing_runtime
 
 from .config import ApplyConfig
 from .key import ApplyKeyBuilder, ApplyKeyFactory
 from .table import ApplyTable
 
 logger = get_logger("ApplyRuntime")
-
-
-def _init_apply_runtime_from_env() -> Optional["ApplyRuntime"]:
-    """Initialize the global runtime from environment variables if configured."""
-    fib_enable_apply = get_fib_enable_apply()
-    if not fib_enable_apply:
-        return
-    fib_dataset_path = get_fib_dataset_path()
-    trace_set = TraceSet.from_path(fib_dataset_path)
-    apply_config = ApplyConfig()
-    return ApplyRuntime(trace_set, apply_config, None)
-
-
-_global_apply_runtime: Optional["ApplyRuntime"] = _init_apply_runtime_from_env()
-
-
-def get_apply_runtime() -> Optional["ApplyRuntime"]:
-    """Get the global ApplyRuntime instance.
-
-    Returns the singleton runtime instance, initializing it from environment
-    variables if it hasn't been created yet.
-
-    Returns
-    -------
-    Optional[ApplyRuntime]
-        The global runtime instance, or None if not initialized.
-    """
-    return _global_apply_runtime
-
-
-def set_apply_runtime(rt: Optional["ApplyRuntime"]) -> None:
-    """Set the global ApplyRuntime instance.
-
-    Parameters
-    ----------
-    rt : Optional[ApplyRuntime]
-        The runtime instance to set, or None to clear the global runtime.
-    """
-    global _global_apply_runtime
-    _global_apply_runtime = rt
 
 
 class ApplyRuntime:
@@ -146,16 +105,6 @@ class ApplyRuntime:
             If the definition is not found and no fallback is provided, or if
             no suitable implementation is available and no fallback is provided.
         """
-        # First try to run tracing logic in case tracing is enabled
-        tracing_runtime = get_tracing_runtime()
-        if tracing_runtime is not None:
-            try:
-                tracing_runtime.collect(def_name, runtime_kwargs)
-            except Exception as e:
-                logger.error(f"Error collecting trace for {def_name}: {e}")
-                pass
-
-        # Then try to run apply logic
         defn = self._trace_set.definitions.get(def_name)
         if defn is None:
             if fallback is None:
@@ -198,3 +147,43 @@ class ApplyRuntime:
     def __exit__(self, exc_type, exc, tb) -> bool:
         set_apply_runtime(self._prev_runtime)
         return False
+
+
+def _init_apply_runtime_from_env() -> Optional["ApplyRuntime"]:
+    """Initialize the global runtime from environment variables if configured."""
+    fib_enable_apply = get_fib_enable_apply()
+    if not fib_enable_apply:
+        return
+    fib_dataset_path = get_fib_dataset_path()
+    trace_set = TraceSet.from_path(fib_dataset_path)
+    apply_config = ApplyConfig()
+    return ApplyRuntime(trace_set, apply_config, None)
+
+
+_global_apply_runtime: Optional["ApplyRuntime"] = _init_apply_runtime_from_env()
+
+
+def get_apply_runtime() -> Optional["ApplyRuntime"]:
+    """Get the global ApplyRuntime instance.
+
+    Returns the singleton runtime instance, initializing it from environment
+    variables if it hasn't been created yet.
+
+    Returns
+    -------
+    Optional[ApplyRuntime]
+        The global runtime instance, or None if not initialized.
+    """
+    return _global_apply_runtime
+
+
+def set_apply_runtime(rt: Optional["ApplyRuntime"]) -> None:
+    """Set the global ApplyRuntime instance.
+
+    Parameters
+    ----------
+    rt : Optional[ApplyRuntime]
+        The runtime instance to set, or None to clear the global runtime.
+    """
+    global _global_apply_runtime
+    _global_apply_runtime = rt
