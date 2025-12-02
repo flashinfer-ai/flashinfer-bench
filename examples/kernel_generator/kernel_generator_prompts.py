@@ -350,4 +350,3 @@ def get_optimization_prompt(
         current_code=current_code,
         target_gpu=target_gpu,
     )
-

@@ -21,9 +21,9 @@ def main():
     """
     # TODO: select model, language, target gpu, definition
     model_name = "gpt-5-2025-08-07"  # Choose author-model
-    language = "triton" # Target solution language
-    target_gpu = "B200" # Choose solution target GPU
-    definition = "" # Leave empty to generate solutions for all definitions
+    language = "triton"  # Target solution language
+    target_gpu = "B200"  # Choose solution target GPU
+    definition = ""  # Leave empty to generate solutions for all definitions
 
     # TODO: adjust local path to traceset
     traceset_path = "/path/to/flashinfer-trace"

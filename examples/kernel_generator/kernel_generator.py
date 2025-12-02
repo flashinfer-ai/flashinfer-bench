@@ -101,7 +101,7 @@ class KernelGenerator:
 
         print(f"Generating optimized solution for {definition.name}")
         print(f"Using workload {selected_workload.workload.uuid} for optimization feedback")
-        
+
         if beam:
             return self._beam_search_generate(
                 traceset, definition, selected_workload, gen_rounds, beam_width
