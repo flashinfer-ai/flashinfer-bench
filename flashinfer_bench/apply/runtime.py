@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Mapping, Optional
 
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 from flashinfer_bench.logging import get_logger
@@ -175,7 +175,7 @@ class ApplyRuntime:
         if sol_name:
             sol = self._trace_set.get_solution(sol_name)
             if sol:
-                runnable = get_builder_registry().build(defn, sol)
+                runnable = BuilderRegistry.get_instance().build(defn, sol)
 
         # Miss policy
         if runnable is None:
@@ -183,7 +183,7 @@ class ApplyRuntime:
                 best_sol_name = self._table.def_best.get(def_name)
                 sol = self._trace_set.get_solution(best_sol_name)
                 if defn and sol:
-                    runnable = get_builder_registry().build(defn, sol)
+                    runnable = BuilderRegistry.get_instance().build(defn, sol)
                 if runnable is not None:
                     return runnable(**runtime_kwargs)
             if fallback is None:

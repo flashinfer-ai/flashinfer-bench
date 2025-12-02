@@ -1,63 +1,141 @@
+"""Runnable wrapper for compiled solutions."""
+
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Literal, Optional
+
+from pydantic import BaseModel
 
 from flashinfer_bench.data import Definition
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
+BuildType = Literal["cuda", "tvm_ffi", "python", "triton"]
+"""The type of build that produced this runnable. Each builder has a unique build type."""
+
+
+class RunnableMetadata(BaseModel):
+    """Metadata about a runnable implementation.
+
+    This class stores information about how a runnable was built, including the
+    builder type, source definition/solution, and additional builder-specific data.
+    """
+
+    build_type: BuildType
+    """The type of build that produced this runnable (e.g., 'python', 'torch', 'triton', 'tvm_ffi')."""
+    definition: str
+    """Name of the definition that specifies the expected interface."""
+    solution: str
+    """Name of the solution that was compiled into this runnable."""
+    misc: Dict[str, Any]
+    """Miscellaneous metadata about the runnable. Contents vary by builder type."""
+
 
 class Runnable:
-    def __init__(
-        self, fn: Callable[..., Any], closer: Optional[Callable[[], None]], meta: Dict[str, Any]
-    ) -> None:
-        """A runnable callable with a required resource closer.
+    """An executable wrapper around a compiled solution.
 
-        closer: must be provided by the builder and be idempotent.
+    A Runnable encapsulates a callable function along with metadata about how it was built
+    and a cleanup function to release resources. It provides a uniform interface for
+    executing solutions regardless of the build system or language used.
+    """
+
+    metadata: RunnableMetadata
+    """Metadata about the build process and source solution."""
+
+    _callable: Callable[..., Any]
+    """The underlying callable function."""
+    _cleaner: Optional[Callable[[], None]]
+    """Optional cleanup function to release build artifacts and resources."""
+
+    def __init__(
+        self,
+        callable: Callable[..., Any],
+        metadata: RunnableMetadata,
+        cleaner: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """Constructor for the Runnable class.
+
+        Parameters
+        ----------
+        callable : Callable[..., Any]
+            The callable that is wrapped by the runnable.
+        metadata : RunnableMetadata
+            The metadata for the runnable.
+        cleaner : Optional[Callable[[], None]]
+            The cleaner function for the runnable. It will clean up the build artifacts/resources.
         """
-        self._fn = fn
-        self._closer: Optional[Callable[[], None]] = closer
-        self.meta: Dict[str, Any] = meta
+        self._callable = callable
+        self.metadata = metadata
+        self._cleaner = cleaner
 
     def __call__(self, **kwargs: Any) -> Any:
+        """Execute the runnable with keyword arguments.
+
+        This method calls the underlying compiled function with the provided inputs.
+        If the function returns a single-element tuple, it is automatically unpacked
+        to a scalar value for convenience.
+
+        Parameters
+        ----------
+        kwargs : Any
+            Keyword arguments matching the definition's input specification.
+
+        Returns
+        -------
+        Any
+            The result of the underlying function. Single-element tuples are unpacked
+            to scalar values.
         """
-        - Accept kwargs only (aligns with Definition.inputs naming)
-        - Unpack a single-element tuple to a scalar value
-        - No type/shape/count validation; errors surface naturally
-        """
-        ret = self._fn(**kwargs)
+        ret = self._callable(**kwargs)
         if isinstance(ret, tuple) and len(ret) == 1:
             return ret[0]
         return ret
 
-    def close(self) -> None:
-        """Release build artifacts/resources; must be idempotent."""
-        if self._closer:
-            try:
-                self._closer()
-            finally:
-                self._closer = None
+    def call_value_returning(self, **kwargs: Any) -> Any:
+        """Call a destination-passing style (DPS) function in value-returning style.
 
+        Some solutions use the destination-passing style,
+        where output tensors are passed as arguments and the function modifies them in-place::
 
-class TVMFFIRunnable(Runnable):
-    def __init__(
-        self,
-        fn: Callable[..., Any],
-        closer: Optional[Callable[[], None]],
-        meta: Dict[str, Any],
-        definition: Definition,
-    ) -> None:
-        super().__init__(fn, closer, meta)
-        self._definition = definition
+            function(**input_tensors, **output_tensors) -> None
 
-    def __call__(self, **kwargs: Any) -> Any:
+        This method provides a value-returning interface by automatically allocating output
+        tensors based on the definition, calling the DPS function, and returning the outputs::
+
+            result = runnable.call_dps(**input_tensors)  # -> output_tensors
+
+        Parameters
+        ----------
+        kwargs : Any
+            Keyword arguments for input tensors matching the definition's input specification.
+
+        Returns
+        -------
+        Any
+            The output tensor(s). Single outputs are returned as-is, multiple outputs are
+            returned as a tuple, and empty outputs return None.
+
+        Raises
+        ------
+        ValueError
+            If the metadata does not contain the full definition object needed for
+            output tensor allocation.
+        """
         import torch
 
-        # Allocate output tensors first
+        if "definition" not in self.metadata.misc or not isinstance(
+            self.metadata.misc["definition"], Definition
+        ):
+            raise ValueError(
+                "When calling in destination passing style, metadata.misc must "
+                "contain the full definition."
+            )
+        definition: Definition = self.metadata.misc["definition"]
 
-        var_values = self._definition.get_var_values(
+        # Allocate output tensors first
+        var_values = definition.get_var_values(
             {name: list(tensor.shape) for name, tensor in kwargs.items()}
         )
-        output_shapes = self._definition.get_output_shapes(var_values)
+        output_shapes = definition.get_output_shapes(var_values)
         output_tensors: Dict[str, torch.Tensor] = {}
 
         # Determine device from input tensors
@@ -68,16 +146,27 @@ class TVMFFIRunnable(Runnable):
 
         for name, shape in output_shapes.items():
             output_tensors[name] = torch.empty(
-                shape, dtype=dtype_str_to_torch_dtype(self._definition.outputs[name].dtype)
+                shape, dtype=dtype_str_to_torch_dtype(definition.outputs[name].dtype)
             ).to(device)
 
-        self.call_dest(**kwargs, **output_tensors)
+        self._callable(**kwargs, **output_tensors)
 
-        results = list(output_tensors.values())
+        results = tuple(output_tensors.values())
+        if len(results) == 0:
+            return None
         if len(results) == 1:
             return results[0]
         return results
 
-    def call_dest(self, **kwargs: Any) -> None:
-        """Call the underlying function with destination passing style."""
-        self._fn(**kwargs)
+    def cleanup(self) -> None:
+        """Clean up build artifacts and release resources.
+
+        This method calls the cleaner function if one was provided during construction.
+        It is idempotent: calling it multiple times is safe and has no additional effect
+        after the first call.
+        """
+        if self._cleaner:
+            try:
+                self._cleaner()
+            finally:
+                self._cleaner = None

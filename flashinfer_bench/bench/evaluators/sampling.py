@@ -18,8 +18,7 @@ from flashinfer_bench.bench.utils import (
     make_eval,
     normalize_outputs,
 )
-from flashinfer_bench.compile.registry import get_builder_registry
-from flashinfer_bench.compile.runnable import Runnable
+from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import Correctness, Evaluation, EvaluationStatus, Workload
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
@@ -42,7 +41,7 @@ class SamplingEvaluator(DefaultEvaluator):
         device: str,
         traceset_root: Optional[Path] = None,
     ) -> DeviceBaseline:
-        ref_runnable = get_builder_registry().build_reference(defn)
+        ref_runnable = BuilderRegistry.get_instance().build_reference(defn)
         loaded_stensors = (
             load_safetensors(defn, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())

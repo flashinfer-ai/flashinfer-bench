@@ -38,15 +38,12 @@ def test_python_builder_minimum(tmp_path, monkeypatch):
     s = Solution(name="py_sol", definition="mm", author="me", spec=spec, sources=srcs)
 
     b = PythonBuilder()
-    r = b.build(d, s)
+    r = b.build_with_cache(d, s)
     # Call runnable with torch tensors
     A = [[1, 2], [3, 4]]
     B = [[0, 0], [0, 0]]
     out = r(A=A, B=B)
     assert out == A
-    # Ensure temp_dir recorded under our cache
-    assert r.meta.get("temp_dir")
-    assert str(cache_dir) in r.meta["temp_dir"]
     # Cleanup
     b.clear_cache()
 
@@ -80,7 +77,7 @@ def test_python_builder_add(tmp_path, monkeypatch):
 
     # Build and run with torch tensors
     b = PythonBuilder()
-    r = b.build(defn, sol)
+    r = b.build_with_cache(defn, sol)
     X = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
     Y = torch.tensor([[5, 6], [7, 8]], dtype=torch.float32)
     out = r(X=X, Y=Y)

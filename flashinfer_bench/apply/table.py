@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile import Runnable, get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data import Trace, TraceSet
 from flashinfer_bench.env import get_fib_cache_path
 
@@ -115,7 +115,7 @@ class ApplyTable:
                 index[def_name] = bucket
 
             def_best: Dict[str, str] = {}
-            reg = get_builder_registry()
+            reg = BuilderRegistry.get_instance()
 
             for def_name, sol_name in raw["def_best"].items():
                 defn = trace_set.definitions.get(def_name)
@@ -169,7 +169,7 @@ class ApplyTable:
             The newly built apply table.
         """
         digest = cls._digest(trace_set, apply_config)
-        reg = get_builder_registry()
+        reg = BuilderRegistry.get_instance()
 
         index: Dict[str, Dict[ApplyKey, str]] = {}
         def_best: Dict[str, Runnable] = {}
@@ -267,7 +267,7 @@ class ApplyTable:
         """
         if not (config.aot_ratio and config.aot_ratio > 0.0):
             return
-        reg = get_builder_registry()
+        reg = BuilderRegistry.get_instance()
 
         for def_name, bucket in table.index.items():
             if not bucket:

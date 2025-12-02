@@ -16,7 +16,7 @@ import flashinfer_bench.utils as fib_utils
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
-from flashinfer_bench.compile import BuildError, get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry, BuildError
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import redirect_stdio_to_file
@@ -65,7 +65,7 @@ class PersistentSubprocessWorker:
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
-        self._registry = get_builder_registry()
+        self._registry = BuilderRegistry.get_instance()
 
         # Solution failure tracking
         self._failure_records: Dict[str, SolutionFailureRecord] = {}
@@ -648,7 +648,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_builder_registry()
+        registry = BuilderRegistry.get_instance()
 
         conn.send({"cmd": WorkerResponse.READY.value})
 

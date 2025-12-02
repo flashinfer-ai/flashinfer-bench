@@ -12,7 +12,7 @@ from flashinfer_bench.data import AxisVar, Definition, Workload
 class ApplyKey:
     axes: Tuple[Tuple[str, int], ...] = field(default_factory=tuple)
     # Features extracted from input tensors
-    feats: Tuple[Tuple[str, Union[int, Union[float, bool]]], ...] = field(default_factory=tuple)
+    feats: Tuple[Tuple[str, Union[int, float, bool]], ...] = field(default_factory=tuple)
 
     def encode(self) -> str:
         return json.dumps(

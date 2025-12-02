@@ -14,7 +14,7 @@ import flashinfer_bench.utils as fib_utils
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
-from flashinfer_bench.compile import Runnable, get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import redirect_stdio_to_file
@@ -230,7 +230,7 @@ def _solution_worker_main(
     redirect_stdio_to_file(log_path)
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_builder_registry()
+        registry = BuilderRegistry.get_instance()
 
         # Handshake
         conn.send({"cmd": "READY"})

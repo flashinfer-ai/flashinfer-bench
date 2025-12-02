@@ -18,7 +18,6 @@ from .solution import Solution
 from .trace import EvaluationStatus, Trace
 
 
-# TODO(shanli): TraceSet wide validation
 @dataclass
 class TraceSet:
     """Stores a FlashInfer Trace dataset containing definitions, solutions, workloads, and traces.

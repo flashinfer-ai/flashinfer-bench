@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import List
 
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
 from flashinfer_bench.logging import get_logger
 
@@ -46,7 +46,7 @@ class Benchmark:
             self._runner = PersistentRunner(logger, self._config.log_dir)
 
         # Setup registry
-        self._registry = get_builder_registry()
+        self._registry = BuilderRegistry.get_instance()
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.

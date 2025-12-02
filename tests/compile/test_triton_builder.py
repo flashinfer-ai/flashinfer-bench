@@ -54,7 +54,7 @@ def test_triton_builder_import_guard(monkeypatch, tmp_path):
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
     with pytest.raises(BuildError, match="Triton is not available"):
-        b.build(d, s)
+        b.build_with_cache(d, s)
 
 
 @pytest.mark.skipif(importlib.util.find_spec("triton") is None, reason="Triton not available")
@@ -74,7 +74,7 @@ def test_triton_builder_minimum(tmp_path, monkeypatch):
     )
     srcs = [SourceFile(path="m/main.py", content="import torch\n\ndef run(A):\n    return A")]
     s = Solution(name="tri_ok", definition="d", author="a", spec=spec, sources=srcs)
-    r = b.build(d, s)
+    r = b.build_with_cache(d, s)
     out = r(A=[1, 2, 3])
     assert out == [1, 2, 3]
 
@@ -138,7 +138,7 @@ def run(X, Y):
     )
 
     b = TritonBuilder(PythonBuilder())
-    r = b.build(defn, sol)
+    r = b.build_with_cache(defn, sol)
     X = torch.arange(256, dtype=torch.float32, device="cuda")
     Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
     Z = r(X=X, Y=Y)

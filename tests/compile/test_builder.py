@@ -18,14 +18,16 @@ class DummyBuilder(Builder):
     def can_build(self, solution: Solution) -> bool:
         return True
 
-    def _make_key(self, solution: Solution) -> str:
+    def get_key(self, solution: Solution) -> str:
         return f"dummy::{solution.name}"
 
     def _make_closer(self):
         return lambda: None
 
     def _build(self, definition: Definition, solution: Solution) -> Runnable:
-        return Runnable(fn=lambda **kw: kw, closer=self._make_closer(), meta={"dummy": True})
+        return Runnable(
+            callable=lambda **kw: kw, cleaner=self._make_closer(), metadata={"dummy": True}
+        )
 
 
 def test_builder_cache_and_key():
@@ -43,9 +45,9 @@ def test_builder_cache_and_key():
     )
     srcs = [SourceFile(path="main.py", content="def run(A):\n    return A\n")]
     s = Solution(name="s1", definition="test_def", author="me", spec=spec, sources=srcs)
-    r1 = b.build(d, s)
-    r2 = b.build(d, s)
-    assert r1 is r2  # cache hit via _make_key
+    r1 = b.build_with_cache(d, s)
+    r2 = b.build_with_cache(d, s)
+    assert r1 is r2  # cache hit via get_key
     b.clear_cache()
 
 

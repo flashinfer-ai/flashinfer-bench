@@ -120,7 +120,7 @@ def test_build_cpp_cpu() -> None:
 
     # Build and run
     builder = TVMFFIBuilder()
-    runnable = builder.build(definition, solution)
+    runnable = builder.build_with_cache(definition, solution)
 
     # Test execution with torch tensors - runnable returns output
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
@@ -167,7 +167,7 @@ def test_build_cuda_gpu() -> None:
 
     # Build and run
     builder = TVMFFIBuilder()
-    runnable = builder.build(definition, solution)
+    runnable = builder.build_with_cache(definition, solution)
 
     # Test execution with torch tensors - runnable returns output
     n = 1024
@@ -251,13 +251,13 @@ def test_caching_builder_level() -> None:
     # First build
     builder = TVMFFIBuilder()
     time_start = time.monotonic()
-    runnable1 = builder.build(definition, solution)
+    runnable1 = builder.build_with_cache(definition, solution)
     time_end = time.monotonic()
     print(f"Time taken to build: {(time_end - time_start) * 1000} ms")
 
     # Second build should load from cache
     time_start = time.monotonic()
-    runnable2 = builder.build(definition, solution)
+    runnable2 = builder.build_with_cache(definition, solution)
     time_end = time.monotonic()
     print(f"Time taken to load from cache: {(time_end - time_start) * 1000} ms")
 
@@ -300,14 +300,14 @@ def test_caching_cross_builder() -> None:
     # First build
     builder1 = TVMFFIBuilder()
     time_start = time.monotonic()
-    runnable1 = builder1.build(definition, solution)
+    runnable1 = builder1.build_with_cache(definition, solution)
     time_end = time.monotonic()
     print(f"Time taken to build: {(time_end - time_start) * 1000} ms")
 
     # Second build should load from cache
     builder2 = TVMFFIBuilder()
     time_start = time.monotonic()
-    runnable2 = builder2.build(definition, solution)
+    runnable2 = builder2.build_with_cache(definition, solution)
     time_end = time.monotonic()
     print(f"Time taken to load from cache: {(time_end - time_start) * 1000} ms")
 
@@ -350,7 +350,7 @@ def test_call_dest_cpu() -> None:
 
     # Build
     builder = TVMFFIBuilder()
-    runnable = builder.build(definition, solution)
+    runnable = builder.build_with_cache(definition, solution)
 
     # Manually allocate input and output tensors
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0], device="cpu", dtype=torch.float32)
@@ -401,7 +401,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(actual_function, actual_function);
 
     builder = TVMFFIBuilder()
     with pytest.raises(BuildError):
-        builder.build(definition, invalid_solution)
+        builder.build_with_cache(definition, invalid_solution)
 
 
 def test_no_sources() -> None:
@@ -433,7 +433,7 @@ def test_no_sources() -> None:
 
     builder = TVMFFIBuilder()
     with pytest.raises(BuildError, match="No CUDA or C\\+\\+ sources"):
-        builder.build(definition, no_sources_solution)
+        builder.build_with_cache(definition, no_sources_solution)
 
 
 def test_source_in_subdirectory() -> None:
@@ -466,7 +466,7 @@ def test_source_in_subdirectory() -> None:
 
     # Build and run
     builder = TVMFFIBuilder()
-    runnable = builder.build(definition, solution)
+    runnable = builder.build_with_cache(definition, solution)
 
     # Test execution
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
