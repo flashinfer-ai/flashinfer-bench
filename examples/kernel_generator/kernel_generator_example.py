@@ -92,7 +92,10 @@ def main():
                 solution = generator.generate(
                     traceset=traceset,
                     definition=definition,
-                    max_opt_rounds=10,  # For our baseline, we used 10 rounds
+                    gen_rounds=10,  # For our baseline, we used 10 rounds
+                    # TODO: uncomment bellow to use beam search
+                    # beam=True,
+                    # beam_width=3,
                 )
 
                 print(f"Successfully generated solution for {definition_name}")

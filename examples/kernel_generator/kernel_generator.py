@@ -1,7 +1,8 @@
+import asyncio
 import os
 import random
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import openai
 from kernel_generator_prompts import get_optimization_prompt, get_prompt
@@ -56,7 +57,7 @@ class KernelGenerator:
         if base_url is not None:
             client_kwargs["base_url"] = base_url
 
-        self.client = openai.OpenAI(**client_kwargs)
+        self.client = openai.AsyncOpenAI(**client_kwargs)
 
     def _get_supported_language(self) -> SupportedLanguages:
         language_map = {
@@ -107,17 +108,19 @@ class KernelGenerator:
                 traceset, definition, selected_workload, gen_rounds, beam_width
             )
         else:
-            return self._sequential_generate(traceset, definition, selected_workload, gen_rounds)
+            return asyncio.run(
+                self._sequential_generate_async(traceset, definition, selected_workload, gen_rounds)
+            )
 
-    def _sequential_generate(
+    async def _sequential_generate_async(
         self, traceset: TraceSet, definition: Definition, selected_workload, gen_rounds: int
     ) -> Solution:
         prompt = get_prompt(self.language, definition, self.target_gpu)
-        code_result = self._generate_code_from_prompt(prompt)
+        code_result = await self._generate_code_from_prompt(prompt)
         current_code = code_result["cleaned"]
         current_raw_code = code_result["raw"]
 
-        passing_solutions: Dict[Solution, Trace] = {}
+        passing_solutions: List[Tuple[Solution, Trace]] = []
         last_solution = None
         last_trace = None
 
@@ -127,7 +130,8 @@ class KernelGenerator:
             solution = self._create_solution_from_code(current_code, definition, round_num)
             last_solution = solution
 
-            trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
+            traces = self._evaluate_solutions(traceset, definition, [solution], selected_workload)
+            trace = traces[0] if traces else None
             if trace:
                 last_trace = trace
                 evaluation = trace.evaluation
@@ -136,7 +140,7 @@ class KernelGenerator:
                 if evaluation.status == EvaluationStatus.PASSED:
                     speedup = evaluation.performance.speedup_factor
                     print(f"Solution PASSED! Speedup: {speedup:.2f}x")
-                    passing_solutions[solution] = trace
+                    passing_solutions.append((solution, trace))
                 else:
                     print(f"Solution failed with {evaluation.status.value}")
                     if evaluation.log:
@@ -155,7 +159,7 @@ class KernelGenerator:
                     optimization_prompt = get_prompt(self.language, definition, self.target_gpu)
 
                 print(f"Generating code for round {round_num + 1}...")
-                code_result = self._generate_code_from_prompt(optimization_prompt)
+                code_result = await self._generate_code_from_prompt(optimization_prompt)
                 current_code = code_result["cleaned"]
                 current_raw_code = code_result["raw"]
 
@@ -170,31 +174,47 @@ class KernelGenerator:
         beam_width: int,
     ) -> Solution:
         print(f"Starting beam search with width={beam_width}, depth={depth}")
+        return asyncio.run(
+            self._beam_search_generate_async(
+                traceset, definition, selected_workload, depth, beam_width
+            )
+        )
 
-        passing_solutions: Dict[Solution, Trace] = {}
+    async def _beam_search_generate_async(
+        self,
+        traceset: TraceSet,
+        definition: Definition,
+        selected_workload,
+        depth: int,
+        beam_width: int,
+    ) -> Solution:
+        passing_solutions: List[Tuple[Solution, Trace]] = []
 
         prompt = get_prompt(self.language, definition, self.target_gpu)
-        initial_candidates = []
 
-        print(f"\nBeam Level 0: Generating {beam_width} initial candidates")
-        for i in range(beam_width):
-            print(f"Generating initial candidate {i+1}/{beam_width}...")
-            code_result = self._generate_code_from_prompt(prompt)
-            initial_candidates.append(
-                {
-                    "code": code_result["cleaned"],
-                    "raw_code": code_result["raw"],
-                    "round_num": 0,
-                }
-            )
+        print(f"\nBeam Level 0: Generating {beam_width} initial candidates...")
+        code_results = await asyncio.gather(
+            *[self._generate_code_from_prompt(prompt) for _ in range(beam_width)]
+        )
+
+        initial_candidates = [
+            {"code": code_result["cleaned"], "raw_code": code_result["raw"], "round_num": 0}
+            for code_result in code_results
+        ]
+
+        # Create all solutions
+        solutions = [
+            self._create_solution_from_code(candidate["code"], definition, 0, candidate_idx=i)
+            for i, candidate in enumerate(initial_candidates)
+        ]
+
+        print(f"Evaluating {len(solutions)} candidates...")
+        traces = self._evaluate_solutions(traceset, definition, solutions, selected_workload)
 
         beam = []
-        for i, candidate in enumerate(initial_candidates):
-            solution = self._create_solution_from_code(
-                candidate["code"], definition, candidate["round_num"]
-            )
-            trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
-
+        for i, (candidate, solution, trace) in enumerate(
+            zip(initial_candidates, solutions, traces)
+        ):
             if trace:
                 evaluation = trace.evaluation
                 speedup = (
@@ -205,7 +225,7 @@ class KernelGenerator:
                 print(f"Candidate {i+1}: {evaluation.status.value}, speedup={speedup:.2f}x")
 
                 if evaluation.status == EvaluationStatus.PASSED:
-                    passing_solutions[solution] = trace
+                    passing_solutions.append((solution, trace))
 
                 beam.append(
                     {
@@ -223,29 +243,40 @@ class KernelGenerator:
         last_solution = beam[0]["solution"] if beam else None
 
         for level in range(1, depth + 1):
-            print(f"\nBeam Level {level}/{depth}: Expanding {len(beam)} candidates")
+            print(f"\nBeam Level {level}/{depth}: Expanding {len(beam)} candidates...")
 
-            new_candidates = []
-
-            for beam_idx, beam_item in enumerate(beam):
-                print(
-                    f"Expanding candidate {beam_idx+1}/{len(beam)} (speedup={beam_item['speedup']:.2f}x)..."
-                )
-
-                optimization_prompt = get_optimization_prompt(
+            # Generate optimization prompts for all beam items
+            prompts = [
+                get_optimization_prompt(
                     self.language,
                     definition,
                     beam_item["trace"],
                     beam_item["raw_code"],
                     self.target_gpu,
                 )
+                for beam_item in beam
+            ]
 
-                code_result = self._generate_code_from_prompt(optimization_prompt)
-                solution = self._create_solution_from_code(
-                    code_result["cleaned"], definition, level
+            # Generate all candidates in parallel
+            code_results = await asyncio.gather(
+                *[self._generate_code_from_prompt(prompt) for prompt in prompts]
+            )
+
+            # Create all solutions
+            solutions = [
+                self._create_solution_from_code(
+                    code_result["cleaned"], definition, level, candidate_idx=i
                 )
-                trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
+                for i, code_result in enumerate(code_results)
+            ]
 
+            print(f"Evaluating {len(solutions)} expanded candidates...")
+            traces = self._evaluate_solutions(traceset, definition, solutions, selected_workload)
+
+            new_candidates = []
+            for beam_idx, (code_result, solution, trace) in enumerate(
+                zip(code_results, solutions, traces)
+            ):
                 if trace:
                     evaluation = trace.evaluation
                     speedup = (
@@ -253,10 +284,12 @@ class KernelGenerator:
                         if evaluation.status == EvaluationStatus.PASSED
                         else 0.0
                     )
-                    print(f"  Result: {evaluation.status.value}, speedup={speedup:.2f}x")
+                    print(
+                        f"  Candidate {beam_idx+1}: {evaluation.status.value}, speedup={speedup:.2f}x"
+                    )
 
                     if evaluation.status == EvaluationStatus.PASSED:
-                        passing_solutions[solution] = trace
+                        passing_solutions.append((solution, trace))
 
                     new_candidates.append(
                         {
@@ -273,9 +306,7 @@ class KernelGenerator:
                 new_candidates.sort(key=lambda x: x["speedup"], reverse=True)
                 beam = new_candidates[:beam_width]
                 last_solution = beam[0]["solution"]
-                print(
-                    f"Beam level {level} complete. Top speedup: {beam[0]['speedup']:.2f}x"
-                )
+                print(f"Beam level {level} complete. Top speedup: {beam[0]['speedup']:.2f}x")
             else:
                 print(f"No valid candidates at level {level}, stopping beam search")
                 break
@@ -283,42 +314,50 @@ class KernelGenerator:
         print(f"\nBeam search complete. Found {len(passing_solutions)} passing solutions.")
         return self._select_best_solution(passing_solutions, last_solution)
 
-    def _evaluate_solution(
-        self, traceset: TraceSet, definition: Definition, solution: Solution, selected_workload
-    ) -> Optional[Trace]:
-            temp_traceset = TraceSet(
-                root=traceset.root,
-                definitions={definition.name: definition},
-                solutions={definition.name: [solution]},
-                workloads={definition.name: [selected_workload]},
-                traces={definition.name: []},
-            )
+    def _evaluate_solutions(
+        self,
+        traceset: TraceSet,
+        definition: Definition,
+        solutions: List[Solution],
+        selected_workload,
+    ) -> List[Optional[Trace]]:
+        if not solutions:
+            return []
 
-            benchmark = Benchmark(temp_traceset, BenchmarkConfig())
-            result_traceset = benchmark.run_all()
+        temp_traceset = TraceSet(
+            root=traceset.root,
+            definitions={definition.name: definition},
+            solutions={definition.name: solutions},
+            workloads={definition.name: [selected_workload]},
+            traces={definition.name: []},
+        )
 
-            traces = result_traceset.traces.get(definition.name, [])
-        return traces[0] if traces else None
+        benchmark = Benchmark(temp_traceset, BenchmarkConfig())
+        result_traceset = benchmark.run_all()
 
-    def _get_best_trace(self, passing_solutions: Dict[Solution, Trace]) -> Optional[Trace]:
+        traces = result_traceset.traces.get(definition.name, [])
+
+        trace_map = {trace.solution: trace for trace in traces}
+        return [trace_map.get(sol.name) for sol in solutions]
+
+    def _get_best_trace(self, passing_solutions: List[Tuple[Solution, Trace]]) -> Optional[Trace]:
         if not passing_solutions:
             return None
 
-        best_solution = max(
-            passing_solutions.keys(),
-            key=lambda s: passing_solutions[s].evaluation.performance.speedup_factor,
+        best_solution_trace = max(
+            passing_solutions, key=lambda st: st[1].evaluation.performance.speedup_factor
         )
-        return passing_solutions[best_solution]
+        return best_solution_trace[1]
 
     def _select_best_solution(
-        self, passing_solutions: Dict[Solution, Trace], fallback_solution: Optional[Solution]
+        self, passing_solutions: List[Tuple[Solution, Trace]], fallback_solution: Optional[Solution]
     ) -> Solution:
         if passing_solutions:
-            best_solution = max(
-                passing_solutions.keys(),
-                key=lambda s: passing_solutions[s].evaluation.performance.speedup_factor,
+            best_solution_trace = max(
+                passing_solutions, key=lambda st: st[1].evaluation.performance.speedup_factor
             )
-            best_speedup = passing_solutions[best_solution].evaluation.performance.speedup_factor
+            best_solution = best_solution_trace[0]
+            best_speedup = best_solution_trace[1].evaluation.performance.speedup_factor
             print(f"\nReturning best solution with speedup: {best_speedup:.2f}x")
             return best_solution
         elif fallback_solution:
@@ -388,15 +427,16 @@ class KernelGenerator:
 
         return code
 
-    def _generate_code_from_prompt(self, prompt: str):
+    async def _generate_code_from_prompt(self, prompt: str):
+        """Generate code from prompt using async API"""
         try:
             if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
-                response = self.client.responses.create(
+                response = await self.client.responses.create(
                     model=self.model_name, input=prompt, reasoning={"effort": self.reasoning_effort}
                 )
                 generated_code = response.output_text.strip()
-            else:  # We use the completions api for OpenAI SDK compatible models
-                response = self.client.chat.completions.create(
+            else:
+                response = await self.client.chat.completions.create(
                     model=self.model_name, messages=[{"role": "user", "content": prompt}]
                 )
                 generated_code = response.choices[0].message.content.strip()
@@ -409,18 +449,16 @@ class KernelGenerator:
             print(f"Error while generating code: {e}")
             raise
 
-    def _create_solution_from_code(self, code, definition: Definition, round_num: int) -> Solution:
+    def _create_solution_from_code(
+        self, code, definition: Definition, round_num: int, candidate_idx: int = 0
+    ) -> Solution:
         # Include reasoning effort in name and description for GPT-5 models
         if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
-            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_{self.reasoning_effort}"
-            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, reasoning effort: {self.reasoning_effort})"
+            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_c{candidate_idx}_{self.reasoning_effort}"
+            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, candidate {candidate_idx}, reasoning effort: {self.reasoning_effort})"
         else:
-            solution_name = (
-                f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}"
-            )
-            solution_description = (
-                f"{self.model_name} optimized kernel for {definition.name} (round {round_num})"
-            )
+            solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_c{candidate_idx}"
+            solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, candidate {candidate_idx})"
 
         # Handle different code formats based on language
         if self.language.lower() == "cuda" and isinstance(code, dict):
