@@ -71,7 +71,12 @@ class KernelGenerator:
             return SupportedLanguages.PYTHON
 
     def generate(
-        self, traceset: TraceSet, definition: Definition, max_opt_rounds: int = 10
+        self,
+        traceset: TraceSet,
+        definition: Definition,
+        gen_rounds: int = 10,
+        beam: bool = False,
+        beam_width: int = 3,
     ) -> Solution:
         """
         Generate an optimized solution through iterative improvement using flashinfer-bench feedback.
@@ -79,7 +84,9 @@ class KernelGenerator:
         Args:
             traceset: The TraceSet containing workloads for evaluation
             definition: The workload definition to implement kernel for
-            max_opt_rounds: Maximum number of optimization rounds (default: 10)
+            gen_rounds: Number of generation rounds to run (or search depth if beam=True)
+            beam: beam search flag, default to False as it's more expensive to run
+            beam_width: Number of candidates to maintain in beam search (default: 3)
 
         Returns:
             Solution: a solution dataclass containing the optimized kernel code
@@ -94,16 +101,191 @@ class KernelGenerator:
 
         print(f"Generating optimized solution for {definition.name}")
         print(f"Using workload {selected_workload.workload.uuid} for optimization feedback")
+        
+        if beam:
+            return self._beam_search_generate(
+                traceset, definition, selected_workload, gen_rounds, beam_width
+            )
+        else:
+            return self._sequential_generate(traceset, definition, selected_workload, gen_rounds)
+
+    def _sequential_generate(
+        self, traceset: TraceSet, definition: Definition, selected_workload, gen_rounds: int
+    ) -> Solution:
         prompt = get_prompt(self.language, definition, self.target_gpu)
         code_result = self._generate_code_from_prompt(prompt)
         current_code = code_result["cleaned"]
         current_raw_code = code_result["raw"]
 
-        for round_num in range(1, max_opt_rounds + 1):
-            print(f"\n=== Optimization Round {round_num}/{max_opt_rounds} ===")
+        passing_solutions: Dict[Solution, Trace] = {}
+        last_solution = None
+        last_trace = None
+
+        for round_num in range(1, gen_rounds + 1):
+            print(f"\nGeneration Round {round_num}/{gen_rounds}")
 
             solution = self._create_solution_from_code(current_code, definition, round_num)
+            last_solution = solution
 
+            trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
+            if trace:
+                last_trace = trace
+                evaluation = trace.evaluation
+                print(f"Evaluation status: {evaluation.status.value}")
+
+                if evaluation.status == EvaluationStatus.PASSED:
+                    speedup = evaluation.performance.speedup_factor
+                    print(f"Solution PASSED! Speedup: {speedup:.2f}x")
+                    passing_solutions[solution] = trace
+                else:
+                    print(f"Solution failed with {evaluation.status.value}")
+                    if evaluation.log:
+                        print("Error details:")
+                        print(evaluation.log)
+
+            if round_num < gen_rounds:
+                best_trace = self._get_best_trace(passing_solutions)
+                opt_trace = best_trace if best_trace else last_trace
+
+                if opt_trace:
+                    optimization_prompt = get_optimization_prompt(
+                        self.language, definition, opt_trace, current_raw_code, self.target_gpu
+                    )
+                else:
+                    optimization_prompt = get_prompt(self.language, definition, self.target_gpu)
+
+                print(f"Generating code for round {round_num + 1}...")
+                code_result = self._generate_code_from_prompt(optimization_prompt)
+                current_code = code_result["cleaned"]
+                current_raw_code = code_result["raw"]
+
+        return self._select_best_solution(passing_solutions, last_solution)
+
+    def _beam_search_generate(
+        self,
+        traceset: TraceSet,
+        definition: Definition,
+        selected_workload,
+        depth: int,
+        beam_width: int,
+    ) -> Solution:
+        print(f"Starting beam search with width={beam_width}, depth={depth}")
+
+        passing_solutions: Dict[Solution, Trace] = {}
+
+        prompt = get_prompt(self.language, definition, self.target_gpu)
+        initial_candidates = []
+
+        print(f"\nBeam Level 0: Generating {beam_width} initial candidates")
+        for i in range(beam_width):
+            print(f"Generating initial candidate {i+1}/{beam_width}...")
+            code_result = self._generate_code_from_prompt(prompt)
+            initial_candidates.append(
+                {
+                    "code": code_result["cleaned"],
+                    "raw_code": code_result["raw"],
+                    "round_num": 0,
+                }
+            )
+
+        beam = []
+        for i, candidate in enumerate(initial_candidates):
+            solution = self._create_solution_from_code(
+                candidate["code"], definition, candidate["round_num"]
+            )
+            trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
+
+            if trace:
+                evaluation = trace.evaluation
+                speedup = (
+                    evaluation.performance.speedup_factor
+                    if evaluation.status == EvaluationStatus.PASSED
+                    else 0.0
+                )
+                print(f"Candidate {i+1}: {evaluation.status.value}, speedup={speedup:.2f}x")
+
+                if evaluation.status == EvaluationStatus.PASSED:
+                    passing_solutions[solution] = trace
+
+                beam.append(
+                    {
+                        "solution": solution,
+                        "trace": trace,
+                        "code": candidate["code"],
+                        "raw_code": candidate["raw_code"],
+                        "speedup": speedup,
+                        "round_num": 0,
+                    }
+                )
+
+        beam.sort(key=lambda x: x["speedup"], reverse=True)
+        beam = beam[:beam_width]
+        last_solution = beam[0]["solution"] if beam else None
+
+        for level in range(1, depth + 1):
+            print(f"\nBeam Level {level}/{depth}: Expanding {len(beam)} candidates")
+
+            new_candidates = []
+
+            for beam_idx, beam_item in enumerate(beam):
+                print(
+                    f"Expanding candidate {beam_idx+1}/{len(beam)} (speedup={beam_item['speedup']:.2f}x)..."
+                )
+
+                optimization_prompt = get_optimization_prompt(
+                    self.language,
+                    definition,
+                    beam_item["trace"],
+                    beam_item["raw_code"],
+                    self.target_gpu,
+                )
+
+                code_result = self._generate_code_from_prompt(optimization_prompt)
+                solution = self._create_solution_from_code(
+                    code_result["cleaned"], definition, level
+                )
+                trace = self._evaluate_solution(traceset, definition, solution, selected_workload)
+
+                if trace:
+                    evaluation = trace.evaluation
+                    speedup = (
+                        evaluation.performance.speedup_factor
+                        if evaluation.status == EvaluationStatus.PASSED
+                        else 0.0
+                    )
+                    print(f"  Result: {evaluation.status.value}, speedup={speedup:.2f}x")
+
+                    if evaluation.status == EvaluationStatus.PASSED:
+                        passing_solutions[solution] = trace
+
+                    new_candidates.append(
+                        {
+                            "solution": solution,
+                            "trace": trace,
+                            "code": code_result["cleaned"],
+                            "raw_code": code_result["raw"],
+                            "speedup": speedup,
+                            "round_num": level,
+                        }
+                    )
+
+            if new_candidates:
+                new_candidates.sort(key=lambda x: x["speedup"], reverse=True)
+                beam = new_candidates[:beam_width]
+                last_solution = beam[0]["solution"]
+                print(
+                    f"Beam level {level} complete. Top speedup: {beam[0]['speedup']:.2f}x"
+                )
+            else:
+                print(f"No valid candidates at level {level}, stopping beam search")
+                break
+
+        print(f"\nBeam search complete. Found {len(passing_solutions)} passing solutions.")
+        return self._select_best_solution(passing_solutions, last_solution)
+
+    def _evaluate_solution(
+        self, traceset: TraceSet, definition: Definition, solution: Solution, selected_workload
+    ) -> Optional[Trace]:
             temp_traceset = TraceSet(
                 root=traceset.root,
                 definitions={definition.name: definition},
@@ -112,43 +294,38 @@ class KernelGenerator:
                 traces={definition.name: []},
             )
 
-            print(f"Evaluating solution...")
             benchmark = Benchmark(temp_traceset, BenchmarkConfig())
             result_traceset = benchmark.run_all()
 
             traces = result_traceset.traces.get(definition.name, [])
-            if not traces:
-                print("No evaluation traces found, stopping optimization")
-                break
+        return traces[0] if traces else None
 
-            trace = traces[0]  # Should be only one trace
-            evaluation = trace.evaluation
+    def _get_best_trace(self, passing_solutions: Dict[Solution, Trace]) -> Optional[Trace]:
+        if not passing_solutions:
+            return None
 
-            print(f"Evaluation status: {evaluation.status.value}")
+        best_solution = max(
+            passing_solutions.keys(),
+            key=lambda s: passing_solutions[s].evaluation.performance.speedup_factor,
+        )
+        return passing_solutions[best_solution]
 
-            if evaluation.status == EvaluationStatus.PASSED:
-                print(f"Solution PASSED! Speedup: {evaluation.performance.speedup_factor:.2f}x")
-                return solution
-
-            if round_num == max_opt_rounds:
-                print(f"Reached maximum rounds ({max_opt_rounds}), returning current solution")
-                return solution
-
-            print(
-                f"Solution failed with {evaluation.status.value}, extracting feedback for next round..."
+    def _select_best_solution(
+        self, passing_solutions: Dict[Solution, Trace], fallback_solution: Optional[Solution]
+    ) -> Solution:
+        if passing_solutions:
+            best_solution = max(
+                passing_solutions.keys(),
+                key=lambda s: passing_solutions[s].evaluation.performance.speedup_factor,
             )
-            if evaluation.log:
-                print("Error details:")
-                print(evaluation.log)
-
-            optimization_prompt = get_optimization_prompt(
-                self.language, definition, trace, current_raw_code, self.target_gpu
-            )
-
-            print(f"Generating optimized code for round {round_num + 1}...")
-            code_result = self._generate_code_from_prompt(optimization_prompt)
-            current_code = code_result["cleaned"]
-            current_raw_code = code_result["raw"]
+            best_speedup = passing_solutions[best_solution].evaluation.performance.speedup_factor
+            print(f"\nReturning best solution with speedup: {best_speedup:.2f}x")
+            return best_solution
+        elif fallback_solution:
+            print(f"\nNo passing solutions found, returning last generated solution")
+            return fallback_solution
+        else:
+            raise ValueError("No solutions generated")
 
     def _parse_xml_files(self, code: str) -> Dict[str, str]:
         files = {}
