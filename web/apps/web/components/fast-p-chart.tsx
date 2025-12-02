@@ -8,7 +8,7 @@ import { FastPLabel } from "@/components/fast-p-label"
 import type { CorrectnessSummary, CurvePoint } from "@/lib/analytics"
 
 const LEGEND_MAX_ITEMS = 10
-const LEGEND_NAME_MAX_LENGTH = 12
+const LEGEND_NAME_MAX_LENGTH = 24
 
 export type ScoreboardEntry = {
   name: string
@@ -159,7 +159,7 @@ export function FastPCurves({
       .line<CurvePoint>()
       .x((point) => xScale(point.p))
       .y((point) => yScale(point.percent))
-      .curve(d3.curveStepAfter)
+      .curve(d3.curveMonotoneX)
 
     const highlightedVisible = highlighted && visible.has(highlighted) ? highlighted : null
 
@@ -373,7 +373,7 @@ export function FastPCurves({
                     <Fragment key={item.name}>
                       <span
                         className={[
-                          "inline-flex items-center rounded-full border border-transparent bg-muted px-2 py-1 text-foreground transition-colors",
+                          "inline-flex items-center rounded-full border border-transparent bg-muted px-3 py-1.5 text-foreground transition-colors",
                           interactive ? "cursor-pointer hover:border-primary hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" : "",
                           isHovered ? "border-primary bg-primary/10 text-primary" : "",
                           isActive ? "border-primary text-primary" : "",
@@ -402,7 +402,7 @@ export function FastPCurves({
                         } : undefined}
                       >
                         <span
-                          className="h-2.5 w-2.5 rounded-full mr-1"
+                          className="h-2.5 w-2.5 rounded-full mr-1.5 flex-shrink-0"
                           style={{ backgroundColor: item.color }}
                           aria-hidden="true"
                         />

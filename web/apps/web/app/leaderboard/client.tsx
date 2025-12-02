@@ -215,11 +215,37 @@ export function LeaderboardClient({
   const colorFor = useCallback(
     (name: string) => {
       if (colorMap.has(name)) return colorMap.get(name) as string
+
+      // Calculate hash to get initial color preference
       let hash = 0
       for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-      const color = palette[hash % palette.length]
-      colorMap.set(name, color)
-      return color
+      const preferredIndex = hash % palette.length
+
+      // Find which colors are already in use
+      const usedColors = new Set(colorMap.values())
+
+      // Try preferred color first
+      let color = palette[preferredIndex]
+      if (!usedColors.has(color)) {
+        colorMap.set(name, color)
+        return color
+      }
+
+      // If preferred color is taken, find the next available color
+      for (let i = 0; i < palette.length; i++) {
+        const candidateIndex = (preferredIndex + i) % palette.length
+        const candidateColor = palette[candidateIndex]
+        if (!usedColors.has(candidateColor)) {
+          colorMap.set(name, candidateColor)
+          return candidateColor
+        }
+      }
+
+      // Fallback: if all colors are used, cycle through palette
+      const fallbackIndex = colorMap.size % palette.length
+      const fallbackColor = palette[fallbackIndex]
+      colorMap.set(name, fallbackColor)
+      return fallbackColor
     },
     [colorMap, palette]
   )
@@ -240,13 +266,6 @@ export function LeaderboardClient({
       return next
     })
   }, [])
-
-  const setTopN = useCallback(
-    (n: number) => {
-      setVisibleAuthors(new Set(scoreboard.slice(0, n).map((entry) => entry.name)))
-    },
-    [scoreboard]
-  )
 
   const showAll = useCallback(() => {
     const authors = Object.keys(fast.curves).filter((name) => !excludedSet.has(name))
@@ -388,8 +407,11 @@ export function LeaderboardClient({
                 <div className="border-t px-4 pb-2">
                   <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-muted-foreground">
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setTopN(DEFAULT_VISIBLE)}>
-                        Show top {DEFAULT_VISIBLE}
+                      <Button size="sm" variant="outline" onClick={() => setPinnedP(1.0)}>
+                        Set p=1.0
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setPinnedP(0.7)}>
+                        Set p=0.7
                       </Button>
                       <Button size="sm" variant="outline" onClick={showAll}>
                         Show all
@@ -485,7 +507,7 @@ export function LeaderboardClient({
                 <div className="space-y-4">
                   {correctnessRanking.map((entry, index) => {
                     const percent = (entry.passRate * 100).toFixed(1)
-                    const width = maxPassRate > 0 ? `${(entry.passRate / maxPassRate) * 100}%` : "0%"
+                    const width = maxPassRate > 0 ? `${entry.passRate * 100}%` : "0%"
                     return (
                       <div key={entry.author} className="space-y-2">
                         <div className="flex items-center justify-between text-sm font-medium">
