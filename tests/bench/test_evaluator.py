@@ -61,7 +61,7 @@ def _patch_time_runnable(monkeypatch: pytest.MonkeyPatch):
 class TestDefaultEvaluator:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_pass(self, tmp_path: Path):
-        defn = _simple_def()
+        definition = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
@@ -71,7 +71,7 @@ class TestDefaultEvaluator:
         runnable.return_value = ref_out["B"]
 
         evaluation = DefaultEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -87,7 +87,7 @@ class TestDefaultEvaluator:
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_shape_error(self, tmp_path: Path):
-        defn = _simple_def()
+        definition = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
@@ -97,7 +97,7 @@ class TestDefaultEvaluator:
         ref_out = {"B": torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)}
 
         evaluation = DefaultEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -115,7 +115,7 @@ class TestDefaultEvaluator:
             raise RuntimeError("perf failure")
 
         monkeypatch.setattr(default_eval_module, "time_runnable", failing_timer)
-        defn = _simple_def()
+        definition = _simple_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
@@ -125,7 +125,7 @@ class TestDefaultEvaluator:
         runnable.return_value = ref_out["B"]
 
         evaluation = DefaultEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -141,7 +141,7 @@ class TestDefaultEvaluator:
 class TestSamplingEvaluator:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_detects_out_of_vocab(self, tmp_path: Path):
-        defn = _sampling_def()
+        definition = _sampling_def()
         cfg = BenchmarkConfig(
             num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
@@ -151,10 +151,10 @@ class TestSamplingEvaluator:
         probs = torch.softmax(torch.randn(2, 100, device=dev), dim=-1)
         inp = {"probs": probs, "top_k": torch.tensor(10, device=dev, dtype=torch.int32)}
         runnable.return_value = torch.tensor([50, 150], device=dev)  # 150 is invalid
-        ref_out = {"frequency_distribution": torch.zeros(100, device=dev)}
+        ref_out = {"expected_probs": torch.zeros(100, device=dev)}
 
         evaluation = SamplingEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -168,7 +168,7 @@ class TestSamplingEvaluator:
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_sampling_runtime_error(self, tmp_path: Path):
-        defn = _sampling_def()
+        definition = _sampling_def()
         cfg = BenchmarkConfig(
             num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
@@ -178,10 +178,10 @@ class TestSamplingEvaluator:
         runnable.side_effect = RuntimeError("sampling fail")
         probs = torch.softmax(torch.randn(2, 100, device=dev), dim=-1)
         inp = {"probs": probs, "top_k": torch.tensor(10, device=dev, dtype=torch.int32)}
-        ref_out = {"frequency_distribution": torch.zeros(100, device=dev)}
+        ref_out = {"expected_probs": torch.zeros(100, device=dev)}
 
         evaluation = SamplingEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -197,7 +197,7 @@ class TestSamplingEvaluator:
 class TestLowBitEvaluator:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_included(self, tmp_path: Path):
-        defn = _lowbit_def()
+        definition = _lowbit_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
@@ -208,7 +208,7 @@ class TestLowBitEvaluator:
         runnable.return_value = ref_out["B"]
 
         evaluation = LowBitEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],
@@ -225,7 +225,7 @@ class TestLowBitEvaluator:
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_on_failure(self, tmp_path: Path):
-        defn = _lowbit_def()
+        definition = _lowbit_def()
         cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
         device = "cuda:0"
         dev = torch.device(device)
@@ -237,7 +237,7 @@ class TestLowBitEvaluator:
         runnable.return_value = torch.tensor([1.0, 2.0, 3.0, 6.0], device=dev)
 
         evaluation = LowBitEvaluator.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable,
             inputs=[inp],
             ref_outputs=[ref_out],

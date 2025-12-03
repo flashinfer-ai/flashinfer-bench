@@ -1,34 +1,23 @@
-"""TVM-FFI based builder for CUDA kernels with automatic caching."""
+"""TVM-FFI based builder for CUDA kernels with automatic caching. This is the primary builder for
+CUDA and C++ kernels."""
 
 from __future__ import annotations
 
 import logging
-from enum import Enum
+import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Callable, ClassVar, List, Tuple
 
-import tvm_ffi
-from tvm_ffi.utils import FileLock
-
-from flashinfer_bench.compile.builder import Builder, BuildError, create_pkg_name
-from flashinfer_bench.compile.runnable import Runnable, TVMFFIRunnable
+from flashinfer_bench.compile.builder import Builder, BuildError
+from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
+from flashinfer_bench.compile.utils import write_sources_to_path
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
-from flashinfer_bench.env import get_fib_cache_path
 
 logger = logging.getLogger(__name__)
 
 # File extension mappings for source file classification
-CUDA_EXTENSIONS = [".cu"]  # CUDA source files
-CPP_EXTENSIONS = [".cpp", ".cc", ".cxx", ".c"]  # C/C++ source files
-
-
-class Language(Enum):
-    """Enum representing source code languages supported by the builder."""
-
-    CUDA = "cuda"
-    """The solution's language is CUDA"""
-    CPP = "cpp"
-    """The solution's language is C/C++"""
+_CUDA_EXTENSIONS: List[str] = [".cu"]  # CUDA source files
+_CPP_EXTENSIONS: List[str] = [".cpp", ".cc", ".cxx", ".c"]  # C/C++ source files
 
 
 class TVMFFIBuilder(Builder):
@@ -51,81 +40,48 @@ class TVMFFIBuilder(Builder):
     >>> runnable.call_dest(x=input_tensor, output=output_tensor)  # Destination-passing style
     """
 
-    _BUILD_DIR_NAME = "tvm_ffi"
-    """Subdirectory under FIB_CACHE_PATH where build artifacts are stored"""
-
-    _LOCK_FILE_NAME = "flashinfer_bench_tvm_ffi_lock"
-    """File lock name for multi-process synchronization during compilation"""
-
-    _KEY_PREFIX = "tvm_ffi_"
+    _PACKAGE_PREFIX: ClassVar[str] = "tvm_ffi_"
     """Prefix for cache keys to avoid collisions with other builders"""
 
+    _BUILD_DIR_NAME: ClassVar[str] = "tvm_ffi"
+    """Subdirectory under FIB_CACHE_PATH where build artifacts are stored"""
+
+    _LOCK_FILE_NAME: ClassVar[str] = "flashinfer_bench_tvm_ffi_lock"
+    """File lock name for multi-process synchronization during compilation"""
+
     def __init__(self) -> None:
-        """Initialize the TVMFFIBuilder.
+        """Initialize the TVMFFIBuilder."""
+        super().__init__(self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
 
-        Sets up empty dictionaries for future extensibility with extra
-        include paths and linker flags (currently unused).
-        """
-        super().__init__()
-        self._extra_include_paths: Dict[str, str] = {}
-        self._extra_ldflags: Dict[str, List[str]] = {}
+    @staticmethod
+    def is_available() -> bool:
+        """Check if TVM-FFI is available in the current environment."""
+        try:
+            import tvm_ffi  # noqa: F401
+        except ImportError:
+            return False
+        return True
 
-    def can_build(self, sol: Solution) -> bool:
-        """Check if this builder can build the given solution.
+    def can_build(self, solution: Solution) -> bool:
+        """Check if this builder can build the given solution. The solution should be CUDA or
+        C++ source code.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution to check
 
         Returns
         -------
         bool
-            True if solution language is CUDA (includes both .cu and .cpp files)
+            True if solution language is CUDA or C++
         """
-        return sol.spec.language == SupportedLanguages.CUDA
+        return (
+            solution.spec.language == SupportedLanguages.CUDA
+            or solution.spec.language == SupportedLanguages.CPP
+        )
 
-    def _make_key(self, solution: Solution) -> str:
-        """Generate unique cache key for a solution.
-
-        Parameters
-        ----------
-        solution : Solution
-            Solution to generate key for
-
-        Returns
-        -------
-        str
-            Unique key combining builder name and solution package name
-        """
-        return self._KEY_PREFIX + create_pkg_name(solution)
-
-    def _make_closer(self):
-        """Create a closer function for resource cleanup.
-
-        Returns
-        -------
-        callable
-            No-op closer since TVM-FFI handles cleanup automatically
-        """
-        return lambda: None
-
-    def _get_build_path(self, key: str) -> Path:
-        """Get the build directory path for a given cache key.
-
-        Parameters
-        ----------
-        key : str
-            Unique cache key for the solution
-
-        Returns
-        -------
-        Path
-            Directory path where build artifacts will be stored
-        """
-        return get_fib_cache_path() / self._BUILD_DIR_NAME / key
-
-    def _check_sources(self, path: Path, key: str, sol: Solution) -> bool:
+    def _check_sources(self, path: Path, key: str, solution: Solution) -> bool:
         """Check if the source code is vaild, and if the cached .so can be used by comparing source
         files and .so existence.
 
@@ -139,7 +95,7 @@ class TVMFFIBuilder(Builder):
             Build directory path
         key : str
             Unique key for this solution (used to find .so file)
-        sol : Solution
+        solution : Solution
             Solution containing source files
 
         Returns
@@ -159,7 +115,7 @@ class TVMFFIBuilder(Builder):
             return False
 
         # Check if all files exist and content is identical
-        for src in sol.sources:
+        for src in solution.sources:
             # Defensive assertion: the path in the solution should be validated by the Solution
             # model validator, but we add this defensive assertion to be safe.
             src_path_obj = Path(src.path)
@@ -179,51 +135,13 @@ class TVMFFIBuilder(Builder):
         # All checks passed: can use cached .so
         return True
 
-    def _detect_language(self, sol: Solution) -> Language:
-        """Detect source language based on file extensions.
+    def _filter_sources(self, source_paths: List[Path]) -> Tuple[List[str], List[str]]:
+        """Filter source files by extension into C++ and CUDA source file paths.
 
         Parameters
         ----------
-        sol : Solution
-            Solution containing source files
-
-        Returns
-        -------
-        Language
-            CUDA if any .cu files present, otherwise CPP
-
-        Raises
-        ------
-        BuildError
-            If no valid source files found
-        """
-        has_cuda = False
-        has_cpp = False
-
-        for src in sol.sources:
-            path_str = str(src.path)
-            if path_str.endswith(tuple(CUDA_EXTENSIONS)):
-                has_cuda = True
-            elif path_str.endswith(tuple(CPP_EXTENSIONS)):
-                has_cpp = True
-
-        if not has_cuda and not has_cpp:
-            raise BuildError("No CUDA or C++ sources found")
-
-        return Language.CUDA if has_cuda else Language.CPP
-
-    def _write_sources(self, path: Path, sol: Solution) -> Tuple[List[str], List[str]]:
-        """Write all source files to build directory and collect file paths.
-
-        Creates parent directories as needed for files in subdirectories.
-        Overwrites files unconditionally (caller already determined a full build is needed).
-
-        Parameters
-        ----------
-        path : Path
-            Build directory where source files will be written
-        sol : Solution
-            Solution containing source files to write
+        source_paths : List[Path]
+            List of source file paths.
 
         Returns
         -------
@@ -232,39 +150,22 @@ class TVMFFIBuilder(Builder):
         cuda_files : List[str]
             List of CUDA source file paths
         """
-        path.mkdir(parents=True, exist_ok=True)
         cpp_files: List[str] = []
         cuda_files: List[str] = []
-
-        for src in sol.sources:
-            # Defensive assertion: path should be validated at Solution creation time
-            src_path_obj = Path(src.path)
-            assert not src_path_obj.is_absolute(), f"Absolute path detected: {src.path}"
-            assert ".." not in src_path_obj.parts, f"Path traversal detected: {src.path}"
-
-            src_path = path / src.path
-
-            # Ensure parent directories exist
-            src_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Write source file
-            src_path.write_text(src.content)
-
-            # Collect file path by extension
-            path_str = str(src_path)
-            if path_str.endswith(tuple(CPP_EXTENSIONS)):
-                cpp_files.append(path_str)
-            elif path_str.endswith(tuple(CUDA_EXTENSIONS)):
-                cuda_files.append(path_str)
+        for src_path in source_paths:
+            if src_path.suffix in _CPP_EXTENSIONS:
+                cpp_files.append(str(src_path))
+            elif src_path.suffix in _CUDA_EXTENSIONS:
+                cuda_files.append(str(src_path))
 
         return cpp_files, cuda_files
 
-    def _get_entry_symbol(self, sol: Solution) -> str:
+    def _get_entry_symbol(self, solution: Solution) -> str:
         """Extract function symbol from entry_point.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution with entry_point in format 'file.ext::symbol'
 
         Returns
@@ -277,59 +178,33 @@ class TVMFFIBuilder(Builder):
         BuildError
             If entry_point format is invalid (missing '::' separator)
         """
-        entry_point = sol.spec.entry_point
+        entry_point = solution.spec.entry_point
         if "::" not in entry_point:
             raise BuildError(
                 f"Invalid entry_point format: {entry_point}. Expected 'file.extension::symbol'"
             )
         return entry_point.split("::")[-1]
 
-    def _make_runnable(
-        self, mod: tvm_ffi.Module, entry_symbol: str, defn: Definition, metadata: Dict[str, Any]
-    ) -> TVMFFIRunnable:
-        """Create Runnable from TVM-FFI module.
-
-        Wraps the compiled function with a keyword argument adapter that matches
-        the definition's input/output interface.
+    def _get_cleaner(self, build_path: Path) -> Callable[[], None]:
+        """Get a cleaner function for the build directory. It will remove the build directory.
 
         Parameters
         ----------
-        mod : tvm_ffi.Module
-            Loaded TVM-FFI module containing the compiled function
-        entry_symbol : str
-            Name of the function to extract from the module
-        defn : Definition
-            Definition specifying the function interface
-        metadata : Dict[str, Any]
-            Metadata about the build (language, paths, etc.)
+        build_path : Path
+            The path to the build directory
 
         Returns
         -------
-        TVMFFIRunnable
-            Runnable wrapper that handles tensor allocation and keyword arguments
-
-        Raises
-        ------
-        BuildError
-            If the entry_symbol is not found in the module
+        callable
+            A function that cleans up the build directory.
         """
-        try:
-            fn = getattr(mod, entry_symbol)
-        except AttributeError as e:
-            raise BuildError(f"Entry point '{entry_symbol}' not found in module") from e
 
-        # Create keyword adapter to match definition interface
-        arg_order = list(defn.inputs.keys()) + list(defn.outputs.keys())
+        def cleaner() -> None:
+            shutil.rmtree(build_path, ignore_errors=True)
 
-        def _kw_adapter(**kwargs):
-            args = [kwargs[name] for name in arg_order]
-            return fn(*args)
+        return cleaner
 
-        return TVMFFIRunnable(
-            fn=_kw_adapter, closer=self._make_closer(), meta=metadata, definition=defn
-        )
-
-    def _build(self, defn: Definition, sol: Solution) -> Runnable:
+    def build(self, definition: Definition, solution: Solution) -> Runnable:
         """Build with automatic caching - compile once, load from cache afterwards.
 
         This method implements intelligent caching:
@@ -342,52 +217,57 @@ class TVMFFIBuilder(Builder):
 
         Parameters
         ----------
-        defn : Definition
+        definition : Definition
             Problem definition specifying inputs/outputs
-        sol : Solution
+        solution : Solution
             Solution containing source code and build specification
 
         Returns
         -------
         Runnable
-            TVMFFIRunnable that can be called with input tensors
+            A runnable wrapper around the compiled TVM-FFI module that supports both
+            value-returning style (via __call__) and destination-passing style (via call_dps)
 
         Raises
         ------
         BuildError
             If compilation fails, module loading fails, or entry point is invalid
         """
-        key = self._make_key(sol)
-        build_path = self._get_build_path(key)
-        entry_symbol = self._get_entry_symbol(sol)
-        language = self._detect_language(sol)
-        can_use_cached = self._check_sources(build_path, key, sol)
+        import tvm_ffi
+        from tvm_ffi.utils import FileLock
 
-        # Check if cached .so can be used
-        # This checking and rebuilding is thread-safe through the FileLock
+        package_name, build_path = self.get_package_name_and_build_path(solution)
+        entry_symbol = self._get_entry_symbol(solution)
+        can_use_cached = self._check_sources(build_path, package_name, solution)
+
+        # Check if cached .so can be used. If not, build the solution.
+        # This check and build are thread-safe through the FileLock
         if can_use_cached:
-            output_lib_path = str(build_path / f"{key}.so")
+            output_lib_path = str(build_path / f"{package_name}.so")
         else:
             # Ensure build directory exists before creating file lock
             build_path.mkdir(parents=True, exist_ok=True)
             with FileLock(build_path / self._LOCK_FILE_NAME):
                 # Double-check after acquiring lock (another process may have built it)
-                if self._check_sources(build_path, key, sol):
-                    output_lib_path = str(build_path / f"{key}.so")
+                if self._check_sources(build_path, package_name, solution):
+                    output_lib_path = str(build_path / f"{package_name}.so")
                 else:
-                    cpp_files, cuda_files = self._write_sources(build_path, sol)
+                    src_paths = write_sources_to_path(build_path, solution.sources)
+                    cpp_files, cuda_files = self._filter_sources(src_paths)
                     extra_include_paths = [str(build_path)]
                     try:
                         # Compile sources to shared library
                         output_lib_path = tvm_ffi.cpp.build(
-                            name=key,
+                            name=package_name,
                             cpp_files=cpp_files,
                             cuda_files=cuda_files,
                             extra_include_paths=extra_include_paths,
                             build_directory=build_path,
                         )
                     except Exception as e:
-                        raise BuildError(f"TVM-FFI compilation failed for '{sol.name}': {e}") from e
+                        raise BuildError(
+                            f"TVM-FFI compilation failed for '{solution.name}': {e}"
+                        ) from e
 
         # Load the compiled module
         try:
@@ -396,14 +276,29 @@ class TVMFFIBuilder(Builder):
             raise BuildError(f"Failed to load compiled module: {e}") from e
 
         # Create metadata for the runnable
-        metadata = {
-            "definition": defn.name,
-            "solution": sol.name,
-            "language": language.value,
-            "binding": "tvm_ffi",
-            "key": key,
-            "symbol": entry_symbol,
-            "binary": output_lib_path,
-        }
+        metadata = RunnableMetadata(
+            build_type="tvm_ffi",
+            definition=definition.name,
+            solution=solution.name,
+            misc={
+                # Provide the definition object to handle value-returning style
+                "definition": definition,
+                "entry_symbol": entry_symbol,
+                "binary": output_lib_path,
+            },
+        )
 
-        return self._make_runnable(mod, entry_symbol, defn, metadata)
+        try:
+            callable = getattr(mod, entry_symbol)
+        except AttributeError as e:
+            raise BuildError(f"Entry point '{entry_symbol}' not found in module") from e
+
+        # Create keyword adapter to match definition interface
+        arg_order = list(definition.inputs.keys()) + list(definition.outputs.keys())
+
+        def kwargs_adapter(**kwargs):
+            args = [kwargs[name] for name in arg_order]
+            return callable(*args)
+
+        cleaner = self._get_cleaner(build_path)
+        return Runnable(callable=kwargs_adapter, metadata=metadata, cleaner=cleaner)

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile import Runnable, get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data import Trace, TraceSet
 from flashinfer_bench.env import get_fib_cache_path
 
@@ -115,13 +115,13 @@ class ApplyTable:
                 index[def_name] = bucket
 
             def_best: Dict[str, str] = {}
-            reg = get_builder_registry()
+            reg = BuilderRegistry.get_instance()
 
             for def_name, sol_name in raw["def_best"].items():
-                defn = trace_set.definitions.get(def_name)
-                sol = trace_set.get_solution(sol_name)
-                if defn and sol:
-                    reg.build(defn, sol)
+                definition = trace_set.definitions.get(def_name)
+                solution = trace_set.get_solution(sol_name)
+                if definition and solution:
+                    reg.build(definition, solution)
                     def_best[def_name] = sol_name
 
             table = cls(digest=digest, index=index, def_best=def_best)
@@ -169,12 +169,12 @@ class ApplyTable:
             The newly built apply table.
         """
         digest = cls._digest(trace_set, apply_config)
-        reg = get_builder_registry()
+        reg = BuilderRegistry.get_instance()
 
         index: Dict[str, Dict[ApplyKey, str]] = {}
         def_best: Dict[str, Runnable] = {}
 
-        for def_name, defn in trace_set.definitions.items():
+        for def_name, definition in trace_set.definitions.items():
             per_key, ranked = cls._sweep_def(
                 trace_set, def_name, apply_config.max_atol, apply_config.max_rtol
             )
@@ -189,11 +189,11 @@ class ApplyTable:
             # Build def_best
             if ranked:
                 best_sol_name = ranked[0][0]
-                sol = trace_set.get_solution(best_sol_name)
-                if sol:
+                solution = trace_set.get_solution(best_sol_name)
+                if solution:
                     if apply_config.on_miss_policy == "use_def_best":
                         # Only AOT if on_miss_policy is use_def_best
-                        reg.build(defn, sol)
+                        reg.build(definition, solution)
                     def_best[def_name] = best_sol_name
 
         return cls(digest=digest, index=index, def_best=def_best)
@@ -267,7 +267,7 @@ class ApplyTable:
         """
         if not (config.aot_ratio and config.aot_ratio > 0.0):
             return
-        reg = get_builder_registry()
+        reg = BuilderRegistry.get_instance()
 
         for def_name, bucket in table.index.items():
             if not bucket:
@@ -277,20 +277,20 @@ class ApplyTable:
             ranked = sorted(win_counts.items(), key=lambda kv: kv[1], reverse=True)
             cutoff = max(1, int(len(ranked) * config.aot_ratio))
 
-            defn = trace_set.definitions.get(def_name)
-            if not defn:
+            definition = trace_set.definitions.get(def_name)
+            if not definition:
                 continue
             for sol_name, _ in ranked[:cutoff]:
-                sol = trace_set.get_solution(sol_name)
-                if sol:
-                    reg.build(defn, sol)
+                solution = trace_set.get_solution(sol_name)
+                if solution:
+                    reg.build(definition, solution)
 
         if config.on_miss_policy == "use_def_best":
             for def_name, sol_name in table.def_best.items():
-                defn = trace_set.definitions.get(def_name)
-                sol = trace_set.get_solution(sol_name)
-                if defn and sol:
-                    reg.build(defn, sol)
+                definition = trace_set.definitions.get(def_name)
+                solution = trace_set.get_solution(sol_name)
+                if definition and solution:
+                    reg.build(definition, solution)
 
     @classmethod
     def _digest(cls, trace_set: TraceSet, config: ApplyConfig) -> str:
@@ -313,23 +313,23 @@ class ApplyTable:
             SHA256 hash digest as a hexadecimal string.
         """
         d = trace_set.to_dict()
-        for defn in d["definitions"].values():
+        for definition in d["definitions"].values():
             for drop in ("description", "tags", "reference", "constraints"):
-                defn.pop(drop, None)
+                definition.pop(drop, None)
         for sol_list in d["solutions"].values():
-            for sol in sol_list:
-                spec = sol.get("spec", {}) or {}
+            for solution in sol_list:
+                spec = solution.get("spec", {}) or {}
                 deps = spec.get("dependencies") or []
                 spec["dependencies"] = sorted(deps)
                 new_sources = []
-                for sf in sol.get("sources") or []:
+                for sf in solution.get("sources") or []:
                     new_sources.append(
                         {
                             "path": sf["path"],
                             "sha1": hashlib.sha1(sf["content"].encode("utf-8")).hexdigest(),
                         }
                     )
-                sol["sources"] = new_sources
+                solution["sources"] = new_sources
         kept_traces: List[Dict[str, Any]] = []
         for traces in d["traces"].values():
             for trace in traces:

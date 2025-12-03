@@ -1,5 +1,6 @@
 """Strong-typed data definitions for solution implementations."""
 
+import hashlib
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -20,6 +21,8 @@ class SupportedLanguages(str, Enum):
     """Python programming language."""
     TRITON = "triton"
     """Triton GPU programming language."""
+    CPP = "cpp"
+    """Pure C++ source code."""
     CUDA = "cuda"
     """CUDA C++ programming language."""
 
@@ -68,14 +71,14 @@ class BuildSpec(BaseModelWithDocstrings):
     language: SupportedLanguages
     """The primary programming language (e.g., 'triton', 'cuda', 'python')."""
     target_hardware: List[str] = Field(min_length=1)
-    """List of hardware architectures this solution is compatible with (e.g., 'NVIDIA_H100',
-    'NVIDIA_B200')."""
+    """List of hardware this solution is compatible with. E.g. 'cpu', 'cuda'. Now this is not used in verification
+    and building. ."""
     entry_point: NonEmptyString
     """The exact path to the function to be called. Format: '{file_path}::{function_name}'
     (e.g., 'main.py::run')."""
     dependencies: Optional[List[NonEmptyString]] = Field(default=[])
-    """Optional list of required libraries or toolchains (e.g., 'CUDA >= 12.0',
-    'triton >= 2.2')."""
+    """Optional list of required libraries or packages. E.g. for CUDA, we support 'cublas',
+    'cudnn', 'cutlass'"""
 
     @model_validator(mode="after")
     def _validate_entry_point(self) -> "BuildSpec":
@@ -139,6 +142,33 @@ class Solution(BaseModelWithDocstrings):
 
         return self
 
+    def get_entry_path(self) -> Path:
+        """Extract the file path from the entry point specification.
+
+        The entry point format is '{file_path}::{function_name}', and this method
+        returns the file path component as a Path object.
+
+        Returns
+        -------
+        Path
+            The relative path to the entry source file (e.g., 'main.py', 'src/kernel.cu').
+        """
+        return Path(self.spec.entry_point.split("::")[0])
+
+    def get_entry_symbol(self) -> str:
+        """Extract the function/symbol name from the entry point specification.
+
+        The entry point format is '{file_path}::{function_name}', and this method
+        returns the function name component. This is the symbol that builders will
+        look up in the compiled module or imported Python module.
+
+        Returns
+        -------
+        str
+            The function or symbol name to be loaded (e.g., 'run', 'forward', 'kernel').
+        """
+        return self.spec.entry_point.split("::")[-1]
+
     def get_entry_source(self) -> Optional[SourceFile]:
         """Get the entry source file specified in the build spec.
 
@@ -153,13 +183,31 @@ class Solution(BaseModelWithDocstrings):
                 return source
         return None
 
-    def requires_build(self) -> bool:
-        """Check if the solution requires a build step.
+    def hash(self) -> str:
+        """Compute a deterministic hash of the solution content.
+
+        The hash is computed from all fields that affect the solution's behavior:
+        name, definition, language, entry point, dependencies, and all source file
+        paths and contents. This ensures that any meaningful change to the solution
+        results in a different hash.
+
+        The hash is used for caching build artifacts. Solutions with the same hash
+        can reuse the same cached build result.
 
         Returns
         -------
-        bool
-            True if the solution requires building (has build commands or uses CUDA),
-            False otherwise.
+        str
+            A SHA1 hash (40 hex characters) uniquely identifying this solution's content.
         """
-        return self.spec.language == SupportedLanguages.CUDA
+        h = hashlib.sha1()
+        for s in (
+            self.name,
+            self.definition,
+            self.spec.language,
+            self.spec.entry_point,
+            *self.spec.dependencies,
+            *(part for src in self.sources for part in (src.path, src.content)),
+        ):
+            h.update(s.encode())
+
+        return h.hexdigest()

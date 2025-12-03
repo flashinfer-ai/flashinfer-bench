@@ -79,14 +79,14 @@ def export_traceset(trace_set, output_dir):
     (output_dir / "solutions").mkdir(parents=True, exist_ok=True)
     (output_dir / "traces").mkdir(parents=True, exist_ok=True)
     # Save definitions
-    for defn in trace_set.definitions.values():
-        out_path = output_dir / "definitions" / f"{defn.name}.json"
-        save_json_file(defn, out_path)
+    for definition in trace_set.definitions.values():
+        out_path = output_dir / "definitions" / f"{definition.name}.json"
+        save_json_file(definition, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
-        for sol in solutions:
-            out_path = output_dir / "solutions" / f"{sol.name}.json"
-            save_json_file(sol, out_path)
+        for solution in solutions:
+            out_path = output_dir / "solutions" / f"{solution.name}.json"
+            save_json_file(solution, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
         if workloads:

@@ -1,51 +1,82 @@
+"""Builder for Triton GPU kernels."""
+
 from __future__ import annotations
 
-from flashinfer_bench.compile.builder import Builder, BuildError, create_pkg_name
+from typing import ClassVar
+
+from flashinfer_bench.compile.builder import Builder
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
 
 from .python_builder import PythonBuilder
 
 
-def _verify_triton() -> bool:
-    try:
-        import triton
-    except Exception:
-        return False
-    return True
+class TritonBuilder(PythonBuilder):
+    """Builder for Triton solutions.
 
+    This builder extends PythonBuilder to handle Triton GPU kernels. Triton code
+    is Python-based, so the build process is similar to PythonBuilder, with the
+    main difference being the language tag in metadata.
+    """
 
-class TritonBuilder(Builder):
-    _triton_available: bool = None
+    _PACKAGE_PREFIX: ClassVar[str] = "fib_triton_"
+    """Prefix for cache keys to distinguish Triton solutions from pure Python ones."""
 
-    @classmethod
-    def _get_triton_available(cls) -> bool:
-        if cls._triton_available is None:
-            cls._triton_available = _verify_triton()
-        return cls._triton_available
+    _BUILD_DIR_NAME: ClassVar[str] = "triton"
+    """Subdirectory under FIB_CACHE_PATH where build results are stored"""
 
-    def __init__(self, py_builder: PythonBuilder) -> None:
-        super().__init__()
-        self._py_builder = py_builder
+    def __init__(self) -> None:
+        Builder.__init__(self, self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
 
-    def can_build(self, sol: Solution) -> bool:
-        return sol.spec.language == SupportedLanguages.TRITON and self._get_triton_available()
+    @staticmethod
+    def is_available() -> bool:
+        """Check if Triton is available in the current environment.
 
-    def _make_key(self, solution: Solution) -> str:
-        return f"triton::{create_pkg_name(solution)}"
+        Returns
+        -------
+        bool
+            True if Triton is installed, False otherwise.
+        """
+        try:
+            import triton
+        except ImportError:
+            return False
+        return True
 
-    def _make_closer(self, *args, **kwargs):
-        raise NotImplementedError("Triton uses PythonBuilder's closer through _build")
+    def can_build(self, solution: Solution) -> bool:
+        """Check if this builder can build the given solution.
+        The solution should be Triton source code.
 
-    def _build(self, defn: Definition, sol: Solution) -> Runnable:
-        if not self._get_triton_available():
-            raise BuildError("Triton is not available in the current environment")
+        Parameters
+        ----------
+        solution : Solution
+            Solution to check
 
-        import triton
+        Returns
+        -------
+        bool
+            True if solution language is Triton
+        """
+        return solution.spec.language == SupportedLanguages.TRITON
 
-        # Reuse Python builder for source layout and import
-        runnable = self._py_builder._build(defn, sol)
-        runnable.meta.update(
-            {"language": "triton", "triton_version": getattr(triton, "__version__", None)}
-        )
-        return runnable
+    def build(self, definition: Definition, solution: Solution) -> Runnable:
+        """Build a Triton solution into a runnable.
+
+        This method delegates to PythonBuilder.build() and updates the build_type
+        in metadata to 'triton'.
+
+        Parameters
+        ----------
+        definition : Definition
+            The problem definition.
+        solution : Solution
+            The Triton solution to build.
+
+        Returns
+        -------
+        Runnable
+            An executable wrapper around the Triton kernel.
+        """
+        result = super().build(definition, solution)
+        result.metadata.build_type = "triton"
+        return result

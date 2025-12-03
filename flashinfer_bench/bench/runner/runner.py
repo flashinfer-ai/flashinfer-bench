@@ -25,7 +25,7 @@ class BaselineHandle(str):
 @dataclass
 class DeviceBaseline:
     handle: BaselineHandle
-    defn: Definition
+    definition: Definition
     device: str
     inputs: List[Dict[str, Any]]
     outputs: List[Dict[str, torch.Tensor]]
@@ -38,7 +38,7 @@ class Runner(ABC):
     @abstractmethod
     def run_workload(
         self,
-        defn: Definition,
+        definition: Definition,
         wl: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,

@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.compile.runnable import Runnable
+from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 
 
 def test_runnable_single_tuple_unpack_and_close_idempotent():
@@ -14,12 +14,16 @@ def test_runnable_single_tuple_unpack_and_close_idempotent():
     def closer():
         calls["closed"] += 1
 
-    r = Runnable(fn=fn, closer=closer, meta={"k": 1})
+    metadata = RunnableMetadata(
+        build_type="python", definition="test", solution="test", misc={"k": 1}
+    )
+
+    r = Runnable(callable=fn, cleaner=closer, metadata=metadata)
     assert r() == 42
     # Close twice should not error and closer should be called once
-    r.close()
-    r.close()
-    r.close()
+    r.cleanup()
+    r.cleanup()
+    r.cleanup()
     assert calls["closed"] == 1
 
 

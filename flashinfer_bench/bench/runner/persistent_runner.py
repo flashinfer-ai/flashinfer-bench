@@ -16,7 +16,7 @@ import flashinfer_bench.utils as fib_utils
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
-from flashinfer_bench.compile import BuildError, get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry, BuildError
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
 from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import redirect_stdio_to_file
@@ -65,7 +65,7 @@ class PersistentSubprocessWorker:
         self._device = device
         self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
-        self._registry = get_builder_registry()
+        self._registry = BuilderRegistry.get_instance()
 
         # Solution failure tracking
         self._failure_records: Dict[str, SolutionFailureRecord] = {}
@@ -245,48 +245,52 @@ class PersistentSubprocessWorker:
 
     def run_ref(
         self,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
-        evaluator_cls = resolve_evaluator(defn)
+        evaluator_cls = resolve_evaluator(definition)
         baseline = evaluator_cls.build_baseline(
-            defn=defn, workload=workload, cfg=cfg, device=self._device, traceset_root=traceset_root
+            definition=definition,
+            workload=workload,
+            cfg=cfg,
+            device=self._device,
+            traceset_root=traceset_root,
         )
         self._baselines[baseline.handle] = baseline
         return baseline.handle
 
     def run_solution(
-        self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
+        self, solution: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
         """Run solution using cached compilation."""
         if baseline not in self._baselines:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
 
-        solution_name = sol.name
+        solution_name = solution.name
         failure_record = self._should_skip_solution(solution_name)
         if failure_record is not None:
             LOGGER.info(
-                f"Skipping solution {sol.name} due to {failure_record.failure_count} consecutive failures"
+                f"Skipping solution {solution.name} due to {failure_record.failure_count} consecutive failures"
             )
             return make_eval(
                 status=failure_record.last_status,
                 device=self._device,
-                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                 extra_msg=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
             )
 
         eval_msg = {
             "cmd": WorkerCommand.RUN_SOLUTION.value,
-            "definition": bl.defn,
-            "solution": sol,
+            "definition": bl.definition,
+            "solution": solution,
             "inputs": bl.inputs,
             "ref_outputs": bl.outputs,
             "ref_mean_latency_ms": bl.mean_latency_ms,
             "config": cfg,
-            "solution_name": sol.name,
+            "solution_name": solution.name,
         }
 
         if self._parent_conn is None or self._parent_conn.closed:
@@ -294,7 +298,7 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                 extra_msg=error_msg,
             )
 
@@ -308,7 +312,7 @@ class PersistentSubprocessWorker:
                     if response.get("cmd") == WorkerResponse.EVALUATION.value:
                         evaluation = response["evaluation"]
                         if evaluation.status == EvaluationStatus.PASSED:
-                            self._clear_failure_record(sol.name)
+                            self._clear_failure_record(solution.name)
                         elif evaluation.status in (
                             EvaluationStatus.RUNTIME_ERROR,
                             EvaluationStatus.INCORRECT_SHAPE,
@@ -316,24 +320,32 @@ class PersistentSubprocessWorker:
                             EvaluationStatus.COMPILE_ERROR,
                         ):
                             error_text = (evaluation.log or "").strip() or "Evaluation failed"
-                            self._record_failure(sol.name, error_text, evaluation.status)
+                            self._record_failure(solution.name, error_text, evaluation.status)
                         return evaluation
                     elif response.get("cmd") == WorkerResponse.ERROR.value:
                         error_msg = response.get("error", "Unknown evaluation error")
-                        self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
+                        self._record_failure(
+                            solution.name, error_msg, EvaluationStatus.RUNTIME_ERROR
+                        )
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
-                            log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            log_path=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             extra_msg=error_msg,
                         )
                     else:
                         error_msg = f"Unexpected evaluation response: {response}"
-                        self._record_failure(sol.name, error_msg, EvaluationStatus.RUNTIME_ERROR)
+                        self._record_failure(
+                            solution.name, error_msg, EvaluationStatus.RUNTIME_ERROR
+                        )
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
-                            log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                            log_path=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             extra_msg=error_msg,
                         )
 
@@ -342,7 +354,7 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                         extra_msg=error_msg,
                     )
                 except Exception as e:
@@ -358,15 +370,15 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                        log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                         extra_msg=error_msg,
                     )
             else:
-                error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}"
+                error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}"
                 return make_eval(
                     status=EvaluationStatus.TIMEOUT,
                     device=self._device,
-                    log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                    log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                     extra_msg=error_msg,
                 )
 
@@ -375,7 +387,7 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                 extra_msg=error_msg,
             )
         except Exception as e:
@@ -383,7 +395,7 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_path=os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log"),
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                 extra_msg=error_msg,
             )
 
@@ -495,7 +507,7 @@ class PersistentRunner(Runner):
 
     def run_workload(
         self,
-        defn: Definition,
+        definition: Definition,
         wl: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,
@@ -505,7 +517,7 @@ class PersistentRunner(Runner):
 
         Parameters
         ----------
-        defn : Definition
+        definition : Definition
             Operation definition.
         wl : Workload
             Workload specification.
@@ -534,7 +546,9 @@ class PersistentRunner(Runner):
         failed_workers: list[PersistentSubprocessWorker] = []
 
         with ThreadPoolExecutor(max_workers=K) as pool:
-            baseline_futs = {pool.submit(r.run_ref, defn, wl, config, root): r for r in selected}
+            baseline_futs = {
+                pool.submit(r.run_ref, definition, wl, config, root): r for r in selected
+            }
             for fut, r in baseline_futs.items():
                 try:
                     h = fut.result()
@@ -543,7 +557,7 @@ class PersistentRunner(Runner):
                     failed_workers.append(r)
                     self._logger.error(
                         f"Persistent worker {r._device} failed while running reference for "
-                        f"def={defn.name} wl={wl.uuid}: {e}"
+                        f"def={definition.name} wl={wl.uuid}: {e}"
                     )
 
         if failed_workers:
@@ -566,7 +580,7 @@ class PersistentRunner(Runner):
                     )
                     if worker.restart():
                         try:
-                            new_baseline = worker.run_ref(defn, wl, config, root)
+                            new_baseline = worker.run_ref(definition, wl, config, root)
                             worker.release(baseline_handle)
                             baseline_handle = new_baseline
                             LOGGER.info(f"Rebuilt baseline for worker on device {worker._device}")
@@ -609,12 +623,12 @@ class PersistentRunner(Runner):
             with ThreadPoolExecutor(max_workers=len(selected)) as pool:
                 sol_futs: Dict[str, any] = {}
 
-                for i, sol in enumerate(solutions):
+                for i, solution in enumerate(solutions):
                     worker = selected[i % len(selected)]
                     baseline_handle = baselines[worker]
 
-                    sol_futs[sol.name] = pool.submit(
-                        run_solution_with_health_check, worker, sol, baseline_handle
+                    sol_futs[solution.name] = pool.submit(
+                        run_solution_with_health_check, worker, solution, baseline_handle
                     )
 
                 results: Dict[str, Evaluation] = {
@@ -648,7 +662,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
-        registry = get_builder_registry()
+        registry = BuilderRegistry.get_instance()
 
         conn.send({"cmd": WorkerResponse.READY.value})
 
@@ -675,8 +689,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         break
 
                 elif cmd == WorkerCommand.RUN_SOLUTION.value:
-                    defn = msg["definition"]
-                    sol = msg["solution"]
+                    definition = msg["definition"]
+                    solution = msg["solution"]
                     inputs_bl = msg["inputs"]
                     ref_outputs_bl = msg["ref_outputs"]
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
@@ -688,7 +702,7 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
 
                     try:
                         # Use registry to build/get cached solution
-                        runnable_sol = registry.build(defn, sol)
+                        runnable_sol = registry.build(definition, solution)
 
                         inputs: List[Dict[str, Any]] = [
                             {
@@ -698,9 +712,9 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                             for inp in inputs_bl
                         ]
 
-                        evaluator_cls = resolve_evaluator(defn)
+                        evaluator_cls = resolve_evaluator(definition)
                         evaluation = evaluator_cls.evaluate(
-                            defn=defn,
+                            definition=definition,
                             sol_runnable=runnable_sol,
                             inputs=inputs,
                             ref_outputs=ref_outputs_bl,

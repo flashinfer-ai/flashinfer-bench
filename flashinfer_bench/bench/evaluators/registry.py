@@ -15,10 +15,10 @@ _EVALUATORS: List[EvaluatorType] = [SamplingEvaluator, LowBitEvaluator]
 _DEFAULT_EVALUATOR: EvaluatorType = DefaultEvaluator
 
 
-def resolve_evaluator(defn: Definition) -> EvaluatorType:
-    matches = [cls for cls in _EVALUATORS if cls.can_evaluate(defn)]
+def resolve_evaluator(definition: Definition) -> EvaluatorType:
+    matches = [cls for cls in _EVALUATORS if cls.can_evaluate(definition)]
     if len(matches) == 1:
         return matches[0]
     if len(matches) == 0:
         return _DEFAULT_EVALUATOR
-    raise ValueError(f"Multiple evaluator matches for definition '{defn.name}'")
+    raise ValueError(f"Multiple evaluator matches for definition '{definition.name}'")

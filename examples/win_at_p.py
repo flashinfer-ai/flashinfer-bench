@@ -26,7 +26,6 @@ Examples:
 Notes:
 - If multiple runs exist for the same author within a group, we take the MIN latency for that author in that group.
 - By default, the baseline author ('flashinfer') is EXCLUDED from output curves; use --include-baseline to include it.
-
 """
 
 import argparse

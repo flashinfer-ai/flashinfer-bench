@@ -93,7 +93,7 @@ class TestPersistentSubprocessWorker:
 
             assert handle in worker._baselines
             baseline = worker._baselines[handle]
-            assert baseline.defn == d
+            assert baseline.definition == d
             assert baseline.device == "cuda:0"
             assert len(baseline.inputs) == cfg.num_trials
             assert len(baseline.outputs) == cfg.num_trials
@@ -116,7 +116,7 @@ class TestPersistentSubprocessWorker:
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
             srcs = [
@@ -124,13 +124,13 @@ class TestPersistentSubprocessWorker:
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
+            solution = Solution(
                 name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
             handle = worker.run_ref(d, wl, cfg, None)
 
-            evaluation = worker.run_solution(sol, handle, cfg)
+            evaluation = worker.run_solution(solution, handle, cfg)
 
             assert evaluation.status in {
                 EvaluationStatus.PASSED,
@@ -165,7 +165,7 @@ class TestPersistentSubprocessWorker:
             message = "persistent worker log line"
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
             srcs = [
@@ -179,12 +179,12 @@ class TestPersistentSubprocessWorker:
                     ),
                 )
             ]
-            sol = Solution(
+            solution = Solution(
                 name="test_log", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
             handle = worker.run_ref(d, wl, cfg, None)
-            evaluation = worker.run_solution(sol, handle, cfg)
+            evaluation = worker.run_solution(solution, handle, cfg)
 
             assert isinstance(evaluation.log, str)
             assert message in evaluation.log
@@ -227,7 +227,7 @@ class TestPersistentRunner:
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
             srcs = [
@@ -235,11 +235,11 @@ class TestPersistentRunner:
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
+            solution = Solution(
                 name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            results = runner.run_workload(d, wl, [sol], cfg, Path(tmp_path))
+            results = runner.run_workload(d, wl, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             assert "test_success" in results
@@ -276,7 +276,7 @@ class TestPersistentRunner:
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
 
@@ -288,10 +288,10 @@ class TestPersistentRunner:
                         content=f"import torch\n\ndef run(A):\n    return A{'+ 0' if i == 0 else '.clone()' if i == 1 else '* 1'}\n",
                     )
                 ]
-                sol = Solution(
+                solution = Solution(
                     name=f"sol_{i}", definition=d.name, author="test", spec=spec, sources=srcs
                 )
-                solutions.append(sol)
+                solutions.append(solution)
 
             results = runner.run_workload(d, wl, solutions, cfg, Path(tmp_path))
 
@@ -325,7 +325,7 @@ class TestPersistentRunner:
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
             srcs = [
@@ -334,11 +334,11 @@ class TestPersistentRunner:
                     content="import nonexistent_module_xyz\n\ndef run(A):\n    return A\n",
                 )
             ]
-            sol = Solution(
+            solution = Solution(
                 name="test_error", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            results = runner.run_workload(d, wl, [sol], cfg, Path(tmp_path))
+            results = runner.run_workload(d, wl, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             evaluation = results["test_error"]
@@ -418,7 +418,7 @@ class TestPersistentRunner:
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
             )
             srcs = [
@@ -426,7 +426,7 @@ class TestPersistentRunner:
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
+            solution = Solution(
                 name="test_registry", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
@@ -435,11 +435,11 @@ class TestPersistentRunner:
             import time
 
             start_time = time.time()
-            result1 = worker.run_solution(sol, handle, cfg)
+            result1 = worker.run_solution(solution, handle, cfg)
             first_duration = time.time() - start_time
 
             start_time = time.time()
-            result2 = worker.run_solution(sol, handle, cfg)
+            result2 = worker.run_solution(solution, handle, cfg)
             second_duration = time.time() - start_time
 
             print(f"First run duration: {first_duration:.3f}s")

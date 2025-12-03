@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Mapping, Optional
 
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 from flashinfer_bench.logging import get_logger
@@ -156,34 +156,34 @@ class ApplyRuntime:
                 pass
 
         # Then try to run apply logic
-        defn = self._trace_set.definitions.get(def_name)
-        if defn is None:
+        definition = self._trace_set.definitions.get(def_name)
+        if definition is None:
             if fallback is None:
                 raise RuntimeError(f"Definition '{def_name}' not found and no fallback provided")
             return fallback(**runtime_kwargs)
 
         # Build key
-        builder = self._key_builders.get(defn.name)
+        builder = self._key_builders.get(definition.name)
         if builder is None:
-            builder = ApplyKeyFactory.specialize(defn)
-            self._key_builders[defn.name] = builder
+            builder = ApplyKeyFactory.specialize(definition)
+            self._key_builders[definition.name] = builder
         key = builder.build_from_runtime(runtime_kwargs)
 
         # Lookup solution
         sol_name = self._table.match_solution(def_name, key)
         runnable = None
         if sol_name:
-            sol = self._trace_set.get_solution(sol_name)
-            if sol:
-                runnable = get_builder_registry().build(defn, sol)
+            solution = self._trace_set.get_solution(sol_name)
+            if solution:
+                runnable = BuilderRegistry.get_instance().build(definition, solution)
 
         # Miss policy
         if runnable is None:
             if self._apply_config.on_miss_policy == "use_def_best":
                 best_sol_name = self._table.def_best.get(def_name)
-                sol = self._trace_set.get_solution(best_sol_name)
-                if defn and sol:
-                    runnable = get_builder_registry().build(defn, sol)
+                solution = self._trace_set.get_solution(best_sol_name)
+                if definition and solution:
+                    runnable = BuilderRegistry.get_instance().build(definition, solution)
                 if runnable is not None:
                     return runnable(**runtime_kwargs)
             if fallback is None:

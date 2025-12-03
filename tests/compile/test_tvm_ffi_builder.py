@@ -1,34 +1,16 @@
 """Tests for TVMFFIBuilder."""
 
-import os
 import time
+from pathlib import Path
 
 import pytest
 import torch
 
 from flashinfer_bench.compile.builder import BuildError
-from flashinfer_bench.compile.builders.tvm_ffi_builder import TVMFFIBuilder
+from flashinfer_bench.compile.builders import TVMFFIBuilder
 from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, SupportedLanguages
 
-
-@pytest.fixture(autouse=True)
-def isolated_cache(tmp_path, monkeypatch):
-    """Use isolated temporary directory for cache in all tests.
-
-    This fixture automatically sets FIB_CACHE_PATH to a unique temporary
-    directory for each test, preventing cache pollution between tests.
-    """
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    return cache_dir
-
-
-# ============================================================================
-# CPU Tests
-# ============================================================================
-
-CPP_SOURCE = """
+CPP_ADD_ONE_SOURCE = """
 #include <tvm/ffi/container/tensor.h>
 #include <tvm/ffi/container/shape.h>
 #include <tvm/ffi/dtype.h>
@@ -54,7 +36,7 @@ void add_one_cpu(tvm::ffi::TensorView x, tvm::ffi::TensorView output) {
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cpu, add_one_cpu);
 """
 
-CUDA_SOURCE = """
+CUDA_ADD_ONE_SOURCE = """
 #include <cuda_runtime.h>
 #include <tvm/ffi/container/tensor.h>
 #include <tvm/ffi/container/shape.h>
@@ -90,15 +72,19 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, add_one_cuda);
 """
 
 
-def test_build_cpp_cpu() -> None:
+@pytest.fixture(autouse=True)
+def _use_tmp_cache_dir(tmp_cache_dir: Path) -> None:
+    """Automatically use tmp_cache_dir for all tests in this module."""
+
+
+def test_cpu_add_one() -> None:
     """Test building and running a simple CPU kernel."""
     # Create definition and solution
-    n = 5
     definition = Definition(
         name="test_add_one_cpu",
         op_type="test",
         description="Test CPU kernel that adds 1",
-        axes={"n": {"type": "const", "value": n}},
+        axes={"n": {"type": "var"}},
         constraints=[],
         inputs={"x": {"shape": ["n"], "dtype": "float32"}},
         outputs={"output": {"shape": ["n"], "dtype": "float32"}},
@@ -114,7 +100,7 @@ def test_build_cpp_cpu() -> None:
             target_hardware=["cpu"],
             entry_point="kernel.cpp::add_one_cpu",
         ),
-        sources=[SourceFile(path="kernel.cpp", content=CPP_SOURCE)],
+        sources=[SourceFile(path="kernel.cpp", content=CPP_ADD_ONE_SOURCE)],
         description="Simple CPU add kernel",
     )
 
@@ -122,25 +108,19 @@ def test_build_cpp_cpu() -> None:
     builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
-    # Test execution with torch tensors - runnable returns output
+    # Test execution with torch tensors - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
-    output_tensor = runnable(x=input_tensor)
+    output_tensor = torch.empty_like(input_tensor)
+    runnable(x=input_tensor, output=output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0
     torch.testing.assert_close(output_tensor, expected, rtol=1e-5, atol=1e-5)
 
 
-# ============================================================================
-# CUDA Tests
-# ============================================================================
-
-
-@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Skip GPU tests in CI")
-def test_build_cuda_gpu() -> None:
+@pytest.mark.requires_torch_cuda
+def test_cuda_add_one() -> None:
     """Test building and running a simple CUDA kernel."""
-    import torch
-
     definition = Definition(
         name="test_add_one_cuda",
         op_type="test",
@@ -158,10 +138,10 @@ def test_build_cuda_gpu() -> None:
         author="test",
         spec=BuildSpec(
             language=SupportedLanguages.CUDA,
-            target_hardware=["gpu"],
+            target_hardware=["cuda"],
             entry_point="kernel.cu::add_one_cuda",
         ),
-        sources=[SourceFile(path="kernel.cu", content=CUDA_SOURCE)],
+        sources=[SourceFile(path="kernel.cu", content=CUDA_ADD_ONE_SOURCE)],
         description="Simple CUDA add kernel",
     )
 
@@ -169,22 +149,18 @@ def test_build_cuda_gpu() -> None:
     builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
-    # Test execution with torch tensors - runnable returns output
+    # Test execution with torch tensors - TVM FFI functions use positional args and DPS style
     n = 1024
     input_tensor = torch.randn(n, device="cuda", dtype=torch.float32)
-    output_tensor = runnable(x=input_tensor)
+    output_tensor = torch.empty_like(input_tensor)
+    runnable(x=input_tensor, output=output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0
     torch.testing.assert_close(output_tensor, expected, rtol=1e-5, atol=1e-5)
 
 
-# ============================================================================
-# Basic Functionality Tests
-# ============================================================================
-
-
-def test_can_build_cuda() -> None:
+def test_can_build() -> None:
     """Test that TVMFFIBuilder can build CUDA solutions."""
     builder = TVMFFIBuilder()
 
@@ -194,7 +170,7 @@ def test_can_build_cuda() -> None:
         author="test",
         spec=BuildSpec(
             language=SupportedLanguages.CUDA,
-            target_hardware=["gpu"],
+            target_hardware=["cuda"],
             entry_point="kernel.cu::test_func",
         ),
         sources=[SourceFile(path="kernel.cu", content="// dummy")],
@@ -203,17 +179,26 @@ def test_can_build_cuda() -> None:
 
     assert builder.can_build(cuda_solution)
 
-
-def test_can_build_non_cuda() -> None:
-    """Test that TVMFFIBuilder rejects non-CUDA solutions."""
-    builder = TVMFFIBuilder()
+    cpp_solution = Solution(
+        name="test_cpp",
+        definition="test",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.CPP,
+            target_hardware=["cpu"],
+            entry_point="kernel.cpp::test_func",
+        ),
+        sources=[SourceFile(path="kernel.cpp", content="// dummy")],
+        description="C++ solution",
+    )
+    assert builder.can_build(cpp_solution)
 
     python_solution = Solution(
         name="test_python",
         definition="test",
         author="test",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
         ),
         sources=[SourceFile(path="main.py", content="def run(): pass")],
         description="Python solution",
@@ -222,7 +207,7 @@ def test_can_build_non_cuda() -> None:
     assert not builder.can_build(python_solution)
 
 
-def test_caching_builder_level() -> None:
+def test_caching_cpu() -> None:
     """Test that compiled .so is cached and reused for CPU kernels."""
     definition = Definition(
         name="test_add_one_cpu_cached",
@@ -236,7 +221,7 @@ def test_caching_builder_level() -> None:
     )
 
     solution = Solution(
-        name="test_add_one_cpu_cached",
+        name="test_add_one_cpu_impl",
         definition="test_add_one_cpu_cached",
         author="test",
         spec=BuildSpec(
@@ -244,7 +229,7 @@ def test_caching_builder_level() -> None:
             target_hardware=["cpu"],
             entry_point="kernel.cpp::add_one_cpu",
         ),
-        sources=[SourceFile(path="kernel.cpp", content=CPP_SOURCE)],
+        sources=[SourceFile(path="kernel.cpp", content=CPP_ADD_ONE_SOURCE)],
         description="CPU caching test",
     )
 
@@ -261,11 +246,13 @@ def test_caching_builder_level() -> None:
     time_end = time.monotonic()
     print(f"Time taken to load from cache: {(time_end - time_start) * 1000} ms")
 
-    # Both should produce the same result
+    # Both should produce the same result - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
 
-    output1 = runnable1(x=input_tensor)
-    output2 = runnable2(x=input_tensor)
+    output1 = torch.empty_like(input_tensor)
+    output2 = torch.empty_like(input_tensor)
+    runnable1(x=input_tensor, output=output1)
+    runnable2(x=input_tensor, output=output2)
 
     torch.testing.assert_close(output1, output2, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(output1, input_tensor + 1.0, rtol=1e-5, atol=1e-5)
@@ -293,7 +280,7 @@ def test_caching_cross_builder() -> None:
             target_hardware=["cpu"],
             entry_point="kernel.cpp::add_one_cpu",
         ),
-        sources=[SourceFile(path="kernel.cpp", content=CPP_SOURCE)],
+        sources=[SourceFile(path="kernel.cpp", content=CPP_ADD_ONE_SOURCE)],
         description="CPU caching test",
     )
 
@@ -311,18 +298,20 @@ def test_caching_cross_builder() -> None:
     time_end = time.monotonic()
     print(f"Time taken to load from cache: {(time_end - time_start) * 1000} ms")
 
-    # Both should produce the same result
+    # Both should produce the same result - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
 
-    output1 = runnable1(x=input_tensor)
-    output2 = runnable2(x=input_tensor)
+    output1 = torch.empty_like(input_tensor)
+    output2 = torch.empty_like(input_tensor)
+    runnable1(x=input_tensor, output=output1)
+    runnable2(x=input_tensor, output=output2)
 
     torch.testing.assert_close(output1, output2, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(output1, input_tensor + 1.0, rtol=1e-5, atol=1e-5)
 
 
-def test_call_dest_cpu() -> None:
-    """Test calling call_dest directly with pre-allocated output tensors."""
+def test_call_value_returning() -> None:
+    """Test calling value-returning style with call_value_returning."""
     n = 4
     definition = Definition(
         name="test_add_one_cpu",
@@ -340,11 +329,11 @@ def test_call_dest_cpu() -> None:
         definition="test_add_one_cpu",
         author="test",
         spec=BuildSpec(
-            language=SupportedLanguages.CUDA,
+            language=SupportedLanguages.CPP,
             target_hardware=["cpu"],
             entry_point="kernel.cpp::add_one_cpu",
         ),
-        sources=[SourceFile(path="kernel.cpp", content=CPP_SOURCE)],
+        sources=[SourceFile(path="kernel.cpp", content=CPP_ADD_ONE_SOURCE)],
         description="Add one kernel",
     )
 
@@ -356,8 +345,8 @@ def test_call_dest_cpu() -> None:
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0], device="cpu", dtype=torch.float32)
     output_tensor = torch.empty(n, device="cpu", dtype=torch.float32)
 
-    # Call call_dest directly
-    runnable.call_dest(x=input_tensor, output=output_tensor)
+    # Call DPS style directly via the runnable (passes both input and output)
+    output_tensor = runnable.call_value_returning(x=input_tensor)
 
     # Verify the output tensor was filled correctly
     expected = input_tensor + 1.0
@@ -391,7 +380,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(actual_function, actual_function);
         definition="test_invalid",
         author="test",
         spec=BuildSpec(
-            language=SupportedLanguages.CUDA,
+            language=SupportedLanguages.CPP,
             target_hardware=["cpu"],
             entry_point="kernel.cpp::nonexistent_function",
         ),
@@ -423,7 +412,7 @@ def test_no_sources() -> None:
         definition="test_no_sources",
         author="test",
         spec=BuildSpec(
-            language=SupportedLanguages.CUDA,
+            language=SupportedLanguages.CPP,
             target_hardware=["cpu"],
             entry_point="kernel.txt::func",  # Invalid extension
         ),
@@ -432,7 +421,7 @@ def test_no_sources() -> None:
     )
 
     builder = TVMFFIBuilder()
-    with pytest.raises(BuildError, match="No CUDA or C\\+\\+ sources"):
+    with pytest.raises(BuildError, match="Either cpp_files or cuda_files must be provided"):
         builder.build(definition, no_sources_solution)
 
 
@@ -456,11 +445,11 @@ def test_source_in_subdirectory() -> None:
         definition="test_subdirectory",
         author="test",
         spec=BuildSpec(
-            language=SupportedLanguages.CUDA,
+            language=SupportedLanguages.CPP,
             target_hardware=["cpu"],
             entry_point="subdir/kernel.cpp::add_one_cpu",
         ),
-        sources=[SourceFile(path="subdir/kernel.cpp", content=CPP_SOURCE)],
+        sources=[SourceFile(path="subdir/kernel.cpp", content=CPP_ADD_ONE_SOURCE)],
         description="Test subdirectory handling",
     )
 
@@ -468,9 +457,10 @@ def test_source_in_subdirectory() -> None:
     builder = TVMFFIBuilder()
     runnable = builder.build(definition, solution)
 
-    # Test execution
+    # Test execution - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
-    output_tensor = runnable(x=input_tensor)
+    output_tensor = torch.empty_like(input_tensor)
+    runnable(x=input_tensor, output=output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0

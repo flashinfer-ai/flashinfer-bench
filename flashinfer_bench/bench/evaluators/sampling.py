@@ -18,8 +18,7 @@ from flashinfer_bench.bench.utils import (
     make_eval,
     normalize_outputs,
 )
-from flashinfer_bench.compile.registry import get_builder_registry
-from flashinfer_bench.compile.runnable import Runnable
+from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.trace import Correctness, Evaluation, EvaluationStatus, Workload
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
@@ -29,22 +28,22 @@ class SamplingEvaluator(DefaultEvaluator):
 
     @override
     @classmethod
-    def can_evaluate(cls, defn: Definition) -> bool:
-        return is_sampling_op(defn)
+    def can_evaluate(cls, definition: Definition) -> bool:
+        return is_sampling_op(definition)
 
     @override
     @classmethod
     def build_baseline(
         cls,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
         traceset_root: Optional[Path] = None,
     ) -> DeviceBaseline:
-        ref_runnable = get_builder_registry().build_reference(defn)
+        ref_runnable = BuilderRegistry.get_instance().build_reference(definition)
         loaded_stensors = (
-            load_safetensors(defn, workload, traceset_root)
+            load_safetensors(definition, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
@@ -52,10 +51,10 @@ class SamplingEvaluator(DefaultEvaluator):
         inputs: List[Dict[str, Any]] = []
         outputs: List[Dict[str, torch.Tensor]] = []
 
-        inp = gen_inputs(defn, workload, device=device, stensors=loaded_stensors)
+        inp = gen_inputs(definition, workload, device=device, stensors=loaded_stensors)
         inputs.append(inp)
 
-        thresholding_method = _detect_thresholding_method(defn)
+        thresholding_method = _detect_thresholding_method(definition)
         params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
         valid_mask = _compute_valid_sampling_mask(inp["probs"], thresholding_method, params)
 
@@ -75,7 +74,7 @@ class SamplingEvaluator(DefaultEvaluator):
 
         return DeviceBaseline(
             handle=handle,
-            defn=defn,
+            definition=definition,
             device=device,
             inputs=inputs,
             outputs=outputs,
@@ -86,7 +85,7 @@ class SamplingEvaluator(DefaultEvaluator):
     @classmethod
     def check_correctness(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
         inputs: List[Dict[str, Any]],
         ref_outputs: List[Dict[str, torch.Tensor]],
@@ -100,11 +99,13 @@ class SamplingEvaluator(DefaultEvaluator):
         inp = inputs[0]
         params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
 
-        output_names = list(defn.outputs.keys())
-        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
+        output_names = list(definition.outputs.keys())
+        output_dtypes = {
+            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
+        }
 
         # Compute valid sampling mask based on thresholding
-        thresholding_method = _detect_thresholding_method(defn)
+        thresholding_method = _detect_thresholding_method(definition)
         probs = inp["probs"]
         valid_mask = _compute_valid_sampling_mask(probs, thresholding_method, params)
 
@@ -167,7 +168,7 @@ class SamplingEvaluator(DefaultEvaluator):
 
         try:
             sol_freqs = _sample_token_distributions(
-                sol_runnable, inp, device, defn, num_trials=500000
+                sol_runnable, inp, device, definition, num_trials=500000
             )
             torch.cuda.synchronize(device)
         except Exception:
@@ -211,12 +212,12 @@ class SamplingEvaluator(DefaultEvaluator):
         return correctness, None
 
 
-def is_sampling_op(defn: Definition) -> bool:
-    return getattr(defn, "op_type", None) == "sampling"
+def is_sampling_op(definition: Definition) -> bool:
+    return getattr(definition, "op_type", None) == "sampling"
 
 
-def _detect_thresholding_method(defn: Definition) -> str:
-    name = defn.name.lower()
+def _detect_thresholding_method(definition: Definition) -> str:
+    name = definition.name.lower()
     if "top_k_top_p" in name:
         return "top_k_top_p"
     elif "top_k" in name:
@@ -291,7 +292,7 @@ def _sample_token_distributions(
     runnable: Runnable,
     inputs: Dict[str, Any],
     device: str,
-    defn: Definition,
+    definition: Definition,
     num_trials: int = 500000,
 ) -> torch.Tensor:
     original_batch_size = inputs["probs"].shape[0] if inputs["probs"].dim() > 1 else 1
@@ -339,8 +340,10 @@ def _sample_token_distributions(
         with torch.no_grad():
             out = runnable(**padded_inputs)
 
-        output_names = list(defn.outputs.keys())
-        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
+        output_names = list(definition.outputs.keys())
+        output_dtypes = {
+            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
+        }
 
         out_normalized = normalize_outputs(
             out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes

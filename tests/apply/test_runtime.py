@@ -134,7 +134,7 @@ def test_runtime_dispatch_def_best_policy_without_fallback(
     # Choose def_best when miss
     rt = ApplyRuntime(ts, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
 
-    # Miss should use def_best; our setup has both sol names ranked; accept either
+    # Miss should use def_best; our setup has both solution names ranked; accept either
     out = rt.dispatch("add", {"X": FakeTensor((100, 2)), "Y": FakeTensor((100, 2))}, fallback=None)
     assert out in ("fast", "slow")
 
@@ -243,7 +243,7 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
     from flashinfer_bench.compile.builders.python_builder import PythonBuilder
 
     counts = {"build": 0}
-    orig_build = PythonBuilder._build
+    orig_build = PythonBuilder.build
 
     def counting_build(self, definition: Definition, solution: Solution) -> Runnable:
         counts["build"] += 1
@@ -251,7 +251,7 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
 
     try:
         # Patch at class so the registry instance picks it up
-        PythonBuilder._build = counting_build  # type: ignore[assignment]
+        PythonBuilder.build = counting_build  # type: ignore[assignment]
 
         # Two dispatches for same key should reuse cached runnable
         class T:
@@ -269,7 +269,7 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
         # Only one real build should have occurred
         assert counts["build"] == 1
     finally:
-        PythonBuilder._build = orig_build  # type: ignore[assignment]
+        PythonBuilder.build = orig_build  # type: ignore[assignment]
         set_apply_runtime(None)
 
 

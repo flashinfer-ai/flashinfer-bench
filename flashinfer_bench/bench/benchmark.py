@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import List
 
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
 from flashinfer_bench.logging import get_logger
 
@@ -46,7 +46,7 @@ class Benchmark:
             self._runner = PersistentRunner(logger, self._config.log_dir)
 
         # Setup registry
-        self._registry = get_builder_registry()
+        self._registry = BuilderRegistry.get_instance()
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.
@@ -79,8 +79,8 @@ class Benchmark:
         definitions_to_run = self._trace_set.definitions.items()
         if self._config.definitions is not None:
             definitions_to_run = [
-                (name, defn)
-                for name, defn in definitions_to_run
+                (name, definition)
+                for name, definition in definitions_to_run
                 if name in self._config.definitions
             ]
             provided_defs = set(self._config.definitions)
@@ -89,7 +89,7 @@ class Benchmark:
             if missing_defs:
                 logger.warning(f"Definitions not found in trace set: {sorted(missing_defs)}")
 
-        for def_name, defn in definitions_to_run:
+        for def_name, definition in definitions_to_run:
             sols = self._trace_set.solutions.get(def_name, [])
             if not sols:
                 logger.warning(f"No solutions found for def={def_name}, skipping definition")
@@ -128,7 +128,7 @@ class Benchmark:
 
                 try:
                     results = self._runner.run_workload(
-                        defn, wl, sols_to_run, self._config, self._trace_set.root
+                        definition, wl, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
                     logger.error(f"Failed to run workload {wl.uuid}: {e}")
