@@ -11,7 +11,7 @@ pip install flashinfer-bench tvm-ffi torch
 
 ### For JAX Example
 ```bash
-pip install jax jax-tvm-ffi
+pip install jax[cuda13-local] jax-tvm-ffi
 ```
 
 ### For C++ Example
@@ -23,7 +23,33 @@ pip install jax jax-tvm-ffi
 
 ### 1. Generate Kernel with Agent
 
-Use your preferred coding agent to generate a GEMM kernel solution following `agent_vibecode.md`. Or use the provided example vibecoded kernel using gpt-5-2025-08-07.
+You have two options to generate a CUDA kernel solution:
+
+**Option A: IDE Coding Agent**
+
+Use your preferred IDE coding agent to generate a GEMM kernel solution:
+
+```bash
+# Open the instructions in your IDE
+cat agent_vibecode.md
+```
+
+Follow the instructions in `agent_vibecode.md` to have the agent generate the solution interactively.
+
+**Option B: Kernel Generator**
+
+Use the kernel generator agent to generate solutions:
+
+```bash
+# Ensure .env is configured in examples/kernel_generator/
+# Required: LLM_API_KEY and BASE_URL
+python kernel_generator_example.py
+```
+
+Configure generation parameters in the script:
+- `model_name`: LLM model to use (default: `gpt-5-2025-08-07`)
+- `target_gpu`: Target GPU architecture (default: `B200`)
+- `gen_rounds`: Number of refinement rounds (default: `10`)
 
 ### 2. Build and Distribute
 ```bash
