@@ -60,6 +60,13 @@ class BuilderRegistry:
         available builders (those whose is_available() returns True) in priority order.
         Subsequent calls return the same instance.
 
+        The following builders are available (high to low priority):
+
+        - TritonBuilder: Build Triton solutions.
+        - PythonBuilder: Build Python solutions.
+        - TVMFFIBuilder: Build CUDA/C++ solutions using TVM-FFI backend.
+        - TorchBuilder: Build CUDA/C++ solutions using PyTorch extension system.
+
         Returns
         -------
         BuilderRegistry

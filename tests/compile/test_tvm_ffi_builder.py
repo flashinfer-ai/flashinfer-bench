@@ -100,7 +100,7 @@ def test_cpu_add_one() -> None:
     """Test building and running a simple CPU kernel."""
     solution = Solution(
         name="test_add_one_cpu_impl",
-        definition="test_add_one_cpu",
+        definition=ADD_ONE_DEFINITION.name,
         author="test",
         spec=BuildSpec(
             language=SupportedLanguages.CUDA,  # TVMFFIBuilder accepts CUDA language
@@ -288,7 +288,7 @@ def test_call_value_returning() -> None:
     """Test calling value-returning style with call_value_returning."""
     solution = Solution(
         name="test_add_one_cpu_impl",
-        definition="test_add_one_cpu",
+        definition=ADD_ONE_DEFINITION.name,
         author="test",
         spec=BuildSpec(
             language=SupportedLanguages.CPP,

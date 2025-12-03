@@ -71,8 +71,8 @@ class BuildSpec(BaseModelWithDocstrings):
     language: SupportedLanguages
     """The primary programming language (e.g., 'triton', 'cuda', 'python')."""
     target_hardware: List[str] = Field(min_length=1)
-    """List of hardware this solution is compatible with. E.g. 'cpu', 'cuda'. Now this is not used in verification
-    and building. ."""
+    """List of hardware this solution is compatible with. E.g. 'cpu', 'cuda'. Note this is not used
+    in verification and building now."""
     entry_point: NonEmptyString
     """The exact path to the function to be called. Format: '{file_path}::{function_name}'
     (e.g., 'main.py::run')."""
