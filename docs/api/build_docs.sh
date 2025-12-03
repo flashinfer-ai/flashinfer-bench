@@ -4,9 +4,10 @@
 # Usage:
 #   ./build_docs.sh          # Build HTML docs
 #   ./build_docs.sh clean    # Clean build directory
+#   ./build_docs.sh deps     # Install dependencies
 #   ./build_docs.sh serve    # Build and serve locally
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -17,8 +18,8 @@ cd "$SCRIPT_DIR"
 # Install dependencies if needed
 install_deps() {
     echo "Installing documentation dependencies..."
-    pip install -r requirements.txt -q
-    pip install -e "$REPO_ROOT" -q
+    pip install -r requirements.txt
+    pip install -e "$REPO_ROOT"
 }
 
 # Clean build directory
