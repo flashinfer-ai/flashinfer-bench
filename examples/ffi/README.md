@@ -2,6 +2,43 @@
 
 This directory contains examples demonstrating how to build, distribute, and load agent generated CUDA kernels using TVM-FFI across different environments.
 
+
+## Overview
+
+The workflow consists of 4 main stages:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ Stage 1: Problem Definition                                          │
+│ - Definition in FlashInfer-Trace dataset                             │
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ Stage 2: LLM Kernel Generation                                       │
+│ - LLM reads the Definition + agent_vibecode.md prompt                │
+│ - Generates CUDA kernel with TVM-FFI bindings                        │
+│ - Outputs Solution JSON with embedded source code                    │
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ Stage 3: Build & Distribution                                        │
+│ - TVMFFIBuilder compiles the Solution                                │
+│ - Generates framework-agnostic .so binary                            │
+│ - Extracts to distributed/ folder with metadata                      │
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ Stage 4: Cross-Framework Usage                                       │
+│ - JAX/PyTorch/C++ load the same .so file                             │
+│ - Execute kernel without recompilation                               │
+│ - Benchmarking or Apply the kernel                                   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+
 ## Installation Prerequisites
 
 ### Python Dependencies
