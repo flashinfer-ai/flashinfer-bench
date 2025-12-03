@@ -38,7 +38,7 @@ Repository = "https://github.com/flashinfer-ai/flashinfer-bench"
 Issues = "https://github.com/flashinfer-ai/flashinfer-bench/issues"
 
 [project.optional-dependencies]
-dev = [
+test = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
   "black>=22.0.0",
