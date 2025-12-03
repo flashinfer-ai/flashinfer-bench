@@ -431,7 +431,7 @@ def test_rebuild_after_cleanup() -> None:
 
     # Second build (load from cache)
     t0 = time.monotonic()
-    runnable2 = builder.build(ADD_ONE_DEFINITION, solution)
+    _ = builder.build(ADD_ONE_DEFINITION, solution)
     cached_load_time = time.monotonic() - t0
     print(f"Cached load time: {cached_load_time * 1000:.2f} ms")
 
