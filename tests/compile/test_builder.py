@@ -154,7 +154,7 @@ def test_build_registry_cache_hit():
 
 
 def test_build_registry_cache_miss():
-    """Test that building the same solution twice returns cached result."""
+    """Test that building different solutions results in a cache miss."""
     builder = _create_mock_builder("builder", can_build_result=True)
     registry = BuilderRegistry([builder])
     definition = _make_test_definition()
@@ -169,7 +169,7 @@ def test_build_registry_cache_miss():
 
 
 def test_build_registry_cleanup():
-    """Test that clear() removes cached runnables."""
+    """Test that cleanup() removes cached runnables."""
     builder = _create_mock_builder("builder", can_build_result=True)
     registry = BuilderRegistry([builder])
     definition = _make_test_definition()
