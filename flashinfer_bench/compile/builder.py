@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Tuple
 
 from flashinfer_bench.data import Definition, Solution
 from flashinfer_bench.env import get_fib_cache_path

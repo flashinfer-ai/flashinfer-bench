@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -11,9 +10,8 @@ from typing import Any, Callable, ClassVar
 
 from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
-from flashinfer_bench.compile.utils import create_package_name, write_sources_to_path
+from flashinfer_bench.compile.utils import write_sources_to_path
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
-from flashinfer_bench.env import get_fib_cache_path
 
 
 class PythonBuilder(Builder):

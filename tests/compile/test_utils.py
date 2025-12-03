@@ -1,7 +1,6 @@
 """Tests for compile/utils.py."""
 
 import sys
-from pathlib import Path
 
 import pytest
 

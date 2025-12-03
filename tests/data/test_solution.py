@@ -61,10 +61,15 @@ def test_solution_validation_and_helpers():
     assert solution.get_entry_source() is s1
 
     # CUDA requires build
-    cuda_spec = BuildSpec(
-        language=SupportedLanguages.CUDA, target_hardware=["cuda"], entry_point="main.py::run"
+    Solution(
+        name="sol2",
+        definition="def1",
+        author="you",
+        spec=BuildSpec(
+            language=SupportedLanguages.CUDA, target_hardware=["cuda"], entry_point="main.py::run"
+        ),
+        sources=[s1],
     )
-    sol2 = Solution(name="sol2", definition="def1", author="you", spec=cuda_spec, sources=[s1])
 
     # Duplicate source paths
     with pytest.raises(ValueError):
