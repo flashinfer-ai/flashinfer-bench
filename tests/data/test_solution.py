@@ -57,8 +57,8 @@ def test_solution_validation_and_helpers():
     )
     s1 = SourceFile(path="main.py", content="def run():\n    pass\n")
     s2 = SourceFile(path="util.py", content="x=1\n")
-    sol = Solution(name="sol1", definition="def1", author="me", spec=spec, sources=[s1, s2])
-    assert sol.get_entry_source() is s1
+    solution = Solution(name="sol1", definition="def1", author="me", spec=spec, sources=[s1, s2])
+    assert solution.get_entry_source() is s1
 
     # CUDA requires build
     cuda_spec = BuildSpec(

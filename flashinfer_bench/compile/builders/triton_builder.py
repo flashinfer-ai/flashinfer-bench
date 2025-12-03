@@ -19,14 +19,14 @@ class TritonBuilder(PythonBuilder):
     main difference being the language tag in metadata.
     """
 
-    _KEY_PREFIX: ClassVar[str] = "fib_triton_"
+    _PACKAGE_PREFIX: ClassVar[str] = "fib_triton_"
     """Prefix for cache keys to distinguish Triton solutions from pure Python ones."""
 
     _BUILD_DIR_NAME: ClassVar[str] = "triton"
     """Subdirectory under FIB_CACHE_PATH where build results are stored"""
 
     def __init__(self) -> None:
-        Builder.__init__(self, self._KEY_PREFIX, self._BUILD_DIR_NAME)
+        Builder.__init__(self, self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
 
     @staticmethod
     def is_available() -> bool:
@@ -43,13 +43,13 @@ class TritonBuilder(PythonBuilder):
             return False
         return True
 
-    def can_build(self, sol: Solution) -> bool:
+    def can_build(self, solution: Solution) -> bool:
         """Check if this builder can build the given solution.
         The solution should be Triton source code.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution to check
 
         Returns
@@ -57,7 +57,7 @@ class TritonBuilder(PythonBuilder):
         bool
             True if solution language is Triton
         """
-        return sol.spec.language == SupportedLanguages.TRITON
+        return solution.spec.language == SupportedLanguages.TRITON
 
     def build(self, definition: Definition, solution: Solution) -> Runnable:
         """Build a Triton solution into a runnable.

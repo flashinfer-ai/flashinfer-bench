@@ -18,14 +18,14 @@ from flashinfer_bench.data.trace import Correctness, Evaluation, EvaluationStatu
 class LowBitEvaluator(DefaultEvaluator):
     @override
     @classmethod
-    def can_evaluate(cls, defn: Definition) -> bool:
-        return "moe_fp8_block_scale" in defn.name
+    def can_evaluate(cls, definition: Definition) -> bool:
+        return "moe_fp8_block_scale" in definition.name
 
     @override
     @classmethod
     def check_correctness(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
         inputs: List[Dict[str, Any]],
         ref_outputs: List[Dict[str, torch.Tensor]],

@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Literal, Optional
+from typing import Any, Callable, Dict, Literal, Optional, Union
 
 from pydantic import BaseModel
 
 from flashinfer_bench.data import Definition
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
-
-BuildType = Literal["cuda", "tvm_ffi", "python", "triton"]
-"""The type of build that produced this runnable. Each builder has a unique build type."""
 
 
 class RunnableMetadata(BaseModel):
@@ -20,8 +17,9 @@ class RunnableMetadata(BaseModel):
     builder type, source definition/solution, and additional builder-specific data.
     """
 
-    build_type: BuildType
-    """The type of build that produced this runnable (e.g., 'python', 'torch', 'triton', 'tvm_ffi')."""
+    build_type: Union[Literal["torch", "tvm_ffi", "python", "triton"], str]
+    """The type of build that produced this runnable (e.g., 'python', 'torch', 'triton',
+    'tvm_ffi')."""
     definition: str
     """Name of the definition that specifies the expected interface."""
     solution: str
@@ -77,7 +75,7 @@ class Runnable:
         Parameters
         ----------
         kwargs : Any
-            Keyword arguments matching the definition's input specification.
+            Keyword arguments for the underlying function.
 
         Returns
         -------

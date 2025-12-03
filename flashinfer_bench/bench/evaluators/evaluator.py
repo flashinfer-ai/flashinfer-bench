@@ -23,13 +23,13 @@ from flashinfer_bench.data.trace import (
 class Evaluator(ABC):
     @classmethod
     @abstractmethod
-    def can_evaluate(cls, defn: Definition) -> bool: ...
+    def can_evaluate(cls, definition: Definition) -> bool: ...
 
     @classmethod
     @abstractmethod
     def build_baseline(
         cls,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
@@ -40,7 +40,7 @@ class Evaluator(ABC):
     @abstractmethod
     def check_correctness(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
         inputs: List[Dict[str, Any]],
         ref_outputs: List[Dict[str, torch.Tensor]],
@@ -64,7 +64,7 @@ class Evaluator(ABC):
     @classmethod
     def evaluate(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
         inputs: List[Dict[str, Any]],
         ref_outputs: List[Dict[str, torch.Tensor]],
@@ -74,7 +74,7 @@ class Evaluator(ABC):
         device: str,
     ) -> Evaluation:
         correctness, evaluation = cls.check_correctness(
-            defn=defn,
+            definition=definition,
             sol_runnable=sol_runnable,
             inputs=inputs,
             ref_outputs=ref_outputs,

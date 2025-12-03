@@ -9,23 +9,12 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile import Runnable, RunnableMetadata
 from flashinfer_bench.compile.builder import Builder, BuildError
+from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 from flashinfer_bench.compile.utils import write_sources_to_path
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
-from flashinfer_bench.env import get_fib_cache_path
 
 logger = logging.getLogger(__name__)
-
-# C/C++ and CUDA source file extensions
-_CPP_CUDA_EXTENSIONS: List[str] = [".cu", ".cpp", ".cc", ".cxx", ".c"]
-
-# CUDA dependencies and their package names and library names
-_CUDA_DEPS: Dict[str, Tuple[str, Optional[List[str]]]] = {
-    "cublas": ("nvidia.cublas", ["cublas", "cublasLt"]),
-    "cudnn": ("nvidia.cudnn", ["cudnn"]),
-    "cutlass": ("flashinfer_bench._deps.cutlass", None),  # Header-only dependency
-}
 
 
 class TorchBuilder(Builder):
@@ -36,11 +25,169 @@ class TorchBuilder(Builder):
     cuDNN, and CUTLASS.
     """
 
-    _BUILD_DIR_NAME: ClassVar[str] = "torch"
-    """Subdirectory under FIB_CACHE_PATH where build results are stored"""
+    _PACKAGE_PREFIX: ClassVar[str] = "torch_"
+    """A unique prefix to prepend to the package name."""
 
-    _KEY_PREFIX: ClassVar[str] = "torch_"
-    """Prefix for cache keys to avoid collisions with other builders"""
+    _BUILD_DIR_NAME: ClassVar[str] = "torch"
+    """A unique subdirectory under FIB_CACHE_PATH where build results are stored."""
+
+    _CPP_CUDA_EXTENSIONS: ClassVar[List[str]] = [".cu", ".cpp", ".cc", ".cxx", ".c"]
+    """C/C++ and CUDA source file extensions."""
+
+    def __init__(self) -> None:
+        """Initialize the TorchBuilder and discover available CUDA dependencies."""
+        super().__init__(self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
+
+    @staticmethod
+    def is_available() -> bool:
+        """Check if CUDA is available in the current environment.
+
+        Returns
+        -------
+        bool
+            True if PyTorch is installed and CUDA is available, False otherwise.
+        """
+        try:
+            import torch
+        except ImportError:
+            return False
+        return torch.cuda.is_available()
+
+    def can_build(self, solution: Solution) -> bool:
+        """Check if this builder can handle the given solution."""
+        return (
+            solution.spec.language == SupportedLanguages.CUDA
+            or solution.spec.language == SupportedLanguages.CPP
+        )
+
+    def _filter_sources(self, source_paths: List[Path]) -> List[str]:
+        """Filter source files to include only C/C++/CUDA files.
+
+        Parameters
+        ----------
+        source_paths : List[Path]
+            List of all source file paths.
+
+        Returns
+        -------
+        List[str]
+            List of source file paths with C/C++/CUDA extensions.
+        """
+        return [str(path) for path in source_paths if path.suffix in self._CPP_CUDA_EXTENSIONS]
+
+    def _get_cleaner(self, build_dir: Path) -> Callable[[], None]:
+        """Create a cleaner function that removes the build directory.
+
+        Parameters
+        ----------
+        build_dir : Path
+            The directory to delete.
+
+        Returns
+        -------
+        Callable[[], None]
+            A function that performs the cleanup.
+        """
+
+        def cleaner() -> None:
+            shutil.rmtree(build_dir, ignore_errors=True)
+
+        return cleaner
+
+    def build(self, definition: Definition, solution: Solution) -> Runnable:
+        """Build a CUDA solution into a runnable.
+
+        This method writes the solution sources to a build directory, compiles them
+        using PyTorch's cpp_extension.load(), and returns a callable wrapper.
+
+        Parameters
+        ----------
+        definition : Definition
+            The problem definition.
+        solution : Solution
+            The CUDA solution to build.
+
+        Returns
+        -------
+        Runnable
+            An executable wrapper around the compiled extension.
+
+        Raises
+        ------
+        BuildError
+            If the entry file is not a C/C++/CUDA file, compilation fails, or the
+            entry symbol is not found in the compiled extension.
+        """
+        from torch.utils.cpp_extension import load
+
+        entry_file_extension = solution.get_entry_path().suffix
+        if entry_file_extension not in self._CPP_CUDA_EXTENSIONS:
+            raise BuildError(
+                f"Entry file type not recognized. Must be one of {self._CPP_CUDA_EXTENSIONS}, "
+                f"got {entry_file_extension}."
+            )
+
+        symbol = solution.get_entry_symbol()
+        package_name, build_dir = self.get_package_name_and_build_path(solution)
+        source_paths = write_sources_to_path(build_dir, solution.sources)
+
+        cpp_cuda_paths = self._filter_sources(source_paths)
+
+        extra_include_paths = [str(build_dir)]
+        extra_ldflags = []
+        with_cuda = "cuda" in solution.spec.language == SupportedLanguages.CUDA
+
+        try:
+            ext = load(
+                name=package_name,
+                sources=cpp_cuda_paths,
+                extra_include_paths=extra_include_paths,
+                extra_ldflags=extra_ldflags,
+                with_cuda=with_cuda,
+                build_directory=build_dir,
+                verbose=True,
+            )
+        except Exception as e:
+            raise BuildError(f"Torch build failed for solution '{solution.name}': {e}") from e
+
+        try:
+            callable = getattr(ext, symbol)
+        except AttributeError as e:
+            raise BuildError(f"Exported symbol '{symbol}' not found in built extension") from e
+
+        arg_order = list(definition.inputs.keys())
+
+        def kwarg_adapter(**kwargs):
+            args = [kwargs[name] for name in arg_order]
+            return callable(*args)
+
+        metadata = RunnableMetadata(
+            build_type="torch",
+            definition=definition.name,
+            solution=solution.name,
+            misc={"entry_symbol": symbol, "binary": getattr(ext, "__file__", None)},
+        )
+
+        cleaner = self._get_cleaner(build_dir)
+
+        result = Runnable(callable=kwarg_adapter, metadata=metadata, cleaner=cleaner)
+        result.raw_callable = callable
+        return result
+
+
+# Dependency management. This is now disabled for torch builder.
+# TODO(yixin): fix the dependency manager
+
+
+class DependencyManager:
+    """Dependency manager for CUDA dependencies. Not used for now."""
+
+    _CUDA_DEPS: ClassVar[Dict[str, Tuple[str, Optional[List[str]]]]] = {
+        "cublas": ("nvidia.cublas", ["cublas", "cublasLt"]),
+        "cudnn": ("nvidia.cudnn", ["cudnn"]),
+        "cutlass": ("flashinfer_bench.third_party.cutlass", None),  # Header-only dependency
+    }
+    """CUDA dependencies and their package names and library names"""
 
     _extra_include_paths: Dict[str, str]
     """Extra include paths for CUDA dependencies"""
@@ -48,12 +195,11 @@ class TorchBuilder(Builder):
     _extra_ldflags: Dict[str, List[str]]
     """Extra link flags for CUDA dependencies"""
 
-    def __init__(self) -> None:
-        """Initialize the TorchBuilder and discover available CUDA dependencies."""
-        super().__init__(self._KEY_PREFIX, self._BUILD_DIR_NAME)
+    def __init__(self):
+        """Initialize the dependency manager."""
         self._discover_cuda_deps()
 
-    def _discover_cuda_deps(self):
+    def _discover_cuda_deps(self) -> None:
         """Discover available CUDA dependencies and their include/library paths.
 
         This method populates _extra_include_paths and _extra_ldflags with paths
@@ -61,7 +207,7 @@ class TorchBuilder(Builder):
         """
         self._extra_include_paths = {}
         self._extra_ldflags = {}
-        for dep_name, (pkg_name, libs) in _CUDA_DEPS.items():
+        for dep_name, (pkg_name, libs) in self._CUDA_DEPS.items():
             include_path, ldflags = self._get_package_paths(pkg_name, libs)
             if include_path:
                 self._extra_include_paths[dep_name] = include_path
@@ -132,61 +278,12 @@ class TorchBuilder(Builder):
 
         return include_path, ldflags
 
-    @staticmethod
-    def is_available() -> bool:
-        """Check if CUDA is available in the current environment.
-
-        Returns
-        -------
-        bool
-            True if PyTorch is installed and CUDA is available, False otherwise.
-        """
-        try:
-            import torch
-        except ImportError:
-            return False
-        return torch.cuda.is_available()
-
-    def can_build(self, sol: Solution) -> bool:
-        """Check if this builder can handle the given solution."""
-        return sol.spec.language == SupportedLanguages.CUDA
-
-    def _get_build_path(self, key: str) -> Path:
-        """Get the build directory path for a given cache key.
-
-        Parameters
-        ----------
-        key : str
-            Unique cache key for the solution
-
-        Returns
-        -------
-        Path
-            Directory path where build results will be stored
-        """
-        return get_fib_cache_path() / self._BUILD_DIR_NAME / key
-
-    def _filter_sources(self, source_paths: List[Path]) -> List[str]:
-        """Filter source files to include only C/C++/CUDA files.
-
-        Parameters
-        ----------
-        source_paths : List[Path]
-            List of all source file paths.
-
-        Returns
-        -------
-        List[str]
-            List of source file paths with C/C++/CUDA extensions.
-        """
-        return [str(path) for path in source_paths if path.suffix in _CPP_CUDA_EXTENSIONS]
-
-    def _get_dependency_flags(self, sol: Solution) -> Tuple[List[str], List[str]]:
+    def get_dependency_flags(self, solution: Solution) -> Tuple[List[str], List[str]]:
         """Extract include paths and linker flags for solution dependencies.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             The solution whose dependencies to process.
 
         Returns
@@ -203,15 +300,15 @@ class TorchBuilder(Builder):
         extra_include_paths = []
         extra_ldflags = []
 
-        for dep in sol.spec.dependencies:
-            if dep not in _CUDA_DEPS.keys():
+        for dep in solution.spec.dependencies or []:
+            if dep not in self._CUDA_DEPS.keys():
                 logger.warning(f"Dependency '{dep}' not found in CUDA_DEPS")
                 continue
             inc_path = self._extra_include_paths.get(dep)
             if not inc_path:
                 raise BuildError(
                     f"{dep} is not available in the current environment but referenced "
-                    f"by {sol.name}"
+                    f"by {solution.name}"
                 )
             extra_include_paths.append(inc_path)
             ldflags = self._extra_ldflags.get(dep)
@@ -219,94 +316,3 @@ class TorchBuilder(Builder):
                 extra_ldflags.extend(ldflags)
 
         return extra_include_paths, extra_ldflags
-
-    def _get_cleaner(self, build_dir: Path) -> Callable[[], None]:
-        """Create a cleaner function that removes the build directory.
-
-        Parameters
-        ----------
-        build_dir : Path
-            The directory to delete.
-
-        Returns
-        -------
-        Callable[[], None]
-            A function that performs the cleanup.
-        """
-
-        def cleaner() -> None:
-            shutil.rmtree(build_dir, ignore_errors=True)
-
-        return cleaner
-
-    def build(self, definition: Definition, solution: Solution) -> Runnable:
-        """Build a CUDA solution into a runnable.
-
-        This method writes the solution sources to a build directory, compiles them
-        using PyTorch's cpp_extension.load(), and returns a callable wrapper.
-
-        Parameters
-        ----------
-        definition : Definition
-            The problem definition.
-        solution : Solution
-            The CUDA solution to build.
-
-        Returns
-        -------
-        Runnable
-            An executable wrapper around the compiled extension.
-
-        Raises
-        ------
-        BuildError
-            If the entry file is not a C/C++/CUDA file, compilation fails, or the
-            entry symbol is not found in the compiled extension.
-        """
-        from torch.utils.cpp_extension import load
-
-        entry_file_extension = solution.get_entry_path().suffix
-        if entry_file_extension not in _CPP_CUDA_EXTENSIONS:
-            raise BuildError(
-                f"Entry file type not recognized. Must be one of {_CPP_CUDA_EXTENSIONS}, "
-                f"got {entry_file_extension}."
-            )
-
-        symbol = solution.get_entry_symbol()
-        package_name, build_dir = self.get_package_name_and_build_path(solution)
-        src_paths = write_sources_to_path(build_dir, solution.sources)
-
-        src_paths = self._filter_sources(src_paths)
-
-        extra_include_paths, extra_ldflags = self._get_dependency_flags(solution)
-        # Add build directory to include paths
-        extra_include_paths.append(str(build_dir))
-
-        try:
-            ext = load(
-                name=package_name,
-                sources=src_paths,
-                extra_include_paths=extra_include_paths,
-                extra_ldflags=extra_ldflags,
-                with_cuda=True,
-                build_directory=build_dir,
-                verbose=True,
-            )
-        except Exception as e:
-            raise BuildError(f"CUDA build failed for solution '{solution.name}': {e}") from e
-
-        try:
-            callable = getattr(ext, symbol)
-        except AttributeError as e:
-            raise BuildError(f"Exported symbol '{symbol}' not found in built extension") from e
-
-        metadata = RunnableMetadata(
-            build_type="torch",
-            definition=definition.name,
-            solution=solution.name,
-            misc={"entry_symbol": symbol, "binary": getattr(ext, "__file__", None)},
-        )
-
-        cleaner = self._get_cleaner(build_dir)
-
-        return Runnable(callable=callable, metadata=metadata, cleaner=cleaner)

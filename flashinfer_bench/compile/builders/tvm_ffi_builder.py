@@ -40,7 +40,7 @@ class TVMFFIBuilder(Builder):
     >>> runnable.call_dest(x=input_tensor, output=output_tensor)  # Destination-passing style
     """
 
-    _KEY_PREFIX: ClassVar[str] = "tvm_ffi_"
+    _PACKAGE_PREFIX: ClassVar[str] = "tvm_ffi_"
     """Prefix for cache keys to avoid collisions with other builders"""
 
     _BUILD_DIR_NAME: ClassVar[str] = "tvm_ffi"
@@ -51,7 +51,7 @@ class TVMFFIBuilder(Builder):
 
     def __init__(self) -> None:
         """Initialize the TVMFFIBuilder."""
-        super().__init__(self._KEY_PREFIX, self._BUILD_DIR_NAME)
+        super().__init__(self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
 
     @staticmethod
     def is_available() -> bool:
@@ -62,13 +62,13 @@ class TVMFFIBuilder(Builder):
             return False
         return True
 
-    def can_build(self, sol: Solution) -> bool:
+    def can_build(self, solution: Solution) -> bool:
         """Check if this builder can build the given solution. The solution should be CUDA or
         C++ source code.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution to check
 
         Returns
@@ -77,11 +77,11 @@ class TVMFFIBuilder(Builder):
             True if solution language is CUDA or C++
         """
         return (
-            sol.spec.language == SupportedLanguages.CUDA
-            or sol.spec.language == SupportedLanguages.CPP
+            solution.spec.language == SupportedLanguages.CUDA
+            or solution.spec.language == SupportedLanguages.CPP
         )
 
-    def _check_sources(self, path: Path, key: str, sol: Solution) -> bool:
+    def _check_sources(self, path: Path, key: str, solution: Solution) -> bool:
         """Check if the source code is vaild, and if the cached .so can be used by comparing source
         files and .so existence.
 
@@ -95,7 +95,7 @@ class TVMFFIBuilder(Builder):
             Build directory path
         key : str
             Unique key for this solution (used to find .so file)
-        sol : Solution
+        solution : Solution
             Solution containing source files
 
         Returns
@@ -115,7 +115,7 @@ class TVMFFIBuilder(Builder):
             return False
 
         # Check if all files exist and content is identical
-        for src in sol.sources:
+        for src in solution.sources:
             # Defensive assertion: the path in the solution should be validated by the Solution
             # model validator, but we add this defensive assertion to be safe.
             src_path_obj = Path(src.path)
@@ -160,12 +160,12 @@ class TVMFFIBuilder(Builder):
 
         return cpp_files, cuda_files
 
-    def _get_entry_symbol(self, sol: Solution) -> str:
+    def _get_entry_symbol(self, solution: Solution) -> str:
         """Extract function symbol from entry_point.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution with entry_point in format 'file.ext::symbol'
 
         Returns
@@ -178,7 +178,7 @@ class TVMFFIBuilder(Builder):
         BuildError
             If entry_point format is invalid (missing '::' separator)
         """
-        entry_point = sol.spec.entry_point
+        entry_point = solution.spec.entry_point
         if "::" not in entry_point:
             raise BuildError(
                 f"Invalid entry_point format: {entry_point}. Expected 'file.extension::symbol'"
@@ -283,15 +283,22 @@ class TVMFFIBuilder(Builder):
             misc={
                 # Provide the definition object to handle value-returning style
                 "definition": definition,
-                "symbol": entry_symbol,
+                "entry_symbol": entry_symbol,
                 "binary": output_lib_path,
             },
         )
 
         try:
-            fn = getattr(mod, entry_symbol)
+            callable = getattr(mod, entry_symbol)
         except AttributeError as e:
             raise BuildError(f"Entry point '{entry_symbol}' not found in module") from e
 
+        # Create keyword adapter to match definition interface
+        arg_order = list(definition.inputs.keys()) + list(definition.outputs.keys())
+
+        def kwargs_adapter(**kwargs):
+            args = [kwargs[name] for name in arg_order]
+            return callable(*args)
+
         cleaner = self._get_cleaner(build_path)
-        return Runnable(callable=fn, metadata=metadata, cleaner=cleaner)
+        return Runnable(callable=kwargs_adapter, metadata=metadata, cleaner=cleaner)

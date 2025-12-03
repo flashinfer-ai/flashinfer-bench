@@ -134,7 +134,7 @@ def test_runtime_dispatch_def_best_policy_without_fallback(
     # Choose def_best when miss
     rt = ApplyRuntime(ts, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
 
-    # Miss should use def_best; our setup has both sol names ranked; accept either
+    # Miss should use def_best; our setup has both solution names ranked; accept either
     out = rt.dispatch("add", {"X": FakeTensor((100, 2)), "Y": FakeTensor((100, 2))}, fallback=None)
     assert out in ("fast", "slow")
 

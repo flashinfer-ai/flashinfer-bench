@@ -10,7 +10,7 @@ from flashinfer_bench.data import Solution, SourceFile
 
 
 def write_sources_to_path(path: Path, sources: List[SourceFile]) -> List[Path]:
-    """Write source files to a directory and return their paths.
+    """Write source files to a directory and return their paths. Create path if not exists.
 
     This function writes all source files from a solution to a specified directory,
     creating subdirectories as needed. It performs security checks to prevent path
@@ -55,7 +55,7 @@ def write_sources_to_path(path: Path, sources: List[SourceFile]) -> List[Path]:
     return paths
 
 
-def create_package_name(sol: Solution, prefix: str = "") -> str:
+def create_package_name(solution: Solution, package_prefix: str = "") -> str:
     """Generate a unique package name for a solution.
 
     The package name is constructed from three parts:
@@ -68,7 +68,7 @@ def create_package_name(sol: Solution, prefix: str = "") -> str:
 
     Parameters
     ----------
-    sol : Solution
+    solution : Solution
         The solution to create a package name for.
     prefix : str, optional
         The prefix to prepend to the package name. Default is empty string.
@@ -84,8 +84,8 @@ def create_package_name(sol: Solution, prefix: str = "") -> str:
     'fib_python_rmsnorm_v1_a3f2b1'
     """
     # Normalize the solution name
-    s = re.sub(r"[^0-9a-zA-Z_]", "_", sol.name)
+    s = re.sub(r"[^0-9a-zA-Z_]", "_", solution.name)
     if not s or s[0].isdigit():
         s = "_" + s
 
-    return prefix + s + "_" + sol.hash()[:6]
+    return package_prefix + s + "_" + solution.hash()[:6]

@@ -43,26 +43,30 @@ class SubprocessWorker:
 
     def run_ref(
         self,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         traceset_root: Optional[Path] = None,
     ) -> BaselineHandle:
-        evaluator_cls = resolve_evaluator(defn)
+        evaluator_cls = resolve_evaluator(definition)
         baseline = evaluator_cls.build_baseline(
-            defn=defn, workload=workload, cfg=cfg, device=self._device, traceset_root=traceset_root
+            definition=definition,
+            workload=workload,
+            cfg=cfg,
+            device=self._device,
+            traceset_root=traceset_root,
         )
         self._baselines[baseline.handle] = baseline
         return baseline.handle
 
     def run_solution(
-        self, sol: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
+        self, solution: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
     ) -> Evaluation:
         """Run solution in an isolated subprocess.
 
         Parameters
         ----------
-        sol : Solution
+        solution : Solution
             Solution to evaluate.
         baseline : BaselineHandle
             Handle to baseline for comparison.
@@ -78,14 +82,14 @@ class SubprocessWorker:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
 
-        log_path = os.path.join(self._log_dir, f"{sol.name}_{time.time()}.log")
+        log_path = os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log")
         # New process for each solution run
         ctx = mp.get_context("spawn")
         parent_conn, child_conn = ctx.Pipe(duplex=True)
 
         proc = ctx.Process(
             target=_solution_worker_main,
-            args=(child_conn, self._device, bl.defn, sol, cfg, log_path),
+            args=(child_conn, self._device, bl.definition, solution, cfg, log_path),
             daemon=True,
         )
         proc.start()
@@ -117,7 +121,7 @@ class SubprocessWorker:
                         status=EvaluationStatus.TIMEOUT,
                         device=self._device,
                         log_path=log_path,
-                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}",
                     )
                     break
 
@@ -131,7 +135,7 @@ class SubprocessWorker:
                         status=EvaluationStatus.TIMEOUT,
                         device=self._device,
                         log_path=log_path,
-                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {sol.name}",
+                        extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}",
                     )
                     break
 
@@ -165,9 +169,9 @@ class SubprocessWorker:
                     continue
 
         except EOFError as e:
-            LOGGER.error("Worker crashed (EOF) running %s: %s", sol.name, e)
+            LOGGER.error("Worker crashed (EOF) running %s: %s", solution.name, e)
         except Exception:
-            LOGGER.error("Unknown error running %s", sol.name, exc_info=True)
+            LOGGER.error("Unknown error running %s", solution.name, exc_info=True)
         finally:
             try:
                 parent_conn.close()
@@ -203,8 +207,8 @@ class SubprocessWorker:
 def _solution_worker_main(
     conn: mp.connection.Connection,
     device: str,
-    defn: Definition,
-    sol: Solution,
+    definition: Definition,
+    solution: Solution,
     cfg: BenchmarkConfig,
     log_path: str,
 ) -> None:
@@ -218,9 +222,9 @@ def _solution_worker_main(
         Multiprocessing connection for communication with parent process.
     device : str
         Device string (e.g. "cuda:0").
-    defn : Definition
+    definition : Definition
         Operation definition.
-    sol : Solution
+    solution : Solution
         Solution to evaluate.
     cfg : BenchmarkConfig
         Benchmark configuration.
@@ -241,7 +245,7 @@ def _solution_worker_main(
 
         # Build impl
         try:
-            runnable_sol: Runnable = registry.build(defn, sol)
+            runnable_sol: Runnable = registry.build(definition, solution)
         except Exception as e:
             import traceback
 
@@ -264,9 +268,9 @@ def _solution_worker_main(
             for inp in inputs_bl
         ]
 
-        evaluator_cls = resolve_evaluator(defn)
+        evaluator_cls = resolve_evaluator(definition)
         evaluation = evaluator_cls.evaluate(
-            defn=defn,
+            definition=definition,
             sol_runnable=runnable_sol,
             inputs=inputs,
             ref_outputs=ref_outputs_bl,
@@ -409,7 +413,7 @@ class IsolatedRunner(Runner):
 
     def run_workload(
         self,
-        defn: Definition,
+        definition: Definition,
         wl: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,
@@ -419,7 +423,7 @@ class IsolatedRunner(Runner):
 
         Parameters
         ----------
-        defn : Definition
+        definition : Definition
             Operation definition.
         wl : Workload
             Workload specification.
@@ -448,7 +452,9 @@ class IsolatedRunner(Runner):
         failed_workers: list[SubprocessWorker] = []
 
         with ThreadPoolExecutor(max_workers=K) as pool:
-            baseline_futs = {pool.submit(r.run_ref, defn, wl, config, root): r for r in selected}
+            baseline_futs = {
+                pool.submit(r.run_ref, definition, wl, config, root): r for r in selected
+            }
             for fut, r in baseline_futs.items():
                 try:
                     h = fut.result()
@@ -457,7 +463,7 @@ class IsolatedRunner(Runner):
                     failed_workers.append(r)
                     self._logger.error(
                         f"Runner {r._device} failed while running reference for "
-                        f"def={defn.name} wl={wl.uuid}: {e}"
+                        f"def={definition.name} wl={wl.uuid}: {e}"
                     )
 
         # Handle failed workers
@@ -475,9 +481,11 @@ class IsolatedRunner(Runner):
             # Evaluate solutions round-robin across workers
             with ThreadPoolExecutor(max_workers=len(selected)) as pool:
                 sol_futs: Dict[str, Any] = {}
-                for i, sol in enumerate(solutions):
+                for i, solution in enumerate(solutions):
                     r = selected[i % len(selected)]
-                    sol_futs[sol.name] = pool.submit(r.run_solution, sol, baselines[r], config)
+                    sol_futs[solution.name] = pool.submit(
+                        r.run_solution, solution, baselines[r], config
+                    )
 
                 results: Dict[str, Evaluation] = {
                     name: fut.result() for name, fut in sol_futs.items()

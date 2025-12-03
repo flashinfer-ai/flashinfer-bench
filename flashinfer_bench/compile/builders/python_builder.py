@@ -24,19 +24,24 @@ class PythonBuilder(Builder):
     Python package.
     """
 
-    _BUILD_DIR_NAME: ClassVar[str] = "python"
-    """Subdirectory under FIB_CACHE_PATH where build results are stored."""
-
-    _KEY_PREFIX: ClassVar[str] = "fib_python_"
+    _PACKAGE_PREFIX: ClassVar[str] = "fib_python_"
     """Prefix for cache keys to avoid collisions with other builders. fib_ prefix is added
     to avoid name collision in python imports."""
 
-    def __init__(self) -> None:
-        super().__init__(self._KEY_PREFIX, self._BUILD_DIR_NAME)
+    _BUILD_DIR_NAME: ClassVar[str] = "python"
+    """Subdirectory under FIB_CACHE_PATH where build results are stored."""
 
-    def can_build(self, sol: Solution) -> bool:
+    def __init__(self) -> None:
+        super().__init__(self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
+
+    @staticmethod
+    def is_available() -> bool:
+        """Check if Python is available in the current environment."""
+        return True
+
+    def can_build(self, solution: Solution) -> bool:
         """Check if this builder can handle the given solution."""
-        return sol.spec.language == SupportedLanguages.PYTHON
+        return solution.spec.language == SupportedLanguages.PYTHON
 
     def _get_cleaner(self, package: str, build_path: Path) -> Callable[[], None]:
         """Create a cleaner function that removes build artifacts.
@@ -108,11 +113,13 @@ class PythonBuilder(Builder):
         package_name, build_path = self.get_package_name_and_build_path(solution)
         module_name = package_name + "." + ".".join(Path(entry_file).with_suffix("").parts)
 
-        build_path = self._get_build_path(package_name)
-        write_sources_to_path(build_path, solution.sources)
+        # Create package directory structure: build_path/<package_name>/...
+        package_path = build_path / package_name
+        write_sources_to_path(package_path, solution.sources)
+
         cleaner = self._get_cleaner(package_name, build_path)
 
-        # Insert tmp_root into sys.path for import resolution
+        # Insert build_path into sys.path so we can import <package_name>.<module>
         sys.path.insert(0, str(build_path))
 
         try:

@@ -191,7 +191,7 @@ def test_isolated_runner_run_ref_and_solution_minimal():
     wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
 
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
     )
     srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
@@ -221,7 +221,7 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
 
     message = "isolated worker log line"
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
     )
     srcs = [
         SourceFile(
@@ -231,14 +231,14 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
             ),
         )
     ]
-    sol = Solution(name="py_log", definition=d.name, author="me", spec=spec, sources=srcs)
+    solution = Solution(name="py_log", definition=d.name, author="me", spec=spec, sources=srcs)
 
     worker = SubprocessWorker(device="cuda:0", log_dir=str(tmp_path / "logs"))
     cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
     handle = None
     try:
         handle = worker.run_ref(d, wl, cfg, None)
-        evaluation = worker.run_solution(sol, handle, cfg)
+        evaluation = worker.run_solution(solution, handle, cfg)
         assert isinstance(evaluation.log, str)
         assert message in evaluation.log
     finally:

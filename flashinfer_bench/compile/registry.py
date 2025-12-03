@@ -74,14 +74,14 @@ class BuilderRegistry:
         return cls._instance
 
     @classmethod
-    def build(cls, defn: Definition, sol: Solution) -> Runnable:
+    def build(cls, definition: Definition, solution: Solution) -> Runnable:
         """Build a solution into a runnable, using cache if available.
 
         This method is a convenience method that delegates to build_impl().
         """
-        return cls.get_instance().build_impl(defn, sol)
+        return cls.get_instance().build_impl(definition, solution)
 
-    def build_impl(self, defn: Definition, sol: Solution) -> Runnable:
+    def build_impl(self, definition: Definition, solution: Solution) -> Runnable:
         """Build a solution into a runnable, using cache if available.
 
         This method first checks if the solution has already been built (by comparing
@@ -91,9 +91,9 @@ class BuilderRegistry:
 
         Parameters
         ----------
-        defn : Definition
+        definition : Definition
             The problem definition specifying the expected interface.
-        sol : Solution
+        solution : Solution
             The solution to build.
 
         Returns
@@ -106,19 +106,19 @@ class BuilderRegistry:
         BuildError
             If no registered builder can build this solution, or if the build fails.
         """
-        hash = sol.hash()
+        hash = solution.hash()
         if hash in self._cache:
             return self._cache[hash]
 
         for builder in self._builders:
             # Choose the first builder that can build the solution
-            if builder.can_build(sol):
-                runnable = builder.build(defn, sol)
+            if builder.can_build(solution):
+                runnable = builder.build(definition, solution)
                 self._cache[hash] = runnable
                 return runnable
-        raise BuildError(f"No registered builder can build solution '{sol.name}'")
+        raise BuildError(f"No registered builder can build solution '{solution.name}'")
 
-    def build_reference(self, defn: Definition) -> Runnable:
+    def build_reference(self, definition: Definition) -> Runnable:
         """Build the reference implementation for a definition.
 
         This is a convenience method that creates a pseudo-solution from the definition's
@@ -126,7 +126,7 @@ class BuilderRegistry:
 
         Parameters
         ----------
-        defn : Definition
+        definition : Definition
             The definition containing the reference implementation.
 
         Returns
@@ -140,18 +140,18 @@ class BuilderRegistry:
             If the reference implementation cannot be built.
         """
         pseudo = Solution(
-            name=f"{defn.name}__reference",
-            definition=defn.name,
+            name=f"{definition.name}__reference",
+            definition=definition.name,
             author="__builtin__",
             spec=BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="main.py::run",
             ),
-            sources=[SourceFile(path="main.py", content=defn.reference)],
+            sources=[SourceFile(path="main.py", content=definition.reference)],
             description="reference",
         )
-        return self.build(defn, pseudo)
+        return self.build(definition, pseudo)
 
     def clear(self) -> None:
         """Clear the cache and cleanup all built runnables.

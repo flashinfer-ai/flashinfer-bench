@@ -32,22 +32,24 @@ from .evaluator import Evaluator
 
 class DefaultEvaluator(Evaluator):
     @classmethod
-    def can_evaluate(cls, defn: Definition) -> bool:
+    def can_evaluate(cls, definition: Definition) -> bool:
         return True
 
     @classmethod
     def build_baseline(
         cls,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
         traceset_root: Optional[Path] = None,
     ) -> DeviceBaseline:
-        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
-        ref_runnable = BuilderRegistry.get_instance().build_reference(defn)
+        output_dtypes = {
+            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
+        }
+        ref_runnable = BuilderRegistry.get_instance().build_reference(definition)
         loaded_stensors = (
-            load_safetensors(defn, workload, traceset_root)
+            load_safetensors(definition, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
@@ -56,7 +58,7 @@ class DefaultEvaluator(Evaluator):
         outputs: List[Dict[str, torch.Tensor]] = []
 
         for _ in range(cfg.num_trials):
-            inp = gen_inputs(defn, workload, device=device, stensors=loaded_stensors)
+            inp = gen_inputs(definition, workload, device=device, stensors=loaded_stensors)
             inputs.append(inp)
 
             with torch.no_grad():
@@ -65,7 +67,7 @@ class DefaultEvaluator(Evaluator):
             out = normalize_outputs(
                 out,
                 device=device,
-                output_names=list(defn.outputs.keys()),
+                output_names=list(definition.outputs.keys()),
                 output_dtypes=output_dtypes,
             )
             outputs.append(out)
@@ -81,7 +83,7 @@ class DefaultEvaluator(Evaluator):
 
         return DeviceBaseline(
             handle=handle,
-            defn=defn,
+            definition=definition,
             device=device,
             inputs=inputs,
             outputs=outputs,
@@ -91,7 +93,7 @@ class DefaultEvaluator(Evaluator):
     @classmethod
     def check_correctness(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
         inputs: List[Dict[str, Any]],
         ref_outputs: List[Dict[str, torch.Tensor]],

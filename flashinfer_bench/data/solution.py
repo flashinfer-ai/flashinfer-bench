@@ -71,8 +71,8 @@ class BuildSpec(BaseModelWithDocstrings):
     language: SupportedLanguages
     """The primary programming language (e.g., 'triton', 'cuda', 'python')."""
     target_hardware: List[str] = Field(min_length=1)
-    """List of hardware architectures this solution is compatible with (e.g., 'NVIDIA_H100',
-    'NVIDIA_B200')."""
+    """List of hardware this solution is compatible with. E.g. 'cpu', 'cuda'. Now this is not used in verification
+    and building. ."""
     entry_point: NonEmptyString
     """The exact path to the function to be called. Format: '{file_path}::{function_name}'
     (e.g., 'main.py::run')."""
@@ -177,7 +177,7 @@ class Solution(BaseModelWithDocstrings):
         Optional[SourceFile]
             The SourceFile object containing the entry point, or None if not found.
         """
-        entry_path = self.get_entry_path()
+        entry_path = self.spec.entry_point.split("::")[0]
         for source in self.sources:
             if source.path == entry_path:
                 return source

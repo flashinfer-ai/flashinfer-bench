@@ -79,8 +79,8 @@ class Benchmark:
         definitions_to_run = self._trace_set.definitions.items()
         if self._config.definitions is not None:
             definitions_to_run = [
-                (name, defn)
-                for name, defn in definitions_to_run
+                (name, definition)
+                for name, definition in definitions_to_run
                 if name in self._config.definitions
             ]
             provided_defs = set(self._config.definitions)
@@ -89,7 +89,7 @@ class Benchmark:
             if missing_defs:
                 logger.warning(f"Definitions not found in trace set: {sorted(missing_defs)}")
 
-        for def_name, defn in definitions_to_run:
+        for def_name, definition in definitions_to_run:
             sols = self._trace_set.solutions.get(def_name, [])
             if not sols:
                 logger.warning(f"No solutions found for def={def_name}, skipping definition")
@@ -128,7 +128,7 @@ class Benchmark:
 
                 try:
                     results = self._runner.run_workload(
-                        defn, wl, sols_to_run, self._config, self._trace_set.root
+                        definition, wl, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
                     logger.error(f"Failed to run workload {wl.uuid}: {e}")

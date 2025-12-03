@@ -116,15 +116,15 @@ def compute_error_stats(
     return max_abs, max_rel, exceeds_tol, matched_ratio
 
 
-def is_sampling_operation(defn: Definition) -> bool:
-    return getattr(defn, "op_type", None) == "sampling"
+def is_sampling_operation(definition: Definition) -> bool:
+    return getattr(definition, "op_type", None) == "sampling"
 
 
 def compute_frequency_distribution(
     runnable: Any,
     inputs: List[Dict[str, Any]],
     device: str,
-    defn: Definition,
+    definition: Definition,
     num_trials: int = 10000,
 ) -> torch.Tensor:
     inp = inputs[0]
@@ -140,8 +140,10 @@ def compute_frequency_distribution(
         with torch.no_grad():
             out = runnable(**inp)
 
-        output_names = list(defn.outputs.keys())
-        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
+        output_names = list(definition.outputs.keys())
+        output_dtypes = {
+            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
+        }
 
         out_normalized = normalize_outputs(
             out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
@@ -164,14 +166,14 @@ def compute_frequency_distribution(
 
 
 def load_safetensors(
-    defn: Definition, wl: Workload, traceset_root: Optional[Path] = None
+    definition: Definition, wl: Workload, traceset_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
     except Exception:
         raise RuntimeError("safetensors is not available in the current environment")
 
-    expected = defn.get_input_shapes(wl.axes)
+    expected = definition.get_input_shapes(wl.axes)
     stensors: Dict[str, torch.Tensor] = {}
     for name, input_spec in wl.inputs.items():
         if input_spec.type != "safetensors":
@@ -189,7 +191,7 @@ def load_safetensors(
         if list(t.shape) != expected[name]:
             raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
         # dtype check
-        expect_dtype = dtype_str_to_torch_dtype(defn.inputs[name].dtype)
+        expect_dtype = dtype_str_to_torch_dtype(definition.inputs[name].dtype)
         if t.dtype != expect_dtype:
             raise ValueError(f"'{name}' expected {expect_dtype}, got {t.dtype}")
 
@@ -202,13 +204,16 @@ def load_safetensors(
 
 
 def gen_inputs(
-    defn: Definition, wl: Workload, device: str, stensors: Optional[Dict[str, torch.Tensor]] = None
+    definition: Definition,
+    wl: Workload,
+    device: str,
+    stensors: Optional[Dict[str, torch.Tensor]] = None,
 ) -> Dict[str, Any]:
-    shapes = defn.get_input_shapes(wl.axes)
+    shapes = definition.get_input_shapes(wl.axes)
     dev = torch.device(device)
     out: Dict[str, Any] = {}
 
-    for name, spec in defn.inputs.items():
+    for name, spec in definition.inputs.items():
         dtype = dtype_str_to_torch_dtype(spec.dtype)
 
         if name in wl.inputs and wl.inputs[name].type == "safetensors":
@@ -222,7 +227,7 @@ def gen_inputs(
             shape = shapes[name]
             tensor = _rand_tensor(shape, dtype, dev)
 
-            if is_sampling_operation(defn) and name == "probs":
+            if is_sampling_operation(definition) and name == "probs":
                 tensor = torch.softmax(tensor, dim=-1)  # convert logits to probs for sampling
 
             out[name] = tensor

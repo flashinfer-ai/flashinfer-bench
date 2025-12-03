@@ -1,11 +1,10 @@
-import importlib
 import sys
+from pathlib import Path
 
 import pytest
+import torch
 
-from flashinfer_bench.compile.builder import BuildError
 from flashinfer_bench.compile.builders import TritonBuilder
-from flashinfer_bench.compile.builders.python_builder import PythonBuilder
 from flashinfer_bench.data import (
     AxisConst,
     BuildSpec,
@@ -17,30 +16,13 @@ from flashinfer_bench.data import (
 )
 
 
-def minimal_def():
-    return Definition(
-        name="d",
-        op_type="op",
-        axes={"M": AxisConst(value=1)},
-        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
-        outputs={"B": TensorSpec(shape=["M"], dtype="float32")},
-        reference="import torch\n\ndef run(A):\n    return A",
-    )
+@pytest.fixture(autouse=True)
+def _use_tmp_cache_dir(tmp_cache_dir: Path) -> None:
+    """Automatically use tmp_cache_dir for all tests in this module."""
 
 
-def test_triton_builder_import_guard(monkeypatch, tmp_path):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    b = TritonBuilder(PythonBuilder())
-    d = minimal_def()
-    spec = BuildSpec(
-        language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="main.py::run"
-    )
-    srcs = [SourceFile(path="main.py", content="import torch\n\ndef run(A):\n    return A")]
-    s = Solution(name="tri_sol", definition="d", author="a", spec=spec, sources=srcs)
-
+@pytest.mark.requires_torch_cuda
+def test_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
     # Mock the import to make triton unavailable
     import builtins
 
@@ -53,48 +35,12 @@ def test_triton_builder_import_guard(monkeypatch, tmp_path):
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
 
-    with pytest.raises(BuildError, match="Triton is not available"):
-        b.build_with_cache(d, s)
+    assert not TritonBuilder.is_available()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("triton") is None, reason="Triton not available")
-def test_triton_builder_minimum(tmp_path, monkeypatch):
-    # Reset cached availability in case previous tests mocked imports
-    from flashinfer_bench.compile.builders import TritonBuilder as _TB
-
-    monkeypatch.setattr(_TB, "_triton_available", None, raising=False)
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    b = TritonBuilder(PythonBuilder())
-    d = minimal_def()
-    spec = BuildSpec(
-        language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="m/main.py::run"
-    )
-    srcs = [SourceFile(path="m/main.py", content="import torch\n\ndef run(A):\n    return A")]
-    s = Solution(name="tri_ok", definition="d", author="a", spec=spec, sources=srcs)
-    r = b.build_with_cache(d, s)
-    out = r(A=[1, 2, 3])
-    assert out == [1, 2, 3]
-
-
-@pytest.mark.skipif(importlib.util.find_spec("triton") is None, reason="Triton not available")
-def test_triton_vector_add(tmp_path, monkeypatch):
-    # Reset cached availability in case previous tests mocked imports
-    from flashinfer_bench.compile.builders import TritonBuilder as _TB
-
-    monkeypatch.setattr(_TB, "_triton_available", None, raising=False)
-    import torch
-
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA not available")
-
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    defn = Definition(
+@pytest.mark.requires_torch_cuda
+def test_vector_add():
+    definition = Definition(
         name="vec_add",
         op_type="op",
         axes={"N": AxisConst(value=256)},
@@ -129,20 +75,24 @@ def run(X, Y):
     return Z
 """
 
-    spec = BuildSpec(
-        language=SupportedLanguages.TRITON, target_hardware=["gpu"], entry_point="m/main.py::run"
-    )
-    srcs = [SourceFile(path="m/main.py", content=triton_code)]
-    sol = Solution(
-        name="triton_vec_add", definition="vec_add", author="tester", spec=spec, sources=srcs
+    solution = Solution(
+        name="triton_vec_add",
+        definition="vec_add",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.TRITON,
+            target_hardware=["cuda"],
+            entry_point="module/main.py::run",
+        ),
+        sources=[SourceFile(path="module/main.py", content=triton_code)],
     )
 
-    b = TritonBuilder(PythonBuilder())
-    r = b.build_with_cache(defn, sol)
-    X = torch.arange(256, dtype=torch.float32, device="cuda")
-    Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
-    Z = r(X=X, Y=Y)
-    assert torch.allclose(Z, X + Y)
+    builder = TritonBuilder()
+    runnable = builder.build(definition, solution)
+    x_tensor = torch.arange(256, dtype=torch.float32, device="cuda")
+    y_tensor = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
+    z_tensor = runnable(X=x_tensor, Y=y_tensor)
+    assert torch.allclose(z_tensor, x_tensor + y_tensor)
 
 
 if __name__ == "__main__":

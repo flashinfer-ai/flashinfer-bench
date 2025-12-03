@@ -39,10 +39,10 @@ class ApplyKey:
 
 
 class ApplyKeyBuilder(ABC):
-    def __init__(self, defn: Definition) -> None:
-        self.defn = defn
+    def __init__(self, definition: Definition) -> None:
+        self.definition = definition
         # axis -> (input, dim_idx)
-        self._axis_proj: Dict[str, Tuple[str, int]] = self._collect_var_axis_projections(defn)
+        self._axis_proj: Dict[str, Tuple[str, int]] = self._collect_var_axis_projections(definition)
 
     @abstractmethod
     def build_from_runtime(self, runtime_kwargs: Dict[str, Any]) -> ApplyKey:
@@ -59,14 +59,14 @@ class ApplyKeyBuilder(ABC):
         """Lightweight feature extraction"""
         ...
 
-    def _collect_var_axis_projections(self, defn: Definition) -> Dict[str, Tuple[str, int]]:
+    def _collect_var_axis_projections(self, definition: Definition) -> Dict[str, Tuple[str, int]]:
         """
         Iterate over the shape of inputs, find the first occurrence of each var axis:
           axis_name -> (input_name, dim_idx)
         """
         proj: Dict[str, Tuple[str, int]] = {}
-        axis_defs = defn.axes
-        inputs = defn.inputs
+        axis_defs = definition.axes
+        inputs = definition.inputs
 
         for inp_name, spec in inputs.items():
             shape = spec.shape
@@ -82,7 +82,7 @@ class ApplyKeyBuilder(ABC):
         var_axes = [k for k, v in axis_defs.items() if isinstance(v, AxisVar)]
         missing = [ax for ax in var_axes if ax not in proj]
         if missing:
-            raise ValueError(f"Cannot locate var axes {missing} from inputs of '{defn.name}'")
+            raise ValueError(f"Cannot locate var axes {missing} from inputs of '{definition.name}'")
         return proj
 
     def _materialize_axes(self, runtime_kwargs: Dict[str, Any]) -> Dict[str, int]:
@@ -90,7 +90,7 @@ class ApplyKeyBuilder(ABC):
         for axis, (inp, dim_idx) in self._axis_proj.items():
             if inp not in runtime_kwargs:
                 raise KeyError(
-                    f"Missing runtime input '{inp}' for axis '{axis}' in '{self.defn.name}'"
+                    f"Missing runtime input '{inp}' for axis '{axis}' in '{self.definition.name}'"
                 )
             val = runtime_kwargs[inp]
             shape = val.shape
@@ -144,9 +144,9 @@ class ApplyKeyFactory:
         return cls._REGISTRY.get(type_name, AxesOnlyKeyBuilder)
 
     @classmethod
-    def specialize(cls, defn: Definition) -> ApplyKeyBuilder:
-        builder_cls = cls.for_type(defn.op_type)
-        return builder_cls(defn)
+    def specialize(cls, definition: Definition) -> ApplyKeyBuilder:
+        builder_cls = cls.for_type(definition.op_type)
+        return builder_cls(definition)
 
 
 ApplyKeyFactory.register("gemm", GEMMKeyBuilder)

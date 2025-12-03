@@ -373,8 +373,8 @@ class TraceSet:
             self.traces.setdefault(trace.definition, []).append(trace)
 
             # Add to disk bucket
-            defn = self.definitions[trace.definition]
-            path = self.traces_path / defn.op_type / f"{defn.name}.jsonl"
+            definition = self.definitions[trace.definition]
+            path = self.traces_path / definition.op_type / f"{definition.name}.jsonl"
             buckets[path].append(trace)
 
         # Write to disk
@@ -466,8 +466,8 @@ class TraceSet:
             self.workloads.setdefault(trace.definition, []).append(trace)
 
             # Add to disk bucket
-            defn = self.definitions[trace.definition]
-            path = self.workloads_path / defn.op_type / f"{defn.name}.jsonl"
+            definition = self.definitions[trace.definition]
+            path = self.workloads_path / definition.op_type / f"{definition.name}.jsonl"
             buckets[path].append(trace)
 
         # Write to disk

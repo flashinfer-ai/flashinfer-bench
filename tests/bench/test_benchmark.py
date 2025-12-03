@@ -215,7 +215,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
             author="tester",
             spec=BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="correct.py::run",
             ),
             sources=[
@@ -230,7 +230,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
             author="tester",
             spec=BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="wrong.py::run",
             ),
             sources=[
@@ -242,8 +242,8 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
         ),
     ]
 
-    for sol in solutions:
-        save_json_file(sol, tmp_path / "solutions" / f"{sol.name}.json")
+    for solution in solutions:
+        save_json_file(solution, tmp_path / "solutions" / f"{solution.name}.json")
 
     # Create workload
     workload = Workload(axes={"N": 8}, inputs={"A": RandomInput()}, uuid="test_workload")
