@@ -47,6 +47,9 @@ dev = [
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
   "pydoc-markdown>=4.8.2",
+  # setuptools is required by torch cpp extension, but torch does not declare it
+  # as a dependency on python <= 3.11
+  "setuptools",
 ]
 cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
