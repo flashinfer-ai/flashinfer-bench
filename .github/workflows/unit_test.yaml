@@ -29,5 +29,8 @@ jobs:
       - name: Install Python ${{ matrix.python }}
         run: uv python install ${{ matrix.python }}
 
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python }} --extra dev
+
       - name: Run Python tests
-        run: uv run --python ${{ matrix.python }} --extra dev pytest
+        run: uv run --python ${{ matrix.python }} pytest
