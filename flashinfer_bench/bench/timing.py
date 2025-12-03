@@ -4,9 +4,9 @@ from multiprocessing import Lock
 from multiprocessing.synchronize import Lock as LockType
 
 import torch
+from triton.testing import do_bench
 
 from flashinfer_bench.compile import Runnable
-from triton.testing import do_bench
 
 # Device-specific lock registry to ensure multiprocess-safe benchmarking
 _device_locks: dict[str, LockType] = {}

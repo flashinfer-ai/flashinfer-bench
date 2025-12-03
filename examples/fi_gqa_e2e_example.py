@@ -1,6 +1,6 @@
+import flashinfer
 import torch
 
-import flashinfer
 from flashinfer_bench.apply import ApplyConfig, enable_apply
 from flashinfer_bench.data import (
     BuildSpec,
