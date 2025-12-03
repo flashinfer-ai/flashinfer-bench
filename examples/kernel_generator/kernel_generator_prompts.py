@@ -95,7 +95,6 @@ The wrapper function MUST handle complete device management:
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
-- Use math.log(2), math.pi, math.e instead of hex literals
 - All code must be valid Python that passes ast.parse()
 
 - Expose a "run" entry point function that can be called to execute the kernel
@@ -147,7 +146,6 @@ The wrapper function MUST handle complete device management:
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
-- Use math.log(2), math.pi, math.e instead of hex literals
 - All code must be valid Python that passes ast.parse()
 
 - Expose a "run" entry point function that can be called to execute the kernel
@@ -184,7 +182,6 @@ Requirements:
 - Use the definition's tensor shapes, dtypes, and axes information to guide memory access patterns and optimization strategies
 - Optimize for {target_gpu} GPU characteristics (memory hierarchy, compute units, etc.)
 - For fixed axis values, optimize specifically for those constants rather than general cases
-- You may use 3rd party libraries (cuBLAS, cuDNN, CUTLASS) when beneficial, but custom implementations often perform better for specialized kernels with known axis constraints
 
 IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
 
@@ -246,7 +243,7 @@ Optimization Strategy:
    - Tune block sizes and grid dimensions for maximum occupancy
    - Utilize shared memory effectively to reduce global memory transactions
    - Optimize register usage and minimize divergent branches
-   - Consider using specialized libraries (cuBLAS, cuDNN, CUTLASS) where beneficial
+   - Consider using specialized libraries (such as CUTLASS) where beneficial
    - Leverage constant axis values for compile-time optimizations
 
 Requirements for the optimized implementation:
