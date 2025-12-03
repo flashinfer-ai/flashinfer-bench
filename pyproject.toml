@@ -46,7 +46,6 @@ dev = [
   "mypy>=1.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
-  "pydoc-markdown>=4.8.2",
   # setuptools is required by torch cpp extension, but torch does not declare it
   # as a dependency on python <= 3.11
   "setuptools",
@@ -59,6 +58,7 @@ flashinfer-bench = "flashinfer_bench.cli.main:cli"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["flashinfer_bench*"]
+
 [tool.setuptools.package-data]
 "flashinfer_bench" = ["py.typed"]
 "flashinfer_bench._deps.cutlass" = ["include/**"]

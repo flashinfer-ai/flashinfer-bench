@@ -108,7 +108,7 @@ class PythonBuilder(Builder):
         if entry_file.suffix != ".py":
             raise BuildError(f"Entry file '{entry_file}' is not a Python file")
 
-        package_name, build_path = self.get_package_name_and_build_path(solution)
+        package_name, build_path = self._get_package_name_and_build_path(solution)
         module_name = package_name + "." + ".".join(Path(entry_file).with_suffix("").parts)
 
         # Create package directory structure: build_path/<package_name>/...

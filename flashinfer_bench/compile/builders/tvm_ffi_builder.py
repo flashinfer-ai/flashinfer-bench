@@ -236,7 +236,7 @@ class TVMFFIBuilder(Builder):
         import tvm_ffi
         from tvm_ffi.utils import FileLock
 
-        package_name, build_path = self.get_package_name_and_build_path(solution)
+        package_name, build_path = self._get_package_name_and_build_path(solution)
         entry_symbol = self._get_entry_symbol(solution)
         can_use_cached = self._check_sources(build_path, package_name, solution)
 

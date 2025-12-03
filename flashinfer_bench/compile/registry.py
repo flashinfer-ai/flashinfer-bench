@@ -73,15 +73,7 @@ class BuilderRegistry:
             cls._instance = BuilderRegistry(builders)
         return cls._instance
 
-    @classmethod
-    def build(cls, definition: Definition, solution: Solution) -> Runnable:
-        """Build a solution into a runnable, using cache if available.
-
-        This method is a convenience method that delegates to build_impl().
-        """
-        return cls.get_instance().build_impl(definition, solution)
-
-    def build_impl(self, definition: Definition, solution: Solution) -> Runnable:
+    def build(self, definition: Definition, solution: Solution) -> Runnable:
         """Build a solution into a runnable, using cache if available.
 
         This method first checks if the solution has already been built (by comparing
@@ -153,12 +145,12 @@ class BuilderRegistry:
         )
         return self.build(definition, pseudo)
 
-    def clear(self) -> None:
-        """Clear the cache and cleanup all built runnables.
+    def cleanup(self) -> None:
+        """Cleanup the cache and cleanup all built runnables.
 
         This method calls cleanup() on all cached runnables to release resources,
         then clears the cache. Cleanup errors are caught and ignored to ensure
-        all runnables are processed.
+        all runnables are cleaned up.
         """
         for runnable in self._cache.values():
             try:

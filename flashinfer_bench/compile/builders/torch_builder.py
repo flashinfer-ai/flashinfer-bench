@@ -128,7 +128,7 @@ class TorchBuilder(Builder):
             )
 
         symbol = solution.get_entry_symbol()
-        package_name, build_dir = self.get_package_name_and_build_path(solution)
+        package_name, build_dir = self._get_package_name_and_build_path(solution)
         source_paths = write_sources_to_path(build_dir, solution.sources)
 
         cpp_cuda_paths = self._filter_sources(source_paths)

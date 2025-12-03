@@ -100,7 +100,7 @@ class Builder(ABC):
         """
         ...
 
-    def get_package_name_and_build_path(self, solution: Solution) -> Tuple[str, Path]:
+    def _get_package_name_and_build_path(self, solution: Solution) -> Tuple[str, Path]:
         """Get the package name and build path for the solution. The package name is a unique
         identifier for the solution with only alphanumeric characters and underscores. The
         build path is FIB_CACHE_PATH / build_dir_name / package_name.
