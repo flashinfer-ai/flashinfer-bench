@@ -1,5 +1,5 @@
-Definition
-==========
+flashinfer_bench.data.Definition
+================================
 
 .. currentmodule:: flashinfer_bench.data
 

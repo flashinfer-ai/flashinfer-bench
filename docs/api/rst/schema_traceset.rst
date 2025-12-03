@@ -1,5 +1,5 @@
-TraceSet
-========
+flashinfer_bench.data.TraceSet
+==============================
 
 .. currentmodule:: flashinfer_bench.data
 

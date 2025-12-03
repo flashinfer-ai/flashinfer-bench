@@ -1,5 +1,5 @@
-FlashInfer Trace Schema Python API
-==================================
+flashinfer_bench.data
+=====================
 
 FlashInfer-Bench provides a schema for the FlashInfer Trace database. This document includes
 the Python API for the schema, including
@@ -14,5 +14,6 @@ the Python API for the schema, including
 
     schema_definition
     schema_solution
+    schema_workload
     schema_trace
     schema_traceset

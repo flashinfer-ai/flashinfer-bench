@@ -1,5 +1,5 @@
-Solution
-========
+flashinfer_bench.data.Solution
+==============================
 
 .. currentmodule:: flashinfer_bench.data
 
