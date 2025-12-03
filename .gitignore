@@ -47,3 +47,4 @@ web/**/public
 
 tmp/
 AGENTS.md
+.coverage
