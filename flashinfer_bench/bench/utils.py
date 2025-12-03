@@ -170,8 +170,8 @@ def load_safetensors(
 ) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
-    except Exception:
-        raise RuntimeError("safetensors is not available in the current environment")
+    except Exception as e:
+        raise RuntimeError("safetensors is not available in the current environment") from e
 
     expected = definition.get_input_shapes(wl.axes)
     stensors: Dict[str, torch.Tensor] = {}

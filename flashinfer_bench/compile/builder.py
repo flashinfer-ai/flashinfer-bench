@@ -34,7 +34,7 @@ class Builder(ABC):
 
         Parameters
         ----------
-        key_prefix : str
+        package_prefix : str
             The prefix to prepend to the package name. This should be unique for each builder type.
         build_dir_name : str
             The name of the build subdirectory of the concrete builder. This should be

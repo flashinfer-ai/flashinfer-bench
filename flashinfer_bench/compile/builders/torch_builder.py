@@ -135,7 +135,7 @@ class TorchBuilder(Builder):
 
         extra_include_paths = [str(build_dir)]
         extra_ldflags = []
-        with_cuda = "cuda" in solution.spec.language == SupportedLanguages.CUDA
+        with_cuda = solution.spec.language == SupportedLanguages.CUDA
 
         try:
             ext = load(
