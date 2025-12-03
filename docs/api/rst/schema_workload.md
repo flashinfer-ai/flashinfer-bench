@@ -1,7 +1,6 @@
+# flashinfer_bench.data.Workload
 
-flashinfer_bench.data.Workload
-===========================
-
+```{eval-rst}
 .. currentmodule:: flashinfer_bench.data
 
 .. autopydantic_model:: Workload
@@ -15,3 +14,4 @@ flashinfer_bench.data.Workload
 .. autodata:: InputSpec
 
    Union type representing all possible input specification types.
+```

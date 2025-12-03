@@ -1,6 +1,6 @@
-flashinfer_bench.data.Solution
-==============================
+# flashinfer_bench.data.Solution
 
+```{eval-rst}
 .. currentmodule:: flashinfer_bench.data
 
 .. autopydantic_model:: Solution
@@ -11,3 +11,4 @@ flashinfer_bench.data.Solution
 .. autopydantic_model:: SourceFile
 
 .. autopydantic_model:: BuildSpec
+```

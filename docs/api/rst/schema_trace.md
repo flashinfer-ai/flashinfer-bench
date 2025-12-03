@@ -1,6 +1,6 @@
-flashinfer_bench.data.Trace
-===========================
+# flashinfer_bench.data.Trace
 
+```{eval-rst}
 .. currentmodule:: flashinfer_bench.data
 
 .. autopydantic_model:: Trace
@@ -15,3 +15,4 @@ flashinfer_bench.data.Trace
     :members:
 
 .. autopydantic_model:: Evaluation
+```

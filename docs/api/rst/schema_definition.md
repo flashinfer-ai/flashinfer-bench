@@ -1,6 +1,6 @@
-flashinfer_bench.data.Definition
-================================
+# flashinfer_bench.data.Definition
 
+```{eval-rst}
 .. currentmodule:: flashinfer_bench.data
 
 .. autopydantic_model:: Definition
@@ -13,3 +13,4 @@ flashinfer_bench.data.Definition
 
 .. autoclass:: flashinfer_bench.data.definition.DType
     :members:
+```
