@@ -106,15 +106,16 @@ def test_rand_tensor_and_normalize_cpu():
 
 def test_gen_inputs_random_and_scalar_cpu():
     d = _def2d()
-    wl = Workload(
+    workload = Workload(
         axes={"M": 2, "N": 3},
         inputs={"X": RandomInput(), "Y": RandomInput(), "S": ScalarInput(value=7)},
         uuid="w1",
     )
-    out = gen_inputs(d, wl, device="cpu", stensors={})
-    assert out["X"].shape == (2, 3) and out["X"].dtype == torch.float32
-    assert out["Y"].shape == (2, 3) and out["Y"].dtype == torch.int32
-    assert out["S"] == 7
+    # gen_inputs returns list in definition order: [X, Y, S]
+    out = gen_inputs(d, workload, device="cpu", safe_tensors={})
+    assert out[0].shape == (2, 3) and out[0].dtype == torch.float32  # X
+    assert out[1].shape == (2, 3) and out[1].dtype == torch.int32  # Y
+    assert out[2] == 7  # S
 
 
 @pytest.mark.skipif(
@@ -127,7 +128,7 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
     data = {"X": torch.zeros((2, 3), dtype=torch.float32)}
     p = tmp_path / "x.safetensors"
     st.save_file(data, str(p))
-    wl = Workload(
+    workload = Workload(
         axes={"M": 2, "N": 3},
         inputs={
             "X": SafetensorsInput(path=str(p), tensor_key="X"),
@@ -136,9 +137,10 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
         },
         uuid="w2",
     )
-    stensors = load_safetensors(d, wl)
-    out = gen_inputs(d, wl, device="cpu", stensors=stensors)
-    assert torch.allclose(out["X"], data["X"]) and out["X"].device.type == "cpu"
+    safe_tensors = load_safetensors(d, workload)
+    # gen_inputs returns list in definition order: [X, Y, S]
+    out = gen_inputs(d, workload, device="cpu", safe_tensors=safe_tensors)
+    assert torch.allclose(out[0], data["X"]) and out[0].device.type == "cpu"  # X
 
 
 def test_compute_error_stats():
@@ -188,7 +190,7 @@ def test_isolated_runner_run_ref_and_solution_minimal():
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
         reference="import torch\n\ndef run(A):\n    return A\n",
     )
-    wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
 
     spec = BuildSpec(
         language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
@@ -197,7 +199,7 @@ def test_isolated_runner_run_ref_and_solution_minimal():
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
 
     r = SubprocessWorker(device="cuda:0")
-    h = r.run_ref(d, wl, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None)
+    h = r.run_ref(d, workload, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None)
     ev = r.run_solution(s, h, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1))
     assert ev.status.value in {
         "PASSED",
@@ -217,7 +219,7 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
         reference="import torch\n\ndef run(A):\n    return A\n",
     )
-    wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_log")
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_log")
 
     message = "isolated worker log line"
     spec = BuildSpec(
@@ -237,7 +239,7 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
     cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
     handle = None
     try:
-        handle = worker.run_ref(d, wl, cfg, None)
+        handle = worker.run_ref(d, workload, cfg, None)
         evaluation = worker.run_solution(solution, handle, cfg)
         assert isinstance(evaluation.log, str)
         assert message in evaluation.log

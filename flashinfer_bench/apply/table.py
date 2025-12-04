@@ -23,7 +23,7 @@ def _apply_table_dir() -> Path:
     Path
         The apply table cache directory path.
     """
-    return Path(get_fib_cache_path()) / "apply_table"
+    return get_fib_cache_path() / "apply_table"
 
 
 @dataclass
@@ -110,7 +110,7 @@ class ApplyTable:
             for def_name, items in raw.get("index", {}).items():
                 bucket: Dict[ApplyKey, str] = {}
                 for key_enc, sol_name in items.items():
-                    key = ApplyKey.from_encoded(key_enc)
+                    key = ApplyKey.model_validate_json(key_enc)
                     bucket[key] = sol_name
                 index[def_name] = bucket
 
@@ -137,7 +137,7 @@ class ApplyTable:
         to_dump: Dict[str, Any] = {"digest": table.digest, "index": {}, "def_best": {}}
         for def_name, bucket in table.index.items():
             for key, sol_name in bucket.items():
-                to_dump["index"].setdefault(def_name, {})[key.encode()] = sol_name
+                to_dump["index"].setdefault(def_name, {})[key.model_dump_json()] = sol_name
         # Always compute and persist def_best
         for def_name, sol_name in table.def_best.items():
             to_dump["def_best"][def_name] = sol_name

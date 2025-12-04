@@ -8,13 +8,12 @@ implementation for each function call based on workload characteristics.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.tracing import get_tracing_runtime
 
 from .config import ApplyConfig
 from .key import ApplyKeyBuilder, ApplyKeyFactory
@@ -109,7 +108,8 @@ class ApplyRuntime:
     def dispatch(
         self,
         def_name: str,
-        runtime_kwargs: Mapping[str, Any],
+        args: Tuple[Any, ...],
+        kwargs: Dict[str, Any],
         fallback: Optional[Callable[..., Any]],
     ) -> Any:
         """Dispatch a function call to the optimal implementation.
@@ -118,20 +118,20 @@ class ApplyRuntime:
         function and workload parameters. Uses trace data to determine which
         implementation will perform best for the specific workload characteristics.
 
-        The dispatch process follows these steps:
-        1. Call any registered hooks for monitoring/tracing
-        2. Look up the function definition in the trace dataset
-        3. Build a workload key from the runtime parameters
-        4. Find the optimal solution using the lookup table
-        5. Build and execute the optimized implementation
-        6. Fall back to default implementation or best available if needed
+        The calling convention is determined by comparing the number of arguments
+        to the definition's inputs and outputs:
+        - If len(args) == len(inputs): value-returning style
+        - If len(args) == len(inputs) + len(outputs): destination-passing style
 
         Parameters
         ----------
         def_name : str
             Name of the function definition to dispatch.
-        runtime_kwargs : Mapping[str, Any]
-            Runtime parameters that characterize the workload.
+        args : Tuple[Any, ...]
+            Positional arguments. For value-returning style, only inputs.
+            For destination-passing style, inputs followed by pre-allocated outputs.
+        kwargs : Dict[str, Any]
+            Keyword arguments to merge into positional arguments.
         fallback : Optional[Callable[..., Any]]
             Fallback function to call if no optimized implementation is available.
 
@@ -139,6 +139,8 @@ class ApplyRuntime:
         -------
         Any
             The result of executing the selected implementation.
+            For value-returning style: the output tensor(s).
+            For destination-passing style: None.
 
         Raises
         ------
@@ -146,28 +148,37 @@ class ApplyRuntime:
             If the definition is not found and no fallback is provided, or if
             no suitable implementation is available and no fallback is provided.
         """
-        # First try to run tracing logic in case tracing is enabled
-        tracing_runtime = get_tracing_runtime()
-        if tracing_runtime is not None:
-            try:
-                tracing_runtime.collect(def_name, runtime_kwargs)
-            except Exception as e:
-                logger.error(f"Error collecting trace for {def_name}: {e}")
-                pass
-
-        # Then try to run apply logic
         definition = self._trace_set.definitions.get(def_name)
         if definition is None:
             if fallback is None:
                 raise RuntimeError(f"Definition '{def_name}' not found and no fallback provided")
-            return fallback(**runtime_kwargs)
+            return fallback(*args, **kwargs)
 
-        # Build key
+        # Merge kwargs into args based on definition's input/output order
+        if kwargs:
+            args = definition.merge_kwargs_to_args(args, kwargs)
+
+        # Determine calling convention based on argument count
+        num_inputs = len(definition.inputs)
+        num_outputs = len(definition.outputs)
+        is_dps = len(args) == num_inputs + num_outputs
+
+        if not is_dps and len(args) != num_inputs:
+            raise ValueError(
+                f"Invalid number of arguments for '{def_name}': expected {num_inputs} "
+                f"(value-returning) or {num_inputs + num_outputs} (destination-passing), "
+                f"got {len(args)}"
+            )
+
+        # Extract only inputs for key building
+        input_args = args[:num_inputs]
+
+        # Build key from input arguments
         builder = self._key_builders.get(definition.name)
         if builder is None:
             builder = ApplyKeyFactory.specialize(definition)
             self._key_builders[definition.name] = builder
-        key = builder.build_from_runtime(runtime_kwargs)
+        key = builder.build_from_args(input_args)
 
         # Lookup solution
         sol_name = self._table.match_solution(def_name, key)
@@ -184,13 +195,18 @@ class ApplyRuntime:
                 solution = self._trace_set.get_solution(best_sol_name)
                 if definition and solution:
                     runnable = BuilderRegistry.get_instance().build(definition, solution)
-                if runnable is not None:
-                    return runnable(**runtime_kwargs)
+
+        if runnable is None:
             if fallback is None:
                 raise RuntimeError(f"Apply miss for '{def_name}' and no fallback provided")
-            return fallback(**runtime_kwargs)
+            return fallback(*args)
 
-        return runnable(**runtime_kwargs)
+        # Call the runnable with appropriate style
+        if is_dps:
+            runnable.call_destination_passing(*args)
+            return None
+        else:
+            return runnable.call_value_returning(*input_args)
 
     def __enter__(self) -> None:
         return self

@@ -508,7 +508,7 @@ class PersistentRunner(Runner):
     def run_workload(
         self,
         definition: Definition,
-        wl: Workload,
+        workload: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,
         root: Path,
@@ -519,7 +519,7 @@ class PersistentRunner(Runner):
         ----------
         definition : Definition
             Operation definition.
-        wl : Workload
+        workload : Workload
             Workload specification.
         solutions : List[Solution]
             List of solutions to evaluate.
@@ -547,7 +547,7 @@ class PersistentRunner(Runner):
 
         with ThreadPoolExecutor(max_workers=K) as pool:
             baseline_futs = {
-                pool.submit(r.run_ref, definition, wl, config, root): r for r in selected
+                pool.submit(r.run_ref, definition, workload, config, root): r for r in selected
             }
             for fut, r in baseline_futs.items():
                 try:
@@ -557,7 +557,7 @@ class PersistentRunner(Runner):
                     failed_workers.append(r)
                     self._logger.error(
                         f"Persistent worker {r._device} failed while running reference for "
-                        f"def={definition.name} wl={wl.uuid}: {e}"
+                        f"definition={definition.name} workload={workload.uuid}: {e}"
                     )
 
         if failed_workers:
@@ -580,7 +580,7 @@ class PersistentRunner(Runner):
                     )
                     if worker.restart():
                         try:
-                            new_baseline = worker.run_ref(definition, wl, config, root)
+                            new_baseline = worker.run_ref(definition, workload, config, root)
                             worker.release(baseline_handle)
                             baseline_handle = new_baseline
                             LOGGER.info(f"Rebuilt baseline for worker on device {worker._device}")

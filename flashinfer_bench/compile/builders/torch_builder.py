@@ -155,24 +155,20 @@ class TorchBuilder(Builder):
         except AttributeError as e:
             raise BuildError(f"Exported symbol '{symbol}' not found in built extension") from e
 
-        arg_order = list(definition.inputs.keys())
-
-        def kwarg_adapter(**kwargs):
-            args = [kwargs[name] for name in arg_order]
-            return callable(*args)
-
         metadata = RunnableMetadata(
             build_type="torch",
-            definition=definition.name,
-            solution=solution.name,
+            definition_name=definition.name,
+            solution_name=solution.name,
+            destination_passing_style=solution.spec.destination_passing_style,
+            definition=definition,
             misc={"entry_symbol": symbol, "binary": getattr(ext, "__file__", None)},
         )
 
         cleaner = self._get_cleaner(build_dir)
 
-        result = Runnable(callable=kwarg_adapter, metadata=metadata, cleaner=cleaner)
-        result.raw_callable = callable
-        return result
+        self._try_validate_signature(callable, definition, solution)
+
+        return Runnable(callable=callable, metadata=metadata, cleaner=cleaner)
 
 
 # Dependency management. This is now disabled for torch builder.

@@ -8,7 +8,6 @@ import torch
 from typing_extensions import override
 
 from flashinfer_bench.bench.config import BenchmarkConfig
-from flashinfer_bench.bench.evaluators.default import DefaultEvaluator
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
 from flashinfer_bench.bench.timing import time_runnable
 from flashinfer_bench.bench.utils import (
@@ -16,12 +15,28 @@ from flashinfer_bench.bench.utils import (
     gen_inputs,
     load_safetensors,
     make_eval,
-    normalize_outputs,
 )
 from flashinfer_bench.compile import BuilderRegistry, Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.trace import Correctness, Evaluation, EvaluationStatus, Workload
-from flashinfer_bench.utils import dtype_str_to_torch_dtype
+from flashinfer_bench.data import Correctness, Definition, Evaluation, EvaluationStatus, Workload
+
+from .default import DefaultEvaluator
+from .utils import allocate_outputs, normalize_result
+
+
+def _get_input_by_name(definition: Definition, inputs: List[Any], name: str) -> Any:
+    """Get input value by name from inputs list using definition order."""
+    input_names = list(definition.inputs.keys())
+    if name not in input_names:
+        raise KeyError(f"Input '{name}' not found in definition")
+    return inputs[input_names.index(name)]
+
+
+def _get_inputs_by_names(
+    definition: Definition, inputs: List[Any], names: List[str]
+) -> Dict[str, Any]:
+    """Get multiple inputs by name as a dict for convenience."""
+    input_names = list(definition.inputs.keys())
+    return {name: inputs[input_names.index(name)] for name in names if name in input_names}
 
 
 class SamplingEvaluator(DefaultEvaluator):
@@ -42,27 +57,30 @@ class SamplingEvaluator(DefaultEvaluator):
         traceset_root: Optional[Path] = None,
     ) -> DeviceBaseline:
         ref_runnable = BuilderRegistry.get_instance().build_reference(definition)
-        loaded_stensors = (
+        loaded_safe_tensors = (
             load_safetensors(definition, workload, traceset_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
 
-        inputs: List[Dict[str, Any]] = []
-        outputs: List[Dict[str, torch.Tensor]] = []
+        inputs: List[List[Any]] = []
+        outputs: List[List[torch.Tensor]] = []
 
-        inp = gen_inputs(definition, workload, device=device, stensors=loaded_stensors)
+        inp = gen_inputs(definition, workload, device=device, safe_tensors=loaded_safe_tensors)
         inputs.append(inp)
 
         thresholding_method = _detect_thresholding_method(definition)
-        params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
-        valid_mask = _compute_valid_sampling_mask(inp["probs"], thresholding_method, params)
+        probs = _get_input_by_name(definition, inp, "probs")
+        params = _get_inputs_by_names(definition, inp, ["top_k", "top_p"])
+        valid_mask = _compute_valid_sampling_mask(probs, thresholding_method, params)
 
-        masked_probs = inp["probs"] * valid_mask.float()
+        masked_probs = probs * valid_mask.float()
         expected_probs = masked_probs / masked_probs.sum(dim=-1, keepdim=True)
 
-        outputs.append({"expected_probs": expected_probs})
+        # Store expected_probs as first (and only) tensor in the list
+        outputs.append([expected_probs])
 
+        # Reference is always value-returning style
         latencies: List[float] = []
         for inp in inputs:
             ms = time_runnable(ref_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
@@ -87,44 +105,46 @@ class SamplingEvaluator(DefaultEvaluator):
         cls,
         definition: Definition,
         sol_runnable: Runnable,
-        inputs: List[Dict[str, Any]],
-        ref_outputs: List[Dict[str, torch.Tensor]],
+        inputs: List[List[Any]],
+        ref_outputs: List[List[torch.Tensor]],
         cfg: BenchmarkConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
-        expected_probs = ref_outputs[0]["expected_probs"]
+        # expected_probs is stored as the first tensor in ref_outputs[0]
+        expected_probs = ref_outputs[0][0]
         vocab_size = expected_probs.shape[-1]
 
         inp = inputs[0]
-        params = {k: inp[k] for k in ["top_k", "top_p"] if k in inp}
-
-        output_names = list(definition.outputs.keys())
-        output_dtypes = {
-            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
-        }
+        probs = _get_input_by_name(definition, inp, "probs")
+        params = _get_inputs_by_names(definition, inp, ["top_k", "top_p"])
+        is_dps = sol_runnable.metadata.destination_passing_style
 
         # Compute valid sampling mask based on thresholding
         thresholding_method = _detect_thresholding_method(definition)
-        probs = inp["probs"]
         valid_mask = _compute_valid_sampling_mask(probs, thresholding_method, params)
 
         # Validate correct sampling token set
         for _ in range(cfg.sampling_validation_trials):
             try:
-                with torch.no_grad():
-                    out = sol_runnable(**inp)
-                torch.cuda.synchronize(device)
+                if is_dps:
+                    out = allocate_outputs(definition, inp, device)
+                    with torch.no_grad():
+                        sol_runnable(*inp, *out)
+                    torch.cuda.synchronize(device)
+                else:
+                    with torch.no_grad():
+                        result = sol_runnable(*inp)
+                    torch.cuda.synchronize(device)
+                    out = normalize_result(definition, result, device)
             except Exception:
                 traceback.print_exc()
                 return None, make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR, device=device, log_path=log_path
                 )
 
-            out_normalized = normalize_outputs(
-                out, device=device, output_names=output_names, output_dtypes=output_dtypes
-            )
-            samples = out_normalized["samples"]
+            # Get samples tensor (first output based on definition order)
+            samples = out[0]
 
             # Check vocabulary range
             if (samples < 0).any() or (samples >= vocab_size).any():
@@ -290,29 +310,32 @@ def _compute_valid_sampling_mask(
 
 def _sample_token_distributions(
     runnable: Runnable,
-    inputs: Dict[str, Any],
+    inputs: List[Any],
     device: str,
     definition: Definition,
     num_trials: int = 500000,
 ) -> torch.Tensor:
-    original_batch_size = inputs["probs"].shape[0] if inputs["probs"].dim() > 1 else 1
-    vocab_size = inputs["probs"].shape[-1]
+    probs = _get_input_by_name(definition, inputs, "probs")
+    original_batch_size = probs.shape[0] if probs.dim() > 1 else 1
+    vocab_size = probs.shape[-1]
+    is_dps = runnable.metadata.destination_passing_style
 
     # Repeat entire input batch to fill up to target_batch_size for efficient sampling
     target_batch_size = 10000
     repeat_count = target_batch_size // original_batch_size
     actual_batch_size = repeat_count * original_batch_size
 
-    padded_inputs = {}
-    for key, value in inputs.items():
+    input_names = list(definition.inputs.keys())
+    padded_inputs: List[Any] = []
+    for name, value in zip(input_names, inputs):
         if isinstance(value, torch.Tensor) and value.dim() > 0:
-            if key == "probs":
+            if name == "probs":
                 # For probs, repeat the entire batch
                 if value.dim() == 1:
                     value = value.unsqueeze(0)
                 # Repeat the entire batch repeat_count times
                 padded_value = value.repeat(repeat_count, *([1] * (value.dim() - 1)))
-            elif key in ["top_k", "top_p"]:
+            elif name in ["top_k", "top_p"]:
                 # For sampling parameters, repeat the entire batch
                 if value.dim() == 0:
                     padded_value = value.unsqueeze(0).repeat(actual_batch_size)
@@ -324,10 +347,10 @@ def _sample_token_distributions(
                     padded_value = value.unsqueeze(0).repeat(actual_batch_size)
                 else:
                     padded_value = value.repeat(repeat_count, *([1] * (value.dim() - 1)))
-            padded_inputs[key] = padded_value
+            padded_inputs.append(padded_value)
         else:
             # For non-tensor inputs, keep as is
-            padded_inputs[key] = value
+            padded_inputs.append(value)
 
     counters = torch.zeros(
         (original_batch_size, vocab_size), dtype=torch.int64, device=torch.device(device)
@@ -337,19 +360,17 @@ def _sample_token_distributions(
     total_samples_per_batch = 0
 
     for _ in range(trials_needed):
-        with torch.no_grad():
-            out = runnable(**padded_inputs)
+        if is_dps:
+            out = allocate_outputs(definition, padded_inputs, device)
+            with torch.no_grad():
+                runnable(*padded_inputs, *out)
+        else:
+            with torch.no_grad():
+                result = runnable(*padded_inputs)
+            out = normalize_result(definition, result, device)
 
-        output_names = list(definition.outputs.keys())
-        output_dtypes = {
-            k: dtype_str_to_torch_dtype(v.dtype) for k, v in definition.outputs.items()
-        }
-
-        out_normalized = normalize_outputs(
-            out, device=torch.device(device), output_names=output_names, output_dtypes=output_dtypes
-        )
-
-        samples = out_normalized["samples"]
+        # Get samples tensor (first output based on definition order)
+        samples = out[0]
 
         if samples.dim() == 0:
             # Single sample - assign to first batch element

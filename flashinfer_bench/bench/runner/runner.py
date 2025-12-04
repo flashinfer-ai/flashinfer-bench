@@ -27,8 +27,8 @@ class DeviceBaseline:
     handle: BaselineHandle
     definition: Definition
     device: str
-    inputs: List[Dict[str, Any]]
-    outputs: List[Dict[str, torch.Tensor]]
+    inputs: List[List[Any]]
+    outputs: List[List[torch.Tensor]]
     mean_latency_ms: float
 
 
@@ -39,7 +39,7 @@ class Runner(ABC):
     def run_workload(
         self,
         definition: Definition,
-        wl: Workload,
+        workload: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,
         root: Path,

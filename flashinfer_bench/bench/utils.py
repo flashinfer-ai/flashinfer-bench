@@ -166,16 +166,16 @@ def compute_frequency_distribution(
 
 
 def load_safetensors(
-    definition: Definition, wl: Workload, traceset_root: Optional[Path] = None
+    definition: Definition, workload: Workload, traceset_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
     except Exception as e:
         raise RuntimeError("safetensors is not available in the current environment") from e
 
-    expected = definition.get_input_shapes(wl.axes)
-    stensors: Dict[str, torch.Tensor] = {}
-    for name, input_spec in wl.inputs.items():
+    expected = definition.get_input_shapes(workload.axes)
+    safe_tensors: Dict[str, torch.Tensor] = {}
+    for name, input_spec in workload.inputs.items():
         if input_spec.type != "safetensors":
             continue
 
@@ -199,30 +199,35 @@ def load_safetensors(
             t = t.contiguous().pin_memory()
         except Exception:
             t = t.contiguous()
-        stensors[name] = t
-    return stensors
+        safe_tensors[name] = t
+    return safe_tensors
 
 
 def gen_inputs(
     definition: Definition,
-    wl: Workload,
+    workload: Workload,
     device: str,
-    stensors: Optional[Dict[str, torch.Tensor]] = None,
-) -> Dict[str, Any]:
-    shapes = definition.get_input_shapes(wl.axes)
+    safe_tensors: Optional[Dict[str, torch.Tensor]] = None,
+) -> List[Any]:
+    """Generate input tensors in definition order.
+
+    Returns a list of input values (tensors or scalars) in the same order
+    as definition.inputs.
+    """
+    shapes = definition.get_input_shapes(workload.axes)
     dev = torch.device(device)
-    out: Dict[str, Any] = {}
+    out: List[Any] = []
 
     for name, spec in definition.inputs.items():
         dtype = dtype_str_to_torch_dtype(spec.dtype)
 
-        if name in wl.inputs and wl.inputs[name].type == "safetensors":
-            if stensors is None or name not in stensors:
+        if name in workload.inputs and workload.inputs[name].type == "safetensors":
+            if safe_tensors is None or name not in safe_tensors:
                 raise RuntimeError(f"Missing required safetensors input '{name}'")
-            t_cpu = stensors[name]
-            out[name] = t_cpu.to(device=dev, non_blocking=True)
-        elif name in wl.inputs and wl.inputs[name].type == "scalar":
-            out[name] = wl.inputs[name].value
+            t_cpu = safe_tensors[name]
+            out.append(t_cpu.to(device=dev, non_blocking=True))
+        elif name in workload.inputs and workload.inputs[name].type == "scalar":
+            out.append(workload.inputs[name].value)
         else:  # random
             shape = shapes[name]
             tensor = _rand_tensor(shape, dtype, dev)
@@ -230,7 +235,7 @@ def gen_inputs(
             if is_sampling_operation(definition) and name == "probs":
                 tensor = torch.softmax(tensor, dim=-1)  # convert logits to probs for sampling
 
-            out[name] = tensor
+            out.append(tensor)
     return out
 
 

@@ -96,13 +96,13 @@ def test_evaluation_status_requirements():
 
 
 def test_trace_workload_and_regular():
-    wl = Workload(
+    workload = Workload(
         axes={"M": 8},
         inputs={"A": RandomInput(), "B": SafetensorsInput(path="p", tensor_key="k")},
         uuid="w2",
     )
     # Workload-only
-    t_wl = Trace(definition="def1", workload=wl)
+    t_wl = Trace(definition="def1", workload=workload)
     assert t_wl.is_workload_trace() is True
     # Regular successful trace
     eval_ok = Evaluation(
@@ -113,7 +113,7 @@ def test_trace_workload_and_regular():
         correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
         performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
     )
-    t_ok = Trace(definition="def1", workload=wl, solution="sol1", evaluation=eval_ok)
+    t_ok = Trace(definition="def1", workload=workload, solution="sol1", evaluation=eval_ok)
     assert t_ok.is_workload_trace() is False
     assert t_ok.is_successful() is True
 

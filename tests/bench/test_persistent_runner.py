@@ -86,10 +86,10 @@ class TestPersistentSubprocessWorker:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_ref")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_ref")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(d, workload, cfg, None)
 
             assert handle in worker._baselines
             baseline = worker._baselines[handle]
@@ -111,7 +111,7 @@ class TestPersistentSubprocessWorker:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
@@ -128,7 +128,7 @@ class TestPersistentSubprocessWorker:
                 name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(d, workload, cfg, None)
 
             evaluation = worker.run_solution(solution, handle, cfg)
 
@@ -159,7 +159,7 @@ class TestPersistentSubprocessWorker:
         handle = None
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_log")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_log")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             message = "persistent worker log line"
@@ -183,7 +183,7 @@ class TestPersistentSubprocessWorker:
                 name="test_log", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(d, workload, cfg, None)
             evaluation = worker.run_solution(solution, handle, cfg)
 
             assert isinstance(evaluation.log, str)
@@ -222,7 +222,7 @@ class TestPersistentRunner:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
@@ -239,7 +239,7 @@ class TestPersistentRunner:
                 name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            results = runner.run_workload(d, wl, [solution], cfg, Path(tmp_path))
+            results = runner.run_workload(d, workload, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             assert "test_success" in results
@@ -271,7 +271,7 @@ class TestPersistentRunner:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_multi")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_multi")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
@@ -293,7 +293,7 @@ class TestPersistentRunner:
                 )
                 solutions.append(solution)
 
-            results = runner.run_workload(d, wl, solutions, cfg, Path(tmp_path))
+            results = runner.run_workload(d, workload, solutions, cfg, Path(tmp_path))
 
             assert len(results) == 3
             for i in range(3):
@@ -320,7 +320,9 @@ class TestPersistentRunner:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_compile_error")
+            workload = Workload(
+                axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_compile_error"
+            )
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
@@ -338,7 +340,7 @@ class TestPersistentRunner:
                 name="test_error", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            results = runner.run_workload(d, wl, [solution], cfg, Path(tmp_path))
+            results = runner.run_workload(d, workload, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             evaluation = results["test_error"]
@@ -359,10 +361,10 @@ class TestPersistentRunner:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_empty")
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_empty")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
-            results = runner.run_workload(d, wl, [], cfg, Path(tmp_path))
+            results = runner.run_workload(d, workload, [], cfg, Path(tmp_path))
 
             assert len(results) == 0
             assert results == {}
@@ -413,7 +415,9 @@ class TestPersistentRunner:
 
         try:
             d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_registry_cache")
+            workload = Workload(
+                axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_registry_cache"
+            )
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
@@ -430,7 +434,7 @@ class TestPersistentRunner:
                 name="test_registry", definition=d.name, author="test", spec=spec, sources=srcs
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(d, workload, cfg, None)
 
             import time
 
