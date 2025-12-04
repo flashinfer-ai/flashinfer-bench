@@ -109,8 +109,8 @@ def collect_runs(paths: Iterable[str], author_map: Dict[str, str]) -> List[Run]:
         try:
             definition = obj["definition"]
             solution = obj["solution"]
-            wl = obj["workload"]
-            uuid = wl["uuid"]
+            workload = obj["workload"]
+            uuid = workload["uuid"]
             evalo = obj["evaluation"]
             status = evalo["status"]
             perf = evalo.get("performance")

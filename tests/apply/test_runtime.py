@@ -51,7 +51,10 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         definition="add",
         author="t",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,  # VR style
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
     )
@@ -60,7 +63,10 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         definition="add",
         author="t",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,  # VR style
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
     )
@@ -106,21 +112,30 @@ def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.Monke
     rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
     set_apply_runtime(rt)
 
+    # Test with positional args (VR style)
     out = rt.dispatch(
-        "add", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=lambda **_: "fallback"
+        "add",
+        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
+        kwargs={},
+        fallback=lambda *_: "fallback",
     )
     # Routed to the winning solution implementation; our sources return string tags
     assert out == "fast"
 
     # Miss with fallback policy: returns fallback
     miss_out = rt.dispatch(
-        "add", {"X": FakeTensor((99, 2)), "Y": FakeTensor((99, 2))}, fallback=lambda **_: "fallback"
+        "add",
+        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
+        kwargs={},
+        fallback=lambda *_: "fallback",
     )
     assert miss_out == "fallback"
 
     # Miss without fallback: error
     with pytest.raises(RuntimeError):
-        rt.dispatch("add", {"X": FakeTensor((999, 2)), "Y": FakeTensor((999, 2))}, fallback=None)
+        rt.dispatch(
+            "add", args=(FakeTensor((999, 2)), FakeTensor((999, 2))), kwargs={}, fallback=None
+        )
 
 
 def test_runtime_dispatch_def_best_policy_without_fallback(
@@ -135,7 +150,9 @@ def test_runtime_dispatch_def_best_policy_without_fallback(
     rt = ApplyRuntime(ts, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
 
     # Miss should use def_best; our setup has both solution names ranked; accept either
-    out = rt.dispatch("add", {"X": FakeTensor((100, 2)), "Y": FakeTensor((100, 2))}, fallback=None)
+    out = rt.dispatch(
+        "add", args=(FakeTensor((100, 2)), FakeTensor((100, 2))), kwargs={}, fallback=None
+    )
     assert out in ("fast", "slow")
 
 
@@ -151,11 +168,14 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(
 
     with pytest.raises(RuntimeError):
         rt.dispatch(
-            "unknown_def", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=None
+            "unknown_def", args=(FakeTensor((2, 2)), FakeTensor((2, 2))), kwargs={}, fallback=None
         )
 
     fb_val = rt.dispatch(
-        "unknown_def", {"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))}, fallback=lambda **_: "fb"
+        "unknown_def",
+        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
+        kwargs={},
+        fallback=lambda *args, **kwargs: "fb",
     )
     assert fb_val == "fb"
 
@@ -271,6 +291,81 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
     finally:
         PythonBuilder.build = orig_build  # type: ignore[assignment]
         set_apply_runtime(None)
+
+
+class TestDispatchArgsKwargs:
+    """Tests for dispatch args/kwargs handling."""
+
+    def test_dispatch_with_kwargs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test dispatch merges kwargs into args correctly."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+        d, ts = make_traces()
+        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+
+        # Partial positional args with kwargs
+        out = rt.dispatch(
+            "add",
+            args=(FakeTensor((2, 2)),),
+            kwargs={"Y": FakeTensor((2, 2))},
+            fallback=lambda *_: "fallback",
+        )
+        assert out == "fast"
+
+    def test_dispatch_with_all_kwargs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test dispatch with all kwargs and no positional args."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+        d, ts = make_traces()
+        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+
+        out = rt.dispatch(
+            "add",
+            args=(),
+            kwargs={"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))},
+            fallback=lambda *_: "fallback",
+        )
+        assert out == "fast"
+
+    def test_dispatch_invalid_arg_count(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test dispatch raises ValueError for invalid argument count."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+        d, ts = make_traces()
+        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+
+        # Only 1 arg when definition expects 2 inputs (VR) or 3 (DPS)
+        with pytest.raises(ValueError):
+            rt.dispatch("add", args=(FakeTensor((2, 2)),), kwargs={}, fallback=None)
+
+
+class TestDispatchCallingConvention:
+    """Tests for dispatch calling convention detection."""
+
+    def test_dispatch_value_returning_style(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test dispatch with value-returning style (inputs only)."""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+        d, ts = make_traces()
+        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+
+        # 2 args = 2 inputs -> VR style
+        out = rt.dispatch(
+            "add",
+            args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
+            kwargs={},
+            fallback=lambda *_: "fallback",
+        )
+        # VR style returns the result
+        assert out == "fast"
 
 
 if __name__ == "__main__":

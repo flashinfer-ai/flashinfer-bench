@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Tuple
+from typing import Callable, Tuple
 
 from flashinfer_bench.data import Definition, Solution
 from flashinfer_bench.env import get_fib_cache_path
@@ -28,6 +29,12 @@ class Builder(ABC):
     operate in the folder `FIB_CACHE_PATH / builder_specific_subfolder / package_name`, where
     `package_name` is a unique name created from the solution.
     """
+
+    _package_prefix: str
+    """The prefix to prepend to the package name."""
+
+    _build_dir_name: str
+    """The name of the build subdirectory of the concrete builder."""
 
     def __init__(self, package_prefix: str, build_dir_name: str) -> None:
         """Initialize the builder.
@@ -118,3 +125,70 @@ class Builder(ABC):
         package_name = create_package_name(solution, self._package_prefix)
         build_path = get_fib_cache_path() / self._build_dir_name / package_name
         return package_name, build_path
+
+    def _try_validate_signature(
+        self, callable: Callable, definition: Definition, solution: Solution
+    ) -> None:
+        """Try to validate the signature of the callable. It only checks the number of
+        parameters and the return type. If the signature is unavailable, it will skip all checks.
+
+        Parameters
+        ----------
+        callable : Callable
+            The callable to validate.
+        definition : Definition
+            The definition to validate against.
+        solution : Solution
+            The solution to validate against.
+
+        Raises
+        ------
+        BuildError
+            If the signature can be checked and is invalid.
+        """
+
+        # Analyze the signature of the callable (skip all checks if signature unavailable)
+        try:
+            signature = inspect.signature(callable)
+        except (ValueError, TypeError):
+            return
+
+        if solution.spec.destination_passing_style:
+            if len(signature.parameters) != len(definition.inputs) + len(definition.outputs):
+                raise BuildError(
+                    "Destination-passing style callable has incorrect number of "
+                    f"parameters: {len(signature.parameters)} != "
+                    f"{len(definition.inputs) + len(definition.outputs)}"
+                )
+        else:
+            if len(signature.parameters) != len(definition.inputs):
+                raise BuildError(
+                    "Value-returning style callable has incorrect number of "
+                    f"parameters: {len(signature.parameters)} != {len(definition.inputs)}"
+                )
+            # Check return annotation
+            num_outputs = len(definition.outputs)
+            ret_ann = signature.return_annotation
+            if ret_ann is not inspect.Signature.empty:
+                origin = getattr(ret_ann, "__origin__", None)
+                if origin is tuple:
+                    # If returning tuple, length must match num_outputs
+                    args = getattr(ret_ann, "__args__", None)
+                    if args is not None and len(args) != num_outputs:
+                        raise BuildError(
+                            f"Value-returning style callable with {num_outputs} outputs must "
+                            f"return a {num_outputs}-element tuple, got {ret_ann}"
+                        )
+                elif origin is None:
+                    # If return None, num_outputs must be 0
+                    if num_outputs != 0:
+                        raise BuildError(
+                            f"Value-returning style callable with {num_outputs} outputs must "
+                            f"return None, got {ret_ann}"
+                        )
+                elif num_outputs != 1:
+                    # If returning non-tuple, num_outputs must be 1
+                    raise BuildError(
+                        f"Value-returning style callable returning non-tuple must "
+                        f"only have one output, got {num_outputs}"
+                    )

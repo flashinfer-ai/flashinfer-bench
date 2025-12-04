@@ -37,8 +37,8 @@ def test_builder_cache_and_key():
         def build(self, definition: Definition, solution: Solution) -> Runnable:
             metadata = RunnableMetadata(
                 build_type="python",
-                definition=definition.name,
-                solution=solution.name,
+                definition_name=definition.name,
+                solution_name=solution.name,
                 misc={"dummy": True},
             )
             return Runnable(callable=lambda **kw: kw, cleaner=lambda: None, metadata=metadata)
@@ -75,7 +75,7 @@ def _create_mock_builder(name: str, can_build_result: bool = True) -> MagicMock:
     builder.build.side_effect = lambda *args, **kwargs: Runnable(
         callable=lambda **kw: kw,
         cleaner=lambda: None,
-        metadata=RunnableMetadata(build_type=name, definition="", solution="", misc={}),
+        metadata=RunnableMetadata(build_type=name, definition_name="", solution_name="", misc={}),
     )
     return builder
 

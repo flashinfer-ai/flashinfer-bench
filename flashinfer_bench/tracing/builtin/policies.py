@@ -8,23 +8,21 @@ This module contains:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Hashable, List
+from typing import TYPE_CHECKING, Any, Dict, Hashable, Iterable, List, Tuple
 
 import torch
 
 from flashinfer_bench.logging import get_logger
-from flashinfer_bench.tracing.filter_policy import FilterPolicyFactory
 from flashinfer_bench.tracing.workload_entry import WorkloadEntry
+
+if TYPE_CHECKING:
+    from flashinfer_bench.tracing.config import FilterPolicyFactory, InputDumpPolicyFunction
 
 logger = get_logger("TracingPolicy")
 
 # ============================================================================
 # TensorsDump Type Aliases and Functions
 # ============================================================================
-
-
-InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
-"""Function that selects which inputs to dump from runtime arguments."""
 
 
 def dump_all(inputs: Dict[str, Any]) -> List[str]:

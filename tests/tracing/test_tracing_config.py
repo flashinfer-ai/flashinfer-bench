@@ -248,19 +248,21 @@ def test_tracing_config_with_literal_input_dump_policy():
     # After __post_init__, should be resolved to function
     assert callable(config.input_dump_policy)
 
-    # Test it works
-    inputs = {"tensor": torch.zeros(5)}
-    result = config.get_inputs_to_dump(inputs)
-    assert result == ["tensor"]
+    # Test it works with names/values
+    names = ["tensor"]
+    values = [torch.zeros(5)]
+    result = config.get_inputs_to_dump(names, values)
+    assert "tensor" in result
 
 
 def test_tracing_config_with_list_input_dump_policy():
     """Test TracingConfig with static list for input_dump_policy."""
     config = TracingConfig(input_dump_policy=["tensor1", "tensor2"], filter_policy="keep_all")
 
-    inputs = {"tensor1": torch.zeros(5), "tensor2": torch.ones(3), "tensor3": torch.zeros(2)}
-    result = config.get_inputs_to_dump(inputs)
-    assert result == ["tensor1", "tensor2"]
+    names = ["tensor1", "tensor2", "tensor3"]
+    values = [torch.zeros(5), torch.ones(3), torch.zeros(2)]
+    result = config.get_inputs_to_dump(names, values)
+    assert set(result.keys()) == {"tensor1", "tensor2"}
 
 
 def test_tracing_config_with_callable_input_dump_policy():
@@ -271,9 +273,10 @@ def test_tracing_config_with_callable_input_dump_policy():
 
     config = TracingConfig(input_dump_policy=custom_dump, filter_policy="keep_all")
 
-    inputs = {"test_a": torch.zeros(5), "other": torch.ones(3), "test_b": torch.zeros(2)}
-    result = config.get_inputs_to_dump(inputs)
-    assert set(result) == {"test_a", "test_b"}
+    names = ["test_a", "other", "test_b"]
+    values = [torch.zeros(5), torch.ones(3), torch.zeros(2)]
+    result = config.get_inputs_to_dump(names, values)
+    assert set(result.keys()) == {"test_a", "test_b"}
 
 
 def test_tracing_config_invalid_input_dump_policy_literal():
@@ -296,10 +299,11 @@ def test_tracing_config_get_inputs_to_dump_validation():
         return ["nonexistent_tensor"]
 
     config = TracingConfig(input_dump_policy=bad_dump_func, filter_policy="keep_all")
-    inputs = {"real_tensor": torch.zeros(5)}
+    names = ["real_tensor"]
+    values = [torch.zeros(5)]
 
-    with pytest.raises(ValueError, match="not in runtime_args"):
-        config.get_inputs_to_dump(inputs)
+    with pytest.raises(ValueError, match="invalid input name"):
+        config.get_inputs_to_dump(names, values)
 
 
 def test_tracing_config_all_literal_combinations():
@@ -314,6 +318,91 @@ def test_tracing_config_all_literal_combinations():
             # Should be resolved to callables
             assert callable(config.input_dump_policy)
             assert callable(config.filter_policy)
+
+
+# ============================================================================
+# Tests for get_inputs_to_dump with names/values signature
+# ============================================================================
+
+
+class TestGetInputsToDump:
+    """Tests for get_inputs_to_dump method with names/values signature."""
+
+    def test_with_static_list(self):
+        """Test get_inputs_to_dump with static list policy."""
+        config = TracingConfig(input_dump_policy=["a", "c"], filter_policy="keep_all")
+
+        names = ["a", "b", "c", "d"]
+        values = [torch.zeros(1), torch.zeros(2), torch.zeros(3), torch.zeros(4)]
+
+        result = config.get_inputs_to_dump(names, values)
+        assert set(result.keys()) == {"a", "c"}
+        assert result["a"].shape == (1,)
+        assert result["c"].shape == (3,)
+
+    def test_with_callable(self):
+        """Test get_inputs_to_dump with callable policy."""
+
+        def select_large_tensors(inputs):
+            return [name for name, val in inputs.items() if val.numel() > 5]
+
+        config = TracingConfig(input_dump_policy=select_large_tensors, filter_policy="keep_all")
+
+        names = ["small", "large", "medium"]
+        values = [torch.zeros(3), torch.zeros(10), torch.zeros(5)]
+
+        result = config.get_inputs_to_dump(names, values)
+        assert set(result.keys()) == {"large"}
+
+    def test_returns_dict_with_values(self):
+        """Test that get_inputs_to_dump returns dict mapping names to values."""
+        config = TracingConfig(input_dump_policy=["x"], filter_policy="keep_all")
+
+        tensor = torch.tensor([1.0, 2.0, 3.0])
+        result = config.get_inputs_to_dump(["x", "y"], [tensor, torch.zeros(2)])
+
+        assert "x" in result
+        assert torch.equal(result["x"], tensor)
+
+    def test_invalid_name_from_callable(self):
+        """Test that invalid names from callable raise error."""
+
+        def bad_policy(inputs):
+            return ["nonexistent"]
+
+        config = TracingConfig(input_dump_policy=bad_policy, filter_policy="keep_all")
+
+        with pytest.raises(ValueError, match="invalid input name"):
+            config.get_inputs_to_dump(["a", "b"], [torch.zeros(1), torch.zeros(2)])
+
+    def test_non_string_name_from_callable(self):
+        """Test that non-string names from callable raise error."""
+
+        def bad_policy(inputs):
+            return [123]  # Not a string
+
+        config = TracingConfig(input_dump_policy=bad_policy, filter_policy="keep_all")
+
+        with pytest.raises(ValueError, match="invalid input name"):
+            config.get_inputs_to_dump(["a"], [torch.zeros(1)])
+
+    def test_empty_list_policy(self):
+        """Test with empty list policy returns empty dict."""
+        config = TracingConfig(input_dump_policy=[], filter_policy="keep_all")
+
+        result = config.get_inputs_to_dump(["a", "b"], [torch.zeros(1), torch.zeros(2)])
+        assert result == {}
+
+    def test_callable_returns_non_list(self):
+        """Test that callable must return a list."""
+
+        def bad_policy(inputs):
+            return "not_a_list"
+
+        config = TracingConfig(input_dump_policy=bad_policy, filter_policy="keep_all")
+
+        with pytest.raises(ValueError, match="must return a list"):
+            config.get_inputs_to_dump(["a"], [torch.zeros(1)])
 
 
 if __name__ == "__main__":

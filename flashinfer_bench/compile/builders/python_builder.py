@@ -140,9 +140,13 @@ class PythonBuilder(Builder):
 
         metadata = RunnableMetadata(
             build_type="python",
-            definition=definition.name,
-            solution=solution.name,
-            misc={"module": module_name, "entry_symbol": entry_symbol},
+            definition_name=definition.name,
+            solution_name=solution.name,
+            destination_passing_style=solution.spec.destination_passing_style,
+            definition=definition,
+            misc={"module_name": module_name, "entry_symbol": entry_symbol},
         )
+
+        self._try_validate_signature(fn, definition, solution)
 
         return Runnable(callable=fn, metadata=metadata, cleaner=cleaner)

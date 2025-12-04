@@ -3,6 +3,7 @@ CUDA and C++ kernels."""
 
 from __future__ import annotations
 
+import inspect
 import logging
 import shutil
 from pathlib import Path
@@ -278,14 +279,11 @@ class TVMFFIBuilder(Builder):
         # Create metadata for the runnable
         metadata = RunnableMetadata(
             build_type="tvm_ffi",
-            definition=definition.name,
-            solution=solution.name,
-            misc={
-                # Provide the definition object to handle value-returning style
-                "definition": definition,
-                "entry_symbol": entry_symbol,
-                "binary": output_lib_path,
-            },
+            definition_name=definition.name,
+            solution_name=solution.name,
+            destination_passing_style=solution.spec.destination_passing_style,
+            definition=definition,
+            misc={"entry_symbol": entry_symbol, "binary": output_lib_path},
         )
 
         try:
@@ -293,12 +291,7 @@ class TVMFFIBuilder(Builder):
         except AttributeError as e:
             raise BuildError(f"Entry point '{entry_symbol}' not found in module") from e
 
-        # Create keyword adapter to match definition interface
-        arg_order = list(definition.inputs.keys()) + list(definition.outputs.keys())
-
-        def kwargs_adapter(**kwargs):
-            args = [kwargs[name] for name in arg_order]
-            return callable(*args)
+        self._try_validate_signature(callable, definition, solution)
 
         cleaner = self._get_cleaner(build_path)
-        return Runnable(callable=kwargs_adapter, metadata=metadata, cleaner=cleaner)
+        return Runnable(callable=callable, metadata=metadata, cleaner=cleaner)
