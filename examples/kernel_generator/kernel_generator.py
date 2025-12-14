@@ -68,7 +68,6 @@ class KernelGenerator:
         if self.language.lower() in language_map:
             return language_map[self.language.lower()]
         else:
-            # Default Python
             return SupportedLanguages.PYTHON
 
     def generate(
@@ -202,7 +201,6 @@ class KernelGenerator:
             for code_result in code_results
         ]
 
-        # Create all solutions
         solutions = [
             self._create_solution_from_code(candidate["code"], definition, 0, candidate_idx=i)
             for i, candidate in enumerate(initial_candidates)
@@ -245,7 +243,6 @@ class KernelGenerator:
         for level in range(1, depth + 1):
             print(f"\nBeam Level {level}/{depth}: Expanding {len(beam)} candidates...")
 
-            # Generate optimization prompts for all beam items
             prompts = [
                 get_optimization_prompt(
                     self.language,
@@ -257,12 +254,10 @@ class KernelGenerator:
                 for beam_item in beam
             ]
 
-            # Generate all candidates in parallel
             code_results = await asyncio.gather(
                 *[self._generate_code_from_prompt(prompt) for prompt in prompts]
             )
 
-            # Create all solutions
             solutions = [
                 self._create_solution_from_code(
                     code_result["cleaned"], definition, level, candidate_idx=i
@@ -386,11 +381,9 @@ class KernelGenerator:
         return files
 
     def _clean_generated_code(self, code: str) -> str:
-        """Clean up generated code. For CUDA, parse XML and return dict. For others, clean Python syntax."""
         if self.language.lower() == "cuda":
             return self._parse_xml_files(code)
 
-        # For non-CUDA languages (triton, python), clean up markdown and hex floats
         if "```" in code:
             if code.startswith("```"):
                 lines = code.split("\n")
@@ -452,7 +445,6 @@ class KernelGenerator:
     def _create_solution_from_code(
         self, code, definition: Definition, round_num: int, candidate_idx: int = 0
     ) -> Solution:
-        # Include reasoning effort in name and description for GPT-5 models
         if self.model_name.startswith("gpt-5") or self.model_name.startswith("o3"):
             solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_c{candidate_idx}_{self.reasoning_effort}"
             solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, candidate {candidate_idx}, reasoning effort: {self.reasoning_effort})"
@@ -460,16 +452,13 @@ class KernelGenerator:
             solution_name = f"{self.model_name}_{definition.name}_{self.language}_optimized_r{round_num}_c{candidate_idx}"
             solution_description = f"{self.model_name} optimized kernel for {definition.name} (round {round_num}, candidate {candidate_idx})"
 
-        # Handle different code formats based on language
         if self.language.lower() == "cuda" and isinstance(code, dict):
-            # For CUDA, we have multiple files
             sources = []
             for filename, content in code.items():
                 sources.append(SourceFile(path=filename, content=content))
 
             entry_point = "main.cpp::run"
         else:
-            # For single-file languages (triton, python)
             if isinstance(code, dict):
                 code = next(iter(code.values()))
 

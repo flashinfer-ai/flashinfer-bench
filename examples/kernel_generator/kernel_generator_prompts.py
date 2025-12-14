@@ -168,7 +168,6 @@ Requirements:
 
 Generate the implementation:"""
 
-# CUDA prompt
 CUDA_PROMPT = """You are a code generator. Generate a CUDA kernel implementation optimized for {target_gpu} GPU for the following specification.
 
 Specification:

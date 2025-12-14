@@ -131,7 +131,6 @@ def main():
                 print(f"Failed to save solution for {definition_name}: {e}")
                 failed_generations += 1
 
-    # Final summary
     print(f"\n{'='*60}")
     print(f"GENERATION COMPLETE")
     print(f"{'='*60}")
