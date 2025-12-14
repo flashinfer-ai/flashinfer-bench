@@ -2,7 +2,6 @@
 
 A multi-turn kernel generating agent that uses FlashInfer-Bench for evaluation feedback. It can conduct sequential multi-turn generation and beam search kernel exploration.
 
-
 ## Usage
 
 1. **Configure generation settings** in `kernel_generator_example.py`:
@@ -30,4 +29,3 @@ A multi-turn kernel generating agent that uses FlashInfer-Bench for evaluation f
    ```
 
 Generated solutions are saved to `{traceset_path}/solutions/{op_type}/{definition_name}/{solution_name}.json`
-

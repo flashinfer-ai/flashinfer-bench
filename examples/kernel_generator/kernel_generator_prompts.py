@@ -302,9 +302,9 @@ Requirements:
   * Calls the CUDA kernel with appropriate launch configuration
   * Returns results as torch::Tensor
 - Use PYBIND11_MODULE to bind the "run" function:
-  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {{
+  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   *   m.def("run", &run, "Kernel execution function");
-  * }}
+  * }
 - Handle both positional args and kwargs properly
 - Include proper error messages for invalid inputs
 

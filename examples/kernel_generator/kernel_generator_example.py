@@ -23,7 +23,7 @@ def main():
     model_name = "gpt-5-2025-08-07"  # Choose author-model
     language = "triton"  # Target solution language
     target_gpu = "B200"  # Choose solution target GPU
-    definition = ""  # Leave empty to generate solutions for all definitions
+    target_definition_name = ""  # Leave empty to generate solutions for all definitions
 
     # TODO: adjust local path to traceset
     traceset_path = "/path/to/flashinfer-trace"
@@ -33,12 +33,17 @@ def main():
 
     all_definitions = list(traceset.definitions.keys())
 
-    if definition:
-        if definition in all_definitions:
-            all_definitions = [definition]
-            print(f"Generating solution {definition}")
+    if not all_definitions:
+        print(f"Error: No definitions found in traceset at '{traceset_path}'.")
+        print("Please ensure `traceset_path` points to a valid flashinfer-trace directory.")
+        return
+
+    if target_definition_name:
+        if target_definition_name in all_definitions:
+            all_definitions = [target_definition_name]
+            print(f"Generating solution {target_definition_name}")
         else:
-            print(f"Definition '{definition}' not found in traceset")
+            print(f"Definition '{target_definition_name}' not found in traceset")
             return
 
     print(f"Found {len(all_definitions)} definitions to generate solutions")
@@ -137,7 +142,8 @@ def main():
     print(f"Total definitions processed: {total_definitions}")
     print(f"Successful generations: {successful_generations}")
     print(f"Failed generations: {failed_generations}")
-    print(f"Success rate: {(successful_generations/total_definitions)*100:.1f}%")
+    success_rate = (successful_generations / total_definitions * 100) if total_definitions else 0.0
+    print(f"Success rate: {success_rate:.1f}%")
 
 
 if __name__ == "__main__":
