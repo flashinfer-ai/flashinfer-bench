@@ -13,7 +13,7 @@ InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
 """Possible input_dump_policy literals."""
 
 
-InputDumpPolicyFunction = Callable[Dict[str, Any], List[str]]
+InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
 """Function that selects which inputs to dump from input names and values."""
 
 

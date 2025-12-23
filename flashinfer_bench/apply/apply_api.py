@@ -55,7 +55,7 @@ def apply(
     Parameters
     ----------
     def_name_or_resolver : Union[str, Callable[..., str]]
-        The kernel name, or a resolver ``fn(*args) -> str`` that maps runtime
+        The kernel name, or a resolver ``fn(*args, **kwargs) -> str`` that maps runtime
         arguments to a kernel name (definition name).
     args : Tuple[Any, ...], optional
         Only used in **function mode**. The positional runtime arguments to feed into

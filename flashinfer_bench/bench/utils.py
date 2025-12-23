@@ -233,12 +233,16 @@ def gen_inputs(
             out.append(workload.inputs[name].value)
         else:  # random
             shape = shapes[idx]
-            tensor = _rand_tensor(shape, dtype, dev)
 
-            if is_sampling_operation(definition) and name == "probs":
-                tensor = torch.softmax(tensor, dim=-1)  # convert logits to probs for sampling
+            if shape is None:
+                value = _rand_tensor((), dtype, dev).item()
+            else:
+                value = _rand_tensor(shape, dtype, dev)
 
-            out.append(tensor)
+                if is_sampling_operation(definition) and name == "probs":
+                    value = torch.softmax(value, dim=-1)  # convert logits to probs for sampling
+
+            out.append(value)
     return out
 
 

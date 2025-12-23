@@ -110,14 +110,19 @@ def _summarize_statistics(
     raise ValueError(f"Unknown return_mode: {return_mode}")
 
 
-def _get_empty_cache_for_benchmark() -> torch.Tensor:
+def _get_empty_cache_for_benchmark(device: str = "cuda") -> torch.Tensor:
     """Create a buffer for clearing L2 cache before benchmark runs.
 
     We maintain a buffer of 256 MB that we clear before each kernel call
     to make sure that the L2 cache doesn't contain any input data before the run.
+
+    Parameters
+    ----------
+    device : str
+        The CUDA device to allocate the buffer on (default: "cuda").
     """
     cache_size = 256 * 1024 * 1024
-    return torch.empty(int(cache_size // 4), dtype=torch.int, device="cuda")
+    return torch.empty(int(cache_size // 4), dtype=torch.int, device=device)
 
 
 def _clear_cache(cache: torch.Tensor) -> None:
@@ -133,6 +138,7 @@ def do_bench(
     quantiles: Sequence[float] | None = None,
     return_mode: Literal["min", "max", "mean", "median", "all"] = "mean",
     setup: Callable[[], Any] | None = None,
+    device: str = "cuda",
 ) -> Union[float, List[float]]:
     """Benchmark the runtime of the provided function.
 
@@ -154,6 +160,8 @@ def do_bench(
     setup : Callable[[], Any] | None
         Optional setup function called before each timed iteration. Its return
         value is passed to fn. Setup time is NOT included in measurements.
+    device : str
+        The CUDA device for cache clearing buffer (default: "cuda").
 
     Returns
     -------
@@ -162,7 +170,7 @@ def do_bench(
     """
     assert return_mode in ["min", "max", "mean", "median", "all"]
 
-    cache = _get_empty_cache_for_benchmark()
+    cache = _get_empty_cache_for_benchmark(device)
     start_events = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
     end_events = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
 
@@ -247,4 +255,5 @@ def time_runnable(fn: Runnable, args: List[Any], warmup: int, iters: int, device
             warmup=warmup,
             rep=iters,
             setup=lambda: _clone_args(args),
+            device=device,
         )

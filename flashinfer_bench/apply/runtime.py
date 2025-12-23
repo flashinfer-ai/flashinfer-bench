@@ -155,23 +155,25 @@ class ApplyRuntime:
             return fallback(*args, **kwargs)
 
         # Merge kwargs into args based on definition's input/output order
+        # Use a new variable to preserve original args/kwargs for fallback calls
+        merged_args = args
         if kwargs:
-            args = definition.merge_kwargs_to_args(args, kwargs)
+            merged_args = definition.merge_kwargs_to_args(args, kwargs)
 
         # Determine calling convention based on argument count
         num_inputs = len(definition.inputs)
         num_outputs = len(definition.outputs)
-        is_dps = len(args) == num_inputs + num_outputs
+        is_dps = len(merged_args) == num_inputs + num_outputs
 
-        if not is_dps and len(args) != num_inputs:
+        if not is_dps and len(merged_args) != num_inputs:
             raise ValueError(
                 f"Invalid number of arguments for '{def_name}': expected {num_inputs} "
                 f"(value-returning) or {num_inputs + num_outputs} (destination-passing), "
-                f"got {len(args)}"
+                f"got {len(merged_args)}"
             )
 
         # Extract only inputs for key building
-        input_args = args[:num_inputs]
+        input_args = merged_args[:num_inputs]
 
         # Build key from input arguments
         builder = self._key_builders.get(definition.name)
@@ -199,11 +201,11 @@ class ApplyRuntime:
         if runnable is None:
             if fallback is None:
                 raise RuntimeError(f"Apply miss for '{def_name}' and no fallback provided")
-            return fallback(*args)
+            return fallback(*args, **kwargs)
 
         # Call the runnable with appropriate style
         if is_dps:
-            runnable.call_destination_passing(*args)
+            runnable.call_destination_passing(*merged_args)
             return None
         else:
             return runnable.call_value_returning(*input_args)

@@ -213,6 +213,54 @@ def test_isolated_runner_run_ref_and_solution_minimal():
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+def test_isolated_runner_with_scalar_input():
+    """E2E test: bench with scalar input in the middle of inputs."""
+    d = Definition(
+        name="d_scalar_e2e",
+        op_type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={
+            "A": TensorSpec(shape=["N"], dtype="float32"),
+            "scale": TensorSpec(shape=None, dtype="float32"),  # scalar in the middle
+            "B": TensorSpec(shape=["N"], dtype="float32"),
+        },
+        outputs={"C": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A, scale, B):\n    return A * scale + B\n",
+    )
+    workload = Workload(
+        axes={"N": 4},
+        inputs={"A": RandomInput(), "scale": ScalarInput(value=2.0), "B": RandomInput()},
+        uuid="w_scalar_e2e",
+    )
+
+    spec = BuildSpec(
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
+    )
+    srcs = [
+        SourceFile(
+            path="pkg/main.py",
+            content="import torch\n\ndef run(A, scale, B):\n    return A * scale + B\n",
+        )
+    ]
+    solution = Solution(name="py_scalar", definition=d.name, author="me", spec=spec, sources=srcs)
+
+    worker = SubprocessWorker(device="cuda:0")
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    handle = None
+    try:
+        handle = worker.run_ref(d, workload, cfg, None)
+        ev = worker.run_solution(solution, handle, cfg)
+        assert ev.status.value == "PASSED"
+    finally:
+        if handle is not None:
+            worker.release(handle)
+        worker.close()
+
+
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_isolated_worker_embeds_stdout(tmp_path: Path):
     d = Definition(
         name="dmp_log",

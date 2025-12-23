@@ -223,6 +223,32 @@ class TestGetAxesValuesFromInputs:
         assert result == {"M": 5}
 
 
+def test_get_input_shapes_with_scalar():
+    """Test get_input_shapes returns None for scalar inputs and maintains correct length/order."""
+    definition = Definition(
+        name="scalar_test",
+        op_type="op",
+        axes={"M": AxisVar(), "N": AxisConst(value=4)},
+        inputs={
+            "A": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "scale": TensorSpec(shape=None, dtype="float32"),  # scalar in the middle
+            "B": TensorSpec(shape=["M"], dtype="float32"),
+        },
+        outputs={"C": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="def run(A, scale, B):\n    return A * scale + B\n",
+    )
+
+    shapes = definition.get_input_shapes({"M": 8})
+
+    # Length should match number of inputs
+    assert len(shapes) == len(definition.inputs)
+
+    # Verify each position
+    assert shapes[0] == [8, 4]  # A: [M, N]
+    assert shapes[1] is None  # scale: scalar
+    assert shapes[2] == [8]  # B: [M]
+
+
 class TestGetAxesValues:
     """Tests for get_axes_values method."""
 

@@ -179,12 +179,12 @@ class Builder(ABC):
                             f"Value-returning style callable with {num_outputs} outputs must "
                             f"return a {num_outputs}-element tuple, got {ret_ann}"
                         )
-                elif origin is None:
+                elif ret_ann is None:
                     # If return None, num_outputs must be 0
                     if num_outputs != 0:
                         raise BuildError(
                             f"Value-returning style callable with {num_outputs} outputs must "
-                            f"return None, got {ret_ann}"
+                            f"not return None"
                         )
                 elif num_outputs != 1:
                     # If returning non-tuple, num_outputs must be 1

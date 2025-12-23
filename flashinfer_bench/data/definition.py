@@ -347,6 +347,7 @@ class Definition(BaseModelWithDocstrings):
 
         for tensor_spec in tensors:
             if tensor_spec.shape is None:  # scalar, no shape
+                shapes.append(None)
                 continue
             shape = []
             for axis_name in tensor_spec.shape:
@@ -448,6 +449,19 @@ class Definition(BaseModelWithDocstrings):
             return args
 
         param_names = list(self.inputs.keys()) + list(self.outputs.keys())
+
+        if len(args) > len(param_names):
+            raise TypeError(
+                f"Too many positional arguments: got {len(args)}, "
+                f"expected at most {len(param_names)}"
+            )
+
+        # Check for duplicate arguments
+        positional_arg_names = set(param_names[: len(args)])
+        for name in kwargs:
+            if name in positional_arg_names:
+                raise TypeError(f"Got multiple values for argument '{name}'")
+
         result = list(args)
         for i in range(len(args), len(param_names)):
             name = param_names[i]

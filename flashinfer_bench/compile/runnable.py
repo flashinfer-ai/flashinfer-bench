@@ -193,13 +193,13 @@ class Runnable:
                 f"the number of outputs, got {len(result)} and {len(args_output)}"
             )
 
-        for result, output in zip(result, args_output):
-            if not isinstance(result, torch.Tensor) or not isinstance(output, torch.Tensor):
+        for res_tensor, out_tensor in zip(result, args_output, strict=True):
+            if not isinstance(res_tensor, torch.Tensor) or not isinstance(out_tensor, torch.Tensor):
                 raise ValueError(
                     "Destination-passing style callable must return a tuple of tensors, got "
-                    f"{type(result)} and {type(output)}"
+                    f"{type(res_tensor)} and {type(out_tensor)}"
                 )
-            output.copy_(result)
+            out_tensor.copy_(res_tensor)
 
     def _allocate_output_tensors(self, *args: Any) -> List[torch.Tensor]:
         """Allocate output tensors based on the definition and variable axis values."""
