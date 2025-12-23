@@ -80,6 +80,9 @@ class BuildSpec(BaseModelWithDocstrings):
     """Optional list of required libraries or packages. E.g. for CUDA, we support 'cublas',
     'cudnn', 'cutlass'"""
     destination_passing_style: bool = True
+    """Whether to use destination passing style for the solution. If True, the solution should
+    accept the output tensors as the last arguments. If False, the solution should return the
+    output tensors."""
 
     @model_validator(mode="after")
     def _validate_entry_point(self) -> "BuildSpec":
