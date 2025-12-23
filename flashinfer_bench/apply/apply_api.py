@@ -17,7 +17,7 @@ def apply(
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
 
 
-# Function mode with positional args
+# Function mode
 @overload
 def apply(
     def_name_or_resolver: Union[str, Callable[..., str]],

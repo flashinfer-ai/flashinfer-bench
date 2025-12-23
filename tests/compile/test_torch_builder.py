@@ -46,14 +46,17 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("echo", &echo); }
         definition="cpu_echo_def",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.CPP, target_hardware=["cpu"], entry_point="bind.cpp::echo"
+            language=SupportedLanguages.CPP,
+            target_hardware=["cpu"],
+            entry_point="bind.cpp::echo",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="bind.cpp", content=cpp_source)],
     )
     runnable = builder.build(definition, solution)
 
     input_tensor = torch.tensor([1, 2, 3], dtype=torch.float32, device="cpu")
-    out: torch.Tensor = runnable(A=input_tensor)
+    out: torch.Tensor = runnable(input_tensor)
     assert torch.allclose(out, input_tensor)
 
 
@@ -105,40 +108,42 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("echo", &echo); }
         definition="cpu_echo_def",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.CPP, target_hardware=["cpu"], entry_point="bind.cpp::echo"
+            language=SupportedLanguages.CPP,
+            target_hardware=["cpu"],
+            entry_point="bind.cpp::echo",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="bind.cpp", content=cpp_source)],
     )
     runnable = builder.build(definition, solution)
 
-    input_tensors = {
-        "AAAAAA": torch.tensor([1, 2, 3], dtype=torch.float32, device="cpu"),
-        "BBBBBB": torch.tensor([4, 5, 6], dtype=torch.float32, device="cpu"),
-        "CCCCCC": torch.tensor([7, 8, 9], dtype=torch.float32, device="cpu"),
-        "DDDDDD": torch.tensor([10, 11, 12], dtype=torch.float32, device="cpu"),
-        "EEEEEE": torch.tensor([13, 14, 15], dtype=torch.float32, device="cpu"),
-        "FFFFFF": torch.tensor([16, 17, 18], dtype=torch.float32, device="cpu"),
-        "GGGGGG": torch.tensor([19, 20, 21], dtype=torch.float32, device="cpu"),
-        "HHHHHH": torch.tensor([22, 23, 24], dtype=torch.float32, device="cpu"),
-        "IIIIII": torch.tensor([25, 26, 27], dtype=torch.float32, device="cpu"),
-        "JJJJJJ": torch.tensor([28, 29, 30], dtype=torch.float32, device="cpu"),
-        "KKKKKK": torch.tensor([31, 32, 33], dtype=torch.float32, device="cpu"),
-        "LLLLLL": torch.tensor([34, 35, 36], dtype=torch.float32, device="cpu"),
-        "MMMMMM": torch.tensor([37, 38, 39], dtype=torch.float32, device="cpu"),
-    }
-    input_tensor_list = list(input_tensors.values())
+    input_tensors = [
+        torch.tensor([1, 2, 3], dtype=torch.float32, device="cpu"),
+        torch.tensor([4, 5, 6], dtype=torch.float32, device="cpu"),
+        torch.tensor([7, 8, 9], dtype=torch.float32, device="cpu"),
+        torch.tensor([10, 11, 12], dtype=torch.float32, device="cpu"),
+        torch.tensor([13, 14, 15], dtype=torch.float32, device="cpu"),
+        torch.tensor([16, 17, 18], dtype=torch.float32, device="cpu"),
+        torch.tensor([19, 20, 21], dtype=torch.float32, device="cpu"),
+        torch.tensor([22, 23, 24], dtype=torch.float32, device="cpu"),
+        torch.tensor([25, 26, 27], dtype=torch.float32, device="cpu"),
+        torch.tensor([28, 29, 30], dtype=torch.float32, device="cpu"),
+        torch.tensor([31, 32, 33], dtype=torch.float32, device="cpu"),
+        torch.tensor([34, 35, 36], dtype=torch.float32, device="cpu"),
+        torch.tensor([37, 38, 39], dtype=torch.float32, device="cpu"),
+    ]
 
-    # Wramup
+    # Warmup
     for _ in range(10):
-        out = runnable(**input_tensors)
+        out = runnable(*input_tensors)
     # Measure time
     begin = time.monotonic()
     for _ in range(100):
-        out = runnable(**input_tensors)
+        out = runnable(*input_tensors)
     end = time.monotonic()
     print(f"Time taken with runnable: {(end - begin) / 100} seconds")
 
-    assert torch.allclose(out, input_tensor_list[0])
+    assert torch.allclose(out, input_tensors[0])
 
 
 @pytest.mark.requires_torch_cuda
@@ -203,6 +208,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             language=SupportedLanguages.CUDA,
             target_hardware=["cuda"],
             entry_point="binding.cpp::vec_add",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(path="kernel.cu", content=cuda_kernel),
@@ -214,7 +220,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     runnable = builder.build(definition, solution)
     X = torch.arange(256, dtype=torch.float32, device="cuda")
     Y = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
-    Z: torch.Tensor = runnable(X=X, Y=Y)
+    Z: torch.Tensor = runnable(X, Y)
     assert torch.allclose(Z, X + Y)
 
 
@@ -288,6 +294,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             language=SupportedLanguages.CUDA,
             target_hardware=["cuda"],
             entry_point="binding.cpp::cublas_matmul",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="binding.cpp", content=binding_cpp)],
     )
@@ -297,7 +304,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     X = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32, device="cuda")
     Y = torch.tensor([[5, 6], [7, 8]], dtype=torch.float32, device="cuda")
-    Z: torch.Tensor = runnable(X=X, Y=Y)
+    Z: torch.Tensor = runnable(X, Y)
     expected = X @ Y.T
     assert torch.allclose(Z, expected), f"Expected {expected}, got {Z}"
 

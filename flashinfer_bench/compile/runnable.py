@@ -141,7 +141,7 @@ class Runnable:
         to a scalar value for convenience.
         """
         args = [kwargs[name] for name in self._arg_names]
-        return self._revise_return_value(self(*args))
+        return self(*args)
 
     @cached_property
     def _output_dtype_list(self) -> List["torch.dtype"]:
@@ -167,7 +167,7 @@ class Runnable:
         import torch
 
         if self.metadata.destination_passing_style:
-            self._callable(*args)
+            self(*args)
             return
 
         # Convert value-returning style to destination-passing style
@@ -258,7 +258,7 @@ class Runnable:
             output tensor allocation.
         """
         if not self.metadata.destination_passing_style:
-            return self._revise_return_value(self._callable(*args))
+            return self(*args)
 
         # Convert destination-passing style to value-returning style
         output_tensors = self._allocate_output_tensors(*args)

@@ -217,6 +217,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="correct.py::run",
+                destination_passing_style=False,
             ),
             sources=[
                 SourceFile(
@@ -232,6 +233,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="wrong.py::run",
+                destination_passing_style=False,
             ),
             sources=[
                 SourceFile(

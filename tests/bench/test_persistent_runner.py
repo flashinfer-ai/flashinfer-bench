@@ -118,6 +118,7 @@ class TestPersistentSubprocessWorker:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -167,6 +168,7 @@ class TestPersistentSubprocessWorker:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -229,6 +231,7 @@ class TestPersistentRunner:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -278,6 +281,7 @@ class TestPersistentRunner:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
 
             solutions = []
@@ -329,6 +333,7 @@ class TestPersistentRunner:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -424,6 +429,7 @@ class TestPersistentRunner:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(

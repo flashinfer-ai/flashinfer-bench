@@ -193,7 +193,10 @@ def test_isolated_runner_run_ref_and_solution_minimal():
     workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
 
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
     )
     srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
     s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
@@ -223,7 +226,10 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
 
     message = "isolated worker log line"
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
     )
     srcs = [
         SourceFile(
