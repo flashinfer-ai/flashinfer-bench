@@ -88,7 +88,10 @@ def test_ragged_prefill_adapter_substitution(tmp_path, monkeypatch):
         definition=def_name,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[sol_src],
         description="Tests",

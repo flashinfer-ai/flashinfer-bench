@@ -205,13 +205,13 @@ def enable_apply(
     >>> # Direct usage
     >>> enable_apply("/path/to/traceset", cfg)
     >>> # Apply is now enabled
-    >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> disable_apply()
     >>> # Apply is now disabled.
 
     >>> # Context manager usage
     >>> with enable_apply("/path/to/traceset", cfg):
-    ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    ...     out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> # Apply is now disabled.
     """
     prev_runtime = get_apply_runtime()

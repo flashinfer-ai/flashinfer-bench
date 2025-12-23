@@ -704,11 +704,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir
                         # Use registry to build/get cached solution
                         runnable_sol = registry.build(definition, solution)
 
-                        inputs: List[Dict[str, Any]] = [
-                            {
-                                k: v.clone() if isinstance(v, torch.Tensor) else v
-                                for k, v in inp.items()
-                            }
+                        inputs: List[List[Any]] = [
+                            [v.clone() if isinstance(v, torch.Tensor) else v for v in inp]
                             for inp in inputs_bl
                         ]
 

@@ -263,9 +263,8 @@ def _solution_worker_main(
         ref_outputs_bl = loan["ref_outputs"]
         ref_mean_latency_ms = loan["ref_mean_latency_ms"]
 
-        inputs: List[Dict[str, Any]] = [
-            {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inp.items()}
-            for inp in inputs_bl
+        inputs: List[List[Any]] = [
+            [v.clone() if isinstance(v, torch.Tensor) else v for v in inp] for inp in inputs_bl
         ]
 
         evaluator_cls = resolve_evaluator(definition)

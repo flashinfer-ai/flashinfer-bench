@@ -173,7 +173,10 @@ def load_safetensors(
     except Exception as e:
         raise RuntimeError("safetensors is not available in the current environment") from e
 
-    expected = definition.get_input_shapes(workload.axes)
+    shapes_list = definition.get_input_shapes(workload.axes)
+    input_names = list(definition.inputs.keys())
+    expected = {name: shape for name, shape in zip(input_names, shapes_list)}
+
     safe_tensors: Dict[str, torch.Tensor] = {}
     for name, input_spec in workload.inputs.items():
         if input_spec.type != "safetensors":
@@ -218,7 +221,7 @@ def gen_inputs(
     dev = torch.device(device)
     out: List[Any] = []
 
-    for name, spec in definition.inputs.items():
+    for idx, (name, spec) in enumerate(definition.inputs.items()):
         dtype = dtype_str_to_torch_dtype(spec.dtype)
 
         if name in workload.inputs and workload.inputs[name].type == "safetensors":
@@ -229,7 +232,7 @@ def gen_inputs(
         elif name in workload.inputs and workload.inputs[name].type == "scalar":
             out.append(workload.inputs[name].value)
         else:  # random
-            shape = shapes[name]
+            shape = shapes[idx]
             tensor = _rand_tensor(shape, dtype, dev)
 
             if is_sampling_operation(definition) and name == "probs":
