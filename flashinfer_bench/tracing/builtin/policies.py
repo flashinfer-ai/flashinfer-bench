@@ -8,7 +8,7 @@ This module contains:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Hashable, Iterable, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Hashable, List
 
 import torch
 

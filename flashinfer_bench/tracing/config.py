@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Literal, Protocol, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Protocol, Union
 
 from flashinfer_bench.tracing.builtin.policies import (
     BUILTIN_FILTER_POLICIES,

@@ -2,12 +2,11 @@ import atexit
 import signal
 import threading
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from flashinfer_bench.data import (
-    Definition,
     InputSpec,
     RandomInput,
     SafetensorsInput,

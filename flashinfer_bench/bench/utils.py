@@ -175,7 +175,7 @@ def load_safetensors(
 
     shapes_list = definition.get_input_shapes(workload.axes)
     input_names = list(definition.inputs.keys())
-    expected = {name: shape for name, shape in zip(input_names, shapes_list)}
+    expected = dict(zip(input_names, shapes_list))
 
     safe_tensors: Dict[str, torch.Tensor] = {}
     for name, input_spec in workload.inputs.items():

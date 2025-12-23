@@ -3,7 +3,6 @@ CUDA and C++ kernels."""
 
 from __future__ import annotations
 
-import inspect
 import logging
 import shutil
 from pathlib import Path

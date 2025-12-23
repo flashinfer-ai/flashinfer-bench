@@ -12,7 +12,6 @@ from flashinfer_bench.bench.evaluators import sampling as sampling_eval_module
 from flashinfer_bench.bench.evaluators.default import DefaultEvaluator
 from flashinfer_bench.bench.evaluators.lowbit import LowBitEvaluator
 from flashinfer_bench.bench.evaluators.sampling import SamplingEvaluator
-from flashinfer_bench.compile import Runnable
 from flashinfer_bench.data import AxisConst, Definition, EvaluationStatus, TensorSpec
 
 
