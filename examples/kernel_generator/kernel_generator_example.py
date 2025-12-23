@@ -19,21 +19,34 @@ def main():
     """
     Generate optimized solutions for all definitions in the traceset.
     """
-    model_name = "gpt-5-2025-08-07"  # Choose model here
-    language = "triton"
-    target_gpu = "B200"
+    # TODO: select model, language, target gpu, definition
+    model_name = "gpt-5-2025-08-07"  # Choose author-model
+    language = "triton"  # Target solution language
+    target_gpu = "B200"  # Choose solution target GPU
+    target_definition_name = ""  # Leave empty to generate solutions for all definitions
 
     # TODO: adjust local path to traceset
-    traceset_path = "/home/akj2/flashinfer-trace"
+    traceset_path = "/path/to/flashinfer-trace"
 
     print(f"Loading TraceSet from: {traceset_path}")
     traceset = TraceSet.from_path(traceset_path)
 
-    # all_definitions = list(traceset.definitions.keys())
-    # Filter for rmsnorm definitions only
-    all_definitions = [name for name in traceset.definitions.keys() if "rmsnorm" in name.lower()]
+    all_definitions = list(traceset.definitions.keys())
 
-    print(f"All definitions found: {len(all_definitions)}")
+    if not all_definitions:
+        print(f"Error: No definitions found in traceset at '{traceset_path}'.")
+        print("Please ensure `traceset_path` points to a valid flashinfer-trace directory.")
+        return
+
+    if target_definition_name:
+        if target_definition_name in all_definitions:
+            all_definitions = [target_definition_name]
+            print(f"Generating solution {target_definition_name}")
+        else:
+            print(f"Definition '{target_definition_name}' not found in traceset")
+            return
+
+    print(f"Found {len(all_definitions)} definitions to generate solutions")
 
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("BASE_URL")
@@ -84,7 +97,10 @@ def main():
                 solution = generator.generate(
                     traceset=traceset,
                     definition=definition,
-                    max_opt_rounds=10,  # For our baseline, we used 10 rounds
+                    gen_rounds=10,  # For our baseline, we used 10 rounds
+                    # TODO: uncomment bellow to use beam search
+                    # beam=True,
+                    # beam_width=3,
                 )
 
                 print(f"Successfully generated solution for {definition_name}")
@@ -120,14 +136,14 @@ def main():
                 print(f"Failed to save solution for {definition_name}: {e}")
                 failed_generations += 1
 
-    # Final summary
     print(f"\n{'='*60}")
     print(f"GENERATION COMPLETE")
     print(f"{'='*60}")
     print(f"Total definitions processed: {total_definitions}")
     print(f"Successful generations: {successful_generations}")
     print(f"Failed generations: {failed_generations}")
-    print(f"Success rate: {(successful_generations/total_definitions)*100:.1f}%")
+    success_rate = (successful_generations / total_definitions * 100) if total_definitions else 0.0
+    print(f"Success rate: {success_rate:.1f}%")
 
 
 if __name__ == "__main__":

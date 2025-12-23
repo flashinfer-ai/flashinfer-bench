@@ -95,7 +95,6 @@ The wrapper function MUST handle complete device management:
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
-- Use math.log(2), math.pi, math.e instead of hex literals
 - All code must be valid Python that passes ast.parse()
 
 - Expose a "run" entry point function that can be called to execute the kernel
@@ -147,7 +146,6 @@ The wrapper function MUST handle complete device management:
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
-- Use math.log(2), math.pi, math.e instead of hex literals
 - All code must be valid Python that passes ast.parse()
 
 - Expose a "run" entry point function that can be called to execute the kernel
@@ -170,7 +168,6 @@ Requirements:
 
 Generate the implementation:"""
 
-# CUDA prompt
 CUDA_PROMPT = """You are a code generator. Generate a CUDA kernel implementation optimized for {target_gpu} GPU for the following specification.
 
 Specification:
@@ -184,7 +181,6 @@ Requirements:
 - Use the definition's tensor shapes, dtypes, and axes information to guide memory access patterns and optimization strategies
 - Optimize for {target_gpu} GPU characteristics (memory hierarchy, compute units, etc.)
 - For fixed axis values, optimize specifically for those constants rather than general cases
-- You may use 3rd party libraries (cuBLAS, cuDNN, CUTLASS) when beneficial, but custom implementations often perform better for specialized kernels with known axis constraints
 
 IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
 
@@ -209,10 +205,6 @@ IMPORTANT: Generate code in XML format with exactly 3 files with these strict na
 - Entry point function named "run" that can be called to execute the implementation
 - Handle both args and kwargs properly
 - Move CPU data to GPU, execute kernels, and return results to CPU
-- Include PyTorch C++ extension bindings using PYBIND11_MODULE
-- The "run" function must be exposed to Python through the binding
-- Include proper tensor type conversion between PyTorch tensors and CUDA pointers
-- Include all necessary PyTorch headers: #include <torch/extension.h>
 </cpp_file>
 
 Code Generation Guidelines:
@@ -223,8 +215,6 @@ Code Generation Guidelines:
 - Implement proper error checking with cudaGetLastError()
 - Use appropriate grid and block dimensions for the problem size
 - Leverage constant memory for frequently accessed read-only data
-- Use PyTorch tensor API (torch::Tensor) for all tensor arguments in the "run" function
-- Convert PyTorch tensors to CUDA pointers using .data_ptr<float>() or similar methods
 - Ensure proper CUDA stream synchronization and error handling
 
 Generate the implementation:"""
@@ -252,7 +242,7 @@ Optimization Strategy:
    - Tune block sizes and grid dimensions for maximum occupancy
    - Utilize shared memory effectively to reduce global memory transactions
    - Optimize register usage and minimize divergent branches
-   - Consider using specialized libraries (cuBLAS, cuDNN, CUTLASS) where beneficial
+   - Consider using specialized libraries (such as CUTLASS) where beneficial
    - Leverage constant axis values for compile-time optimizations
 
 Requirements for the optimized implementation:
@@ -286,10 +276,6 @@ IMPORTANT: Generate code in XML format with exactly 3 files with these strict na
 - Entry point function named "run" that can be called to execute the implementation
 - Handle both args and kwargs properly
 - Move CPU data to GPU, execute kernels, and return results to CPU
-- MUST include PyTorch C++ extension bindings using PYBIND11_MODULE
-- The "run" function must be exposed to Python through the binding
-- Include proper tensor type conversion between PyTorch tensors and CUDA pointers
-- Include all necessary PyTorch headers: #include <torch/extension.h>
 </cpp_file>
 
 Code Generation Guidelines:
@@ -300,11 +286,36 @@ Code Generation Guidelines:
 - Implement proper error checking with cudaGetLastError()
 - Use appropriate grid and block dimensions for the problem size
 - Leverage constant memory for frequently accessed read-only data
-- Use PyTorch tensor API (torch::Tensor) for all tensor arguments in the "run" function
-- Convert PyTorch tensors to CUDA pointers using .data_ptr<float>() or similar methods
 - Ensure proper CUDA stream synchronization and error handling
 
 Generate the corrected and optimized implementation:"""
+
+TORCH_BINDINGS_PROMPT = """
+Use TORCH for your generated kernel host function and bindings
+
+Requirements:
+- Include all necessary headers (torch/extension.h, kernel.h, etc.)
+- Implement the "run" function that:
+  * Takes torch::Tensor arguments
+  * Validates tensor properties (device, dtype, shape)
+  * Extracts raw pointers using .data_ptr<T>()
+  * Calls the CUDA kernel with appropriate launch configuration
+  * Returns results as torch::Tensor
+- Use PYBIND11_MODULE to bind the "run" function:
+  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  *   m.def("run", &run, "Kernel execution function");
+  * }
+- Handle both positional args and kwargs properly
+- Include proper error messages for invalid inputs
+
+- Use torch::Tensor for all tensor arguments
+- Use .device().is_cuda() to check if tensors are on GPU
+- Use .dtype() to validate tensor data types
+- Use .sizes() or .size(dim) to get tensor dimensions
+- Use .data_ptr<float>() or .data_ptr<T>() to get raw pointers
+- Call cudaDeviceSynchronize() or cudaGetLastError() for error checking
+- Return torch::Tensor from the run function
+- Handle exceptions gracefully with proper error messages"""
 
 
 def get_prompt(language: str, definition: Definition, target_gpu: str = "H100") -> str:
