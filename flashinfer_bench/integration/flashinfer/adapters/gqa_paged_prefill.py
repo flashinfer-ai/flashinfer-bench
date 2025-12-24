@@ -124,7 +124,7 @@ class GQAPagedPrefillAdapter:
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(_def_name_resolver, kwargs=rk, fallback=_fb)
 
                 output = None
                 lse = None

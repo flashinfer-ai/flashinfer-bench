@@ -54,7 +54,10 @@ def make_python_solution(name: str, body: str = "def run(X, Y):\n    return X\n"
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content=body)],
     )
@@ -106,8 +109,8 @@ def test_apply_table_build_and_match(tmp_path, monkeypatch):
 
     # Build keys for lookup
     builder = ApplyKeyFactory.specialize(d)
-    k2 = builder.build_from_runtime({"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))})
-    k3 = builder.build_from_runtime({"X": FakeTensor((3, 2)), "Y": FakeTensor((3, 2))})
+    k2 = builder.build_from_args((FakeTensor((2, 2)), FakeTensor((2, 2))))
+    k3 = builder.build_from_args((FakeTensor((3, 2)), FakeTensor((3, 2))))
 
     assert table.match_solution("add", k2) == "add_fast"
     assert table.match_solution("add", k3) == "add_slow"
@@ -151,7 +154,10 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
     )
@@ -160,7 +166,10 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
     )

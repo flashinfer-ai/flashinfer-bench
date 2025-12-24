@@ -9,20 +9,9 @@ from .json_utils import (
     save_jsonl_file,
 )
 from .solution import BuildSpec, Solution, SourceFile, SupportedLanguages
-from .trace import (
-    Correctness,
-    Environment,
-    Evaluation,
-    EvaluationStatus,
-    InputSpec,
-    Performance,
-    RandomInput,
-    SafetensorsInput,
-    ScalarInput,
-    Trace,
-    Workload,
-)
+from .trace import Correctness, Environment, Evaluation, EvaluationStatus, Performance, Trace
 from .trace_set import TraceSet
+from .workload import InputSpec, RandomInput, SafetensorsInput, ScalarInput, Workload
 
 __all__ = [
     # Definition types
@@ -36,12 +25,13 @@ __all__ = [
     "BuildSpec",
     "SupportedLanguages",
     "Solution",
-    # Trace types
+    # Workload types
     "RandomInput",
     "ScalarInput",
     "SafetensorsInput",
     "InputSpec",
     "Workload",
+    # Trace types
     "Correctness",
     "Performance",
     "Environment",

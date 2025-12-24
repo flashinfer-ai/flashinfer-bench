@@ -1,21 +1,66 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Callable, Dict, List, Literal, Protocol, Union
 
 from flashinfer_bench.tracing.builtin.policies import (
     BUILTIN_FILTER_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
-    InputDumpPolicyFunction,
 )
-from flashinfer_bench.tracing.filter_policy import FilterPolicy, FilterPolicyFactory
+from flashinfer_bench.tracing.workload_entry import WorkloadEntry
 
 InputDumpPolicyLiteral = Literal["dump_all", "dump_none", "dump_int32"]
 """Possible input_dump_policy literals."""
 
 
+InputDumpPolicyFunction = Callable[[Dict[str, Any]], List[str]]
+"""Function that selects which inputs to dump from input names and values."""
+
+
 FilterPolicyLiteral = Literal["keep_all", "keep_first", "keep_first_by_axes", "keep_none"]
 """Possible filter policy literals."""
+
+
+class FilterPolicy(Protocol):
+    """Protocol for workload deduplication policy.
+
+    A filter policy maintains internal state and supports both online and offline
+    deduplication strategies. Entries are submitted one at a time via submit(),
+    and selected entries are retrieved via drain().
+    """
+
+    def submit(self, entry: WorkloadEntry) -> None:
+        """Submit a workload entry for deduplication consideration.
+
+        Parameters
+        ----------
+        entry : WorkloadEntry
+            The workload entry to submit.
+        """
+        ...
+
+    def drain(self) -> List[WorkloadEntry]:
+        """Drain and return all selected entries.
+
+        Returns
+        -------
+        List[WorkloadEntry]
+            List of entries that passed the deduplication policy.
+            After calling this method, the internal buffer is cleared.
+        """
+        ...
+
+    def reset(self) -> None:
+        """Reset the internal state of the deduplication policy.
+
+        This method should be called when starting a new deduplication session
+        to clear any cached state or statistics.
+        """
+        ...
+
+
+FilterPolicyFactory = Callable[[], FilterPolicy]
+"""Factory function for filter policy."""
 
 
 @dataclass
@@ -73,43 +118,41 @@ class TracingConfig:
                 f"filter_policy must be callable after __post_init__, got {type(self.filter_policy)}"
             )
 
-    def get_inputs_to_dump(self, runtime_args: Dict[str, Any]) -> List[str]:
-        """Get the inputs to dump from the runtime arguments. The validity of the result is
-        checked, so every returned input name must exist in the runtime arguments.
+    def get_inputs_to_dump(self, names: List[str], values: List[Any]) -> Dict[str, Any]:
+        """Get the inputs to dump from the runtime arguments.
 
         Parameters
         ----------
-        runtime_args : Dict[str, Any]
-            The runtime arguments to get the inputs to dump from.
+        names : List[str]
+            Input names in order.
+        values : List[Any]
+            Input values in order (same length as names).
 
         Returns
         -------
-        List[str]
-            The inputs to dump.
+        Dict[str, Any]
+            Dictionary mapping selected input names to their values.
 
         Raises
         ------
         ValueError
-            If input_dump_policy is not a list of strings or a callable, or the result is not valid.
+            If input_dump_policy is invalid or returns invalid names.
         """
+        name_to_value = dict(zip(names, values))
+
         if isinstance(self.input_dump_policy, list):
-            result = self.input_dump_policy
+            names_to_dump = self.input_dump_policy
         elif callable(self.input_dump_policy):
-            result = self.input_dump_policy(runtime_args)
+            names_to_dump = self.input_dump_policy(name_to_value)
         else:
             raise ValueError("input_dump_policy must be a list of strings or a callable")
 
-        # Check the validity of the result
-        if not isinstance(result, list):
+        if not isinstance(names_to_dump, list):
             raise ValueError("input_dump_policy callable must return a list of strings")
-        for name in result:
-            if not isinstance(name, str):
-                raise ValueError(
-                    f"input_dump_policy callable must return a list of strings, but got "
-                    f"{type(name).__name__}"
-                )
-            if name not in runtime_args:
-                raise ValueError(
-                    f"input_dump_policy callable returned {name} which is not in runtime_args"
-                )
+
+        result: Dict[str, Any] = {}
+        for name in names_to_dump:
+            if not isinstance(name, str) or name not in name_to_value:
+                raise ValueError(f"input_dump_policy returned invalid input name: {name}")
+            result[name] = name_to_value[name]
         return result

@@ -97,14 +97,17 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
         definition=def_name,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[sol_src],
         description="Tests",
     )
 
     # A single successful trace to select this solution
-    wl = Workload(
+    workload = Workload(
         axes={
             "batch_size": B,
             "num_pages": int(indptr[-1].item()),
@@ -116,7 +119,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
     )
     trace = Trace(
         definition=def_name,
-        workload=wl,
+        workload=workload,
         solution=solution.name,
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
@@ -128,7 +131,7 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
         ),
     )
 
-    ts = TraceSet(
+    traceset = TraceSet(
         root=tmp_path,
         definitions={def_name: definition},
         solutions={def_name: [solution]},
@@ -136,16 +139,16 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
     )
 
     # Enable apply with our in-memory traceset
-    ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
+    workspace_buffer = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(traceset, ApplyConfig())
+    set_apply_runtime(runtime)
 
     # New wrapper instance to exercise the patched adapter path
     wrapper = flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper(
-        torch.zeros_like(ws), kv_layout="NHD"
+        torch.zeros_like(workspace_buffer), kv_layout="NHD"
     )
     wrapper.plan(
         indptr,

@@ -116,27 +116,29 @@ class Benchmark:
             def_traces: List[Trace] = []
 
             for wl_trace in workloads:
-                wl = wl_trace.workload
+                workload = wl_trace.workload
 
                 sols_to_run = sols
                 if resume:
-                    sols_to_run = [s for s in sols if (wl.uuid, s.name) not in existing_traces]
+                    sols_to_run = [
+                        s for s in sols if (workload.uuid, s.name) not in existing_traces
+                    ]
 
                 if not sols_to_run:
-                    logger.info(f"All solutions already evaluated for workload {wl.uuid}")
+                    logger.info(f"All solutions already evaluated for workload {workload.uuid}")
                     continue
 
                 try:
                     results = self._runner.run_workload(
-                        definition, wl, sols_to_run, self._config, self._trace_set.root
+                        definition, workload, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
-                    logger.error(f"Failed to run workload {wl.uuid}: {e}")
+                    logger.error(f"Failed to run workload {workload.uuid}: {e}")
                     continue
 
                 for sol_name, ev in results.items():
                     trace = Trace(
-                        definition=def_name, workload=wl, solution=sol_name, evaluation=ev
+                        definition=def_name, workload=workload, solution=sol_name, evaluation=ev
                     )
 
                     result_traces.append(trace)
@@ -144,12 +146,12 @@ class Benchmark:
 
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"Solution '{sol_name}' for workload {workload.uuid}: PASSED with "
                             f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         logger.warning(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
+                            f"Solution '{sol_name}' for workload {workload.uuid}: {ev.status.value}"
                         )
 
             if dump_traces and def_traces:

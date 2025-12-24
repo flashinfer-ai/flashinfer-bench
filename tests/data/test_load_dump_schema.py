@@ -47,7 +47,7 @@ def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
         ),
         sources=[SourceFile(path="main.py", content="def run():\n    pass\n")],
     )
-    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w1")
+    workload = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w1")
     ev = Evaluation(
         status=EvaluationStatus.PASSED,
         log="log",
@@ -56,7 +56,7 @@ def make_minimal_objects() -> Tuple[Definition, Solution, Trace]:
         correctness=Correctness(),
         performance=Performance(),
     )
-    t = Trace(definition="d1", workload=wl, solution="s1", evaluation=ev)
+    t = Trace(definition="d1", workload=workload, solution="s1", evaluation=ev)
     return d, s, t
 
 
@@ -71,8 +71,8 @@ def test_roundtrip_to_from_json():
 
 
 def test_preserve_null_fields_in_trace_json():
-    wl = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w2")
-    t = Trace(definition="d1", workload=wl)  # workload-only
+    workload = Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="w2")
+    t = Trace(definition="d1", workload=workload)  # workload-only
     obj = t.model_dump(mode="json")
     # solution and evaluation must be present and null
     assert "solution" in obj and obj["solution"] is None

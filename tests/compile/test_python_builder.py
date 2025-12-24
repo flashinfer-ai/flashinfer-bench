@@ -41,6 +41,7 @@ def test_python_builder_minimum():
             language=SupportedLanguages.PYTHON,
             target_hardware=["cpu"],
             entry_point="pkg/main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="pkg/main.py", content="def run(A, B):\n    return A")],
     )
@@ -51,7 +52,7 @@ def test_python_builder_minimum():
     # Call runnable with torch tensors
     A = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
     B = torch.tensor([[0, 0], [0, 0]], dtype=torch.float32)
-    out = runnable(A=A, B=B)
+    out = runnable(A, B)
     assert torch.allclose(out, A)
 
 
@@ -72,7 +73,10 @@ def test_python_builder_add():
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(
@@ -90,7 +94,7 @@ def run(X: torch.Tensor, Y: torch.Tensor):
     runnable = builder.build(definition, solution)
     X = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
     Y = torch.tensor([[5, 6], [7, 8]], dtype=torch.float32)
-    out = runnable(X=X, Y=Y)
+    out = runnable(X, Y)
     expected = torch.tensor([[6, 8], [10, 12]], dtype=torch.float32)
     assert torch.allclose(out, expected)
 

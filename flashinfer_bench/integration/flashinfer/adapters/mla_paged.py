@@ -143,7 +143,7 @@ class MLAPagedAdapter:
                     )
 
                 if is_decode:
-                    rk: Dict[str, Any] = {
+                    kwargs: Dict[str, Any] = {
                         "q_nope": q_nope,
                         "q_pe": q_pe,
                         "ckv_cache": ckv_cache,
@@ -153,7 +153,7 @@ class MLAPagedAdapter:
                         "sm_scale": sm_scale,
                     }
                 else:
-                    rk = {
+                    kwargs = {
                         "q_nope": q_nope,
                         "q_pe": q_pe,
                         "ckv_cache": ckv_cache,
@@ -167,7 +167,7 @@ class MLAPagedAdapter:
                 def _fb(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(def_name, kwargs=kwargs, fallback=_fb)
 
                 output = None
                 lse = None

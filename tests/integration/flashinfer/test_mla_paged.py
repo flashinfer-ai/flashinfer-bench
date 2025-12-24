@@ -114,7 +114,10 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_decode,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(
@@ -272,7 +275,10 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_prefill,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(

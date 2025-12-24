@@ -25,9 +25,7 @@ from flashinfer_bench.data import (
 )
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
+@pytest.mark.requires_torch_cuda
 def test_run_all_empty_traceset(tmp_path: Path):
     """Test run_all with completely empty trace set."""
     trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
@@ -41,9 +39,7 @@ def test_run_all_empty_traceset(tmp_path: Path):
     assert len(result.traces) == 0
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
+@pytest.mark.requires_torch_cuda
 def test_run_all_no_solutions(tmp_path: Path, caplog):
     """Test run_all with definitions but no solutions."""
     # Create definition
@@ -76,9 +72,7 @@ def test_run_all_no_solutions(tmp_path: Path, caplog):
     assert len(result.traces) == 0
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
+@pytest.mark.requires_torch_cuda
 def test_run_all_no_workloads(tmp_path: Path):
     """Test run_all with definitions and solutions but no workloads."""
     # Create definition
@@ -118,9 +112,7 @@ def test_run_all_no_workloads(tmp_path: Path):
     assert len(result.traces) == 0
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
+@pytest.mark.requires_torch_cuda
 def test_dump_traces_false(tmp_path: Path):
     """Test run_all with dump_traces=False."""
     trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
@@ -186,10 +178,8 @@ def test_isolated_runner_runtime_error(mock_runner_class, tmp_path: Path, caplog
     assert len(result.traces) == 0
 
 
-@pytest.mark.skipif(
-    __import__("torch").cuda.device_count() == 0, reason="CUDA devices not available"
-)
-def test_benchmark_with_mixed_results(tmp_path: Path):
+@pytest.mark.requires_torch_cuda
+def test_benchmark_with_mixed_results(tmp_path: Path, tmp_cache_dir: Path):
     """Test benchmark with solutions that have different outcomes."""
     # Build dataset structure
     (tmp_path / "definitions").mkdir(parents=True)
@@ -217,6 +207,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="correct.py::run",
+                destination_passing_style=False,
             ),
             sources=[
                 SourceFile(
@@ -232,6 +223,7 @@ def test_benchmark_with_mixed_results(tmp_path: Path):
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="wrong.py::run",
+                destination_passing_style=False,
             ),
             sources=[
                 SourceFile(

@@ -55,7 +55,7 @@ class RMSNormAdapter:
             def _fb(**_rk):
                 return orig(*args, **kwargs)
 
-            ret = apply(def_name, runtime_kwargs=rk, fallback=_fb)
+            ret = apply(def_name, kwargs=rk, fallback=_fb)
             return ret
 
         return wrapper

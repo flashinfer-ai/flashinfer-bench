@@ -118,7 +118,7 @@ def test_cpu_add_one() -> None:
     # Test execution with torch tensors - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
     output_tensor = torch.empty_like(input_tensor)
-    runnable(x=input_tensor, output=output_tensor)
+    runnable(input_tensor, output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0
@@ -149,7 +149,7 @@ def test_cuda_add_one() -> None:
     n = 1024
     input_tensor = torch.randn(n, device="cuda", dtype=torch.float32)
     output_tensor = torch.empty_like(input_tensor)
-    runnable(x=input_tensor, output=output_tensor)
+    runnable(input_tensor, output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0
@@ -236,8 +236,8 @@ def test_caching_cpu() -> None:
 
     output1 = torch.empty_like(input_tensor)
     output2 = torch.empty_like(input_tensor)
-    runnable1(x=input_tensor, output=output1)
-    runnable2(x=input_tensor, output=output2)
+    runnable1(input_tensor, output1)
+    runnable2(input_tensor, output2)
 
     torch.testing.assert_close(output1, output2, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(output1, input_tensor + 1.0, rtol=1e-5, atol=1e-5)
@@ -277,8 +277,8 @@ def test_caching_cross_builder() -> None:
 
     output1 = torch.empty_like(input_tensor)
     output2 = torch.empty_like(input_tensor)
-    runnable1(x=input_tensor, output=output1)
-    runnable2(x=input_tensor, output=output2)
+    runnable1(input_tensor, output1)
+    runnable2(input_tensor, output2)
 
     torch.testing.assert_close(output1, output2, rtol=1e-5, atol=1e-5)
     torch.testing.assert_close(output1, input_tensor + 1.0, rtol=1e-5, atol=1e-5)
@@ -308,7 +308,7 @@ def test_call_value_returning() -> None:
     output_tensor = torch.empty_like(input_tensor)
 
     # Call DPS style directly via the runnable (passes both input and output)
-    output_tensor = runnable.call_value_returning(x=input_tensor)
+    output_tensor = runnable.call_value_returning(input_tensor)
 
     # Verify the output tensor was filled correctly
     expected = input_tensor + 1.0
@@ -399,7 +399,7 @@ def test_source_in_subdirectory() -> None:
     # Test execution - TVM FFI functions use positional args and DPS style
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
     output_tensor = torch.empty_like(input_tensor)
-    runnable(x=input_tensor, output=output_tensor)
+    runnable(input_tensor, output_tensor)
 
     # Verify result
     expected = input_tensor + 1.0
@@ -453,7 +453,7 @@ def test_rebuild_after_cleanup() -> None:
     # Verify functionality still works
     input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], device="cpu", dtype=torch.float32)
     output_tensor = torch.empty_like(input_tensor)
-    runnable3(x=input_tensor, output=output_tensor)
+    runnable3(input_tensor, output_tensor)
     torch.testing.assert_close(output_tensor, input_tensor + 1.0, rtol=1e-5, atol=1e-5)
 
 
