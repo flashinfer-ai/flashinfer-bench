@@ -145,8 +145,8 @@ def test_gqa_paged_prefill_adapter_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(ws, kv_layout="NHD")

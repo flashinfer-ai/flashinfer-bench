@@ -34,7 +34,7 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
 
     # Definition
     ref = "def run(a):\n    return a\n"
-    d = Definition(
+    definition = Definition(
         name="d1",
         op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
@@ -42,10 +42,10 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference=ref,
     )
-    save_json_file(d, tmp_path / "definitions" / "d1.json")
+    save_json_file(definition, tmp_path / "definitions" / "d1.json")
 
     # Solutions
-    s1 = Solution(
+    solution1 = Solution(
         name="s1",
         definition="d1",
         author="a",
@@ -54,7 +54,7 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
         ),
         sources=[SourceFile(path="main.py", content="def run():\n    pass\n")],
     )
-    s2 = Solution(
+    solution2 = Solution(
         name="s2",
         definition="d1",
         author="b",
@@ -63,11 +63,11 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
         ),
         sources=[SourceFile(path="main.py", content="def run():\n    pass\n")],
     )
-    save_json_file(s1, tmp_path / "solutions" / "s1.json")
-    save_json_file(s2, tmp_path / "solutions" / "s2.json")
+    save_json_file(solution1, tmp_path / "solutions" / "s1.json")
+    save_json_file(solution2, tmp_path / "solutions" / "s2.json")
 
     # Traces JSONL
-    t_pass = Trace(
+    trace_pass = Trace(
         definition="d1",
         workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="tw1"),
         solution="s1",
@@ -80,7 +80,7 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
             performance=Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0),
         ),
     )
-    t_fail = Trace(
+    trace_fail = Trace(
         definition="d1",
         workload=Workload(axes={"M": 2}, inputs={"A": RandomInput()}, uuid="tw2"),
         solution="s2",
@@ -91,11 +91,11 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
             timestamp="t",
         ),
     )
-    t_workload = Trace(
+    trace_workload = Trace(
         definition="d1", workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3")
     )
-    save_jsonl_file([t_workload], tmp_path / "workloads" / "d1.jsonl")
-    save_jsonl_file([t_pass, t_fail], tmp_path / "traces" / "d1.jsonl")
+    save_jsonl_file([trace_workload], tmp_path / "workloads" / "d1.jsonl")
+    save_jsonl_file([trace_pass, trace_fail], tmp_path / "traces" / "d1.jsonl")
 
     # Load
     trace_set = TraceSet.from_path(str(tmp_path))

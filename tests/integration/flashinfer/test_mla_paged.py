@@ -172,8 +172,8 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     # Decode through adapter
     mla_d = flashinfer.mla.BatchMLAPagedAttentionWrapper(torch.zeros_like(ws))
@@ -332,8 +332,8 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
     assert out_prefill_apply == "__SUB__mla_prefill__"

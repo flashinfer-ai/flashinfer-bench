@@ -52,10 +52,10 @@ class RMSNormAdapter:
                 "weight": weight,
             }
 
-            def _fb(**_rk):
+            def _fallback(**_rk):
                 return orig(*args, **kwargs)
 
-            ret = apply(def_name, kwargs=rk, fallback=_fb)
+            ret = apply(def_name, kwargs=rk, fallback=_fallback)
             return ret
 
         return wrapper
