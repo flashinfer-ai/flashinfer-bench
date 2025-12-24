@@ -100,12 +100,12 @@ def test_apply_table_build_and_match(tmp_path, monkeypatch):
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     d, sols, traces = make_traces()
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path, definitions={"add": d}, solutions={"add": sols}, traces={"add": traces}
     )
 
     cfg = ApplyConfig(aot_ratio=1.0)
-    table = ApplyTable.load_or_build(ts, cfg)
+    table = ApplyTable.load_or_build(trace_set, cfg)
 
     # Build keys for lookup
     builder = ApplyKeyFactory.specialize(d)
@@ -201,8 +201,8 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     save_jsonl_file(traces, ds / "traces" / "add.jsonl")
 
     cfg = ApplyConfig(aot_ratio=0.0, on_miss_policy="use_def_best")
-    ts = TraceSet.from_path(str(ds))
-    table1 = ApplyTable.load_or_build(ts, cfg)
+    trace_set = TraceSet.from_path(str(ds))
+    table1 = ApplyTable.load_or_build(trace_set, cfg)
 
     # Check persisted index file
     apply_dir = _apply_table_dir()
@@ -226,7 +226,7 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     orig_build = ApplyTable._build
     try:
         ApplyTable._build = fail_build  # type: ignore[assignment]
-        table2 = ApplyTable.load_or_build(ts, cfg)
+        table2 = ApplyTable.load_or_build(trace_set, cfg)
     finally:
         ApplyTable._build = orig_build  # type: ignore[assignment]
 

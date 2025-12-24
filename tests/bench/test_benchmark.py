@@ -26,7 +26,7 @@ from flashinfer_bench.data import (
 
 
 @pytest.mark.requires_torch_cuda
-def test_run_all_empty_traceset(tmp_path: Path):
+def test_run_all_empty_trace_set(tmp_path: Path):
     """Test run_all with completely empty trace set."""
     trace_set = TraceSet(root=str(tmp_path), definitions={}, solutions={}, workloads={}, traces={})
 

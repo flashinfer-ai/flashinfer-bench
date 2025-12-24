@@ -131,19 +131,19 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
         ),
     )
 
-    traceset = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name: definition},
         solutions={def_name: [solution]},
         traces={def_name: [trace]},
     )
 
-    # Enable apply with our in-memory traceset
+    # Enable apply with our in-memory trace_set
     workspace_buffer = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    runtime = ApplyRuntime(traceset, ApplyConfig())
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
     set_apply_runtime(runtime)
 
     # New wrapper instance to exercise the patched adapter path

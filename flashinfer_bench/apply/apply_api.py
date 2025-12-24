@@ -191,7 +191,7 @@ def enable_apply(
     Parameters
     ----------
     dataset_path : str, optional
-        Path to the dataset/traceset directory
+        Path to the dataset/trace_set directory
     apply_config : ApplyConfig, optional
         Configuration for the apply runtime
 
@@ -203,14 +203,14 @@ def enable_apply(
     Examples
     --------
     >>> # Direct usage
-    >>> enable_apply("/path/to/traceset", cfg)
+    >>> enable_apply("/path/to/trace_set", cfg)
     >>> # Apply is now enabled
     >>> out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> disable_apply()
     >>> # Apply is now disabled.
 
     >>> # Context manager usage
-    >>> with enable_apply("/path/to/traceset", cfg):
+    >>> with enable_apply("/path/to/trace_set", cfg):
     ...     out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> # Apply is now disabled.
     """

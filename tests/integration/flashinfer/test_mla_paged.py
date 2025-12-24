@@ -144,7 +144,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
         inputs={},
         uuid="wd",
     )
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name_decode: def_decode},
         solutions={def_name_decode: [sol_decode]},
@@ -172,7 +172,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
+    rt = ApplyRuntime(trace_set, ApplyConfig())
     set_apply_runtime(rt)
 
     # Decode through adapter
@@ -304,7 +304,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
         inputs={},
         uuid="wp",
     )
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name_prefill: def_prefill},
         solutions={def_name_prefill: [sol_prefill]},
@@ -332,7 +332,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
+    rt = ApplyRuntime(trace_set, ApplyConfig())
     set_apply_runtime(rt)
 
     out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)

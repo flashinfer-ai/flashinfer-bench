@@ -172,7 +172,7 @@ class Benchmark:
                 logger.warning(f"Solutions not found in trace set: {sorted(missing_sols)}")
 
         # Create a new TraceSet with the results
-        result_traceset = TraceSet(
+        result_trace_set = TraceSet(
             root=self._trace_set.root,
             definitions=self._trace_set.definitions.copy(),
             solutions=self._trace_set.solutions.copy(),
@@ -180,4 +180,4 @@ class Benchmark:
             traces=dict(traces_by_def),
         )
 
-        return result_traceset
+        return result_trace_set

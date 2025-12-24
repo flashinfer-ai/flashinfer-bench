@@ -25,7 +25,7 @@ def enable_tracing(
     Parameters
     ----------
     dataset_path : Optional[str]
-        Path to the dataset/traceset directory. If None, uses the environment
+        Path to the dataset/trace_set directory. If None, uses the environment
         variable FIB_DATASET_PATH or defaults to `~/.cache/flashinfer_bench/dataset`.
     tracing_configs : Optional[Dict[str, TracingConfig]]
         Dictionary mapping definition names to their tracing configurations.
@@ -41,7 +41,7 @@ def enable_tracing(
     --------
     Basic usage with manual disable:
 
-    >>> enable_tracing("/path/to/traceset")
+    >>> enable_tracing("/path/to/trace_set")
     >>> # Tracing is now enabled
     >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     >>> disable_tracing()
@@ -49,7 +49,7 @@ def enable_tracing(
 
     Context manager usage (recommended):
 
-    >>> with enable_tracing("/path/to/traceset"):
+    >>> with enable_tracing("/path/to/trace_set"):
     ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     >>> # Tracing is automatically flushed and disabled
 
@@ -57,7 +57,7 @@ def enable_tracing(
 
     >>> from flashinfer_bench.tracing import TracingConfig
     >>> configs = {"rmsnorm_d4096": TracingConfig(input_dump_policy=["x", "weight"], filter_policy="keep_all")}
-    >>> with enable_tracing("/path/to/traceset", tracing_configs=configs):
+    >>> with enable_tracing("/path/to/trace_set", tracing_configs=configs):
     ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     """
 
@@ -89,7 +89,7 @@ def disable_tracing():
     --------
     Manual disable after enable:
 
-    >>> enable_tracing("/path/to/traceset")
+    >>> enable_tracing("/path/to/trace_set")
     >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
     >>> disable_tracing()
     >>> # Tracing is now disabled and all traces are flushed to disk

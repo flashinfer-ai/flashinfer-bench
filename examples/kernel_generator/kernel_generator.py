@@ -72,7 +72,7 @@ class KernelGenerator:
 
     def generate(
         self,
-        traceset: TraceSet,
+        trace_set: TraceSet,
         definition: Definition,
         gen_rounds: int = 10,
         beam: bool = False,
@@ -82,7 +82,7 @@ class KernelGenerator:
         Generate an optimized solution through iterative improvement using flashinfer-bench feedback.
 
         Args:
-            traceset: The TraceSet containing workloads for evaluation
+            trace_set: The TraceSet containing workloads for evaluation
             definition: The workload definition to implement kernel for
             gen_rounds: Number of generation rounds to run (or search depth if beam=True)
             beam: beam search flag, default to False as it's more expensive to run
@@ -91,7 +91,7 @@ class KernelGenerator:
         Returns:
             Solution: a solution dataclass containing the optimized kernel code
         """
-        workloads = traceset.workloads.get(definition.name, [])
+        workloads = trace_set.workloads.get(definition.name, [])
         if not workloads:
             raise ValueError(
                 f"No workloads found for definition '{definition.name}' in the provided TraceSet"
@@ -104,15 +104,17 @@ class KernelGenerator:
 
         if beam:
             return self._beam_search_generate(
-                traceset, definition, selected_workload, gen_rounds, beam_width
+                trace_set, definition, selected_workload, gen_rounds, beam_width
             )
         else:
             return asyncio.run(
-                self._sequential_generate_async(traceset, definition, selected_workload, gen_rounds)
+                self._sequential_generate_async(
+                    trace_set, definition, selected_workload, gen_rounds
+                )
             )
 
     async def _sequential_generate_async(
-        self, traceset: TraceSet, definition: Definition, selected_workload, gen_rounds: int
+        self, trace_set: TraceSet, definition: Definition, selected_workload, gen_rounds: int
     ) -> Solution:
         prompt = get_prompt(self.language, definition, self.target_gpu)
         code_result = await self._generate_code_from_prompt(prompt)
@@ -129,7 +131,7 @@ class KernelGenerator:
             solution = self._create_solution_from_code(current_code, definition, round_num)
             last_solution = solution
 
-            traces = self._evaluate_solutions(traceset, definition, [solution], selected_workload)
+            traces = self._evaluate_solutions(trace_set, definition, [solution], selected_workload)
             trace = traces[0] if traces else None
             if trace:
                 last_trace = trace
@@ -166,7 +168,7 @@ class KernelGenerator:
 
     def _beam_search_generate(
         self,
-        traceset: TraceSet,
+        trace_set: TraceSet,
         definition: Definition,
         selected_workload,
         depth: int,
@@ -175,13 +177,13 @@ class KernelGenerator:
         print(f"Starting beam search with width={beam_width}, depth={depth}")
         return asyncio.run(
             self._beam_search_generate_async(
-                traceset, definition, selected_workload, depth, beam_width
+                trace_set, definition, selected_workload, depth, beam_width
             )
         )
 
     async def _beam_search_generate_async(
         self,
-        traceset: TraceSet,
+        trace_set: TraceSet,
         definition: Definition,
         selected_workload,
         depth: int,
@@ -207,7 +209,7 @@ class KernelGenerator:
         ]
 
         print(f"Evaluating {len(solutions)} candidates...")
-        traces = self._evaluate_solutions(traceset, definition, solutions, selected_workload)
+        traces = self._evaluate_solutions(trace_set, definition, solutions, selected_workload)
 
         beam = []
         for i, (candidate, solution, trace) in enumerate(
@@ -266,7 +268,7 @@ class KernelGenerator:
             ]
 
             print(f"Evaluating {len(solutions)} expanded candidates...")
-            traces = self._evaluate_solutions(traceset, definition, solutions, selected_workload)
+            traces = self._evaluate_solutions(trace_set, definition, solutions, selected_workload)
 
             new_candidates = []
             for beam_idx, (code_result, solution, trace) in enumerate(
@@ -311,7 +313,7 @@ class KernelGenerator:
 
     def _evaluate_solutions(
         self,
-        traceset: TraceSet,
+        trace_set: TraceSet,
         definition: Definition,
         solutions: List[Solution],
         selected_workload,
@@ -319,18 +321,18 @@ class KernelGenerator:
         if not solutions:
             return []
 
-        temp_traceset = TraceSet(
-            root=traceset.root,
+        temp_trace_set = TraceSet(
+            root=trace_set.root,
             definitions={definition.name: definition},
             solutions={definition.name: solutions},
             workloads={definition.name: [selected_workload]},
             traces={definition.name: []},
         )
 
-        benchmark = Benchmark(temp_traceset, BenchmarkConfig())
-        result_traceset = benchmark.run_all()
+        benchmark = Benchmark(temp_trace_set, BenchmarkConfig())
+        result_trace_set = benchmark.run_all()
 
-        traces = result_traceset.traces.get(definition.name, [])
+        traces = result_trace_set.traces.get(definition.name, [])
 
         trace_map = {trace.solution: trace for trace in traces}
         return [trace_map.get(sol.name) for sol in solutions]

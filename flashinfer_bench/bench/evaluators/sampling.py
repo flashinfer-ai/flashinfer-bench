@@ -54,11 +54,11 @@ class SamplingEvaluator(DefaultEvaluator):
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
-        traceset_root: Optional[Path] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> DeviceBaseline:
         ref_runnable = BuilderRegistry.get_instance().build_reference(definition)
         loaded_safe_tensors = (
-            load_safetensors(definition, workload, traceset_root)
+            load_safetensors(definition, workload, trace_set_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )

@@ -17,7 +17,7 @@ load_dotenv()
 
 def main():
     """
-    Generate optimized solutions for all definitions in the traceset.
+    Generate optimized solutions for all definitions in the trace_set.
     """
     # TODO: select model, language, target gpu, definition
     model_name = "gpt-5-2025-08-07"  # Choose author-model
@@ -25,17 +25,17 @@ def main():
     target_gpu = "B200"  # Choose solution target GPU
     target_definition_name = ""  # Leave empty to generate solutions for all definitions
 
-    # TODO: adjust local path to traceset
-    traceset_path = "/path/to/flashinfer-trace"
+    # TODO: adjust local path to trace_set
+    trace_set_path = "/path/to/flashinfer-trace"
 
-    print(f"Loading TraceSet from: {traceset_path}")
-    traceset = TraceSet.from_path(traceset_path)
+    print(f"Loading TraceSet from: {trace_set_path}")
+    trace_set = TraceSet.from_path(trace_set_path)
 
-    all_definitions = list(traceset.definitions.keys())
+    all_definitions = list(trace_set.definitions.keys())
 
     if not all_definitions:
-        print(f"Error: No definitions found in traceset at '{traceset_path}'.")
-        print("Please ensure `traceset_path` points to a valid flashinfer-trace directory.")
+        print(f"Error: No definitions found in trace_set at '{trace_set_path}'.")
+        print("Please ensure `trace_set_path` points to a valid flashinfer-trace directory.")
         return
 
     if target_definition_name:
@@ -43,7 +43,7 @@ def main():
             all_definitions = [target_definition_name]
             print(f"Generating solution {target_definition_name}")
         else:
-            print(f"Definition '{target_definition_name}' not found in traceset")
+            print(f"Definition '{target_definition_name}' not found in trace_set")
             return
 
     print(f"Found {len(all_definitions)} definitions to generate solutions")
@@ -74,12 +74,12 @@ def main():
     print(f"{'='*60}")
 
     for idx, definition_name in enumerate(all_definitions, 1):
-        definition = traceset.definitions[definition_name]
+        definition = trace_set.definitions[definition_name]
 
         print(f"\n[{idx}/{total_definitions}] Processing definition: {definition_name}")
         print(f"Definition type: {definition.op_type}")
 
-        workloads = traceset.workloads.get(definition_name, [])
+        workloads = trace_set.workloads.get(definition_name, [])
         if not workloads:
             print(f"No workloads found for definition '{definition_name}' - SKIPPING")
             failed_generations += 1
@@ -95,7 +95,7 @@ def main():
                 print(f"\nAttempt {attempt}/{max_attempts} for {definition_name}")
 
                 solution = generator.generate(
-                    traceset=traceset,
+                    trace_set=trace_set,
                     definition=definition,
                     gen_rounds=10,  # For our baseline, we used 10 rounds
                     # TODO: uncomment bellow to use beam search
@@ -119,7 +119,7 @@ def main():
             try:
                 # Create directory structure: solutions/definition-type/definition-name/
                 solutions_dir = (
-                    Path(traceset_path) / "solutions" / definition.op_type / definition_name
+                    Path(trace_set_path) / "solutions" / definition.op_type / definition_name
                 )
                 solutions_dir.mkdir(parents=True, exist_ok=True)
 

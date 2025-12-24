@@ -26,7 +26,7 @@ from flashinfer_bench.data import (
 )
 
 
-def test_traceset_from_path_and_queries(tmp_path: Path):
+def test_trace_set_from_path_and_queries(tmp_path: Path):
     # Create directory structure
     (tmp_path / "definitions").mkdir()
     (tmp_path / "solutions").mkdir()
@@ -98,20 +98,20 @@ def test_traceset_from_path_and_queries(tmp_path: Path):
     save_jsonl_file([t_pass, t_fail], tmp_path / "traces" / "d1.jsonl")
 
     # Load
-    ts = TraceSet.from_path(str(tmp_path))
+    trace_set = TraceSet.from_path(str(tmp_path))
 
     # Queries
-    assert ts.definitions.get("d1").name == "d1"
-    assert ts.get_solution("s1").name == "s1"
-    assert len(ts.workloads.get("d1", [])) == 1
-    assert len(ts.traces.get("d1", [])) == 2  # pass + fail
+    assert trace_set.definitions.get("d1").name == "d1"
+    assert trace_set.get_solution("s1").name == "s1"
+    assert len(trace_set.workloads.get("d1", [])) == 1
+    assert len(trace_set.traces.get("d1", [])) == 2  # pass + fail
 
     # Best trace should pick the passed one with higher speedup
-    best = ts.get_best_trace("d1", axes={"M": 2})
+    best = trace_set.get_best_trace("d1", axes={"M": 2})
     assert best is not None and best.solution == "s1"
 
     # Summary
-    summary = ts.summary()
+    summary = trace_set.summary()
     assert summary["total"] == 2
     assert summary["passed"] == 1
     assert summary["failed"] == 1

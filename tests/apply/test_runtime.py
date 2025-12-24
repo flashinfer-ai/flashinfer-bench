@@ -35,7 +35,7 @@ class FakeTensor:
 
 
 def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
-    d = Definition(
+    definition = Definition(
         name="add",
         op_type="op",
         axes={"M": AxisVar(), "N": AxisConst(value=2)},
@@ -46,7 +46,7 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    sol1 = Solution(
+    solution1 = Solution(
         name="add_fast",
         definition="add",
         author="t",
@@ -58,7 +58,7 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
     )
-    sol2 = Solution(
+    solution2 = Solution(
         name="add_slow",
         definition="add",
         author="t",
@@ -70,7 +70,7 @@ def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
     )
-    return d, sol1, sol2
+    return definition, solution1, solution2
 
 
 def make_eval(speedup: float) -> Evaluation:
@@ -87,20 +87,28 @@ def make_eval(speedup: float) -> Evaluation:
 
 
 def make_traces() -> Tuple[Definition, TraceSet]:
-    d, s1, s2 = make_def_and_solutions()
-    wl2 = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w2")
-    wl3 = Workload(axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w3")
-    t21 = Trace(definition="add", workload=wl2, solution="add_fast", evaluation=make_eval(3.0))
-    t22 = Trace(definition="add", workload=wl2, solution="add_slow", evaluation=make_eval(1.2))
-    t31 = Trace(definition="add", workload=wl3, solution="add_fast", evaluation=make_eval(0.9))
-    t32 = Trace(definition="add", workload=wl3, solution="add_slow", evaluation=make_eval(2.5))
-    ts = TraceSet(
-        root=None,
-        definitions={"add": d},
-        solutions={"add": [s1, s2]},
-        traces={"add": [t21, t22, t31, t32]},
+    definition, solution1, solution2 = make_def_and_solutions()
+    workload2 = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w2")
+    workload3 = Workload(axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w3")
+    trace21 = Trace(
+        definition="add", workload=workload2, solution="add_fast", evaluation=make_eval(3.0)
     )
-    return d, ts
+    trace22 = Trace(
+        definition="add", workload=workload2, solution="add_slow", evaluation=make_eval(1.2)
+    )
+    trace31 = Trace(
+        definition="add", workload=workload3, solution="add_fast", evaluation=make_eval(0.9)
+    )
+    trace32 = Trace(
+        definition="add", workload=workload3, solution="add_slow", evaluation=make_eval(2.5)
+    )
+    trace_set = TraceSet(
+        root=None,
+        definitions={"add": definition},
+        solutions={"add": [solution1, solution2]},
+        traces={"add": [trace21, trace22, trace31, trace32]},
+    )
+    return definition, trace_set
 
 
 def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -108,8 +116,8 @@ def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.Monke
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-    d, ts = make_traces()
-    rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+    d, trace_set = make_traces()
+    rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
     set_apply_runtime(rt)
 
     # Test with positional args (VR style)
@@ -145,9 +153,9 @@ def test_runtime_dispatch_def_best_policy_without_fallback(
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-    d, ts = make_traces()
+    d, trace_set = make_traces()
     # Choose def_best when miss
-    rt = ApplyRuntime(ts, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
+    rt = ApplyRuntime(trace_set, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
 
     # Miss should use def_best; our setup has both solution names ranked; accept either
     out = rt.dispatch(
@@ -163,8 +171,8 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-    d, ts = make_traces()
-    rt = ApplyRuntime(ts, ApplyConfig())
+    d, trace_set = make_traces()
+    rt = ApplyRuntime(trace_set, ApplyConfig())
 
     with pytest.raises(RuntimeError):
         rt.dispatch(
@@ -253,10 +261,10 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
     ]
     save_jsonl_file(traces, ds / "traces" / "add.jsonl")
 
-    ts = TraceSet.from_path(str(ds))
+    trace_set = TraceSet.from_path(str(ds))
 
     # Avoid AOT to simplify counting builder invocations
-    rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=0.0))
+    rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=0.0))
     set_apply_runtime(rt)
 
     # Patch PythonBuilder._build to count actual builds
@@ -302,8 +310,8 @@ class TestDispatchArgsKwargs:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         # Partial positional args with kwargs
         out = rt.dispatch(
@@ -320,8 +328,8 @@ class TestDispatchArgsKwargs:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         out = rt.dispatch(
             "add",
@@ -337,8 +345,8 @@ class TestDispatchArgsKwargs:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         # Only 1 arg when definition expects 2 inputs (VR) or 3 (DPS)
         with pytest.raises(ValueError):
@@ -354,8 +362,8 @@ class TestDispatchCallingConvention:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         # 2 args = 2 inputs -> VR style
         out = rt.dispatch(
@@ -426,13 +434,13 @@ def make_dps_traces() -> Tuple[Definition, TraceSet]:
     t32 = Trace(
         definition="add_dps", workload=wl3, solution="add_dps_slow", evaluation=make_eval(2.5)
     )
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=None,
         definitions={"add_dps": d},
         solutions={"add_dps": [s1, s2]},
         traces={"add_dps": [t21, t22, t31, t32]},
     )
-    return d, ts
+    return d, trace_set
 
 
 class FakeTensorWithFill:
@@ -455,8 +463,8 @@ class TestDispatchDPSStyle:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_dps_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_dps_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         X = FakeTensorWithFill((2, 2))
         Y = FakeTensorWithFill((2, 2))
@@ -476,8 +484,8 @@ class TestDispatchDPSStyle:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_dps_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_dps_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         X = FakeTensorWithFill((2, 2))
         Y = FakeTensorWithFill((2, 2))
@@ -495,8 +503,8 @@ class TestDispatchDPSStyle:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_dps_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(aot_ratio=1.0))
+        d, trace_set = make_dps_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
 
         X = FakeTensorWithFill((99, 2))  # M=99 not in traces
         Y = FakeTensorWithFill((99, 2))
@@ -519,8 +527,8 @@ class TestDispatchDPSStyle:
         cache_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-        d, ts = make_dps_traces()
-        rt = ApplyRuntime(ts, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
+        d, trace_set = make_dps_traces()
+        rt = ApplyRuntime(trace_set, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
 
         X = FakeTensorWithFill((100, 2))  # M=100 not in traces
         Y = FakeTensorWithFill((100, 2))

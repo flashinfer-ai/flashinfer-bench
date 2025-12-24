@@ -33,7 +33,7 @@ class Evaluator(ABC):
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
-        traceset_root: Optional[Path] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> DeviceBaseline: ...
 
     @classmethod
