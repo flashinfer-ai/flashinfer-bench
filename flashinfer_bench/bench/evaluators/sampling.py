@@ -89,7 +89,7 @@ class SamplingEvaluator(DefaultEvaluator):
 
             mean_latency_ms = sum(latencies) / float(len(latencies))
         else:
-            main_latency_ms = 0.0
+            mean_latency_ms = 0.0
 
         handle = BaselineHandle(uuid.uuid4().hex)
 
