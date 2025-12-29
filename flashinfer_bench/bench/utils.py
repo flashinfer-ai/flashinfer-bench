@@ -166,7 +166,7 @@ def compute_frequency_distribution(
 
 
 def load_safetensors(
-    definition: Definition, workload: Workload, traceset_root: Optional[Path] = None
+    definition: Definition, workload: Workload, trace_set_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
     try:
         import safetensors.torch as st
@@ -183,8 +183,8 @@ def load_safetensors(
             continue
 
         path = input_spec.path
-        if traceset_root is not None and not Path(path).is_absolute():
-            path = str(traceset_root / path)
+        if trace_set_root is not None and not Path(path).is_absolute():
+            path = str(trace_set_root / path)
 
         tensors = st.load_file(path)
         if input_spec.tensor_key not in tensors:

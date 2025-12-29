@@ -164,10 +164,10 @@ class MLAPagedAdapter:
                         "sm_scale": sm_scale,
                     }
 
-                def _fb(**_rk):
+                def _fallback(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(def_name, kwargs=kwargs, fallback=_fb)
+                ret = apply(def_name, kwargs=kwargs, fallback=_fallback)
 
                 output = None
                 lse = None

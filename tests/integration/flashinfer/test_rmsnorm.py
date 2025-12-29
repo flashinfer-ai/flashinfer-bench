@@ -112,8 +112,8 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     # Call the function in the real flashinfer package; adapter should patch it
     out = flashinfer.norm.fused_add_rmsnorm(inp, res, w)

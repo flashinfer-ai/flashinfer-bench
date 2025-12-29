@@ -248,7 +248,7 @@ class PersistentSubprocessWorker:
         definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
-        traceset_root: Optional[Path] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> BaselineHandle:
         evaluator_cls = resolve_evaluator(definition)
         baseline = evaluator_cls.build_baseline(
@@ -256,7 +256,7 @@ class PersistentSubprocessWorker:
             workload=workload,
             cfg=cfg,
             device=self._device,
-            traceset_root=traceset_root,
+            trace_set_root=trace_set_root,
         )
         self._baselines[baseline.handle] = baseline
         return baseline.handle

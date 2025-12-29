@@ -29,18 +29,18 @@ def make_minimal_def() -> Definition:
 
 
 def test_applykey_json_roundtrip():
-    k = ApplyKey(axes=(("M", 2), ("N", 4)), feats=(("avg", 1.5), ("flag", True)))
-    s = k.model_dump_json()
+    key = ApplyKey(axes=(("M", 2), ("N", 4)), feats=(("avg", 1.5), ("flag", True)))
+    serialized = key.model_dump_json()
     # ensure stable json
-    json.loads(s)
-    k2 = ApplyKey.model_validate_json(s)
-    assert k2 == k
-    assert hash(k2) == hash(k)
+    json.loads(serialized)
+    key2 = ApplyKey.model_validate_json(serialized)
+    assert key2 == key
+    assert hash(key2) == hash(key)
 
 
 def test_axes_only_key_builder_materializes_axes():
-    d = make_minimal_def()
-    builder = ApplyKeyFactory.specialize(d)
+    definition = make_minimal_def()
+    builder = ApplyKeyFactory.specialize(definition)
 
     # Valid runtime args (positional)
     key = builder.build_from_args((FakeTensor((4, 2)), FakeTensor((4, 2))))

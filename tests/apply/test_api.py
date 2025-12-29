@@ -50,11 +50,11 @@ def teardown_module(module):
 def test_apply_imperative_when_disabled_calls_fallback():
     set_apply_runtime(None)
 
-    def fb(*args, **kw):
-        return {"fb": True, "args": args, "kw": kw}
+    def fallback(*args, **kw):
+        return {"fallback": True, "args": args, "kw": kw}
 
-    out = apply("some_def", args=(1,), kwargs={"y": 2}, fallback=fb)
-    assert out == {"fb": True, "args": (1,), "kw": {"y": 2}}
+    out = apply("some_def", args=(1,), kwargs={"y": 2}, fallback=fallback)
+    assert out == {"fallback": True, "args": (1,), "kw": {"y": 2}}
 
 
 def test_apply_imperative_raises_without_fallback_when_disabled():
@@ -78,8 +78,8 @@ def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
 
 
 def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
-    rt = DummyRuntime()
-    set_apply_runtime(rt)
+    runtime = DummyRuntime()
+    set_apply_runtime(runtime)
 
     @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):

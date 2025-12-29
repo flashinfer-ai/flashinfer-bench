@@ -8,7 +8,7 @@ from flashinfer_bench.tracing import KeepFirstKPolicy, TracingConfig, TracingRun
 
 
 @pytest.fixture
-def minimal_traceset(tmp_path: Path) -> TraceSet:
+def minimal_trace_set(tmp_path: Path) -> TraceSet:
     """Create a minimal TraceSet for testing."""
     definitions = {
         "def1": Definition(
@@ -31,12 +31,12 @@ def minimal_traceset(tmp_path: Path) -> TraceSet:
     return TraceSet(root=str(tmp_path), definitions=definitions, traces=[])
 
 
-def test_runtime_creates_independent_policies_per_definition(minimal_traceset: TraceSet):
+def test_runtime_creates_independent_policies_per_definition(minimal_trace_set: TraceSet):
     """Test that each definition gets an independent policy instance."""
     config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
-    runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
+    runtime = TracingRuntime(minimal_trace_set, tracing_configs, prev_tracing_runtime=None)
 
     policy1 = runtime._filter_policies["def1"]
     policy2 = runtime._filter_policies["def2"]
@@ -46,12 +46,12 @@ def test_runtime_creates_independent_policies_per_definition(minimal_traceset: T
     assert policy2.k == 2
 
 
-def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
+def test_runtime_policy_state_isolation(minimal_trace_set: TraceSet):
     """Test that policies for different definitions have isolated state."""
     config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config, "def2": config}
 
-    runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
+    runtime = TracingRuntime(minimal_trace_set, tracing_configs, prev_tracing_runtime=None)
 
     # Manually submit entries to policies
     entry1 = WorkloadEntry(def_name="def1", axes={"n": 10}, inputs_to_dump={}, order=0)
@@ -65,13 +65,13 @@ def test_runtime_policy_state_isolation(minimal_traceset: TraceSet):
     assert len(runtime._filter_policies["def2"].entries) == 1
 
 
-def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
+def test_multiple_runtimes_share_config_safely(minimal_trace_set: TraceSet):
     """Test that multiple runtimes can share the same TracingConfig without conflicts."""
     config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
-    runtime1 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
-    runtime2 = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
+    runtime1 = TracingRuntime(minimal_trace_set, tracing_configs, prev_tracing_runtime=None)
+    runtime2 = TracingRuntime(minimal_trace_set, tracing_configs, prev_tracing_runtime=None)
 
     policy1 = runtime1._filter_policies["def1"]
     policy2 = runtime2._filter_policies["def1"]
@@ -86,14 +86,14 @@ def test_multiple_runtimes_share_config_safely(minimal_traceset: TraceSet):
     assert len(policy2.entries) == 0
 
 
-def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
+def test_online_deduplication_on_collect(minimal_trace_set: TraceSet):
     """Test that entries are submitted to filter policy immediately during collect."""
     import torch
 
     config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=2))
     tracing_configs = {"def1": config}
 
-    runtime = TracingRuntime(minimal_traceset, tracing_configs, prev_tracing_runtime=None)
+    runtime = TracingRuntime(minimal_trace_set, tracing_configs, prev_tracing_runtime=None)
 
     # Collect 3 entries, but policy only keeps first 2
     # Using new args/kwargs signature
@@ -113,12 +113,12 @@ def test_online_deduplication_on_collect(minimal_traceset: TraceSet):
 class TestCollectArgsKwargs:
     """Tests for collect with args/kwargs handling."""
 
-    def test_collect_with_positional_args(self, minimal_traceset: TraceSet):
+    def test_collect_with_positional_args(self, minimal_trace_set: TraceSet):
         """Test collect with positional args only."""
         import torch
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(minimal_traceset, {"def1": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(minimal_trace_set, {"def1": config}, prev_tracing_runtime=None)
 
         runtime.collect("def1", args=(torch.zeros(5),), kwargs={})
 
@@ -126,12 +126,12 @@ class TestCollectArgsKwargs:
         assert len(policy.entries) == 1
         assert policy.entries[0].axes == {"n": 5}
 
-    def test_collect_with_kwargs(self, minimal_traceset: TraceSet):
+    def test_collect_with_kwargs(self, minimal_trace_set: TraceSet):
         """Test collect with kwargs."""
         import torch
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(minimal_traceset, {"def1": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(minimal_trace_set, {"def1": config}, prev_tracing_runtime=None)
 
         runtime.collect("def1", args=(), kwargs={"x": torch.zeros(7)})
 
@@ -139,7 +139,7 @@ class TestCollectArgsKwargs:
         assert len(policy.entries) == 1
         assert policy.entries[0].axes == {"n": 7}
 
-    def test_collect_with_mixed_args_kwargs(self, minimal_traceset: TraceSet):
+    def test_collect_with_mixed_args_kwargs(self, minimal_trace_set: TraceSet):
         """Test collect with mixed positional and keyword arguments."""
         import torch
 
@@ -157,10 +157,10 @@ class TestCollectArgsKwargs:
                 reference="def run(x, y):\n    return x + y\n",
             )
         }
-        traceset = TraceSet(root=None, definitions=definitions, traces=[])
+        trace_set = TraceSet(root=None, definitions=definitions, traces=[])
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(traceset, {"multi_input": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(trace_set, {"multi_input": config}, prev_tracing_runtime=None)
 
         # First arg positional, second as kwarg
         runtime.collect("multi_input", args=(torch.zeros(8),), kwargs={"y": torch.zeros(8)})
@@ -173,12 +173,12 @@ class TestCollectArgsKwargs:
 class TestCollectCallingConvention:
     """Tests for collect with different calling conventions."""
 
-    def test_collect_value_returning_style(self, minimal_traceset: TraceSet):
+    def test_collect_value_returning_style(self, minimal_trace_set: TraceSet):
         """Test collect with value-returning style (inputs only)."""
         import torch
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(minimal_traceset, {"def1": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(minimal_trace_set, {"def1": config}, prev_tracing_runtime=None)
 
         # 1 arg = 1 input -> VR style
         runtime.collect("def1", args=(torch.zeros(10),), kwargs={})
@@ -187,12 +187,12 @@ class TestCollectCallingConvention:
         assert len(policy.entries) == 1
         assert policy.entries[0].axes == {"n": 10}
 
-    def test_collect_destination_passing_style(self, minimal_traceset: TraceSet):
+    def test_collect_destination_passing_style(self, minimal_trace_set: TraceSet):
         """Test collect with destination-passing style (inputs + outputs)."""
         import torch
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(minimal_traceset, {"def1": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(minimal_trace_set, {"def1": config}, prev_tracing_runtime=None)
 
         # 2 args = 1 input + 1 output -> DPS style
         # Only the input should be traced
@@ -205,12 +205,12 @@ class TestCollectCallingConvention:
         # Axes should be inferred from input only
         assert policy.entries[0].axes == {"n": 12}
 
-    def test_collect_invalid_arg_count(self, minimal_traceset: TraceSet):
+    def test_collect_invalid_arg_count(self, minimal_trace_set: TraceSet):
         """Test collect logs error for invalid argument count."""
         import torch
 
         config = TracingConfig(input_dump_policy=[], filter_policy=lambda: KeepFirstKPolicy(k=10))
-        runtime = TracingRuntime(minimal_traceset, {"def1": config}, prev_tracing_runtime=None)
+        runtime = TracingRuntime(minimal_trace_set, {"def1": config}, prev_tracing_runtime=None)
 
         # 3 args when definition expects 1 input (VR) or 2 (DPS)
         # Should log error and return without adding entry

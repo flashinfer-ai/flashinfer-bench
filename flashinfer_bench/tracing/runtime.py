@@ -40,7 +40,7 @@ class TracingRuntime:
         Parameters
         ----------
         dataset_path : Optional[str]
-            Path to the dataset/traceset directory. Default is the environment variable
+            Path to the dataset/trace_set directory. Default is the environment variable
             FIB_DATASET_PATH if it exists, or `~/.cache/flashinfer_bench/dataset`.
         tracing_configs : Optional[Dict[str, TracingConfig]]
             A set of tracing configs. Default is `fib.tracing.builtin_config.fib_full_tracing`.
