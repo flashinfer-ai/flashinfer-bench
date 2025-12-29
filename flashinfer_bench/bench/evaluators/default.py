@@ -63,12 +63,15 @@ class DefaultEvaluator(Evaluator):
             torch.cuda.synchronize(device)
             outputs.append(normalize_result(definition, result, device))
 
-        latencies: List[float] = []
-        for inp in inputs:
-            ms = time_runnable(ref_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
-            latencies.append(ms)
+        if cfg.profile_baseline:
+            latencies: List[float] = []
+            for inp in inputs:
+                ms = time_runnable(ref_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
+                latencies.append(ms)
 
-        mean_latency_ms = sum(latencies) / float(len(latencies))
+            mean_latency_ms = sum(latencies) / float(len(latencies))
+        else:
+            main_latency_ms = 0.0
 
         handle = BaselineHandle(uuid.uuid4().hex)
 
