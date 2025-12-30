@@ -49,3 +49,4 @@ tmp/
 AGENTS.md
 
 .env
+.coverage

@@ -1,3 +1,6 @@
+import flashinfer
+import torch
+
 from flashinfer_bench.apply import ApplyConfig, enable_apply
 from flashinfer_bench.data import (
     BuildSpec,
@@ -16,11 +19,11 @@ from flashinfer_bench.data import (
     Workload,
 )
 
-ts = TraceSet.from_path("../flashinfer-trace")  # path to your flashinfer-trace
+trace_set = TraceSet.from_path("../flashinfer-trace")  # path to your flashinfer-trace
 
 # Add a pseudo solution with an unrealistically large speedup so it gets selected
 def_name = "gqa_paged_prefill_causal_h32_kv8_d128_ps1"
-if def_name in ts.definitions:
+if def_name in trace_set.definitions:
     pseudo_code = (
         "import torch\n\n"
         "def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):\n"
@@ -36,7 +39,7 @@ if def_name in ts.definitions:
         definition=def_name,
         author="pseudo",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="main.py::run"
         ),
         sources=[SourceFile(path="main.py", content=pseudo_code)],
         description="Pseudo solution that prints greeting and returns zero tensors.",
@@ -77,17 +80,13 @@ if def_name in ts.definitions:
         ),
     )
 
-    ts.solutions.setdefault(def_name, []).append(pseudo_sol)
-    ts.traces.setdefault(def_name, []).append(pseudo_trace)
+    trace_set.solutions.setdefault(def_name, []).append(pseudo_sol)
+    trace_set.traces.setdefault(def_name, []).append(pseudo_trace)
 
 # Enable apply against the in-memory augmented trace set
-enable_apply(ts, ApplyConfig(on_miss_policy="use_def_best"))
-
-import flashinfer
+enable_apply(trace_set, ApplyConfig(on_miss_policy="use_def_best"))
 
 # FlashInfer official example
-import torch
-
 num_layers = 32
 num_qo_heads = 32
 num_kv_heads = 8

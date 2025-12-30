@@ -38,7 +38,7 @@ def summary(args: argparse.Namespace):
         logger.info("%s", trace_set.summary())
 
 
-def merge_tracesets(trace_sets):
+def merge_trace_sets(trace_sets):
     """Merge multiple TraceSets into one, raising on definition conflicts."""
     if not trace_sets:
         raise ValueError("No TraceSets to merge.")
@@ -46,47 +46,47 @@ def merge_tracesets(trace_sets):
     from copy import deepcopy
 
     merged = deepcopy(trace_sets[0])
-    for ts in trace_sets[1:]:
+    for trace_set in trace_sets[1:]:
         # Merge definitions
-        for name, definition in ts.definitions.items():
+        for name, definition in trace_set.definitions.items():
             if name in merged.definitions:
                 if merged.definitions[name] != definition:
                     raise ValueError(f"Definition conflict for '{name}' during merge.")
             else:
                 merged.definitions[name] = definition
         # Merge solutions
-        for def_name, solutions in ts.solutions.items():
+        for def_name, solutions in trace_set.solutions.items():
             if def_name not in merged.solutions:
                 merged.solutions[def_name] = []
             merged.solutions[def_name].extend(solutions)
         # Merge workloads
-        for def_name, workloads in ts.workload.items():
+        for def_name, workloads in trace_set.workload.items():
             if def_name not in merged.workload:
                 merged.workload[def_name] = []
             merged.workload[def_name].extend(workloads)
         # Merge traces
-        for def_name, traces in ts.traces.items():
+        for def_name, traces in trace_set.traces.items():
             if def_name not in merged.traces:
                 merged.traces[def_name] = []
             merged.traces[def_name].extend(traces)
     return merged
 
 
-def export_traceset(trace_set, output_dir):
+def export_trace_set(trace_set, output_dir):
     """Export a TraceSet to a directory in the expected structure."""
     output_dir = Path(output_dir)
     (output_dir / "definitions").mkdir(parents=True, exist_ok=True)
     (output_dir / "solutions").mkdir(parents=True, exist_ok=True)
     (output_dir / "traces").mkdir(parents=True, exist_ok=True)
     # Save definitions
-    for defn in trace_set.definitions.values():
-        out_path = output_dir / "definitions" / f"{defn.name}.json"
-        save_json_file(defn, out_path)
+    for definition in trace_set.definitions.values():
+        out_path = output_dir / "definitions" / f"{definition.name}.json"
+        save_json_file(definition, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
-        for sol in solutions:
-            out_path = output_dir / "solutions" / f"{sol.name}.json"
-            save_json_file(sol, out_path)
+        for solution in solutions:
+            out_path = output_dir / "solutions" / f"{solution.name}.json"
+            save_json_file(solution, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
         if workloads:
@@ -104,8 +104,8 @@ def merge(args: argparse.Namespace):
     if not args.output:
         raise ValueError("--output <MERGED_PATH> is required for merge.")
     trace_sets = _load_traces(args)
-    merged = merge_tracesets(trace_sets)
-    export_traceset(merged, args.output)
+    merged = merge_trace_sets(trace_sets)
+    export_trace_set(merged, args.output)
     logger.info(f"Merged {len(trace_sets)} TraceSets and exported to {args.output}")
 
 

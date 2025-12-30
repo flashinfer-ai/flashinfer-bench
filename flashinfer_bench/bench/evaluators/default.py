@@ -2,11 +2,12 @@ import sys
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.evaluators.evaluator import Evaluator
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
 from flashinfer_bench.bench.timing import time_runnable
 from flashinfer_bench.bench.utils import (
@@ -14,62 +15,53 @@ from flashinfer_bench.bench.utils import (
     gen_inputs,
     load_safetensors,
     make_eval,
-    normalize_outputs,
 )
-from flashinfer_bench.compile.registry import get_builder_registry
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data.definition import Definition
-from flashinfer_bench.data.trace import (
+from flashinfer_bench.compile import BuilderRegistry, Runnable
+from flashinfer_bench.data import (
     Correctness,
+    Definition,
     Evaluation,
     EvaluationStatus,
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
-from .evaluator import Evaluator
+from .utils import allocate_outputs, normalize_result
 
 
 class DefaultEvaluator(Evaluator):
     @classmethod
-    def can_evaluate(cls, defn: Definition) -> bool:
+    def can_evaluate(cls, definition: Definition) -> bool:
         return True
 
     @classmethod
     def build_baseline(
         cls,
-        defn: Definition,
+        definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
         device: str,
-        traceset_root: Optional[Path] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> DeviceBaseline:
-        output_dtypes = {k: dtype_str_to_torch_dtype(v.dtype) for k, v in defn.outputs.items()}
-        ref_runnable = get_builder_registry().build_reference(defn)
-        loaded_stensors = (
-            load_safetensors(defn, workload, traceset_root)
+        # Reference is always value-returning style
+        ref_runnable = BuilderRegistry.get_instance().build_reference(definition)
+        loaded_safe_tensors = (
+            load_safetensors(definition, workload, trace_set_root)
             if any(d.type == "safetensors" for d in workload.inputs.values())
             else {}
         )
 
-        inputs: List[Dict[str, Any]] = []
-        outputs: List[Dict[str, torch.Tensor]] = []
+        inputs: List[List[Any]] = []
+        outputs: List[List[torch.Tensor]] = []
 
         for _ in range(cfg.num_trials):
-            inp = gen_inputs(defn, workload, device=device, stensors=loaded_stensors)
+            inp = gen_inputs(definition, workload, device=device, safe_tensors=loaded_safe_tensors)
             inputs.append(inp)
 
             with torch.no_grad():
-                out = ref_runnable(**inp)
+                result = ref_runnable(*inp)
             torch.cuda.synchronize(device)
-            out = normalize_outputs(
-                out,
-                device=device,
-                output_names=list(defn.outputs.keys()),
-                output_dtypes=output_dtypes,
-            )
-            outputs.append(out)
+            outputs.append(normalize_result(definition, result, device))
 
         latencies: List[float] = []
         for inp in inputs:
@@ -82,7 +74,7 @@ class DefaultEvaluator(Evaluator):
 
         return DeviceBaseline(
             handle=handle,
-            defn=defn,
+            definition=definition,
             device=device,
             inputs=inputs,
             outputs=outputs,
@@ -92,60 +84,59 @@ class DefaultEvaluator(Evaluator):
     @classmethod
     def check_correctness(
         cls,
-        defn: Definition,
+        definition: Definition,
         sol_runnable: Runnable,
-        inputs: List[Dict[str, Any]],
-        ref_outputs: List[Dict[str, torch.Tensor]],
+        inputs: List[List[Any]],
+        ref_outputs: List[List[torch.Tensor]],
         cfg: BenchmarkConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
-        output_names = list(ref_outputs[0].keys())
-        output_dtypes = {k: v.dtype for k, v in ref_outputs[0].items()}
-
         max_abs = 0.0
         max_rel = 0.0
         numerical_incorrect = False
+        is_dps = sol_runnable.metadata.destination_passing_style
 
         for trial, inp in enumerate(inputs):
             try:
-                with torch.no_grad():
-                    out = sol_runnable(**inp)
-                torch.cuda.synchronize(device)
+                if is_dps:
+                    # DPS style: allocate outputs and call with them
+                    out = allocate_outputs(definition, inp, device)
+                    with torch.no_grad():
+                        sol_runnable(*inp, *out)
+                    torch.cuda.synchronize(device)
+                else:
+                    # Value-returning style: call and normalize result
+                    with torch.no_grad():
+                        result = sol_runnable(*inp)
+                    torch.cuda.synchronize(device)
+                    out = normalize_result(definition, result, device)
             except Exception:
                 traceback.print_exc()
                 return None, make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR, device=device, log_path=log_path
                 )
 
-            out = normalize_outputs(
-                out, device=device, output_names=output_names, output_dtypes=output_dtypes
-            )
             ref_out = ref_outputs[trial]
 
-            for k in ref_out.keys():
+            for sol_tensor, ref_tensor in zip(out, ref_out):
                 # Shape validation
-                if k not in out:
-                    return None, make_eval(
-                        status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
-                    )
-
-                if tuple(out[k].shape) != tuple(ref_out[k].shape):
+                if tuple(sol_tensor.shape) != tuple(ref_tensor.shape):
                     return None, make_eval(
                         status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
                     )
 
                 # Dtype validation
-                if out[k].dtype != ref_out[k].dtype:
+                if sol_tensor.dtype != ref_tensor.dtype:
                     return None, make_eval(
                         status=EvaluationStatus.INCORRECT_DTYPE, device=device, log_path=log_path
                     )
 
                 # Non-finite values check
                 non_finite_err_val = None
-                if torch.isinf(out[k]).any().item():
+                if torch.isinf(sol_tensor).any().item():
                     non_finite_err_val = float("inf")
-                elif torch.isnan(out[k]).any().item():
+                elif torch.isnan(sol_tensor).any().item():
                     non_finite_err_val = float("nan")
 
                 if non_finite_err_val is not None:
@@ -160,7 +151,7 @@ class DefaultEvaluator(Evaluator):
                     )
 
                 # Compute error statistics
-                abs_err, rel_err, exceeds_tol, _ = compute_error_stats(out[k], ref_out[k], cfg)
+                abs_err, rel_err, exceeds_tol, _ = compute_error_stats(sol_tensor, ref_tensor, cfg)
 
                 if exceeds_tol:
                     numerical_incorrect = True
@@ -183,18 +174,27 @@ class DefaultEvaluator(Evaluator):
     @classmethod
     def eval_performance(
         cls,
+        definition: Definition,
         sol_runnable: Runnable,
-        inputs: List[Dict[str, Any]],
+        inputs: List[List[Any]],
         ref_mean_latency_ms: float,
         cfg: BenchmarkConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Performance, Optional[Evaluation]]:
         sol_latencies: List[float] = []
+        is_dps = sol_runnable.metadata.destination_passing_style
 
         try:
             for inp in inputs:
-                ms = time_runnable(sol_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
+                if is_dps:
+                    # DPS style: allocate outputs and include in args
+                    output_tensors = allocate_outputs(definition, inp, device)
+                    args = list(inp) + output_tensors
+                else:
+                    # Value-returning style
+                    args = list(inp)
+                ms = time_runnable(sol_runnable, args, cfg.warmup_runs, cfg.iterations, device)
                 sol_latencies.append(ms)
         except Exception:
             traceback.print_exc()

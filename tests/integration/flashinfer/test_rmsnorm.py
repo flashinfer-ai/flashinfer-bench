@@ -76,18 +76,21 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
         definition=def_name,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[sol_src],
         description="Tests",
     )
 
-    wl = Workload(
+    workload = Workload(
         axes={"M": B}, inputs={"hidden_states": RandomInput(), "residual": RandomInput()}, uuid="w0"
     )
     trace = Trace(
         definition=def_name,
-        workload=wl,
+        workload=workload,
         solution=solution.name,
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
@@ -99,7 +102,7 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
         ),
     )
 
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name: definition},
         solutions={def_name: [solution]},
@@ -109,8 +112,8 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     # Call the function in the real flashinfer package; adapter should patch it
     out = flashinfer.norm.fused_add_rmsnorm(inp, res, w)

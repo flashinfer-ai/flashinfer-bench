@@ -114,10 +114,10 @@ class GQAPagedDecodeAdapter:
                     "sm_scale": sm_scale,
                 }
 
-                def _fb(**_rk):
+                def _fallback(**_rk):
                     return orig(inst, *args, **kwargs)
 
-                ret = apply(_def_name_resolver, runtime_kwargs=rk, fallback=_fb)
+                ret = apply(_def_name_resolver, kwargs=rk, fallback=_fallback)
 
                 output = None
                 lse = None

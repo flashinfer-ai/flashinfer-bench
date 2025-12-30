@@ -85,15 +85,15 @@ class TestPersistentSubprocessWorker:
         worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_ref")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_ref")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(definition, workload, cfg, None)
 
             assert handle in worker._baselines
             baseline = worker._baselines[handle]
-            assert baseline.defn == d
+            assert baseline.definition == definition
             assert baseline.device == "cuda:0"
             assert len(baseline.inputs) == cfg.num_trials
             assert len(baseline.outputs) == cfg.num_trials
@@ -110,27 +110,32 @@ class TestPersistentSubprocessWorker:
         worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
-                name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
+            solution = Solution(
+                name="test_success",
+                definition=definition.name,
+                author="test",
+                spec=spec,
+                sources=srcs,
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(definition, workload, cfg, None)
 
-            evaluation = worker.run_solution(sol, handle, cfg)
+            evaluation = worker.run_solution(solution, handle, cfg)
 
             assert evaluation.status in {
                 EvaluationStatus.PASSED,
@@ -158,15 +163,16 @@ class TestPersistentSubprocessWorker:
 
         handle = None
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_log")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_log")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             message = "persistent worker log line"
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -179,12 +185,12 @@ class TestPersistentSubprocessWorker:
                     ),
                 )
             ]
-            sol = Solution(
-                name="test_log", definition=d.name, author="test", spec=spec, sources=srcs
+            solution = Solution(
+                name="test_log", definition=definition.name, author="test", spec=spec, sources=srcs
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
-            evaluation = worker.run_solution(sol, handle, cfg)
+            handle = worker.run_ref(definition, workload, cfg, None)
+            evaluation = worker.run_solution(solution, handle, cfg)
 
             assert isinstance(evaluation.log, str)
             assert message in evaluation.log
@@ -221,25 +227,30 @@ class TestPersistentRunner:
         runner = PersistentRunner(logger=logger, log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_sol")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
-                name="test_success", definition=d.name, author="test", spec=spec, sources=srcs
+            solution = Solution(
+                name="test_success",
+                definition=definition.name,
+                author="test",
+                spec=spec,
+                sources=srcs,
             )
 
-            results = runner.run_workload(d, wl, [sol], cfg, Path(tmp_path))
+            results = runner.run_workload(definition, workload, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             assert "test_success" in results
@@ -270,14 +281,15 @@ class TestPersistentRunner:
         runner = PersistentRunner(logger=logger, log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_multi")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_multi")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
 
             solutions = []
@@ -288,12 +300,16 @@ class TestPersistentRunner:
                         content=f"import torch\n\ndef run(A):\n    return A{'+ 0' if i == 0 else '.clone()' if i == 1 else '* 1'}\n",
                     )
                 ]
-                sol = Solution(
-                    name=f"sol_{i}", definition=d.name, author="test", spec=spec, sources=srcs
+                solution = Solution(
+                    name=f"sol_{i}",
+                    definition=definition.name,
+                    author="test",
+                    spec=spec,
+                    sources=srcs,
                 )
-                solutions.append(sol)
+                solutions.append(solution)
 
-            results = runner.run_workload(d, wl, solutions, cfg, Path(tmp_path))
+            results = runner.run_workload(definition, workload, solutions, cfg, Path(tmp_path))
 
             assert len(results) == 3
             for i in range(3):
@@ -319,14 +335,17 @@ class TestPersistentRunner:
         runner = PersistentRunner(logger=logger, log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_compile_error")
+            definition = _simple_def()
+            workload = Workload(
+                axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_compile_error"
+            )
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
@@ -334,11 +353,15 @@ class TestPersistentRunner:
                     content="import nonexistent_module_xyz\n\ndef run(A):\n    return A\n",
                 )
             ]
-            sol = Solution(
-                name="test_error", definition=d.name, author="test", spec=spec, sources=srcs
+            solution = Solution(
+                name="test_error",
+                definition=definition.name,
+                author="test",
+                spec=spec,
+                sources=srcs,
             )
 
-            results = runner.run_workload(d, wl, [sol], cfg, Path(tmp_path))
+            results = runner.run_workload(definition, workload, [solution], cfg, Path(tmp_path))
 
             assert len(results) == 1
             evaluation = results["test_error"]
@@ -358,11 +381,11 @@ class TestPersistentRunner:
         runner = PersistentRunner(logger=logger, log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_empty")
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_empty")
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
-            results = runner.run_workload(d, wl, [], cfg, Path(tmp_path))
+            results = runner.run_workload(definition, workload, [], cfg, Path(tmp_path))
 
             assert len(results) == 0
             assert results == {}
@@ -412,34 +435,41 @@ class TestPersistentRunner:
         worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
 
         try:
-            d = _simple_def()
-            wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_registry_cache")
+            definition = _simple_def()
+            workload = Workload(
+                axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_registry_cache"
+            )
             cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
 
             spec = BuildSpec(
                 language=SupportedLanguages.PYTHON,
-                target_hardware=["gpu"],
+                target_hardware=["cuda"],
                 entry_point="pkg/main.py::run",
+                destination_passing_style=False,
             )
             srcs = [
                 SourceFile(
                     path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
                 )
             ]
-            sol = Solution(
-                name="test_registry", definition=d.name, author="test", spec=spec, sources=srcs
+            solution = Solution(
+                name="test_registry",
+                definition=definition.name,
+                author="test",
+                spec=spec,
+                sources=srcs,
             )
 
-            handle = worker.run_ref(d, wl, cfg, None)
+            handle = worker.run_ref(definition, workload, cfg, None)
 
             import time
 
             start_time = time.time()
-            result1 = worker.run_solution(sol, handle, cfg)
+            result1 = worker.run_solution(solution, handle, cfg)
             first_duration = time.time() - start_time
 
             start_time = time.time()
-            result2 = worker.run_solution(sol, handle, cfg)
+            result2 = worker.run_solution(solution, handle, cfg)
             second_duration = time.time() - start_time
 
             print(f"First run duration: {first_duration:.3f}s")

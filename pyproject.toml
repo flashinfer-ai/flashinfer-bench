@@ -24,7 +24,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-  "torch==2.8.0",
+  "torch>=2.8.0",
   "pydantic>=2.0.0",
   "safetensors>=0.5.0",
   "flashinfer-python>=0.3.1",
@@ -46,7 +46,9 @@ dev = [
   "mypy>=1.0.0",
   "ruff>=0.1.0",
   "pre-commit>=3.0.0",
-  "pydoc-markdown>=4.8.2",
+  # setuptools is required by torch cpp extension, but torch does not declare it
+  # as a dependency on python <= 3.11
+  "setuptools",
 ]
 cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
@@ -56,6 +58,7 @@ flashinfer-bench = "flashinfer_bench.cli.main:cli"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["flashinfer_bench*"]
+
 [tool.setuptools.package-data]
 "flashinfer_bench" = ["py.typed"]
 "flashinfer_bench._deps.cutlass" = ["include/**"]
@@ -94,6 +97,7 @@ strict = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-rA --durations=0 --ignore=3rdparty"
+markers = ["requires_torch_cuda: tests that require torch and CUDA available"]
 
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"

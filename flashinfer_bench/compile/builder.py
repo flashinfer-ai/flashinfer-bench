@@ -1,48 +1,17 @@
+"""Abstract base class for solution builders."""
+
 from __future__ import annotations
 
-import hashlib
-import os
-import re
-import tempfile
+import inspect
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, Optional
+from pathlib import Path
+from typing import Callable, Tuple
 
-from flashinfer_bench.compile.runnable import Runnable
-from flashinfer_bench.data import Definition, Solution, SourceFile
+from flashinfer_bench.data import Definition, Solution
+from flashinfer_bench.env import get_fib_cache_path
 
-
-def write_sources_to_dir(dir: str, sources: list[SourceFile]) -> None:
-    os.makedirs(dir, exist_ok=True)
-    for src in sources:
-        abspath = os.path.join(dir, src.path)
-        os.makedirs(os.path.dirname(abspath), exist_ok=True)
-        with open(abspath, "w", encoding="utf-8") as f:
-            f.write(src.content)
-
-
-def write_sources_to_temp(base: str, sources: list[SourceFile], pkg: Optional[str] = None) -> str:
-    os.makedirs(base, exist_ok=True)
-    tmpdir = tempfile.mkdtemp(dir=base)
-    if pkg:
-        tmpdir = os.path.join(tmpdir, pkg)
-        os.makedirs(tmpdir, exist_ok=True)
-    write_sources_to_dir(tmpdir, sources)
-    return tmpdir
-
-
-def create_pkg_name(sol: Solution, prefix: str = "") -> str:
-    # Normalize the solution name
-    s = re.sub(r"[^0-9a-zA-Z_]", "_", sol.name)
-    if not s or s[0].isdigit():
-        s = "_" + s
-
-    # Hash the sources
-    h = hashlib.sha1()
-    for src in sol.sources:
-        h.update(src.path.encode())
-        h.update(src.content.encode())
-
-    return prefix + s + "_" + h.hexdigest()[:6]
+from .runnable import Runnable
+from .utils import create_package_name
 
 
 class BuildError(RuntimeError):
@@ -50,46 +19,176 @@ class BuildError(RuntimeError):
 
 
 class Builder(ABC):
-    """Builder abstraction: (Definition, Solution) -> Runnable with hidden cache."""
+    """Abstract base class for building solutions into runnable implementations.
 
-    def __init__(self) -> None:
-        self._cache: Dict[str, Runnable] = {}
+    A Builder transforms a (Definition, Solution) pair into a Runnable object, which is an
+    executable implementation of the solution. Different builders handle different programming
+    languages (e.g., Python, CUDA, Triton) and build systems.
+
+    Subclasses must implement all its abstract methods. Expectedly, the concrete builder should
+    operate in the folder `FIB_CACHE_PATH / builder_specific_subfolder / package_name`, where
+    `package_name` is a unique name created from the solution.
+    """
+
+    _package_prefix: str
+    """The prefix to prepend to the package name."""
+
+    _build_dir_name: str
+    """The name of the build subdirectory of the concrete builder."""
+
+    def __init__(self, package_prefix: str, build_dir_name: str) -> None:
+        """Initialize the builder.
+
+        Parameters
+        ----------
+        package_prefix : str
+            The prefix to prepend to the package name. This should be unique for each builder type.
+        build_dir_name : str
+            The name of the build subdirectory of the concrete builder. This should be
+            unique for each builder type.
+        """
+        self._package_prefix = package_prefix
+        self._build_dir_name = build_dir_name
+
+    @staticmethod
+    @abstractmethod
+    def is_available() -> bool:
+        """Check if this builder is available in the current environment.
+
+        Override this method in subclasses to check for specific dependencies
+        (e.g., CUDA, Triton, TVM). The default implementation returns True.
+
+        Returns
+        -------
+        bool
+            True if the builder can be used, False otherwise.
+        """
+        ...
 
     @abstractmethod
     def can_build(self, solution: Solution) -> bool:
-        """Build guard to check if this builder can handle the given solution."""
+        """Check if this builder can handle the given solution.
+
+        Parameters
+        ----------
+        solution : Solution
+            The solution to check.
+
+        Returns
+        -------
+        bool
+            True if this builder can build the solution, False otherwise.
+        """
         ...
 
     @abstractmethod
-    def _build(self, definition: Definition, solution: Solution) -> Runnable:
-        """Perform a real build and return a Runnable; raise BuildError on failure."""
-        ...
-
-    @abstractmethod
-    def _make_closer(self, *args, **kwargs) -> Callable[[], None]:
-        """Factory for a resource closer used by the concrete builder."""
-        ...
-
-    @abstractmethod
-    def _make_key(self, solution: Solution) -> str:
-        """Cache key for a solution."""
-        ...
-
     def build(self, definition: Definition, solution: Solution) -> Runnable:
-        """Public entry with per-solution cache keyed by solution.name."""
-        key = self._make_key(solution)
-        if key in self._cache:
-            return self._cache[key]
-        runnable = self._build(definition, solution)
-        self._cache[key] = runnable
-        return runnable
+        """Build a solution into a runnable implementation.
 
-    def clear_cache(self) -> None:
-        """Close all cached runnables and clear the cache."""
-        for r in list(self._cache.values()):
-            try:
-                r.close()
-            except Exception:
-                # Best-effort cleanup; keep going
-                pass
-        self._cache.clear()
+        This method compiles/loads the solution's source code and returns a Runnable
+        object that can be executed with the interface specified by the definition.
+
+        Parameters
+        ----------
+        definition : Definition
+            The problem definition that specifies the expected interface.
+        solution : Solution
+            The solution implementation to build.
+
+        Returns
+        -------
+        Runnable
+            An executable wrapper around the built implementation.
+
+        Raises
+        ------
+        BuildError
+            If the build fails for any reason (compilation errors, missing dependencies, etc.).
+        """
+        ...
+
+    def _get_package_name_and_build_path(self, solution: Solution) -> Tuple[str, Path]:
+        """Get the package name and build path for the solution. The package name is a unique
+        identifier for the solution with only alphanumeric characters and underscores. The
+        build path is FIB_CACHE_PATH / build_dir_name / package_name.
+
+        Parameters
+        ----------
+        solution : Solution
+            The solution to get the package name and build path for.
+
+        Returns
+        -------
+        Tuple[str, Path]
+            The package name and build path for the solution.
+        """
+        package_name = create_package_name(solution, self._package_prefix)
+        build_path = get_fib_cache_path() / self._build_dir_name / package_name
+        return package_name, build_path
+
+    def _try_validate_signature(
+        self, callable: Callable, definition: Definition, solution: Solution
+    ) -> None:
+        """Try to validate the signature of the callable. It only checks the number of
+        parameters and the return type. If the signature is unavailable, it will skip all checks.
+
+        Parameters
+        ----------
+        callable : Callable
+            The callable to validate.
+        definition : Definition
+            The definition to validate against.
+        solution : Solution
+            The solution to validate against.
+
+        Raises
+        ------
+        BuildError
+            If the signature can be checked and is invalid.
+        """
+
+        # Analyze the signature of the callable (skip all checks if signature unavailable)
+        try:
+            signature = inspect.signature(callable)
+        except (ValueError, TypeError):
+            return
+
+        if solution.spec.destination_passing_style:
+            if len(signature.parameters) != len(definition.inputs) + len(definition.outputs):
+                raise BuildError(
+                    "Destination-passing style callable has incorrect number of "
+                    f"parameters: {len(signature.parameters)} != "
+                    f"{len(definition.inputs) + len(definition.outputs)}"
+                )
+        else:
+            if len(signature.parameters) != len(definition.inputs):
+                raise BuildError(
+                    "Value-returning style callable has incorrect number of "
+                    f"parameters: {len(signature.parameters)} != {len(definition.inputs)}"
+                )
+            # Check return annotation
+            num_outputs = len(definition.outputs)
+            ret_ann = signature.return_annotation
+            if ret_ann is not inspect.Signature.empty:
+                origin = getattr(ret_ann, "__origin__", None)
+                if origin is tuple:
+                    # If returning tuple, length must match num_outputs
+                    args = getattr(ret_ann, "__args__", None)
+                    if args is not None and len(args) != num_outputs:
+                        raise BuildError(
+                            f"Value-returning style callable with {num_outputs} outputs must "
+                            f"return a {num_outputs}-element tuple, got {ret_ann}"
+                        )
+                elif ret_ann is None:
+                    # If return None, num_outputs must be 0
+                    if num_outputs != 0:
+                        raise BuildError(
+                            f"Value-returning style callable with {num_outputs} outputs must "
+                            f"not return None"
+                        )
+                elif num_outputs != 1:
+                    # If returning non-tuple, num_outputs must be 1
+                    raise BuildError(
+                        f"Value-returning style callable returning non-tuple must "
+                        f"only have one output, got {num_outputs}"
+                    )

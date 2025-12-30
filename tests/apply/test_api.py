@@ -31,11 +31,12 @@ class DummyRuntime:
     def __init__(self):
         self.calls = []
 
-    def dispatch(self, def_name, runtime_kwargs, fallback):
-        self.calls.append((def_name, dict(runtime_kwargs), fallback))
+    def dispatch(self, def_name, args, kwargs, fallback):
+        self.calls.append((def_name, args, kwargs, fallback))
         return {
             "def_name": def_name,
-            "kwargs": dict(runtime_kwargs),
+            "args": args,
+            "kwargs": kwargs,
             "fallback_name": getattr(fallback, "__name__", None),
         }
 
@@ -49,17 +50,17 @@ def teardown_module(module):
 def test_apply_imperative_when_disabled_calls_fallback():
     set_apply_runtime(None)
 
-    def fb(**kw):
-        return {"fb": True, "kw": kw}
+    def fallback(*args, **kw):
+        return {"fallback": True, "args": args, "kw": kw}
 
-    out = apply("some_def", runtime_kwargs={"x": 1}, fallback=fb)
-    assert out == {"fb": True, "kw": {"x": 1}}
+    out = apply("some_def", args=(1,), kwargs={"y": 2}, fallback=fallback)
+    assert out == {"fallback": True, "args": (1,), "kw": {"y": 2}}
 
 
 def test_apply_imperative_raises_without_fallback_when_disabled():
     set_apply_runtime(None)
     with pytest.raises(RuntimeError):
-        apply("d", runtime_kwargs={"x": 1}, fallback=None)
+        apply("d", args=(1,), fallback=None)
 
 
 def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
@@ -77,8 +78,8 @@ def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
 
 
 def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
-    rt = DummyRuntime()
-    set_apply_runtime(rt)
+    runtime = DummyRuntime()
+    set_apply_runtime(runtime)
 
     @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):
@@ -88,7 +89,8 @@ def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     out = f(7, b=9)
     # Routed to runtime
     assert out["def_name"] == "sum_7_9"
-    assert out["kwargs"] == {"a": 7, "b": 9}
+    assert out["args"] == (7,)
+    assert out["kwargs"] == {"b": 9}
     # Metadata preserved
     assert f.__name__ == "f"
     assert f.__doc__ == "docstring here"
@@ -98,22 +100,23 @@ def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
 
 
 def test_apply_decorator_merge_conflicts_and_positional_overflow():
-    rt = DummyRuntime()
-    set_apply_runtime(rt)
+    # When runtime is active, args/kwargs are passed directly to runtime.dispatch
+    # so the decorated function's signature checking is bypassed.
+    # This test verifies that when no runtime is present, the original function
+    # signature is enforced.
+    set_apply_runtime(None)
 
     @apply("foo")
     def g(a, b):
         return a + b
 
-    # Too many positional args
+    # Too many positional args - should raise TypeError since fallback is the original function
     with pytest.raises(TypeError):
         g(1, 2, 3)  # type: ignore[misc]
 
     # Duplicate parameter via positional + keyword
     with pytest.raises(TypeError):
         g(1, a=2)  # type: ignore[call-arg]
-    # cleanup
-    set_apply_runtime(None)
 
 
 class FakeTensor:
@@ -161,7 +164,10 @@ def _make_dataset(root: Path) -> None:
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
     )
@@ -170,7 +176,10 @@ def _make_dataset(root: Path) -> None:
         definition="add",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
     )
@@ -183,7 +192,10 @@ def _make_dataset(root: Path) -> None:
         definition="mul",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(A, B):\n    return 'mulfast'\n")],
     )
@@ -192,7 +204,10 @@ def _make_dataset(root: Path) -> None:
         definition="mul",
         author="tester",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(A, B):\n    return 'mulslow'\n")],
     )

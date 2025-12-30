@@ -26,7 +26,6 @@ Examples:
 Notes:
 - If multiple runs exist for the same author within a group, we take the MIN latency for that author in that group.
 - By default, the baseline author ('flashinfer') is EXCLUDED from output curves; use --include-baseline to include it.
-
 """
 
 import argparse
@@ -110,8 +109,8 @@ def collect_runs(paths: Iterable[str], author_map: Dict[str, str]) -> List[Run]:
         try:
             definition = obj["definition"]
             solution = obj["solution"]
-            wl = obj["workload"]
-            uuid = wl["uuid"]
+            workload = obj["workload"]
+            uuid = workload["uuid"]
             evalo = obj["evaluation"]
             status = evalo["status"]
             perf = evalo.get("performance")

@@ -114,7 +114,10 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_decode,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(
@@ -141,7 +144,7 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
         inputs={},
         uuid="wd",
     )
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name_decode: def_decode},
         solutions={def_name_decode: [sol_decode]},
@@ -169,8 +172,8 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     # Decode through adapter
     mla_d = flashinfer.mla.BatchMLAPagedAttentionWrapper(torch.zeros_like(ws))
@@ -272,7 +275,10 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
         definition=def_name_prefill,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[
             SourceFile(
@@ -298,7 +304,7 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
         inputs={},
         uuid="wp",
     )
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name_prefill: def_prefill},
         solutions={def_name_prefill: [sol_prefill]},
@@ -326,8 +332,8 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
     assert out_prefill_apply == "__SUB__mla_prefill__"

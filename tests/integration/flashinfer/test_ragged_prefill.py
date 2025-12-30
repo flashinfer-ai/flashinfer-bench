@@ -88,13 +88,16 @@ def test_ragged_prefill_adapter_substitution(tmp_path, monkeypatch):
         definition=def_name,
         author="ut",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["gpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["gpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[sol_src],
         description="Tests",
     )
 
-    wl = Workload(
+    workload = Workload(
         axes={
             "len_indptr": B + 1,
             "total_q": int(qo_indptr[-1].item()),
@@ -105,7 +108,7 @@ def test_ragged_prefill_adapter_substitution(tmp_path, monkeypatch):
     )
     trace = Trace(
         definition=def_name,
-        workload=wl,
+        workload=workload,
         solution=solution.name,
         evaluation=Evaluation(
             status=EvaluationStatus.PASSED,
@@ -117,7 +120,7 @@ def test_ragged_prefill_adapter_substitution(tmp_path, monkeypatch):
         ),
     )
 
-    ts = TraceSet(
+    trace_set = TraceSet(
         root=tmp_path,
         definitions={def_name: definition},
         solutions={def_name: [solution]},
@@ -127,8 +130,8 @@ def test_ragged_prefill_adapter_substitution(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-    rt = ApplyRuntime(ts, ApplyConfig())
-    set_apply_runtime(rt)
+    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    set_apply_runtime(runtime)
 
     ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchPrefillWithRaggedKVCacheWrapper(ws, kv_layout="NHD")

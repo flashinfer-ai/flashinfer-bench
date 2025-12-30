@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import List
 
-from flashinfer_bench.compile import get_builder_registry
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
 from flashinfer_bench.logging import get_logger
 
@@ -46,7 +46,7 @@ class Benchmark:
             self._runner = PersistentRunner(logger, self._config.log_dir)
 
         # Setup registry
-        self._registry = get_builder_registry()
+        self._registry = BuilderRegistry.get_instance()
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.
@@ -79,8 +79,8 @@ class Benchmark:
         definitions_to_run = self._trace_set.definitions.items()
         if self._config.definitions is not None:
             definitions_to_run = [
-                (name, defn)
-                for name, defn in definitions_to_run
+                (name, definition)
+                for name, definition in definitions_to_run
                 if name in self._config.definitions
             ]
             provided_defs = set(self._config.definitions)
@@ -89,7 +89,7 @@ class Benchmark:
             if missing_defs:
                 logger.warning(f"Definitions not found in trace set: {sorted(missing_defs)}")
 
-        for def_name, defn in definitions_to_run:
+        for def_name, definition in definitions_to_run:
             sols = self._trace_set.solutions.get(def_name, [])
             if not sols:
                 logger.warning(f"No solutions found for def={def_name}, skipping definition")
@@ -116,27 +116,29 @@ class Benchmark:
             def_traces: List[Trace] = []
 
             for wl_trace in workloads:
-                wl = wl_trace.workload
+                workload = wl_trace.workload
 
                 sols_to_run = sols
                 if resume:
-                    sols_to_run = [s for s in sols if (wl.uuid, s.name) not in existing_traces]
+                    sols_to_run = [
+                        s for s in sols if (workload.uuid, s.name) not in existing_traces
+                    ]
 
                 if not sols_to_run:
-                    logger.info(f"All solutions already evaluated for workload {wl.uuid}")
+                    logger.info(f"All solutions already evaluated for workload {workload.uuid}")
                     continue
 
                 try:
                     results = self._runner.run_workload(
-                        defn, wl, sols_to_run, self._config, self._trace_set.root
+                        definition, workload, sols_to_run, self._config, self._trace_set.root
                     )
                 except RuntimeError as e:
-                    logger.error(f"Failed to run workload {wl.uuid}: {e}")
+                    logger.error(f"Failed to run workload {workload.uuid}: {e}")
                     continue
 
                 for sol_name, ev in results.items():
                     trace = Trace(
-                        definition=def_name, workload=wl, solution=sol_name, evaluation=ev
+                        definition=def_name, workload=workload, solution=sol_name, evaluation=ev
                     )
 
                     result_traces.append(trace)
@@ -144,12 +146,12 @@ class Benchmark:
 
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: PASSED with "
+                            f"Solution '{sol_name}' for workload {workload.uuid}: PASSED with "
                             f"{ev.performance.speedup_factor:.2f}x speedup"
                         )
                     else:
                         logger.warning(
-                            f"Solution '{sol_name}' for workload {wl.uuid}: {ev.status.value}"
+                            f"Solution '{sol_name}' for workload {workload.uuid}: {ev.status.value}"
                         )
 
             if dump_traces and def_traces:
@@ -170,7 +172,7 @@ class Benchmark:
                 logger.warning(f"Solutions not found in trace set: {sorted(missing_sols)}")
 
         # Create a new TraceSet with the results
-        result_traceset = TraceSet(
+        result_trace_set = TraceSet(
             root=self._trace_set.root,
             definitions=self._trace_set.definitions.copy(),
             solutions=self._trace_set.solutions.copy(),
@@ -178,4 +180,4 @@ class Benchmark:
             traces=dict(traces_by_def),
         )
 
-        return result_traceset
+        return result_trace_set
