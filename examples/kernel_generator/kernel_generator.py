@@ -31,6 +31,7 @@ class KernelGenerator:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         reasoning_effort: str = "high",  # only used for openai reasoning models
+        use_ffi: bool = True,
     ):
         """
         Args:
@@ -40,11 +41,13 @@ class KernelGenerator:
             api_key: API key (if None, uses LLM_API_KEY environment variable)
             base_url: Base URL for the API (need to provide for non-openai api models)
             reasoning_effort: Reasoning effort for OpenAI reasoning models ("low", "medium", "high", default: "medium")
+            use_ffi: Use FFI bindings when generating CUDA kernels.
         """
         self.model_name = model_name
         self.language = language
         self.target_gpu = target_gpu
         self.reasoning_effort = reasoning_effort
+        self.use_ffi = use_ffi
 
         if api_key is None:
             api_key = os.getenv("LLM_API_KEY")
@@ -116,7 +119,7 @@ class KernelGenerator:
     async def _sequential_generate_async(
         self, trace_set: TraceSet, definition: Definition, selected_workload, gen_rounds: int
     ) -> Solution:
-        prompt = get_prompt(self.language, definition, self.target_gpu)
+        prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
         code_result = await self._generate_code_from_prompt(prompt)
         current_code = code_result["cleaned"]
         current_raw_code = code_result["raw"]
@@ -154,10 +157,10 @@ class KernelGenerator:
 
                 if opt_trace:
                     optimization_prompt = get_optimization_prompt(
-                        self.language, definition, opt_trace, current_raw_code, self.target_gpu
+                        self.language, definition, opt_trace, current_raw_code, self.target_gpu, self.use_ffi
                     )
                 else:
-                    optimization_prompt = get_prompt(self.language, definition, self.target_gpu)
+                    optimization_prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
 
                 print(f"Generating code for round {round_num + 1}...")
                 code_result = await self._generate_code_from_prompt(optimization_prompt)
@@ -191,7 +194,7 @@ class KernelGenerator:
     ) -> Solution:
         passing_solutions: List[Tuple[Solution, Trace]] = []
 
-        prompt = get_prompt(self.language, definition, self.target_gpu)
+        prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
 
         print(f"\nBeam Level 0: Generating {beam_width} initial candidates...")
         code_results = await asyncio.gather(
@@ -252,6 +255,7 @@ class KernelGenerator:
                     beam_item["trace"],
                     beam_item["raw_code"],
                     self.target_gpu,
+                    self.use_ffi,
                 )
                 for beam_item in beam
             ]

@@ -50,6 +50,7 @@ def main():
         api_key=api_key,
         base_url=base_url,
         reasoning_effort="high",
+        use_ffi=True,
     )
 
     print(f"\n{'='*60}")
