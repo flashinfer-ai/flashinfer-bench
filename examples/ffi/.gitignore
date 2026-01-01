@@ -1,0 +1,20 @@
+# CMake build directory
+build/
+
+# Compiled executables
+cpp_example
+
+# Distributed kernels
+distributed/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

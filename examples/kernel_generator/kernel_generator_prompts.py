@@ -1,7 +1,9 @@
 """
 This file contains the prompts for baseline agent generation.
 """
-from flashinfer_bench import Definition, EvaluationStatus, FFI_PROMPT_SIMPLE, Trace
+
+from flashinfer_bench import FFI_PROMPT_SIMPLE, Definition, EvaluationStatus, Trace
+
 
 def _format_definition(definition: Definition) -> str:
     axes_str = "\nAxes:\n"
@@ -317,10 +319,7 @@ Requirements:
 
 
 def get_prompt(
-    language: str, 
-    definition: Definition, 
-    target_gpu: str = "H100", 
-    use_ffi: bool = True
+    language: str, definition: Definition, target_gpu: str = "H100", use_ffi: bool = True
 ) -> str:
     prompts = {"triton": TRITON_PROMPT, "python": PYTHON_PROMPT, "cuda": CUDA_PROMPT}
 

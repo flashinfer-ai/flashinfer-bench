@@ -157,10 +157,17 @@ class KernelGenerator:
 
                 if opt_trace:
                     optimization_prompt = get_optimization_prompt(
-                        self.language, definition, opt_trace, current_raw_code, self.target_gpu, self.use_ffi
+                        self.language,
+                        definition,
+                        opt_trace,
+                        current_raw_code,
+                        self.target_gpu,
+                        self.use_ffi,
                     )
                 else:
-                    optimization_prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
+                    optimization_prompt = get_prompt(
+                        self.language, definition, self.target_gpu, self.use_ffi
+                    )
 
                 print(f"Generating code for round {round_num + 1}...")
                 code_result = await self._generate_code_from_prompt(optimization_prompt)

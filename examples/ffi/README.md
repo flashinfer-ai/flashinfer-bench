@@ -52,9 +52,10 @@ pip install jax[cuda13-local] jax-tvm-ffi
 ```
 
 ### For C++ Example
+- CMake 3.18 or newer
 - CUDA Toolkit
 - TVM-FFI C++ headers and libraries
-- C++17 compatible compiler
+- C++17 compatible compiler (GCC 7+ or Clang 5+)
 
 ## Usage
 
@@ -110,6 +111,10 @@ python pytorch_example.py
 
 **C++:**
 ```bash
+# Build with CMake
+mkdir -p build && cd build
+cmake ..
+cmake --build .
 make run
 ```
 

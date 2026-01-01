@@ -1,11 +1,5 @@
 /**
  * C++ example: Load and run the distributed .so kernel using TVM-FFI C++ API.
- * Build with:
- *   g++ -std=c++17 cpp_example.cc -o cpp_example \
- *       -I/path/to/tvm-ffi/include \
- *       -L/path/to/tvm-ffi/lib \
- *       -ltvm_ffi -lcuda -lcublas \
- *       -Wl,-rpath=/path/to/tvm-ffi/lib
  */
 
  #include <tvm/ffi/container/tensor.h>
