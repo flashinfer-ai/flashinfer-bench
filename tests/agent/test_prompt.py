@@ -148,6 +148,10 @@ def verify_kernel_large_tensor(mod: Module):
 def generate_code_from_model(model_name: str) -> str:
     """Generate CUDA code from the specified model."""
     config = get_model_config(model_name)
+
+    if config["api_key"] is None:
+        pytest.skip(f"API key not available for {config['provider']}")
+
     full_prompt = ELEMENTWISE_ADD_PROMPT + "\n\n" + FFI_PROMPT_SIMPLE
 
     if config["provider"] == "openai":
