@@ -5,8 +5,10 @@ Tests elementwise add kernel generation across multiple models.
 
 import os
 import re
+import sys
 from pathlib import Path
 
+import pytest
 import torch
 import tvm_ffi.cpp
 from dotenv import load_dotenv
@@ -95,129 +97,16 @@ def extract_cuda_code(response: str) -> str:
     return response.strip()
 
 
-def test_kernel(mod: Module, test_name: str) -> bool:
-    """Test the generated kernel with simple test cases."""
-    try:
-        print(f"\n  Running {test_name}...")
-
-        if test_name == "test_small":
-            # Test 1: Small tensor
-            a = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=torch.float32, device="cuda")
-            b = torch.tensor([10.0, 20.0, 30.0, 40.0, 50.0], dtype=torch.float32, device="cuda")
-            c = torch.empty_like(a)
-
-            mod.elementwise_add(a, b, c)
-            expected = a + b
-
-            torch.testing.assert_close(c, expected)
-            print(f"  ✓ {test_name} passed")
-            return True
-
-        elif test_name == "test_large":
-            # Test 2: Larger tensor
-            n = 10000
-            a = torch.randn(n, dtype=torch.float32, device="cuda")
-            b = torch.randn(n, dtype=torch.float32, device="cuda")
-            c = torch.empty_like(a)
-
-            mod.elementwise_add(a, b, c)
-            expected = a + b
-
-            torch.testing.assert_close(c, expected)
-            print(f"  ✓ {test_name} passed")
-            return True
-
-    except Exception as e:
-        print(f"  ✗ {test_name} failed: {e}")
-        return False
+@pytest.fixture
+def output_dir():
+    """Create and return output directory for test results."""
+    dir_path = Path(__file__).parent / "test_results"
+    dir_path.mkdir(exist_ok=True)
+    return dir_path
 
 
-def test_model(model_name: str, output_dir: Path):
-    print(f"\n{'='*80}")
-    print(f"Testing model: {model_name}")
-    print(f"{'='*80}")
-
-    try:
-        config = get_model_config(model_name)
-
-        full_prompt = ELEMENTWISE_ADD_PROMPT + "\n\n" + FFI_PROMPT_SIMPLE
-
-        print(f"Calling {config['provider']} API...")
-        if config["provider"] == "openai":
-            response = call_openai_model(config["model"], config["api_key"], full_prompt)
-        elif config["provider"] == "anthropic":
-            response = call_anthropic_model(config["model"], config["api_key"], full_prompt)
-        else:
-            raise ValueError(f"Unknown provider: {config['provider']}")
-
-        print(f"Received response from {model_name}")
-
-        cuda_code = extract_cuda_code(response)
-        print(f"Extracted {len(cuda_code)} characters of code")
-
-        output_file = output_dir / f"{model_name}.txt"
-        with open(output_file, "w") as f:
-            f.write(f"Model: {model_name}\n")
-            f.write(f"{'='*80}\n\n")
-            f.write("Generated Code:\n")
-            f.write("=" * 80 + "\n")
-            f.write(cuda_code)
-            f.write("\n\n")
-
-        print(f"Saved response to {output_file}")
-
-        try:
-            mod: Module = tvm_ffi.cpp.load_inline(
-                name=f'elementwise_add_{model_name.replace("-", "_")}', cuda_sources=cuda_code
-            )
-            print("Compilation successful!")
-
-            # Run tests
-            print("\nRunning tests...")
-            test1_passed = test_kernel(mod, "test_small")
-            test2_passed = test_kernel(mod, "test_large")
-
-            with open(output_file, "a") as f:
-                f.write("Test Results:\n")
-                f.write("=" * 80 + "\n")
-                f.write("Compilation: SUCCESS\n")
-                f.write(f"Test 1 (small tensor): {'PASS' if test1_passed else 'FAIL'}\n")
-                f.write(f"Test 2 (large tensor): {'PASS' if test2_passed else 'FAIL'}\n")
-
-            all_passed = test1_passed and test2_passed
-            status = "ALL TESTS PASSED" if all_passed else "TESTS FAILED"
-            print(f"\n{status}")
-
-            return {
-                "model": model_name,
-                "compilation": "success",
-                "test_small": test1_passed,
-                "test_large": test2_passed,
-                "all_passed": all_passed,
-            }
-
-        except Exception as e:
-            print(f"Compilation failed: {e}")
-            with open(output_file, "a") as f:
-                f.write("Test Results:\n")
-                f.write("=" * 80 + "\n")
-                f.write("Compilation: FAILED\n")
-                f.write(f"Error: {str(e)}\n")
-
-            return {
-                "model": model_name,
-                "compilation": "failed",
-                "error": str(e),
-                "all_passed": False,
-            }
-
-    except Exception as e:
-        print(f"Error testing {model_name}: {e}")
-        return {"model": model_name, "compilation": "error", "error": str(e), "all_passed": False}
-
-
-def main():
-    models = [
+@pytest.fixture(
+    params=[
         "gpt-5-2025-08-07",
         "o3",
         "claude-opus-4-1-20250805",
@@ -225,37 +114,136 @@ def main():
         "gpt-5-mini-2025-08-07",
         "o4-mini-2025-04-16",
     ]
+)
+def model_name(request):
+    """Parametrize tests across all supported models."""
+    return request.param
 
-    output_dir = Path(__file__).parent / "test_results"
-    output_dir.mkdir(exist_ok=True)
 
-    print("=" * 80)
-    print("Testing LLM FFI Code Generation")
-    print("=" * 80)
-    print(f"Models to test: {len(models)}")
-    print(f"Output directory: {output_dir}")
+def verify_kernel_small_tensor(mod: Module):
+    """Test the generated kernel with small tensor."""
+    a = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0], dtype=torch.float32, device="cuda")
+    b = torch.tensor([10.0, 20.0, 30.0, 40.0, 50.0], dtype=torch.float32, device="cuda")
+    c = torch.empty_like(a)
 
-    results = []
+    mod.elementwise_add(a, b, c)
+    expected = a + b
 
-    for idx, model_name in enumerate(models, 1):
-        print(f"\n[{idx}/{len(models)}] Testing {model_name}...")
-        result = test_model(model_name, output_dir)
-        results.append(result)
+    torch.testing.assert_close(c, expected)
 
+
+def verify_kernel_large_tensor(mod: Module):
+    """Test the generated kernel with large tensor."""
+    n = 10000
+    a = torch.randn(n, dtype=torch.float32, device="cuda")
+    b = torch.randn(n, dtype=torch.float32, device="cuda")
+    c = torch.empty_like(a)
+
+    mod.elementwise_add(a, b, c)
+    expected = a + b
+
+    torch.testing.assert_close(c, expected)
+
+
+def generate_code_from_model(model_name: str) -> str:
+    """Generate CUDA code from the specified model."""
+    config = get_model_config(model_name)
+    full_prompt = ELEMENTWISE_ADD_PROMPT + "\n\n" + FFI_PROMPT_SIMPLE
+
+    if config["provider"] == "openai":
+        response = call_openai_model(config["model"], config["api_key"], full_prompt)
+    elif config["provider"] == "anthropic":
+        response = call_anthropic_model(config["model"], config["api_key"], full_prompt)
+    else:
+        raise ValueError(f"Unknown provider: {config['provider']}")
+
+    return extract_cuda_code(response)
+
+
+def save_test_results(
+    output_file: Path,
+    model_name: str,
+    cuda_code: str,
+    compilation_success: bool,
+    error_msg: str = None,
+    small_tensor_passed: bool = False,
+    large_tensor_passed: bool = False,
+):
+    """Save test results to file."""
+    with open(output_file, "w") as f:
+        f.write(f"Model: {model_name}\n")
+        f.write(f"{'='*80}\n\n")
+        f.write("Generated Code:\n")
+        f.write("=" * 80 + "\n")
+        f.write(cuda_code)
+        f.write("\n\n")
+        f.write("Test Results:\n")
+        f.write("=" * 80 + "\n")
+
+        if compilation_success:
+            f.write("Compilation: SUCCESS\n")
+            f.write(f"Test 1 (small tensor): {'PASS' if small_tensor_passed else 'FAIL'}\n")
+            f.write(f"Test 2 (large tensor): {'PASS' if large_tensor_passed else 'FAIL'}\n")
+        else:
+            f.write("Compilation: FAILED\n")
+            if error_msg:
+                f.write(f"Error: {error_msg}\n")
+
+
+def test_llm_code_generation_compilation(model_name, output_dir):
+    """Test that the LLM can generate compilable CUDA code with TVM FFI bindings."""
     print(f"\n{'='*80}")
-    print("FINAL SUMMARY")
+    print(f"Testing model: {model_name}")
     print(f"{'='*80}")
 
-    for result in results:
-        model = result["model"]
-        status = "✓ PASS" if result.get("all_passed", False) else "✗ FAIL"
-        print(f"{model:30} {status}")
-        if "error" in result:
-            print(f"  Error: {result['error'][:100]}")
+    # Generate code from model
+    print(f"Calling API for {model_name}...")
+    cuda_code = generate_code_from_model(model_name)
+    print(f"Extracted {len(cuda_code)} characters of code")
 
-    total_passed = sum(1 for r in results if r.get("all_passed", False))
-    print(f"\nTotal: {total_passed}/{len(models)} models passed all tests")
+    # Try to compile the code
+    output_file = output_dir / f"{model_name}.txt"
+    try:
+        mod: Module = tvm_ffi.cpp.load_inline(
+            name=f'elementwise_add_{model_name.replace("-", "_")}', cuda_sources=cuda_code
+        )
+        print("Compilation successful!")
+
+        # Run verification tests
+        small_passed = False
+        large_passed = False
+
+        try:
+            verify_kernel_small_tensor(mod)
+            small_passed = True
+            print("Small tensor test passed")
+        except Exception as e:
+            print(f"Small tensor test failed: {e}")
+
+        try:
+            verify_kernel_large_tensor(mod)
+            large_passed = True
+            print("Large tensor test passed")
+        except Exception as e:
+            print(f"Large tensor test failed: {e}")
+
+        save_test_results(
+            output_file,
+            model_name,
+            cuda_code,
+            True,
+            small_tensor_passed=small_passed,
+            large_tensor_passed=large_passed,
+        )
+
+        # Assert both tests passed
+        assert small_passed and large_passed, "Kernel verification tests failed"
+
+    except Exception as e:
+        print(f"Compilation failed: {e}")
+        save_test_results(output_file, model_name, cuda_code, False, str(e))
+        pytest.fail(f"Compilation failed: {e}")
 
 
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__] + sys.argv[1:])
