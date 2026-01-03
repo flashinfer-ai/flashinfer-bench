@@ -81,7 +81,7 @@ class ApplyRuntime:
     def __init__(
         self,
         trace_set: TraceSet,
-        apply_config: Union[ApplyConfigRegistry, ApplyConfig, None] = None,
+        apply_config: Union[ApplyConfig, ApplyConfigRegistry, None] = None,
         prev: Optional[ApplyRuntime] = None,
     ) -> None:
         """Initialize the apply runtime.
@@ -90,13 +90,12 @@ class ApplyRuntime:
         ----------
         trace_set : TraceSet
             A TraceSet object.
-        apply_config : Union[ApplyConfigRegistry, ApplyConfig, None], optional
+        apply_config : Union[ApplyConfig, ApplyConfigRegistry, None], optional
             Configuration for the apply runtime. Can be:
 
-            - ApplyConfigRegistry: A registry with per-definition configs.
             - ApplyConfig: A single config used as the default for all definitions.
-            - None: Uses the default config.
-
+            - ApplyConfigRegistry: A registry with per-definition configs.
+            - None: Uses the default registry.
         prev : Optional[ApplyRuntime], optional
             The previous apply runtime. Will be used in the __exit__ method. Default is None.
         """
