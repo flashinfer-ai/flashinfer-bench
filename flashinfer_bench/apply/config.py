@@ -51,7 +51,7 @@ class ApplyConfigRegistry(BaseModel):
         return self.per_definition.get(def_name, self.default)
 
     def register(
-        self, def_name: str, config: ApplyConfig, override: bool = False
+        self, def_name: str, config: ApplyConfig, *, override: bool = False
     ) -> ApplyConfigRegistry:
         """Register config for a single definition.
 
@@ -83,7 +83,7 @@ class ApplyConfigRegistry(BaseModel):
         return self
 
     def register_many(
-        self, configs: Dict[str, ApplyConfig], override: bool = False
+        self, configs: Dict[str, ApplyConfig], *, override: bool = False
     ) -> "ApplyConfigRegistry":
         """Register configs for multiple definitions.
 
