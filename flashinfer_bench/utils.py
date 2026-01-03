@@ -1,3 +1,5 @@
+"""Utility functions for FlashInfer-Bench."""
+
 from __future__ import annotations
 
 import os

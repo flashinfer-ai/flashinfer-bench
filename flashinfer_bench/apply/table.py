@@ -1,3 +1,5 @@
+"""Apply table for mapping workload keys to optimal solutions."""
+
 from __future__ import annotations
 
 import hashlib

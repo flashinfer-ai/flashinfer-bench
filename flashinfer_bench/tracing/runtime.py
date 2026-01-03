@@ -1,3 +1,5 @@
+"""Runtime system for collecting and managing workload traces."""
+
 import atexit
 import signal
 import threading

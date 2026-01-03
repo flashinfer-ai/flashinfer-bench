@@ -1,3 +1,5 @@
+"""Public API for the apply subsystem."""
+
 from __future__ import annotations
 
 from functools import wraps

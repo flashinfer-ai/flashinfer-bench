@@ -1,3 +1,5 @@
+"""Configuration for the apply runtime."""
+
 from dataclasses import dataclass
 from typing import Literal
 
