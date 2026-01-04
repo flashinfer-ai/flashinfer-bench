@@ -25,6 +25,8 @@ class SupportedLanguages(str, Enum):
     """Pure C++ source code."""
     CUDA = "cuda"
     """CUDA C++ programming language."""
+    TILELANG = "tilelang"
+    """TileLang GPU programming language."""
 
 
 class SourceFile(BaseModelWithDocstrings):
