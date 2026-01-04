@@ -6,7 +6,7 @@ from typing import Tuple
 
 import pytest
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyConfigRegistry, ApplyRuntime
 from flashinfer_bench.compile import Runnable
 from flashinfer_bench.data import (
     AxisConst,
@@ -117,8 +117,8 @@ def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
     definition, trace_set = make_traces()
-    runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
-    set_apply_runtime(runtime)
+    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
+    ApplyRuntime.set_instance(runtime)
 
     # Test with positional args (VR style)
     out = runtime.dispatch(
@@ -155,7 +155,10 @@ def test_runtime_dispatch_def_best_policy_without_fallback(
 
     definition, trace_set = make_traces()
     # Choose def_best when miss
-    runtime = ApplyRuntime(trace_set, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
+    registry = ApplyConfigRegistry(
+        default=ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0)
+    )
+    runtime = ApplyRuntime(trace_set, registry)
 
     # Miss should use def_best; our setup has both solution names ranked; accept either
     out = runtime.dispatch(
@@ -171,8 +174,8 @@ def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
-    definition, trace_set = make_traces()
-    runtime = ApplyRuntime(trace_set, ApplyConfig())
+    _, trace_set = make_traces()
+    runtime = ApplyRuntime(trace_set)
 
     with pytest.raises(RuntimeError):
         runtime.dispatch(
@@ -286,8 +289,8 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
     trace_set = TraceSet.from_path(str(dataset_dir))
 
     # Avoid AOT to simplify counting builder invocations
-    runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=0.0))
-    set_apply_runtime(runtime)
+    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.0)))
+    ApplyRuntime.set_instance(runtime)
 
     # Patch PythonBuilder._build to count actual builds
     from flashinfer_bench.compile.builders.python_builder import PythonBuilder
@@ -324,7 +327,7 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
         assert counts["build"] == 1
     finally:
         PythonBuilder.build = orig_build  # type: ignore[assignment]
-        set_apply_runtime(None)
+        ApplyRuntime.set_instance(None)
 
 
 class TestDispatchArgsKwargs:
@@ -337,7 +340,7 @@ class TestDispatchArgsKwargs:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         # Partial positional args with kwargs
         out = runtime.dispatch(
@@ -355,7 +358,7 @@ class TestDispatchArgsKwargs:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         out = runtime.dispatch(
             "add",
@@ -372,7 +375,7 @@ class TestDispatchArgsKwargs:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         # Only 1 arg when definition expects 2 inputs (VR) or 3 (DPS)
         with pytest.raises(ValueError):
@@ -389,7 +392,7 @@ class TestDispatchCallingConvention:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         # 2 args = 2 inputs -> VR style
         out = runtime.dispatch(
@@ -494,7 +497,7 @@ class TestDispatchDPSStyle:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         X = FakeTensorWithFill((2, 2))
         Y = FakeTensorWithFill((2, 2))
@@ -515,7 +518,7 @@ class TestDispatchDPSStyle:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         X = FakeTensorWithFill((2, 2))
         Y = FakeTensorWithFill((2, 2))
@@ -536,7 +539,7 @@ class TestDispatchDPSStyle:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(aot_ratio=1.0))
+        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
 
         X = FakeTensorWithFill((99, 2))  # M=99 not in traces
         Y = FakeTensorWithFill((99, 2))
@@ -560,7 +563,10 @@ class TestDispatchDPSStyle:
         monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
 
         definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0))
+        registry = ApplyConfigRegistry(
+            default=ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0)
+        )
+        runtime = ApplyRuntime(trace_set, registry)
 
         X = FakeTensorWithFill((100, 2))  # M=100 not in traces
         Y = FakeTensorWithFill((100, 2))
@@ -570,6 +576,133 @@ class TestDispatchDPSStyle:
 
         assert out is None
         assert Z.value in ("fast", "slow")
+
+
+def make_multi_def_trace_set() -> TraceSet:
+    """Create trace set with two definitions for per-definition config tests."""
+    def_add = Definition(
+        name="add",
+        op_type="op",
+        axes={"M": AxisVar(), "N": AxisConst(value=2)},
+        inputs={
+            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
+        },
+        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="def run(X, Y):\n    return X\n",
+    )
+    def_mul = Definition(
+        name="mul",
+        op_type="op",
+        axes={"M": AxisVar(), "N": AxisConst(value=2)},
+        inputs={
+            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
+        },
+        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="def run(X, Y):\n    return X * Y\n",
+    )
+
+    sol_add = Solution(
+        name="add_sol",
+        definition="add",
+        author="t",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'add_result'\n")],
+    )
+    sol_mul = Solution(
+        name="mul_sol",
+        definition="mul",
+        author="t",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'mul_result'\n")],
+    )
+
+    workload_add = Workload(
+        axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="add_w"
+    )
+    workload_mul = Workload(
+        axes={"M": 4}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="mul_w"
+    )
+
+    trace_add = Trace(
+        definition="add", workload=workload_add, solution="add_sol", evaluation=make_eval(2.0)
+    )
+    trace_mul = Trace(
+        definition="mul", workload=workload_mul, solution="mul_sol", evaluation=make_eval(3.0)
+    )
+
+    return TraceSet(
+        root=None,
+        definitions={"add": def_add, "mul": def_mul},
+        solutions={"add": [sol_add], "mul": [sol_mul]},
+        traces={"add": [trace_add], "mul": [trace_mul]},
+    )
+
+
+def test_per_definition_on_miss_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test different on_miss_policy for different definitions."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+    trace_set = make_multi_def_trace_set()
+
+    # "add" uses fallback_only, "mul" uses use_def_best
+    registry = ApplyConfigRegistry(default=ApplyConfig(on_miss_policy="fallback_only"))
+    registry.register("mul", ApplyConfig(on_miss_policy="use_def_best"))
+
+    runtime = ApplyRuntime(trace_set, registry)
+
+    # Miss on "add" (M=99 not traced) - should use fallback
+    out_add = runtime.dispatch(
+        "add",
+        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
+        kwargs={},
+        fallback=lambda *_: "add_fallback",
+    )
+    assert out_add == "add_fallback"
+
+    # Miss on "mul" (M=99 not traced) - should use def_best
+    out_mul = runtime.dispatch(
+        "mul",
+        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
+        kwargs={},
+        fallback=lambda *_: "mul_fallback",
+    )
+    assert out_mul == "mul_result"  # should use def_best, not fallback
+
+
+def test_runtime_with_config_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test ApplyRuntime initialization with ApplyConfigRegistry."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+    _, trace_set = make_traces()
+
+    # Initialize with registry
+    registry = ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.5))
+    runtime = ApplyRuntime(trace_set, registry)
+
+    # Should work normally
+    out = runtime.dispatch(
+        "add",
+        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    assert out == "fast"
 
 
 if __name__ == "__main__":

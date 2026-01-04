@@ -1,6 +1,6 @@
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -113,7 +113,7 @@ def test_rmsnorm_adapter_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(runtime)
+    ApplyRuntime.set_instance(runtime)
 
     # Call the function in the real flashinfer package; adapter should patch it
     out = flashinfer.norm.fused_add_rmsnorm(inp, res, w)
