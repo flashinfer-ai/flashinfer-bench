@@ -98,6 +98,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-rA --durations=0 --ignore=3rdparty"
 markers = ["requires_torch_cuda: tests that require torch and CUDA available"]
+log_cli = true
+log_cli_level = "INFO"
 
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
