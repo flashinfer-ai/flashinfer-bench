@@ -1,9 +1,10 @@
 import math
+import sys
 
 import pytest
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -146,23 +147,27 @@ def test_gqa_paged_prefill_adapter_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(runtime)
 
-    ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
-    wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(ws, kv_layout="NHD")
-    wrapper.plan(
-        qo_indptr,
-        kv_indptr,
-        kv_indices,
-        kv_last_page_len,
-        H_q,
-        H_kv,
-        D,
-        PS,
-        causal=True,
-        sm_scale=sm_scale,
-        q_data_type=dtype,
-        kv_data_type=dtype,
-    )
-    out_apply = wrapper.run(q, (k_cache, v_cache))
-    assert out_apply == "__SUB__gqa_paged_prefill__"
+    with runtime:
+        ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
+        wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(ws, kv_layout="NHD")
+        wrapper.plan(
+            qo_indptr,
+            kv_indptr,
+            kv_indices,
+            kv_last_page_len,
+            H_q,
+            H_kv,
+            D,
+            PS,
+            causal=True,
+            sm_scale=sm_scale,
+            q_data_type=dtype,
+            kv_data_type=dtype,
+        )
+        out_apply = wrapper.run(q, (k_cache, v_cache))
+        assert out_apply == "__SUB__gqa_paged_prefill__"
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

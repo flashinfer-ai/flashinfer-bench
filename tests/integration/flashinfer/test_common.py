@@ -1,5 +1,7 @@
 import math
+import sys
 
+import pytest
 import torch
 
 from flashinfer_bench.integration.flashinfer.common import (
@@ -102,3 +104,7 @@ def test_write_back_outputs():
     o3, l3 = write_back_outputs(output=out2, lse=lse2, want_lse=True, out_buf=ob2, lse_buf=lb2)
     assert torch.allclose(o3, ob2) and torch.allclose(l3, lb2)
     assert torch.allclose(ob2, out2) and torch.allclose(lb2, lse2)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

@@ -1,7 +1,9 @@
+import sys
+
 import pytest
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -144,23 +146,27 @@ def test_gqa_paged_decode_adapter_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(runtime)
 
-    # New wrapper instance to exercise the patched adapter path
-    wrapper = flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper(
-        torch.zeros_like(workspace_buffer), kv_layout="NHD"
-    )
-    wrapper.plan(
-        indptr,
-        indices,
-        last_page_len,
-        H_q,
-        H_kv,
-        D,
-        PS,
-        pos_encoding_mode="NONE",
-        q_data_type=dtype,
-        kv_data_type=dtype,
-    )
-    out_apply = wrapper.run(q, (k_cache, v_cache))
-    assert out_apply == "__SUB__gqa_decode__"
+    with runtime:
+        # New wrapper instance to exercise the patched adapter path
+        wrapper = flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper(
+            torch.zeros_like(workspace_buffer), kv_layout="NHD"
+        )
+        wrapper.plan(
+            indptr,
+            indices,
+            last_page_len,
+            H_q,
+            H_kv,
+            D,
+            PS,
+            pos_encoding_mode="NONE",
+            q_data_type=dtype,
+            kv_data_type=dtype,
+        )
+        out_apply = wrapper.run(q, (k_cache, v_cache))
+        assert out_apply == "__SUB__gqa_decode__"
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

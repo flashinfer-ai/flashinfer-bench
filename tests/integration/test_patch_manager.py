@@ -1,4 +1,7 @@
 import importlib
+import sys
+
+import pytest
 
 from flashinfer_bench.integration.patch_manager import PatchManager, PatchSpec
 
@@ -65,3 +68,7 @@ def test_patch_manager_missing_target_returns_false():
     pm = PatchManager()
     spec = PatchSpec(path="non.existent.module.symbol", kind="function", name="x")
     assert pm.patch(spec, lambda s, o: o) is False
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
