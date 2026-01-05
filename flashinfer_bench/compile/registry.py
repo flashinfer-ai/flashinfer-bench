@@ -7,10 +7,16 @@ from typing import ClassVar, Dict, List, Type
 from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, SupportedLanguages
 
 from .builder import Builder, BuildError
-from .builders import PythonBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder, TileLangBuilder
+from .builders import PythonBuilder, TileLangBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder
 from .runnable import Runnable
 
-_BUILDER_PRIORITY: List[Type[Builder]] = [TritonBuilder, TileLangBuilder, PythonBuilder, TVMFFIBuilder, TorchBuilder]
+_BUILDER_PRIORITY: List[Type[Builder]] = [
+    TritonBuilder,
+    TileLangBuilder,
+    PythonBuilder,
+    TVMFFIBuilder,
+    TorchBuilder,
+]
 """Builder types in priority order for automatic selection."""
 
 
