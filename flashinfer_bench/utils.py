@@ -92,6 +92,13 @@ def env_snapshot(device: str) -> Environment:
         pass
 
     try:
+        import tilelang as _tl
+
+        libs["tilelang"] = getattr(_tl, "__version__", "unknown")
+    except Exception:
+        pass
+
+    try:
         import torch.version as tv
 
         if getattr(tv, "cuda", None):

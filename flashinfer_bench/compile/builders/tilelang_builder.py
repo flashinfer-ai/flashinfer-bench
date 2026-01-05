@@ -57,7 +57,7 @@ class TileLangBuilder(PythonBuilder):
         bool
             True if solution language is TileLang
         """
-        return solution.spec.language == SupportedLanguages.TileLang
+        return solution.spec.language == SupportedLanguages.TILELANG
 
     def build(self, definition: Definition, solution: Solution) -> Runnable:
         """Build a TileLang solution into a runnable.
