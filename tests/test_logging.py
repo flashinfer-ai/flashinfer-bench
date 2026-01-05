@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import List
 
 import pytest
@@ -56,3 +57,7 @@ def test_configure_logging_with_custom_handler(package_logger_state: logging.Log
 def test_configure_logging_rejects_unknown_level(package_logger_state: logging.Logger) -> None:
     with pytest.raises(ValueError):
         fib_logging.configure_logging(level="LOUD")
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

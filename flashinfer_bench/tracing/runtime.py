@@ -135,7 +135,14 @@ class TracingRuntime:
         install_flashinfer_integrations()
 
     def start(self):
-        """Activate this runtime by pushing it onto the global stack."""
+        """Activate this runtime instance.
+
+        If this runtime is already the active instance, this method has no effect.
+        Multiple runtimes can be nested; internally they are managed via a stack.
+        """
+        # The current runtime is already activated, do nothing.
+        if len(TracingRuntime._stack) > 0 and TracingRuntime._stack[-1] is self:
+            return
         TracingRuntime._register_cleanup()
         TracingRuntime._stack.append(self)
 
@@ -148,12 +155,15 @@ class TracingRuntime:
         )
 
     def stop(self):
-        """Deactivate this runtime by removing it from the stack and flushing.
+        """Deactivate this runtime instance and flush buffered traces.
+
+        The runtime must be currently active. After stopping, the previously active
+        runtime (if any) is restored.
 
         Raises
         ------
         RuntimeError
-            If this runtime is not the current active instance (not at stack top).
+            If this runtime is not the currently active instance.
         """
         if not TracingRuntime._stack or TracingRuntime._stack[-1] is not self:
             raise RuntimeError(
@@ -161,8 +171,9 @@ class TracingRuntime:
                 "Runtimes must be stopped in LIFO order."
             )
 
-        TracingRuntime._stack.pop()
         self.flush()
+        TracingRuntime._stack.pop()
+        logger.info("TracingRuntime stopped")
 
     def collect(self, def_name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]):
         """Record a workload for later serialization to disk.
