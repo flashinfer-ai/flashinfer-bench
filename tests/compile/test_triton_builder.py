@@ -83,6 +83,7 @@ def run(X, Y):
             language=SupportedLanguages.TRITON,
             target_hardware=["cuda"],
             entry_point="module/main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="module/main.py", content=triton_code)],
     )
@@ -91,7 +92,7 @@ def run(X, Y):
     runnable = builder.build(definition, solution)
     x_tensor = torch.arange(256, dtype=torch.float32, device="cuda")
     y_tensor = 2 * torch.ones(256, dtype=torch.float32, device="cuda")
-    z_tensor = runnable(X=x_tensor, Y=y_tensor)
+    z_tensor = runnable(x_tensor, y_tensor)
     assert torch.allclose(z_tensor, x_tensor + y_tensor)
 
 

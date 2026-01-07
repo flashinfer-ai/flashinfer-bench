@@ -108,11 +108,11 @@ def test_end_to_end_minimal_roundtrip(tmp_path: Path):
     assert not loaded_traces2[0].is_workload_trace()
 
     # End-to-end via TraceSet
-    ts = TraceSet.from_path(str(tmp_path))
-    assert ts.definitions.get("min_gemm").name == "min_gemm"
-    assert ts.get_solution("torch_min_gemm").name == "torch_min_gemm"
-    assert len(ts.traces.get("min_gemm", [])) == 1  # only the passed one
-    assert len(ts.workloads.get("min_gemm", [])) == 1
+    trace_set = TraceSet.from_path(str(tmp_path))
+    assert trace_set.definitions.get("min_gemm").name == "min_gemm"
+    assert trace_set.get_solution("torch_min_gemm").name == "torch_min_gemm"
+    assert len(trace_set.traces.get("min_gemm", [])) == 1  # only the passed one
+    assert len(trace_set.workloads.get("min_gemm", [])) == 1
 
 
 if __name__ == "__main__":

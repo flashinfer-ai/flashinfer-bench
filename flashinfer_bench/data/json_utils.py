@@ -23,7 +23,7 @@ def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(object.model_dump_json(indent=2))
+        f.write(object.model_dump_json(indent=2, exclude_unset=True))
 
 
 def load_json_file(model_cls: Type[T], path: Union[str, Path]) -> T:

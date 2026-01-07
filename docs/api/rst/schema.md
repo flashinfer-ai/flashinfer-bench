@@ -16,5 +16,5 @@ schema_definition
 schema_solution
 schema_workload
 schema_trace
-schema_traceset
+schema_trace_set
 ```

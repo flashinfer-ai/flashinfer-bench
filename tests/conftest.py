@@ -38,5 +38,7 @@ def tmp_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     This fixture automatically sets FIB_CACHE_PATH to a unique temporary
     directory for each test, preventing cache pollution between tests.
     """
-    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path))
-    return tmp_path
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+    return cache_dir

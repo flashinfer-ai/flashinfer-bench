@@ -46,7 +46,7 @@ class SubprocessWorker:
         definition: Definition,
         workload: Workload,
         cfg: BenchmarkConfig,
-        traceset_root: Optional[Path] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> BaselineHandle:
         evaluator_cls = resolve_evaluator(definition)
         baseline = evaluator_cls.build_baseline(
@@ -54,7 +54,7 @@ class SubprocessWorker:
             workload=workload,
             cfg=cfg,
             device=self._device,
-            traceset_root=traceset_root,
+            trace_set_root=trace_set_root,
         )
         self._baselines[baseline.handle] = baseline
         return baseline.handle
@@ -263,9 +263,8 @@ def _solution_worker_main(
         ref_outputs_bl = loan["ref_outputs"]
         ref_mean_latency_ms = loan["ref_mean_latency_ms"]
 
-        inputs: List[Dict[str, Any]] = [
-            {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in inp.items()}
-            for inp in inputs_bl
+        inputs: List[List[Any]] = [
+            [v.clone() if isinstance(v, torch.Tensor) else v for v in inp] for inp in inputs_bl
         ]
 
         evaluator_cls = resolve_evaluator(definition)
@@ -414,7 +413,7 @@ class IsolatedRunner(Runner):
     def run_workload(
         self,
         definition: Definition,
-        wl: Workload,
+        workload: Workload,
         solutions: List[Solution],
         config: BenchmarkConfig,
         root: Path,
@@ -425,7 +424,7 @@ class IsolatedRunner(Runner):
         ----------
         definition : Definition
             Operation definition.
-        wl : Workload
+        workload : Workload
             Workload specification.
         solutions : List[Solution]
             List of solutions to evaluate.
@@ -453,7 +452,7 @@ class IsolatedRunner(Runner):
 
         with ThreadPoolExecutor(max_workers=K) as pool:
             baseline_futs = {
-                pool.submit(r.run_ref, definition, wl, config, root): r for r in selected
+                pool.submit(r.run_ref, definition, workload, config, root): r for r in selected
             }
             for fut, r in baseline_futs.items():
                 try:
@@ -463,7 +462,7 @@ class IsolatedRunner(Runner):
                     failed_workers.append(r)
                     self._logger.error(
                         f"Runner {r._device} failed while running reference for "
-                        f"def={definition.name} wl={wl.uuid}: {e}"
+                        f"def={definition.name} workload={workload.uuid}: {e}"
                     )
 
         # Handle failed workers

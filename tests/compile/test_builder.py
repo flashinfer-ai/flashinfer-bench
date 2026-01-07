@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import torch
 
 from flashinfer_bench.compile import Builder, Runnable, RunnableMetadata
 from flashinfer_bench.compile.registry import BuilderRegistry
@@ -37,8 +38,8 @@ def test_builder_cache_and_key():
         def build(self, definition: Definition, solution: Solution) -> Runnable:
             metadata = RunnableMetadata(
                 build_type="python",
-                definition=definition.name,
-                solution=solution.name,
+                definition_name=definition.name,
+                solution_name=solution.name,
                 misc={"dummy": True},
             )
             return Runnable(callable=lambda **kw: kw, cleaner=lambda: None, metadata=metadata)
@@ -75,7 +76,7 @@ def _create_mock_builder(name: str, can_build_result: bool = True) -> MagicMock:
     builder.build.side_effect = lambda *args, **kwargs: Runnable(
         callable=lambda **kw: kw,
         cleaner=lambda: None,
-        metadata=RunnableMetadata(build_type=name, definition="", solution="", misc={}),
+        metadata=RunnableMetadata(build_type=name, definition_name="", solution_name="", misc={}),
     )
     return builder
 
@@ -181,6 +182,94 @@ def test_build_registry_cleanup():
     registry.cleanup()
     registry.build(definition, solution)
     assert builder.build.call_count == 2
+
+
+def test_validate_signature_return_tensor():
+    """Test that -> Tensor with 1 output passes validation."""
+
+    def func(A: torch.Tensor) -> torch.Tensor:
+        return A
+
+    definition = Definition(
+        name="test_def",
+        op_type="op",
+        axes={"M": AxisConst(value=1)},
+        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
+        outputs={"out": TensorSpec(shape=["M"], dtype="float32")},
+        reference="def run(A): return A",
+    )
+    solution = Solution(
+        name="s",
+        definition="test_def",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="pass")],
+    )
+
+    class TestBuilder(Builder):
+        def __init__(self):
+            super().__init__("test_", "test")
+
+        @staticmethod
+        def is_available():
+            return True
+
+        def can_build(self, solution):
+            return True
+
+        def build(self, definition, solution):
+            raise NotImplementedError
+
+    TestBuilder()._try_validate_signature(func, definition, solution)  # Should not raise
+
+
+def test_validate_signature_return_none():
+    """Test that -> None with 0 outputs passes validation."""
+
+    def func(A: torch.Tensor) -> None:
+        pass
+
+    definition = Definition(
+        name="test_def",
+        op_type="op",
+        axes={"M": AxisConst(value=1)},
+        inputs={"A": TensorSpec(shape=["M"], dtype="float32")},
+        outputs={},
+        reference="def run(A): pass",
+    )
+    solution = Solution(
+        name="s",
+        definition="test_def",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="pass")],
+    )
+
+    class TestBuilder(Builder):
+        def __init__(self):
+            super().__init__("test_", "test")
+
+        @staticmethod
+        def is_available():
+            return True
+
+        def can_build(self, solution):
+            return True
+
+        def build(self, definition, solution):
+            raise NotImplementedError
+
+    TestBuilder()._try_validate_signature(func, definition, solution)  # Should not raise
 
 
 if __name__ == "__main__":

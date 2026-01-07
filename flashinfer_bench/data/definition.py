@@ -1,13 +1,19 @@
 """The definition of kernels in the FlashInfer Trace schema."""
 
+from __future__ import annotations
+
 import ast
 from enum import Enum
 from functools import cached_property
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, model_validator
 
-from .utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
+from flashinfer_bench.data.utils import BaseModelWithDocstrings, NonEmptyString, NonNegativeInt
+from flashinfer_bench.utils import dtype_str_to_torch_dtype
+
+if TYPE_CHECKING:
+    import torch
 
 
 class AxisConst(BaseModelWithDocstrings):
@@ -36,7 +42,7 @@ class AxisVar(BaseModel):
 
     type: Literal["var"] = "var"
     """The type identifier for variable axes."""
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None)
     """An optional human-readable description explaining the purpose of this axis."""
 
 
@@ -109,24 +115,25 @@ class Definition(BaseModelWithDocstrings):
     """Dictionary of symbolic dimensions used in tensor shapes. The axes will be bound to the
     input tensor dimensions at runtime."""
     inputs: Dict[NonEmptyString, TensorSpec]
-    """Named input tensors required by this kernel."""
+    """Named input tensors required by this kernel. The order of inputs is preserved as the
+    kernel's interface."""
     outputs: Dict[NonEmptyString, TensorSpec]
-    """Named output tensors produced by this kernel. The names of the output must not overlap with
-    the names of the inputs."""
+    """Named output tensors produced by this kernel. The names of the output must not overlap
+    with the names of the inputs. The order of outputs is preserved as the kernel's interface."""
     reference: NonEmptyString
     """Reference implementation code. It defines the compute logic of the kernel. Must be a valid
     Python code with a 'run' function that takes the input tensors and returns the output tensors.
     """
-    tags: Optional[List[NonEmptyString]] = Field(default=None)
+    tags: List[NonEmptyString] = Field(default_factory=list)
     """Optional list of tags for grouping and filtering kernels. It's used in the FlashInfer-Bench
     website."""
     description: Optional[str] = Field(default=None)
     """Optional human-readable description of the kernel's purpose."""
-    constraints: Optional[List[NonEmptyString]] = Field(default=None)
+    constraints: List[NonEmptyString] = Field(default_factory=list)
     """Optional list of constraint expressions describing relationships between axes."""
 
     @model_validator(mode="after")
-    def _validate_reference_code(self) -> "Definition":
+    def _validate_reference_code(self) -> Definition:
         """Validate that reference contains valid Python code with a 'run' function.
 
         Raises
@@ -149,7 +156,20 @@ class Definition(BaseModelWithDocstrings):
         return self
 
     @model_validator(mode="after")
-    def _validate_constraints_syntax(self) -> "Definition":
+    def _validate_input_output_names(self) -> Definition:
+        """Validate that input and output names are unique and do not overlap.
+
+        Raises
+        ------
+        ValueError
+            If the input or output names are not unique or overlap.
+        """
+        if set(self.inputs.keys()) & set(self.outputs.keys()):
+            raise ValueError("Input and output names must not overlap")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_constraints_syntax(self) -> Definition:
         """Validate that constraints are valid Python expressions.
 
         Raises
@@ -166,7 +186,7 @@ class Definition(BaseModelWithDocstrings):
         return self
 
     @model_validator(mode="after")
-    def _validate_tensor_axis_references(self) -> "Definition":
+    def _validate_tensor_axis_references(self) -> Definition:
         """Validate that tensor shapes reference defined axes.
 
         Ensures that all axis names used in input and output tensor shapes
@@ -236,13 +256,13 @@ class Definition(BaseModelWithDocstrings):
                     bindings[axis] = (inp_name, dim_idx)
         return bindings
 
-    def get_var_values(self, input_shapes: Dict[str, List[int]]) -> Dict[str, int]:
+    def get_axes_values(self, input_shapes: Iterable[Optional[Tuple[int, ...]]]) -> Dict[str, int]:
         """Get concrete variable axis values from input shapes.
 
         Parameters
         ----------
-        input_shapes : Dict[str, List[int]]
-            Dictionary mapping input tensor names to their concrete shapes.
+        input_shapes : Iterable[Optional[Tuple[int, ...]]]
+            Iterable of input tensor shapes.
 
         Returns
         -------
@@ -255,57 +275,79 @@ class Definition(BaseModelWithDocstrings):
             If a required variable axis value is missing from input_shapes, or a axis occurs in
             multiple input tensors, but the values are not consistent.
         """
-        var_values: Dict[str, int] = {}
-        for name, spec in self.inputs.items():
-            if spec.shape is None:  # scalar, no shape
+        var_axes_values: Dict[str, int] = {}
+        for (inp_name, inp_spec), inp_shape in zip(self.inputs.items(), input_shapes):
+            if inp_spec.shape is None:  # scalar, no shape
                 continue
-            for dim_idx, axis_name in enumerate(spec.shape):
+            if len(inp_spec.shape) != len(inp_shape):
+                raise ValueError(
+                    f"Input '{inp_name}''s defined dimension is {len(inp_spec.shape)} but the "
+                    f"actual dimension is {len(inp_shape)}"
+                )
+            for axis_name, axis_value in zip(inp_spec.shape, inp_shape):
                 if axis_name in self.axes and self.axes[axis_name].type == "var":
-                    cur_axis_value = input_shapes[name][dim_idx]
-                    if axis_name in var_values:
-                        if var_values[axis_name] != cur_axis_value:
+                    if axis_name in var_axes_values:
+                        if var_axes_values[axis_name] != axis_value:
                             raise ValueError(
                                 f"Axis '{axis_name}' has different values for different input "
-                                f"tensors: {var_values[axis_name]} and {cur_axis_value}"
+                                f"tensors: {var_axes_values[axis_name]} and {axis_value}"
                             )
                     else:
-                        var_values[axis_name] = cur_axis_value
+                        var_axes_values[axis_name] = axis_value
 
-        if len(var_values) != len(self.var_axes):
+        if len(var_axes_values) != len(self.var_axes):
             raise ValueError(
                 f"Missing values for variable axes: "
-                f"{set(self.var_axes) - set(var_values.keys())}"
+                f"{set(self.var_axes) - set(var_axes_values.keys())}"
             )
-        return var_values
+        return var_axes_values
+
+    def get_axes_values_from_inputs(self, inputs: Iterable[Any]) -> Dict[str, int]:
+        """Get concrete variable axis values directly from input values.
+
+        Convenience method that combines extract_shapes and get_var_axes_values.
+
+        Parameters
+        ----------
+        inputs : Iterable[Any]
+            Iterable of input values (tensors or other types).
+
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary mapping variable axis names to their concrete values.
+        """
+        shapes = [tuple(val.shape) if hasattr(val, "shape") else None for val in inputs]
+        return self.get_axes_values(shapes)
 
     def _get_shapes(
-        self, tensors: Dict[str, TensorSpec], var_values: Optional[Dict[str, int]] = None
-    ) -> Dict[str, List[int]]:
+        self, tensors: Iterable[TensorSpec], var_axes_values: Optional[Dict[str, int]] = None
+    ) -> List[Optional[Tuple[int, ...]]]:
         """Get concrete tensor shapes given variable axis values.
 
         Parameters
         ----------
-        tensors : Dict[str, TensorSpec]
-            Dictionary of tensor specifications to compute shapes for.
+        tensors : List[TensorSpec]
+            List of tensor specifications to compute shapes for.
         var_values : Optional[Dict[str, int]], default=None
             Values for variable axes. If None, defaults to empty dictionary.
 
         Returns
         -------
-        Dict[str, List[int]]
-            Dictionary mapping tensor names to their concrete shapes as lists of integers.
-            Scalar tensors (shape=None) are excluded from the result.
+        List[Optional[Tuple[int, ...]]]
+            List of concrete shapes as tuples of integers. None for scalar tensors.
 
         Raises
         ------
         ValueError
             If a required variable axis value is missing from var_values.
         """
-        var_values = var_values or {}
-        shapes = {}
+        var_axes_values = var_axes_values or {}
+        shapes = []
 
-        for tensor_name, tensor_spec in tensors.items():
+        for tensor_spec in tensors:
             if tensor_spec.shape is None:  # scalar, no shape
+                shapes.append(None)
                 continue
             shape = []
             for axis_name in tensor_spec.shape:
@@ -313,14 +355,16 @@ class Definition(BaseModelWithDocstrings):
                 if isinstance(axis, AxisConst):
                     shape.append(axis.value)
                 elif isinstance(axis, AxisVar):
-                    if axis_name not in var_values:
+                    if axis_name not in var_axes_values:
                         raise ValueError(f"Missing value for variable axis '{axis_name}'")
-                    shape.append(var_values[axis_name])
-            shapes[tensor_name] = shape
+                    shape.append(var_axes_values[axis_name])
+            shapes.append(shape)
 
         return shapes
 
-    def get_input_shapes(self, var_values: Optional[Dict[str, int]] = None) -> Dict[str, List[int]]:
+    def get_input_shapes(
+        self, var_axes_values: Optional[Dict[str, int]] = None
+    ) -> List[Optional[Tuple[int, ...]]]:
         """Get concrete input shapes given variable axis values.
 
         Parameters
@@ -338,11 +382,11 @@ class Definition(BaseModelWithDocstrings):
         ValueError
             If a required variable axis value is missing from var_values.
         """
-        return self._get_shapes(self.inputs, var_values)
+        return self._get_shapes(self.inputs.values(), var_axes_values)
 
     def get_output_shapes(
         self, var_values: Optional[Dict[str, int]] = None
-    ) -> Dict[str, List[int]]:
+    ) -> List[Optional[Tuple[int, ...]]]:
         """Get concrete output shapes given variable axis values.
 
         Parameters
@@ -360,4 +404,69 @@ class Definition(BaseModelWithDocstrings):
         ValueError
             If a required variable axis value is missing from var_values.
         """
-        return self._get_shapes(self.outputs, var_values)
+        return self._get_shapes(self.outputs.values(), var_values)
+
+    @cached_property
+    def torch_input_dtypes(self) -> List[torch.dtype]:
+        """Get the torch data types of the input tensors.
+
+        Returns
+        -------
+        List[torch.dtype]
+            List of torch data types of the input tensors.
+        """
+        return [dtype_str_to_torch_dtype(spec.dtype) for spec in self.inputs.values()]
+
+    @cached_property
+    def torch_output_dtypes(self) -> List[torch.dtype]:
+        """Get the torch data types of the output tensors.
+
+        Returns
+        -------
+        List[torch.dtype]
+            List of torch data types of the output tensors.
+        """
+        return [dtype_str_to_torch_dtype(spec.dtype) for spec in self.outputs.values()]
+
+    def merge_kwargs_to_args(
+        self, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> Tuple[Any, ...]:
+        """Merge keyword arguments into positional arguments based on input/output order.
+
+        Parameters
+        ----------
+        args : Tuple[Any, ...]
+            Positional arguments.
+        kwargs : Dict[str, Any]
+            Keyword arguments to merge.
+
+        Returns
+        -------
+        Tuple[Any, ...]
+            Merged positional arguments in the order: inputs, then outputs.
+        """
+        if not kwargs:
+            return args
+
+        param_names = list(self.inputs.keys()) + list(self.outputs.keys())
+
+        if len(args) > len(param_names):
+            raise TypeError(
+                f"Too many positional arguments: got {len(args)}, "
+                f"expected at most {len(param_names)}"
+            )
+
+        # Check for duplicate arguments
+        positional_arg_names = set(param_names[: len(args)])
+        for name in kwargs:
+            if name in positional_arg_names:
+                raise TypeError(f"Got multiple values for argument '{name}'")
+
+        result = list(args)
+        for i in range(len(args), len(param_names)):
+            name = param_names[i]
+            if name in kwargs:
+                result.append(kwargs[name])
+            else:
+                break
+        return tuple(result)
