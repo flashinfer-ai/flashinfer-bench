@@ -1,0 +1,19 @@
+{
+  "customSlashCommands": [
+    {
+      "name": "clone-repos",
+      "description": "Clone SGLang, FlashInfer (GitHub) and flashinfer-trace (HuggingFace) to third_party/",
+      "prompt": "Read .claude/skills/clone-repos.md and execute the skill as described. Clone the repos to third_party/ directory."
+    },
+    {
+      "name": "extract-kernel-definitions",
+      "description": "Extract kernel schemas from SGLang model implementations with deduplication",
+      "prompt": "Read .claude/skills/extract-kernel-definitions.md and execute the skill as described. Extract kernel definitions from the specified model."
+    },
+    {
+      "name": "add-reference-tests",
+      "description": "Add tests to validate reference implementations against FlashInfer/SGLang ground truth",
+      "prompt": "Read .claude/skills/add-reference-tests.md and execute the skill as described. Add reference tests for the specified definitions."
+    }
+  ]
+}

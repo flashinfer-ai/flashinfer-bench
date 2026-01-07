@@ -6,19 +6,19 @@ This document describes the complete workflow for adding new models, extracting 
 
 The workflow consists of three main phases:
 
-1. **Repository Setup**: Clone required repositories from GitHub and HuggingFace
+1. **Repository Setup**: Clone required repositories to `third_party/`
 2. **Kernel Extraction**: Extract kernel definitions from SGLang model implementations
-3. **Testing**: Add reference tests to validate implementations
+3. **Testing**: Add reference tests to validate implementations against ground truth
 
 ## Phase 1: Repository Setup
 
 ### Clone All Required Repositories
 
 ```bash
-/clone-repos --target-dir ./repos
+/clone-repos
 ```
 
-This clones:
+This clones to `third_party/`:
 - **sglang**: `https://github.com/sgl-project/sglang.git`
   - Model implementations in `python/sglang/srt/models/`
   - Layer implementations in `python/sglang/srt/layers/`
@@ -31,18 +31,19 @@ This clones:
   - Kernel definitions in `definitions/`
   - Reference tests in `tests/references/`
 
-### Output
+### Output Structure
 
-Creates `repos_config.json`:
-```json
-{
-  "target_dir": "./repos",
-  "repositories": {
-    "sglang": {"path": "./repos/sglang", "status": "cloned"},
-    "flashinfer": {"path": "./repos/flashinfer", "status": "cloned"},
-    "flashinfer_trace": {"path": "./repos/flashinfer-trace", "status": "cloned"}
-  }
-}
+```
+third_party/
+├── sglang/
+│   └── python/sglang/srt/
+│       ├── models/        # Model implementations (kernel extraction source)
+│       └── layers/        # Layer implementations (ground truth fallback)
+├── flashinfer/
+│   └── python/flashinfer/ # Ground truth implementations
+└── flashinfer-trace/
+    ├── definitions/       # Our output: kernel definition JSONs
+    └── tests/references/  # Our output: reference tests
 ```
 
 ## Phase 2: Kernel Definition Extraction
@@ -86,7 +87,7 @@ Shared kernels:
 ### Output Structure
 
 ```
-repos/flashinfer-trace/definitions/
+third_party/flashinfer-trace/definitions/
 ├── rmsnorm/
 │   ├── rmsnorm_h4096.json
 │   ├── rmsnorm_h7168.json
@@ -113,25 +114,6 @@ Each definition includes:
 - **inputs/outputs**: Tensor specifications with shapes and dtypes
 - **reference**: Vanilla Python/PyTorch implementation
 
-Example:
-```json
-{
-  "name": "mla_paged_decode_h16_ckv512_kpe64_ps1",
-  "op_type": "mla_paged",
-  "tags": ["stage:decode", "model:deepseek-v3"],
-  "axes": {
-    "batch_size": {"type": "var"},
-    "num_qo_heads": {"type": "const", "value": 16},
-    "head_dim_ckv": {"type": "const", "value": 512},
-    "head_dim_kpe": {"type": "const", "value": 64},
-    "page_size": {"type": "const", "value": 1}
-  },
-  "inputs": {...},
-  "outputs": {...},
-  "reference": "import torch\n\ndef run(...):\n    ..."
-}
-```
-
 ## Phase 3: Add Reference Tests
 
 ### Add Tests for New Definitions
@@ -146,8 +128,8 @@ Example:
 # Test a specific definition
 /add-reference-tests --definition-name mla_paged_decode_h16_ckv512_kpe64_ps1
 
-# Test all definitions in a directory
-/add-reference-tests --definitions-dir ./repos/flashinfer-trace/definitions
+# Test all definitions
+/add-reference-tests --all
 ```
 
 ### Ground Truth Sources
@@ -155,17 +137,27 @@ Example:
 Tests compare reference implementations against:
 
 1. **FlashInfer** (preferred): Optimized GPU kernels
-   - Location: `repos/flashinfer/python/flashinfer/`
+   - Location: `third_party/flashinfer/python/flashinfer/`
    - For: GQA, MLA, RMSNorm, GEMM
 
 2. **SGLang** (fallback): When FlashInfer doesn't have the kernel
-   - Location: `repos/sglang/python/sglang/srt/layers/`
+   - Location: `third_party/sglang/python/sglang/srt/layers/`
    - For: MoE, custom kernels
+
+### Ground Truth Mapping
+
+| Op Type | Primary (FlashInfer) | Fallback (SGLang) |
+|---------|---------------------|-------------------|
+| `rmsnorm` | `norm/rmsnorm.py` | `layers/layernorm.py` |
+| `gqa_paged` | `attention/decode.py` | `layers/attention/` |
+| `mla_paged` | `attention/mla.py` | `layers/attention/mla_decode.py` |
+| `moe` | `moe/` | `layers/moe/fused_moe.py` |
+| `gemm` | `gemm/` | `torch.nn.functional.linear` |
 
 ### Test Output
 
 ```
-repos/flashinfer-trace/tests/references/
+third_party/flashinfer-trace/tests/references/
 ├── conftest.py              # Shared fixtures and utilities
 ├── test_rmsnorm.py          # RMSNorm tests
 ├── test_gqa_paged.py        # GQA paged tests
@@ -177,7 +169,7 @@ repos/flashinfer-trace/tests/references/
 ### Running Tests
 
 ```bash
-cd repos/flashinfer-trace
+cd third_party/flashinfer-trace
 
 # Run all reference tests
 pytest tests/references/ -v
@@ -189,21 +181,11 @@ pytest tests/references/test_mla_paged.py -v
 pytest tests/references/ -v --device cuda
 ```
 
-## Optional: Add Model to Web Interface
-
-If you also want to add the model to the FlashInfer-Bench web interface:
-
-```bash
-/add-new-model --model-name deepseek-v3 --hf-repo-id deepseek-ai/DeepSeek-V3
-```
-
-This updates `web/apps/web/data/models.ts` with the model's module hierarchy.
-
 ## Complete Example: Adding DeepSeek V3
 
 ```bash
 # Step 1: Clone repositories
-/clone-repos --target-dir ./repos
+/clone-repos
 
 # Step 2: Extract kernel definitions
 /extract-kernel-definitions --model-name deepseek_v3
@@ -225,18 +207,15 @@ This updates `web/apps/web/data/models.ts` with the model's module hierarchy.
 /add-reference-tests --op-type rmsnorm
 
 # Step 6: Run tests to validate
-cd repos/flashinfer-trace
+cd third_party/flashinfer-trace
 pytest tests/references/ -v
-
-# Step 7 (optional): Add to web interface
-/add-new-model --model-name deepseek-v3 --hf-repo-id deepseek-ai/DeepSeek-V3
 ```
 
 ## Complete Example: Adding Multiple Models
 
 ```bash
 # Setup
-/clone-repos --target-dir ./repos
+/clone-repos
 
 # Extract from all target models (deduplication handled automatically)
 /extract-kernel-definitions --model-name llama
@@ -252,7 +231,7 @@ pytest tests/references/ -v
 /add-reference-tests --op-type gemm
 
 # Validate
-cd repos/flashinfer-trace
+cd third_party/flashinfer-trace
 pytest tests/references/ -v --tb=short
 ```
 
@@ -262,10 +241,10 @@ pytest tests/references/ -v --tb=short
 
 ```bash
 # List available models
-ls repos/sglang/python/sglang/srt/models/
+ls third_party/sglang/python/sglang/srt/models/
 
 # Search for specific kernel
-grep -r "batch_decode" repos/sglang/python/sglang/srt/
+grep -r "batch_decode" third_party/sglang/python/sglang/srt/
 ```
 
 ### Issue: Ground truth not available
@@ -289,12 +268,55 @@ Deduplication is automatic. If a conflict is detected:
 
 ## Summary
 
-| Phase | Skill | Output |
-|-------|-------|--------|
-| 1. Setup | `/clone-repos` | `repos/` directory with all repos |
-| 2. Extract | `/extract-kernel-definitions` | `definitions/{op_type}/*.json` |
-| 3. Test | `/add-reference-tests` | `tests/references/test_*.py` |
-| 4. Web (optional) | `/add-new-model` | Updated `models.ts` |
+| Phase | Skill | Input | Output |
+|-------|-------|-------|--------|
+| 1. Setup | `/clone-repos` | None | `third_party/` with all repos |
+| 2. Extract | `/extract-kernel-definitions` | SGLang model files | `definitions/{op_type}/*.json` |
+| 3. Test | `/add-reference-tests` | Definition JSONs | `tests/references/test_*.py` |
+
+## Workflow Diagram
+
+```
+┌─────────────────────────────────────┐
+│         1. Clone Repositories       │
+│         /clone-repos                │
+├─────────────────────────────────────┤
+│  third_party/                       │
+│  ├── sglang/      (GitHub)          │
+│  ├── flashinfer/  (GitHub)          │
+│  └── flashinfer-trace/ (HuggingFace)│
+└─────────────────────────────────────┘
+                ↓
+┌─────────────────────────────────────┐
+│    2. Extract Kernel Definitions    │
+│    /extract-kernel-definitions      │
+├─────────────────────────────────────┤
+│  • Analyze SGLang model files       │
+│  • Extract kernel parameters        │
+│  • Generate Definition JSONs        │
+│  • Write reference implementations  │
+│  • Deduplicate across models        │
+│  Output:                            │
+│    → definitions/{op_type}/*.json   │
+└─────────────────────────────────────┘
+                ↓
+┌─────────────────────────────────────┐
+│      3. Add Reference Tests         │
+│      /add-reference-tests           │
+├─────────────────────────────────────┤
+│  • Find ground truth in FlashInfer  │
+│  • Fallback to SGLang if needed     │
+│  • Generate pytest test cases       │
+│  • Parametrize for multiple sizes   │
+│  Output:                            │
+│    → tests/references/test_*.py     │
+└─────────────────────────────────────┘
+                ↓
+┌─────────────────────────────────────┐
+│     4. Run Tests & Validate         │
+│     pytest tests/references/        │
+└─────────────────────────────────────┘
+```
 
 ## Next Steps After Workflow
 
@@ -303,3 +325,10 @@ Deduplication is automatic. If a conflict is detected:
 3. **Submit to dataset**: Push to flashinfer-trace HuggingFace repo
 4. **Create optimized solutions**: Use kernel_generator for Triton/CUDA implementations
 5. **Run benchmarks**: `flashinfer-bench run --local ./data`
+
+## See Also
+
+- [clone-repos](./clone-repos.md)
+- [extract-kernel-definitions](./extract-kernel-definitions.md)
+- [add-reference-tests](./add-reference-tests.md)
+- [CLAUDE.md](../../CLAUDE.md)

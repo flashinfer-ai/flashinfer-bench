@@ -7,244 +7,91 @@ Automated workflows for adding new models, extracting kernel definitions, and va
 ### Complete Workflow: Add Model with Kernel Definitions and Tests
 
 ```bash
-# Step 1: Clone all required repositories
-/clone-repos --target-dir ./repos
+# Step 1: Clone all required repositories to third_party/
+/clone-repos
 
-# Step 2: Extract kernel definitions from a model
+# Step 2: Extract kernel definitions from a model (e.g., deepseek_v3)
 /extract-kernel-definitions --model-name deepseek_v3
 
 # Step 3: Add reference tests for the definitions
 /add-reference-tests --op-type mla_paged
-
-# Step 4: Add model to web interface
-/add-new-model --model-name deepseek-v3 --hf-repo-id deepseek-ai/DeepSeek-V3
-```
-
-### Quick Model Addition (Web Interface Only)
-
-```bash
-/add-new-model --model-name kimi-k2 --hf-repo-id moonshot-ai/kimi-k2
 ```
 
 ## Available Skills
 
-### Repository Setup
+| Skill | Description |
+|-------|-------------|
+| [clone-repos](./clone-repos.md) | Clone SGLang, FlashInfer (GitHub) and flashinfer-trace (HuggingFace) to `third_party/` |
+| [extract-kernel-definitions](./extract-kernel-definitions.md) | Extract kernel schemas from SGLang with deduplication |
+| [add-reference-tests](./add-reference-tests.md) | Add tests to validate reference implementations |
+| [workflow](./workflow.md) | Complete workflow documentation |
 
-#### clone-repos
-Clone SGLang, FlashInfer, and flashinfer-trace repositories.
-[Documentation](./clone-repos.md)
-
-```bash
-/clone-repos --target-dir ./repos
-```
-
-### Kernel Definition Extraction
-
-#### extract-kernel-definitions
-Extract kernel schemas from SGLang model implementations with deduplication.
-[Documentation](./extract-kernel-definitions.md)
-
-```bash
-/extract-kernel-definitions --model-name deepseek_v3
-/extract-kernel-definitions --model-name llama
-/extract-kernel-definitions --model-name qwen2_moe
-```
-
-### Testing
-
-#### add-reference-tests
-Add tests to validate reference implementations against FlashInfer/SGLang ground truth.
-[Documentation](./add-reference-tests.md)
-
-```bash
-/add-reference-tests --definition-name mla_paged_decode_h16_ckv512_kpe64_ps1
-/add-reference-tests --op-type moe
-```
-
-### Model Integration
-
-#### add-new-model
-Main workflow - automates the complete model addition process for the web interface.
-[Documentation](./add-new-model.md)
-
-```bash
-/add-new-model --model-name kimi-k2 --hf-repo-id moonshot-ai/kimi-k2
-```
-
-#### extract-model-from-hf
-Extract model configuration from HuggingFace.
-[Documentation](./extract-model-from-hf.md)
-
-```bash
-/extract-model-from-hf --model-id moonshot-ai/kimi-k2
-```
-
-#### find-sglang-baseline
-Find baseline implementation from SGLang codebase.
-[Documentation](./find-sglang-baseline.md)
-
-```bash
-/find-sglang-baseline --model-name kimi
-```
-
-#### generate-model-definition
-Generate TypeScript model definition file.
-[Documentation](./generate-model-definition.md)
-
-```bash
-/generate-model-definition --config model_architecture.json --model-name kimi-k2
-```
-
-## Workflow Diagrams
-
-### Full Kernel Extraction Pipeline
+## Repository Structure After Setup
 
 ```
-┌─────────────────────────────────────┐
-│         1. Clone Repositories       │
-│         /clone-repos                │
-├─────────────────────────────────────┤
-│  • SGLang (GitHub)                  │
-│  • FlashInfer (GitHub)              │
-│  • flashinfer-trace (HuggingFace)   │
-└─────────────────────────────────────┘
-                ↓
-┌─────────────────────────────────────┐
-│    2. Extract Kernel Definitions    │
-│    /extract-kernel-definitions      │
-├─────────────────────────────────────┤
-│  • Analyze SGLang model files       │
-│  • Extract kernel parameters        │
-│  • Generate Definition JSONs        │
-│  • Write reference implementations  │
-│  • Deduplicate across models        │
-│  Output:                            │
-│    → definitions/{op_type}/*.json   │
-└─────────────────────────────────────┘
-                ↓
-┌─────────────────────────────────────┐
-│      3. Add Reference Tests         │
-│      /add-reference-tests           │
-├─────────────────────────────────────┤
-│  • Find ground truth in FlashInfer  │
-│  • Fallback to SGLang if needed     │
-│  • Generate pytest test cases       │
-│  • Parametrize for multiple sizes   │
-│  Output:                            │
-│    → tests/references/test_*.py     │
-└─────────────────────────────────────┘
-                ↓
-┌─────────────────────────────────────┐
-│     4. Run Tests & Validate         │
-│     pytest tests/references/        │
-└─────────────────────────────────────┘
-```
-
-### Web Interface Model Addition
-
-```
-HuggingFace → extract → architecture.json
-                              ↓
-SGLang → find-baseline → implementation.json
-                              ↓
-                    generate-definition
-                              ↓
-                         models.ts
+third_party/
+├── sglang/                    # SGLang source code (GitHub)
+│   └── python/sglang/srt/
+│       ├── models/            # Model implementations (kernel calls)
+│       └── layers/            # Layer implementations
+├── flashinfer/                # FlashInfer source code (GitHub)
+│   └── python/flashinfer/     # Ground truth implementations
+└── flashinfer-trace/          # HuggingFace dataset
+    ├── definitions/           # Kernel definition JSONs (output)
+    │   ├── rmsnorm/
+    │   ├── gemm/
+    │   ├── gqa_paged/
+    │   ├── mla_paged/
+    │   └── moe/
+    └── tests/
+        └── references/        # Reference implementation tests (output)
 ```
 
 ## Kernel Types Supported
 
-| Op Type | Description | Example Definition |
-|---------|-------------|-------------------|
-| `rmsnorm` | RMS Layer Normalization | `rmsnorm_h4096` |
-| `fused_add_rmsnorm` | RMSNorm with residual | `fused_add_rmsnorm_h4096` |
-| `gemm` | General Matrix Multiply | `gemm_n_6144_k_4096` |
-| `gqa_paged` | Grouped Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
-| `gqa_ragged` | Grouped Query Attention (ragged) | `gqa_ragged_prefill_causal_h32_kv8_d128` |
-| `mla_paged` | Multi-head Latent Attention | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
-| `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_...` |
+| Op Type | Description | Models |
+|---------|-------------|--------|
+| `rmsnorm` | RMS Layer Normalization | All models |
+| `gemm` | General Matrix Multiply | All models |
+| `gqa_paged` | Grouped Query Attention (paged) | Llama, Qwen |
+| `gqa_ragged` | Grouped Query Attention (ragged) | Llama, Qwen |
+| `mla_paged` | Multi-head Latent Attention | DeepSeek V3/R1 |
+| `moe` | Mixture of Experts | DeepSeek, Qwen MoE |
 
-## Examples
-
-### Add DeepSeek V3 Model with MLA and MoE Kernels
+## Example: Adding DeepSeek V3
 
 ```bash
-# Setup repositories
-/clone-repos --target-dir ./repos
+# 1. Setup repositories
+/clone-repos
 
-# Extract all kernels (MLA, MoE, RMSNorm, etc.)
+# 2. Extract all kernels (MLA, MoE, RMSNorm, etc.)
 /extract-kernel-definitions --model-name deepseek_v3
 
-# Add tests for MLA kernels
+# 3. Add tests for MLA and MoE kernels
 /add-reference-tests --op-type mla_paged
-
-# Add tests for MoE kernels
 /add-reference-tests --op-type moe
 
-# Add model to web interface
-/add-new-model --model-name deepseek-v3 --hf-repo-id deepseek-ai/DeepSeek-V3
-
-# Run tests
-cd ./repos/flashinfer-trace && pytest tests/references/ -v
+# 4. Run tests to validate
+cd third_party/flashinfer-trace
+pytest tests/references/ -v
 ```
 
-### Add Multiple Models with Deduplication
+## Example: Adding Multiple Models with Deduplication
 
 ```bash
-/clone-repos --target-dir ./repos
+/clone-repos
 
 # Extract from multiple models - definitions are deduplicated automatically
 /extract-kernel-definitions --model-name llama
 /extract-kernel-definitions --model-name qwen2_moe
 /extract-kernel-definitions --model-name deepseek_v3
 
-# Add tests for all new definitions
-/add-reference-tests --definitions-dir ./repos/flashinfer-trace/definitions
+# Add tests for all kernel types
+/add-reference-tests --op-type gqa_paged
+/add-reference-tests --op-type mla_paged
+/add-reference-tests --op-type moe
+/add-reference-tests --op-type rmsnorm
 ```
-
-### Test Specific Kernel Definition
-
-```bash
-/add-reference-tests \
-  --definition-name mla_paged_decode_h16_ckv512_kpe64_ps1 \
-  --tolerance 1e-4
-```
-
-## Output Directories
-
-```
-repos/
-├── sglang/                    # SGLang source code
-├── flashinfer/                # FlashInfer source code
-├── flashinfer-trace/          # HuggingFace dataset
-│   ├── definitions/           # Kernel definition JSONs
-│   │   ├── rmsnorm/
-│   │   ├── gemm/
-│   │   ├── gqa_paged/
-│   │   ├── mla_paged/
-│   │   └── moe/
-│   ├── solutions/             # Optimized implementations
-│   ├── traces/                # Execution traces
-│   └── tests/
-│       └── references/        # Reference implementation tests
-│           ├── conftest.py
-│           ├── test_rmsnorm.py
-│           ├── test_gqa_paged.py
-│           ├── test_mla_paged.py
-│           └── test_moe.py
-└── repos_config.json          # Configuration for other skills
-```
-
-## Requirements
-
-- Git with LFS support
-- Python 3.10+
-- Python packages:
-  - `huggingface_hub`
-  - `pytest`
-  - `torch` (with CUDA for GPU tests)
-  - `flashinfer` (optional, for ground truth)
-- Network access to GitHub and HuggingFace
 
 ## See Also
 
