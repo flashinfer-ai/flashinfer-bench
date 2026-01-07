@@ -1,33 +1,116 @@
-"""Configuration for the apply runtime."""
+"""Configuration classes for apply runtime behavior."""
 
-from dataclasses import dataclass
-from typing import Literal
+from __future__ import annotations
+
+from typing import Dict, Literal
+
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class ApplyConfig:
-    # The maximum absolute difference allowed between the reference and the candidate
-    max_atol: float = 1e-2
-    # The maximum relative difference allowed between the reference and the candidate
-    max_rtol: float = 1e-5
-    # The ratio of the top solutions to AOT build for each definition
-    aot_ratio: float = 1.0
-    # The policy when a runtime ApplyKey misses the table
+class ApplyConfig(BaseModel):
+    """Configuration for apply runtime behavior.
+
+    Controls error tolerances, AOT compilation strategy, and miss handling policy.
+    """
+
+    max_atol: float = Field(default=1e-2, gt=0)
+    """The maximum absolute difference allowed between the reference and the candidate."""
+    max_rtol: float = Field(default=1e-5, gt=0)
+    """The maximum relative difference allowed between the reference and the candidate."""
+    aot_ratio: float = Field(default=1.0, ge=0, le=1)
+    """The ratio of the top solutions to AOT build for each definition."""
     on_miss_policy: Literal["fallback_only", "use_def_best"] = "fallback_only"
+    """The policy when a runtime ApplyKey misses the table."""
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.max_atol, float):
-            raise ValueError("max_atol must be a float")
-        if not isinstance(self.max_rtol, float):
-            raise ValueError("max_rtol must be a float")
-        if not isinstance(self.aot_ratio, float):
-            raise ValueError("aot_ratio must be a float")
 
-        if self.aot_ratio < 0 or self.aot_ratio > 1:
-            raise ValueError("aot_ratio must be between 0 and 1")
-        if self.on_miss_policy not in ["fallback_only", "use_def_best"]:
-            raise ValueError("on_miss_policy must be either 'fallback_only' or 'use_def_best'")
-        if self.max_atol <= 0:
-            raise ValueError("max_atol must be positive")
-        if self.max_rtol <= 0:
-            raise ValueError("max_rtol must be positive")
+class ApplyConfigRegistry(BaseModel):
+    """Per-definition apply configuration registry.
+
+    Allows specifying different ApplyConfig for each kernel definition,
+    with a default fallback config for definitions without specific configuration.
+    """
+
+    default: ApplyConfig = Field(default_factory=ApplyConfig)
+    """Fallback config when no per-definition config is specified."""
+    per_definition: Dict[str, ApplyConfig] = Field(default_factory=dict)
+    """Mapping from definition name to its specific ApplyConfig."""
+
+    def get(self, def_name: str) -> ApplyConfig:
+        """Get config for a definition, falling back to default if not registered.
+
+        Parameters
+        ----------
+        def_name : str
+            The definition name to look up.
+
+        Returns
+        -------
+        ApplyConfig
+            The config for this definition, or the default config.
+        """
+        return self.per_definition.get(def_name, self.default)
+
+    def register(
+        self, def_name: str, config: ApplyConfig, *, override: bool = False
+    ) -> ApplyConfigRegistry:
+        """Register config for a single definition.
+
+        Parameters
+        ----------
+        def_name : str
+            The definition name.
+        config : ApplyConfig
+            The config to use.
+        override : bool
+            If the existing config will be overridden. If False, raise an error if
+            the definition already exists. Default: False.
+
+        Returns
+        -------
+        ApplyConfigRegistry
+            Self, for method chaining.
+
+        Raises
+        ------
+        ValueError
+            If def_name already exists and override is False.
+        """
+        if not override and def_name in self.per_definition:
+            raise ValueError(
+                f"Definition '{def_name}' already exists. Use override=True to replace it."
+            )
+        self.per_definition[def_name] = config
+        return self
+
+    def register_many(
+        self, configs: Dict[str, ApplyConfig], *, override: bool = False
+    ) -> "ApplyConfigRegistry":
+        """Register configs for multiple definitions.
+
+        Parameters
+        ----------
+        configs : Dict[str, ApplyConfig]
+            Mapping from definition names to their configs.
+        override : bool
+            If the existing configs will be overridden. If False, raise an error if
+            any key already exists. Default: False.
+
+        Returns
+        -------
+        ApplyConfigRegistry
+            Self, for method chaining.
+
+        Raises
+        ------
+        ValueError
+            If any key already exists and override is False.
+        """
+        if not override:
+            conflicts = self.per_definition.keys() & configs.keys()
+            if conflicts:
+                raise ValueError(
+                    "Cannot register. The following definitions already exist: "
+                    f"{list(conflicts)}"
+                )
+        self.per_definition.update(configs)
+        return self

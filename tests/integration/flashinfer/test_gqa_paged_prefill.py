@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from flashinfer_bench.apply import ApplyConfig, ApplyRuntime, set_apply_runtime
+from flashinfer_bench.apply import ApplyConfig, ApplyRuntime
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -146,7 +146,7 @@ def test_gqa_paged_prefill_adapter_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    set_apply_runtime(runtime)
+    ApplyRuntime.set_instance(runtime)
 
     ws = torch.zeros(32 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(ws, kv_layout="NHD")

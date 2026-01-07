@@ -8,58 +8,19 @@ implementation for each function call based on workload characteristics.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Tuple
+import logging
+from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Union
 
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
-from flashinfer_bench.logging import get_logger
 
-from .config import ApplyConfig
+from .config import ApplyConfig, ApplyConfigRegistry
 from .key import ApplyKeyBuilder, ApplyKeyFactory
+from .presets import get_default_registry
 from .table import ApplyTable
 
-logger = get_logger("ApplyRuntime")
-
-
-def _init_apply_runtime_from_env() -> Optional["ApplyRuntime"]:
-    """Initialize the global runtime from environment variables if configured."""
-    fib_enable_apply = get_fib_enable_apply()
-    if not fib_enable_apply:
-        return
-    fib_dataset_path = get_fib_dataset_path()
-    trace_set = TraceSet.from_path(fib_dataset_path)
-    apply_config = ApplyConfig()
-    return ApplyRuntime(trace_set, apply_config, None)
-
-
-_global_apply_runtime: Optional["ApplyRuntime"] = _init_apply_runtime_from_env()
-
-
-def get_apply_runtime() -> Optional["ApplyRuntime"]:
-    """Get the global ApplyRuntime instance.
-
-    Returns the singleton runtime instance, initializing it from environment
-    variables if it hasn't been created yet.
-
-    Returns
-    -------
-    Optional[ApplyRuntime]
-        The global runtime instance, or None if not initialized.
-    """
-    return _global_apply_runtime
-
-
-def set_apply_runtime(rt: Optional["ApplyRuntime"]) -> None:
-    """Set the global ApplyRuntime instance.
-
-    Parameters
-    ----------
-    rt : Optional[ApplyRuntime]
-        The runtime instance to set, or None to clear the global runtime.
-    """
-    global _global_apply_runtime
-    _global_apply_runtime = rt
+logger = logging.getLogger(__name__)
 
 
 class ApplyRuntime:
@@ -74,11 +35,54 @@ class ApplyRuntime:
     available and provides hooks for monitoring and tracing function calls.
     """
 
+    _instance: ClassVar[Optional[ApplyRuntime]] = None
+    """The global ApplyRuntime singleton instance."""
+    _initialized: ClassVar[bool] = False
+    """Whether the global ApplyRuntime singleton instance has been initialized."""
+
+    @classmethod
+    def _create_from_env(cls) -> Optional[ApplyRuntime]:
+        """Initialize the global runtime from environment variables if configured."""
+        fib_enable_apply = get_fib_enable_apply()
+        if not fib_enable_apply:
+            return None
+        fib_dataset_path = get_fib_dataset_path()
+        trace_set = TraceSet.from_path(fib_dataset_path)
+        return cls(trace_set, None, None)
+
+    @classmethod
+    def get_instance(cls) -> Optional[ApplyRuntime]:
+        """Get the global ApplyRuntime singleton instance.
+
+        Lazily initializes from environment variables on first call.
+
+        Returns
+        -------
+        Optional[ApplyRuntime]
+            The global runtime instance, or None if not initialized.
+        """
+        if not cls._initialized:
+            cls._instance = cls._create_from_env()
+            cls._initialized = True
+        return cls._instance
+
+    @classmethod
+    def set_instance(cls, rt: Optional[ApplyRuntime]) -> None:
+        """Set the global ApplyRuntime singleton instance.
+
+        Parameters
+        ----------
+        rt : Optional[ApplyRuntime]
+            The runtime instance to set, or None to clear the global runtime.
+        """
+        cls._instance = rt
+        cls._initialized = True
+
     def __init__(
         self,
         trace_set: TraceSet,
-        apply_config: Optional[ApplyConfig] = None,
-        prev_apply_runtime: Optional["ApplyRuntime"] = None,
+        apply_config: Union[ApplyConfig, ApplyConfigRegistry, None] = None,
+        prev: Optional[ApplyRuntime] = None,
     ) -> None:
         """Initialize the apply runtime.
 
@@ -86,16 +90,28 @@ class ApplyRuntime:
         ----------
         trace_set : TraceSet
             A TraceSet object.
-        apply_config : ApplyConfig
-            Configuration object specifying runtime behavior and policies.
-        prev_apply_runtime : Optional[ApplyRuntime], optional
+        apply_config : Union[ApplyConfig, ApplyConfigRegistry, None], optional
+            Configuration for the apply runtime. Can be:
+
+            - ApplyConfig: A single config used as the default for all definitions.
+            - ApplyConfigRegistry: A registry with per-definition configs.
+            - None: Uses the default registry.
+
+        prev : Optional[ApplyRuntime], optional
             The previous apply runtime. Will be used in the __exit__ method. Default is None.
         """
         self._trace_set = trace_set
-        self._apply_config = apply_config if apply_config is not None else ApplyConfig()
-        self._prev_runtime = prev_apply_runtime
 
-        self._table = ApplyTable.load_or_build(self._trace_set, self._apply_config)
+        if apply_config is None:
+            self._config_registry = get_default_registry()
+        elif isinstance(apply_config, ApplyConfig):
+            self._config_registry = ApplyConfigRegistry(default=apply_config)
+        else:
+            self._config_registry = apply_config
+
+        self._prev = prev
+
+        self._table = ApplyTable.load_or_build(self._trace_set, self._config_registry)
 
         # def_name -> callable: (runtime_kwargs) -> ApplyKey
         self._key_builders: Dict[str, ApplyKeyBuilder] = {}
@@ -192,7 +208,8 @@ class ApplyRuntime:
 
         # Miss policy
         if runnable is None:
-            if self._apply_config.on_miss_policy == "use_def_best":
+            config = self._config_registry.get(def_name)
+            if config.on_miss_policy == "use_def_best":
                 best_sol_name = self._table.def_best.get(def_name)
                 solution = self._trace_set.get_solution(best_sol_name)
                 if definition and solution:
@@ -210,9 +227,9 @@ class ApplyRuntime:
         else:
             return runnable.call_value_returning(*input_args)
 
-    def __enter__(self) -> None:
+    def __enter__(self) -> ApplyRuntime:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
-        set_apply_runtime(self._prev_runtime)
+        ApplyRuntime.set_instance(self._prev)
         return False

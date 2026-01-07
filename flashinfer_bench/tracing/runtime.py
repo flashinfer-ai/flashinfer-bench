@@ -1,6 +1,7 @@
 """Runtime system for collecting and managing workload traces."""
 
 import atexit
+import logging
 import signal
 import threading
 import uuid
@@ -17,14 +18,13 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
-from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
 from .builtin.configs import FULL_TRACING_CONFIGS
 from .config import FilterPolicy, TracingConfig
 from .workload_entry import WorkloadEntry
 
-logger = get_logger("TracingRuntime")
+logger = logging.getLogger(__name__)
 
 
 class TracingRuntime:
