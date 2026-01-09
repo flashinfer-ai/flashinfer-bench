@@ -1,5 +1,7 @@
 """TraceSet as a pure data warehouse for definitions, solutions, and traces."""
 
+from __future__ import annotations
+
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -81,7 +83,7 @@ class TraceSet:
         return self.root / "blob" / "workloads"
 
     @classmethod
-    def from_path(cls: type["TraceSet"], path: Optional[str] = None) -> "TraceSet":
+    def from_path(cls: type[TraceSet], path: Optional[str] = None) -> TraceSet:
         """Load a TraceSet from a directory structure.
 
         Loads a complete TraceSet by scanning the directory structure for:

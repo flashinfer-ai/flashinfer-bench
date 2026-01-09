@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 import platform
 import sys
-from functools import lru_cache
+from functools import cache
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     import torch
 
     from flashinfer_bench.data import Environment
+
 
 _DTYPE_STR_TO_PYTHON_DTYPE = {
     "float32": float,
@@ -26,7 +27,7 @@ _DTYPE_STR_TO_PYTHON_DTYPE = {
 }
 
 
-@lru_cache(maxsize=1)
+@cache
 def _get_dtype_str_to_torch_dtype() -> Dict[str, torch.dtype]:
     """Lazily build dtype string to torch dtype mapping."""
     import torch

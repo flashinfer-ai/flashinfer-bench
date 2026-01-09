@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from flashinfer_bench.apply import ApplyConfig
+from flashinfer_bench.apply import ApplyConfig, ApplyConfigRegistry
 from flashinfer_bench.apply.key import ApplyKeyFactory
 from flashinfer_bench.apply.table import ApplyTable, _apply_table_dir
 from flashinfer_bench.data import (
@@ -115,8 +115,8 @@ def test_apply_table_build_and_match(tmp_path, monkeypatch):
         traces={"add": traces},
     )
 
-    config = ApplyConfig(aot_ratio=1.0)
-    table = ApplyTable.load_or_build(trace_set, config)
+    config_registry = ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0))
+    table = ApplyTable.load_or_build(trace_set, config_registry)
 
     # Build keys for lookup
     builder = ApplyKeyFactory.specialize(definition)
@@ -233,9 +233,11 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     ]
     save_jsonl_file(traces, dataset_dir / "traces" / "add.jsonl")
 
-    config = ApplyConfig(aot_ratio=0.0, on_miss_policy="use_def_best")
+    config_registry = ApplyConfigRegistry(
+        default=ApplyConfig(aot_ratio=0.0, on_miss_policy="use_def_best")
+    )
     trace_set = TraceSet.from_path(str(dataset_dir))
-    table1 = ApplyTable.load_or_build(trace_set, config)
+    table1 = ApplyTable.load_or_build(trace_set, config_registry)
 
     # Check persisted index file
     apply_dir = _apply_table_dir()
@@ -259,11 +261,146 @@ def test_apply_table_persistent_cache(tmp_path, monkeypatch):
     orig_build = ApplyTable._build
     try:
         ApplyTable._build = fail_build  # type: ignore[assignment]
-        table2 = ApplyTable.load_or_build(trace_set, config)
+        table2 = ApplyTable.load_or_build(trace_set, config_registry)
     finally:
         ApplyTable._build = orig_build  # type: ignore[assignment]
 
     assert table2.digest == table1.digest
+
+
+def make_multi_def_traces() -> (
+    tuple[dict[str, Definition], dict[str, list[Solution]], dict[str, list[Trace]]]
+):
+    """Create multiple definitions with different solutions and traces."""
+    # Definition 1: "add"
+    def_add = Definition(
+        name="add",
+        op_type="op",
+        axes={"M": AxisVar(), "N": AxisConst(value=2)},
+        inputs={
+            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
+        },
+        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="def run(X, Y):\n    return X\n",
+    )
+    sol_add_fast = make_python_solution("add_fast")
+    sol_add_slow = Solution(
+        name="add_slow",
+        definition="add",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
+    )
+
+    # Definition 2: "mul"
+    def_mul = Definition(
+        name="mul",
+        op_type="op",
+        axes={"M": AxisVar(), "N": AxisConst(value=2)},
+        inputs={
+            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
+        },
+        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="def run(X, Y):\n    return X * Y\n",
+    )
+    sol_mul_v1 = Solution(
+        name="mul_v1",
+        definition="mul",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'v1'\n")],
+    )
+    sol_mul_v2 = Solution(
+        name="mul_v2",
+        definition="mul",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
+        ),
+        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'v2'\n")],
+    )
+
+    # Traces
+    wl_add = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="add_w")
+    wl_mul = Workload(axes={"M": 4}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="mul_w")
+
+    traces_add = [
+        Trace(definition="add", workload=wl_add, solution="add_fast", evaluation=make_eval(2.0)),
+        Trace(definition="add", workload=wl_add, solution="add_slow", evaluation=make_eval(1.0)),
+    ]
+    traces_mul = [
+        Trace(definition="mul", workload=wl_mul, solution="mul_v1", evaluation=make_eval(1.5)),
+        Trace(definition="mul", workload=wl_mul, solution="mul_v2", evaluation=make_eval(3.0)),
+    ]
+
+    definitions = {"add": def_add, "mul": def_mul}
+    solutions = {"add": [sol_add_fast, sol_add_slow], "mul": [sol_mul_v1, sol_mul_v2]}
+    traces = {"add": traces_add, "mul": traces_mul}
+    return definitions, solutions, traces
+
+
+def test_per_definition_config_different_tolerances(tmp_path, monkeypatch):
+    """Test that different definitions can have different atol/rtol tolerances."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+    definitions, solutions, traces = make_multi_def_traces()
+    trace_set = TraceSet(root=tmp_path, definitions=definitions, solutions=solutions, traces=traces)
+
+    # Set different tolerances for different definitions
+    registry = ApplyConfigRegistry(default=ApplyConfig(max_atol=1e-2))
+    registry.register("mul", ApplyConfig(max_atol=1e-4, max_rtol=1e-6))
+
+    table = ApplyTable.load_or_build(trace_set, registry)
+
+    # Verify both definitions have correct best solutions
+    key_add = ApplyKeyFactory.specialize(definitions["add"]).build_from_args(
+        (FakeTensor((2, 2)), FakeTensor((2, 2)))
+    )
+    key_mul = ApplyKeyFactory.specialize(definitions["mul"]).build_from_args(
+        (FakeTensor((4, 2)), FakeTensor((4, 2)))
+    )
+
+    assert table.match_solution("add", key_add) == "add_fast"
+    assert table.match_solution("mul", key_mul) == "mul_v2"
+
+
+def test_per_definition_config_changes_digest(tmp_path, monkeypatch):
+    """Test that changing per-definition config changes the table digest."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+
+    definitions, solutions, traces = make_multi_def_traces()
+    trace_set = TraceSet(root=tmp_path, definitions=definitions, solutions=solutions, traces=traces)
+
+    # Build with default config
+    registry1 = ApplyConfigRegistry()
+    table1 = ApplyTable.load_or_build(trace_set, registry1)
+
+    # Build with per-definition config
+    registry2 = ApplyConfigRegistry()
+    registry2.register("mul", ApplyConfig(max_atol=1e-5))
+    table2 = ApplyTable.load_or_build(trace_set, registry2)
+
+    # Digests should be different
+    assert table1.digest != table2.digest
 
 
 if __name__ == "__main__":
