@@ -1,0 +1,48 @@
+{
+  "name": "top_k_sampling_from_probs_v129280",
+  "op_type": "sampling",
+  "description": "Top-k sampling from probabilities with vocab_size=129280. Keeps only the k highest probability tokens, renormalizes, then samples from the filtered distribution. Captured from DeepSeek V3.",
+  "tags": [
+    "status:verified",
+    "model:deepseek-v3",
+    "model:deepseek-r1"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences to sample from"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 129280,
+      "description": "Size of the vocabulary for DeepSeek V3"
+    }
+  },
+  "inputs": {
+    "probs": {
+      "shape": [
+        "batch_size",
+        "vocab_size"
+      ],
+      "dtype": "float32",
+      "description": "Probability distributions (after softmax)"
+    },
+    "top_k": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "int32",
+      "description": "Number of top tokens to consider for sampling per sequence"
+    }
+  },
+  "outputs": {
+    "samples": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "int64",
+      "description": "Sampled token indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(probs, top_k):\n    batch_size, vocab_size = probs.shape\n    device = probs.device\n\n    # Check constants\n    assert vocab_size == 129280\n\n    probs = probs.to(torch.float32)\n    samples = torch.empty(batch_size, dtype=torch.int64, device=device)\n\n    for i in range(batch_size):\n        row = probs[i]\n        k = int(top_k[i].item())\n\n        # No filtering on invalid k\n        if 0 < k < vocab_size:\n            idx_sorted = torch.argsort(row, descending=True)\n            keep_idx = idx_sorted[:k]\n\n            filtered = torch.zeros_like(row)\n            filtered[keep_idx] = row[keep_idx]\n\n            row = filtered / filtered.sum()\n\n        samples[i] = torch.multinomial(row, 1, replacement=True).squeeze(0)\n\n    return samples\n"
+}
