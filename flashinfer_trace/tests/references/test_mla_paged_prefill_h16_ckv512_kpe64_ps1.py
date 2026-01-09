@@ -29,12 +29,8 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, sm
     Kc_all = ckv_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_ckv]
     Kp_all = kpe_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_kpe]
 
-    output = torch.zeros(
-        (total_q, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
-    )
-    lse = torch.full(
-        (total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
-    )
+    output = torch.zeros((total_q, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device)
+    lse = torch.full((total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     for b in range(batch_size):
         q_start = int(qo_indptr[b].item())
@@ -70,7 +66,7 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, sm
             # Apply causal mask
             prefix_len = kv_len - q_len  # Number of previously cached tokens
             query_abs_pos = prefix_len + i  # Absolute position of current query
-            
+
             causal_mask = torch.arange(kv_len, device=logits_scaled.device) > query_abs_pos
             logits_scaled.masked_fill_(causal_mask.unsqueeze(0), -float("inf"))
 
@@ -125,12 +121,8 @@ def generate_random_inputs(
     kv_len_arr = kv_lens.clone()
 
     # Generate query tensors with Matrix Absorption dimensions
-    q_nope = torch.randn(
-        total_q, num_qo_heads, head_dim_ckv, dtype=torch.bfloat16, device=device
-    )
-    q_pe = torch.randn(
-        total_q, num_qo_heads, head_dim_kpe, dtype=torch.bfloat16, device=device
-    )
+    q_nope = torch.randn(total_q, num_qo_heads, head_dim_ckv, dtype=torch.bfloat16, device=device)
+    q_pe = torch.randn(total_q, num_qo_heads, head_dim_kpe, dtype=torch.bfloat16, device=device)
 
     # Generate compressed KV and positional caches
     # Add some extra pages to simulate a real scenario
@@ -166,7 +158,9 @@ def generate_random_inputs(
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, atol=1e-2, rtol=5e-2):
     """Test correctness of MLA paged prefill reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}, causal={causal}")
+    print(
+        f"Testing batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}, causal={causal}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -325,7 +319,7 @@ def main():
     # Test different configurations
     test_configs = [
         # (batch_size, max_q_len, max_kv_len, causal)
-        (1, 8, 16, True),   # Small causal
+        (1, 8, 16, True),  # Small causal
         # (1, 8, 16, False),  # Small non-causal
         (4, 16, 32, True),  # Medium causal
         # (4, 16, 32, False), # Medium non-causal

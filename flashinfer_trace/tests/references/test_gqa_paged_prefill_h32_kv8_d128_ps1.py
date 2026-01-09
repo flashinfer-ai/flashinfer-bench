@@ -23,12 +23,8 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
 
     device = q.device
 
-    output = torch.zeros(
-        (total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device
-    )
-    lse = torch.full(
-        (total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
-    )
+    output = torch.zeros((total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device)
+    lse = torch.full((total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     gqa_ratio = num_qo_heads // num_kv_heads
 
@@ -49,12 +45,12 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
             continue
 
         page_ids = kv_indices[kv_start:kv_end].to(torch.long)
-        
+
         # Number of KV tokens is equal to number of pages for page_size=1
         num_kv_tokens = page_ids.shape[0]
         k_batch = k_cache_flat[page_ids]  # [num_kv_tokens, num_kv_heads, head_dim]
         v_batch = v_cache_flat[page_ids]  # [num_kv_tokens, num_kv_heads, head_dim]
-        
+
         # Get queries for this sequence
         q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]
         num_q_tokens = q_batch.shape[0]
@@ -134,18 +130,22 @@ def generate_random_inputs(
     # Generate page indices (for page_size=1, we need num_kv_indices unique pages)
     # Simulate scattered memory allocation
     all_page_ids = torch.randperm(max_pages, device=device)[:num_kv_indices]
-    
+
     # Create kv_indices by assigning pages to each sequence
     kv_indices = torch.zeros(num_kv_indices, dtype=torch.int32, device=device)
     idx = 0
     for i in range(batch_size):
         seq_len = kv_lens[i].item()
-        kv_indices[idx:idx+seq_len] = all_page_ids[idx:idx+seq_len]
+        kv_indices[idx : idx + seq_len] = all_page_ids[idx : idx + seq_len]
         idx += seq_len
 
     # Generate KV cache (paged storage)
-    k_cache = torch.randn(max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device)
-    v_cache = torch.randn(max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device)
+    k_cache = torch.randn(
+        max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device
+    )
+    v_cache = torch.randn(
+        max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device
+    )
 
     # Generate query tensor
     q = torch.randn(total_q, num_attention_heads, head_dim, dtype=torch.bfloat16, device=device)
@@ -153,7 +153,7 @@ def generate_random_inputs(
     # Generate attention parameters
     sm_scale = 1.0 / math.sqrt(head_dim)
     sm_scale = torch.tensor(sm_scale, dtype=torch.float32, device=device)
-    
+
     # Convert causal to tensor
     causal = torch.tensor(causal, dtype=torch.bool, device=device)
 

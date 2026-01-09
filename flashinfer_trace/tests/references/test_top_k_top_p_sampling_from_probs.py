@@ -1,5 +1,5 @@
-import torch
 import flashinfer
+import torch
 
 
 @torch.no_grad()
@@ -51,9 +51,7 @@ def run(probs, top_k, top_p):
     return samples
 
 
-def generate_random_inputs(
-    batch_size, vocab_size=128256, distribution="normal", device="cuda"
-):
+def generate_random_inputs(batch_size, vocab_size=128256, distribution="normal", device="cuda"):
     """Generate random test inputs."""
     # Generate probabilities
     if distribution == "normal":
@@ -92,9 +90,7 @@ def test_correctness(batch_size=8, vocab_size=128256, num_trials=10000):
     torch.manual_seed(42)
 
     # Generate inputs
-    probs, top_k, top_p = generate_random_inputs(
-        batch_size, vocab_size, "peaked", device
-    )
+    probs, top_k, top_p = generate_random_inputs(batch_size, vocab_size, "peaked", device)
 
     # Count frequencies for both implementations
     ref_counter = torch.zeros(batch_size, vocab_size, dtype=torch.int32, device=device)
@@ -131,9 +127,7 @@ def test_correctness(batch_size=8, vocab_size=128256, num_trials=10000):
         if mask.sum() > 0:
             ref = ref_freq[i][mask]
             fi = fi_freq[i][mask]
-            similarity = torch.nn.functional.cosine_similarity(
-                ref.unsqueeze(0), fi.unsqueeze(0)
-            )
+            similarity = torch.nn.functional.cosine_similarity(ref.unsqueeze(0), fi.unsqueeze(0))
             similarities.append(similarity.item())
             print(f"  Sequence {i}: Cosine similarity = {similarity.item():.4f}")
 
@@ -141,9 +135,7 @@ def test_correctness(batch_size=8, vocab_size=128256, num_trials=10000):
     print(f"\n  Average cosine similarity: {avg_similarity:.4f}")
 
     # Check similarity
-    assert avg_similarity > 0.95, (
-        f"Implementations diverge too much: {avg_similarity:.4f} < 0.95"
-    )
+    assert avg_similarity > 0.95, f"Implementations diverge too much: {avg_similarity:.4f} < 0.95"
     print("  Correctness test passed!")
 
     return True
@@ -151,20 +143,14 @@ def test_correctness(batch_size=8, vocab_size=128256, num_trials=10000):
 
 def main():
     """Run comprehensive tests for top_k_top_p_sampling_from_probs."""
-    print(
-        "Testing Combined Top-K Top-P Sampling from Probabilities"
-    )
+    print("Testing Combined Top-K Top-P Sampling from Probabilities")
 
     all_passed = True
 
     # Test correctness by comparing with FlashInfer
     try:
         # Test with different configurations
-        test_configs = [
-            (2, 128256, 10000),
-            (4, 129280, 10000),
-            (8, 151936, 10000)
-        ]
+        test_configs = [(2, 128256, 10000), (4, 129280, 10000), (8, 151936, 10000)]
 
         for batch_size, vocab_size, num_trials in test_configs:
             if not test_correctness(batch_size, vocab_size, num_trials):

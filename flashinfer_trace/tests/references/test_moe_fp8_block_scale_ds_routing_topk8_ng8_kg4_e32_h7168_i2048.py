@@ -2,11 +2,11 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
-import numpy as np
-from safetensors.torch import load_file
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
+from safetensors.torch import load_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKLOAD_JSONL_PATH = (
@@ -73,17 +73,9 @@ def run(
     assert hidden_states.shape == (T, H)
     assert hidden_states_scale.shape == (num_hidden_blocks, T)
     assert gemm1_weights.shape == (E_local, 2 * I, H)
-    assert gemm1_weights_scale.shape == (
-        E_local,
-        num_gemm1_out_blocks,
-        num_hidden_blocks,
-    )
+    assert gemm1_weights_scale.shape == (E_local, num_gemm1_out_blocks, num_hidden_blocks)
     assert gemm2_weights.shape == (E_local, H, I)
-    assert gemm2_weights_scale.shape == (
-        E_local,
-        num_hidden_blocks,
-        num_intermediate_blocks,
-    )
+    assert gemm2_weights_scale.shape == (E_local, num_hidden_blocks, num_intermediate_blocks)
     assert routing_bias.shape[-1] == E_global
 
     device = hidden_states.device
@@ -128,9 +120,7 @@ def run(
     s_wb_grouped = s_with_bias.view(T, N_GROUP, group_size)  # [T, 8, 32]
 
     # Group scores = sum of top-2 values within each group
-    top2_vals, _ = torch.topk(
-        s_wb_grouped, k=2, dim=2, largest=True, sorted=False
-    )  # [T, 8, 2]
+    top2_vals, _ = torch.topk(s_wb_grouped, k=2, dim=2, largest=True, sorted=False)  # [T, 8, 2]
     group_scores = top2_vals.sum(dim=2)  # [T, 8]
 
     # Select topk_group groups → group mask
@@ -146,9 +136,7 @@ def run(
     # Global top-k (within kept groups), based on s_with_bias
     neg_inf = torch.finfo(torch.float32).min
     scores_pruned = s_with_bias.masked_fill(score_mask == 0, neg_inf)  # [T, E]
-    _, topk_idx = torch.topk(
-        scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False
-    )  # [T, 8]
+    _, topk_idx = torch.topk(scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False)  # [T, 8]
 
     # Combination weights: use s (without bias) for normalization
     M = torch.zeros_like(s)  # [T, E]
@@ -253,9 +241,7 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
 
     w_f32 = w_bf16.to(torch.float32).contiguous()
     w_fp8 = torch.empty_like(w_f32, dtype=torch.float8_e4m3fn)
-    scales = torch.empty(
-        (*prefix, nb_r, nb_c), dtype=torch.float32, device=w_bf16.device
-    )
+    scales = torch.empty((*prefix, nb_r, nb_c), dtype=torch.float32, device=w_bf16.device)
 
     it = np.ndindex(*prefix) if prefix else [()]
     for idx in it:
@@ -266,11 +252,7 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
                 cs = slice(j * block, (j + 1) * block)
                 blk = w_f32[(*sel, rs, cs)]  # [128, 128]
                 amax = torch.amax(torch.abs(blk))
-                s = (
-                    (amax / max_fp8)
-                    if amax > 0
-                    else torch.tensor(1.0, device=w_bf16.device)
-                )
+                s = (amax / max_fp8) if amax > 0 else torch.tensor(1.0, device=w_bf16.device)
                 q = (blk / s).to(torch.float8_e4m3fn)
                 w_fp8[(*sel, rs, cs)] = q
                 scales[(*sel, i, j)] = s
@@ -340,17 +322,13 @@ def _load_workload_tensors(record: dict, *, device: str):
 
     seq_len = workload["axes"]["seq_len"]
 
-    routing_logits = (
-        fetch_tensor(inputs_spec["routing_logits"]).to(torch.float32).to(device)
-    )
+    routing_logits = fetch_tensor(inputs_spec["routing_logits"]).to(torch.float32).to(device)
     routing_bias = fetch_tensor(inputs_spec["routing_bias"]).to(device)
     if routing_bias.dtype != torch.bfloat16:
         routing_bias = routing_bias.to(torch.bfloat16)
 
     hidden_states = fetch_tensor(inputs_spec["hidden_states"]).to(device)
-    hidden_states_scale = fetch_tensor(inputs_spec["hidden_states_scale"]).to(
-        torch.float32
-    )
+    hidden_states_scale = fetch_tensor(inputs_spec["hidden_states_scale"]).to(torch.float32)
     expected_scale_shape = (HIDDEN_SIZE // BLOCK_SIZE, seq_len)
     if hidden_states_scale.shape == (seq_len, HIDDEN_SIZE // BLOCK_SIZE):
         hidden_states_scale = hidden_states_scale.permute(1, 0).contiguous()
@@ -370,10 +348,7 @@ def _load_workload_tensors(record: dict, *, device: str):
         "hidden_states_scale": hidden_states_scale,
         "local_expert_offset": local_expert_offset,
         "routed_scaling_factor": routed_scaling_factor,
-    }, {
-        "seq_len": seq_len,
-        "uuid": workload.get("uuid", "unknown"),
-    }
+    }, {"seq_len": seq_len, "uuid": workload.get("uuid", "unknown")}
 
 
 def prepare_inputs_from_workload(workload_index: int, *, device: str):
@@ -399,12 +374,7 @@ def prepare_inputs_from_workload(workload_index: int, *, device: str):
         device=device,
     )
 
-    for key in (
-        "routing_logits",
-        "routing_bias",
-        "hidden_states",
-        "hidden_states_scale",
-    ):
+    for key in ("routing_logits", "routing_bias", "hidden_states", "hidden_states_scale"):
         base_inputs[key] = real_inputs[key]
 
     base_inputs["local_expert_offset"] = real_inputs["local_expert_offset"]
@@ -414,12 +384,7 @@ def prepare_inputs_from_workload(workload_index: int, *, device: str):
 
 
 def _compare_reference_vs_kernel(
-    inputs: dict,
-    *,
-    seq_len: int,
-    atol: float,
-    rtol: float,
-    percent: float,
+    inputs: dict, *, seq_len: int, atol: float, rtol: float, percent: float
 ):
     HIDDEN_SIZE = 7168
     INTERMEDIATE_SIZE = 2048
@@ -549,12 +514,8 @@ def generate_random_inputs_moe(
     w13_bf16 = torch.randn(E_local, 2 * I, H, dtype=torch.bfloat16, device=device)
     w2_bf16 = torch.randn(E_local, H, I, dtype=torch.bfloat16, device=device)
 
-    w13_fp8, w13_scales = _fp8_block_quant_2d(
-        w13_bf16, block=128
-    )  # scales: [E, (2I)/128, H/128]
-    w2_fp8, w2_scales = _fp8_block_quant_2d(
-        w2_bf16, block=128
-    )  # scales: [E, H/128, I/128]
+    w13_fp8, w13_scales = _fp8_block_quant_2d(w13_bf16, block=128)  # scales: [E, (2I)/128, H/128]
+    w2_fp8, w2_scales = _fp8_block_quant_2d(w2_bf16, block=128)  # scales: [E, H/128, I/128]
 
     return {
         "routing_logits": routing_logits,
@@ -725,11 +686,7 @@ def test_moe_with_real_workload():
     percent = 0.85
 
     ok = _compare_reference_vs_kernel(
-        inputs,
-        seq_len=meta["seq_len"],
-        atol=atol,
-        rtol=rtol,
-        percent=percent,
+        inputs, seq_len=meta["seq_len"], atol=atol, rtol=rtol, percent=percent
     )
 
     assert ok, (

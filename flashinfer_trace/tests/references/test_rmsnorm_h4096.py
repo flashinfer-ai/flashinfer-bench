@@ -1,5 +1,5 @@
-import torch
 import flashinfer
+import torch
 
 
 @torch.no_grad()
@@ -41,11 +41,7 @@ def run(input, weight, eps, residual=None):
     return {"output": output.to(orig_dtype)}
 
 
-def generate_random_inputs(
-    batch_size,
-    with_residual=True,
-    device="cuda",
-):
+def generate_random_inputs(batch_size, with_residual=True, device="cuda"):
     """Generate random inputs for testing RMSNorm with hidden_size=4096."""
 
     hidden_size = 4096
@@ -62,12 +58,7 @@ def generate_random_inputs(
     if with_residual:
         residual = torch.randn(batch_size, hidden_size, dtype=torch.bfloat16, device=device)
 
-    return {
-        "input": input,
-        "weight": weight,
-        "eps": eps,
-        "residual": residual,
-    }
+    return {"input": input, "weight": weight, "eps": eps, "residual": residual}
 
 
 def test_correctness(batch_size=8, with_residual=True, atol=8e-3, rtol=1e-2):
@@ -153,10 +144,10 @@ def main():
     # Test different configurations
     test_configs = [
         # (batch_size, with_residual)
-        (1, True),   # Single batch with residual
+        (1, True),  # Single batch with residual
         (1, False),  # Single batch without residual
-        (4, True),   # Small batch with residual
-        (8, True),   # Medium batch with residual
+        (4, True),  # Small batch with residual
+        (8, True),  # Medium batch with residual
         (16, True),  # Large batch with residual
         (32, True),  # Very large batch with residual
     ]
@@ -175,6 +166,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

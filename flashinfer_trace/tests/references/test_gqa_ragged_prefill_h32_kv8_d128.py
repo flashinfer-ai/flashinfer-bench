@@ -21,12 +21,8 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
 
     device = q.device
 
-    output = torch.zeros(
-        (total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device
-    )
-    lse = torch.full(
-        (total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
-    )
+    output = torch.zeros((total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device)
+    lse = torch.full((total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     gqa_ratio = num_qo_heads // num_kv_heads
 
@@ -58,22 +54,22 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
         v_expanded = v_batch.repeat_interleave(gqa_ratio, dim=1)
 
         # Compute attention scores: Q @ K^T
-        logits = torch.einsum('qhd,khd->qhk', q_batch, k_expanded) * sm_scale
+        logits = torch.einsum("qhd,khd->qhk", q_batch, k_expanded) * sm_scale
 
         # For position q_idx, can attend to KV positions [0, min(q_idx + 1 + delta, num_kv_tokens))
         q_positions = torch.arange(num_q_tokens, device=device)  # [num_q_tokens]
         kv_positions = torch.arange(num_kv_tokens, device=device)  # [num_kv_tokens]
-        
+
         # Apply causal mask
         causal_mask = kv_positions[None, :] < (q_positions[:, None] + 1 + delta)
-        logits = logits.masked_fill(~causal_mask[:, None, :], float('-inf'))
+        logits = logits.masked_fill(~causal_mask[:, None, :], float("-inf"))
 
         # Compute 2-base LSE
         lse_batch = torch.logsumexp(logits, dim=-1) / math.log(2.0)
         lse[q_start:q_end] = lse_batch
 
         attn_weights = torch.softmax(logits, dim=-1)  # [num_q_tokens, num_qo_heads, num_kv_tokens]
-        output_batch = torch.einsum('qhk,khd->qhd', attn_weights, v_expanded)
+        output_batch = torch.einsum("qhk,khd->qhd", attn_weights, v_expanded)
         output[q_start:q_end] = output_batch.to(torch.bfloat16)
 
     return output, lse
@@ -120,7 +116,7 @@ def generate_random_inputs(
     # Generate attention parameters
     sm_scale = 1.0 / math.sqrt(head_dim)
     sm_scale = torch.tensor(sm_scale, dtype=torch.float32, device=device)
-    
+
     # Convert causal to tensor
     causal = torch.tensor(causal, dtype=torch.bool, device=device)
 

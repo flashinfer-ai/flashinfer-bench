@@ -1,5 +1,5 @@
-import torch
 import flashinfer
+import torch
 
 
 @torch.no_grad()
@@ -16,7 +16,7 @@ def run(probs, top_p):
     for i in range(batch_size):
         row = probs[i]
         p = float(top_p[i].item())
-        
+
         if p <= 0.0:
             # Degenerate to argmax
             out[i] = torch.argmax(row).to(torch.int64)
@@ -43,9 +43,7 @@ def run(probs, top_p):
     return out
 
 
-def generate_random_inputs(
-    batch_size, vocab_size=128256, distribution="normal", device="cuda"
-):
+def generate_random_inputs(batch_size, vocab_size=128256, distribution="normal", device="cuda"):
     """Generate random test inputs."""
     # Generate probabilities
     if distribution == "normal":
@@ -75,9 +73,7 @@ def test_correctness(batch_size=1, vocab_size=128256, num_trials=10000):
     Uses the same approach as FlashInfer's test_top_p_sampling_freq."""
     print(f"\n{'=' * 60}")
     print("Testing correctness against expected probabilities")
-    print(
-        f"batch_size={batch_size}, vocab_size={vocab_size}, num_trials={num_trials}"
-    )
+    print(f"batch_size={batch_size}, vocab_size={vocab_size}, num_trials={num_trials}")
     print(f"{'=' * 60}")
 
     device = "cuda"
@@ -119,9 +115,7 @@ def test_correctness(batch_size=1, vocab_size=128256, num_trials=10000):
         if mask.sum() > 0:
             ref = ref_freq[i][mask]
             fi = fi_freq[i][mask]
-            similarity = torch.nn.functional.cosine_similarity(
-                ref.unsqueeze(0), fi.unsqueeze(0)
-            )
+            similarity = torch.nn.functional.cosine_similarity(ref.unsqueeze(0), fi.unsqueeze(0))
             similarities.append(similarity.item())
             print(f"  Sequence {i}: Cosine similarity = {similarity.item():.4f}")
 
@@ -129,9 +123,7 @@ def test_correctness(batch_size=1, vocab_size=128256, num_trials=10000):
     print(f"\n  Average cosine similarity: {avg_similarity:.4f}")
 
     # Check similarity
-    assert avg_similarity > 0.95, (
-        f"Implementations diverge too much: {avg_similarity:.4f} < 0.95"
-    )
+    assert avg_similarity > 0.95, f"Implementations diverge too much: {avg_similarity:.4f} < 0.95"
     print("  Correctness test passed!")
 
     return True
@@ -151,7 +143,7 @@ def main():
             # (batch_size, vocab_size, num_trials)
             (2, 128256, 10000),
             (4, 129280, 10000),
-            (8, 151936, 10000)
+            (8, 151936, 10000),
         ]
 
         for batch_size, vocab_size, num_trials in test_configs:

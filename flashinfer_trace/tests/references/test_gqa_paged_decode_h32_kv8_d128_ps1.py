@@ -24,21 +24,13 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
 
     device = q.device
 
-    output = torch.zeros(
-        (batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device
-    )
-    lse = torch.full(
-        (batch_size, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
-    )
+    output = torch.zeros((batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device)
+    lse = torch.full((batch_size, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     gqa_ratio = num_qo_heads // num_kv_heads
 
-    k_cache_flat = k_cache.squeeze(1).to(
-        torch.float32
-    )  # [num_pages, num_kv_heads, head_dim]
-    v_cache_flat = v_cache.squeeze(1).to(
-        torch.float32
-    )  # [num_pages, num_kv_heads, head_dim]
+    k_cache_flat = k_cache.squeeze(1).to(torch.float32)  # [num_pages, num_kv_heads, head_dim]
+    v_cache_flat = v_cache.squeeze(1).to(torch.float32)  # [num_pages, num_kv_heads, head_dim]
 
     for b in range(batch_size):
         page_start = int(kv_indptr[b].item())
@@ -189,8 +181,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
 
     decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
-        workspace_buffer,
-        kv_layout="NHD",  # Matches our cache layout
+        workspace_buffer, kv_layout="NHD"  # Matches our cache layout
     )
 
     # Plan the attention computation
