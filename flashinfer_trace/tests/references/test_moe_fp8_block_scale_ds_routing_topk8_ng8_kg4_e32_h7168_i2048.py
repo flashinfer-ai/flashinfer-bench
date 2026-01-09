@@ -8,9 +8,9 @@ import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+TRACE_ROOT = Path(__file__).resolve().parents[2]
 WORKLOAD_JSONL_PATH = (
-    REPO_ROOT
+    TRACE_ROOT
     / "workloads"
     / "moe"
     / "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048.jsonl"
