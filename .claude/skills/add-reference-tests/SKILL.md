@@ -1,3 +1,8 @@
+---
+name: add-reference-tests
+description: Add pytest tests to validate reference implementations in flashinfer-trace against FlashInfer or SGLang ground truth. Use when validating kernel definitions, adding tests for new op_types, or verifying reference implementations are correct.
+---
+
 # Add Reference Tests
 
 Add tests to validate reference implementations in flashinfer-trace. Ground truth is sourced from FlashInfer repository or SGLang when FlashInfer doesn't have the implementation.

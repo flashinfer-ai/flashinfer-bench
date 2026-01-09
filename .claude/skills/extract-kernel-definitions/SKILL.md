@@ -1,3 +1,8 @@
+---
+name: extract-kernel-definitions
+description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for flashinfer-trace.
+---
+
 # Extract Kernel Definitions
 
 Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to flashinfer-trace dataset with vanilla Python reference implementations.

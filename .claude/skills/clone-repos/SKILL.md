@@ -1,3 +1,8 @@
+---
+name: clone-repos
+description: Clone SGLang, FlashInfer repositories from GitHub and flashinfer-trace dataset from HuggingFace to third_party/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
+---
+
 # Clone Repositories
 
 Clone SGLang, FlashInfer repositories from GitHub and flashinfer-trace dataset from HuggingFace to the `third_party/` directory.
