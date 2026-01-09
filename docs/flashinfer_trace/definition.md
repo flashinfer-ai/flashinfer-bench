@@ -30,7 +30,7 @@ Note that a `Definition` does not contain specific input *data* for its variable
 
 ### `op_type`: Compute Category
 
-`op_type` is a `string` field used for grouping and filtering kernels. It represents the genral compute characteristic.
+`op_type` is a `string` field used for grouping and filtering kernels. It represents the general compute characteristic.
 
 Current supported `op_type`s are:
 
