@@ -50,21 +50,21 @@ Each tag is either:
 Controlled namespaces:
 
 - `stage: *` — Which computation stage this definition fits to.
-    
+
     Examples: `stage: prefill`, `stage: decode`.
-    
+
 - `model:*` — Models known to use this definition (ideally **system-derived** from references/traces).
-    
+
     Examples: `model:llama-3.1-8b`, `model:deepseek-v3`.
-    
+
 - `quantization:*` — Indicates quantization characteristics. For the simple case, encode the effective dtype.
-    
+
     Examples: `quantization:float8_e4m3fn`, `quantization:int8`.
-    
+
 - `status:*` — Community/validation status.
-    
+
     Examples: `status:verified`, `status:draft`, `status:deprecated`.
-    
+
 - `fused` — Flag tag indicating the definition represents a fused kernel.
 
 ### `axes` : Dimension Definitions
@@ -210,10 +210,10 @@ The `reference` field is a string that contains the reference implementation of 
   "description": "A GEMM operation with per-tensor quantized inputs and per-group scaling factors.",
   "op_type": "gemm",
   "tags": [
-	  "status:draft",
-	  "model:some_model",
+      "status:draft",
+      "model:some_model",
     "quantization:float8_e4m3fn"
-	]
+    ]
   "axes": {
     "M": { "type": "var" },
     "N": { "type": "const", "value": 4096 },
