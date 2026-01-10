@@ -24,6 +24,7 @@ export type AuthorCurvesResponse = {
   totalComparisons: number
   totalWorkloads: number
   coverage: Record<string, CoverageStats>
+  speedupSums: Record<string, number>
 }
 
 export type AuthorCorrectnessResponse = {
@@ -294,6 +295,7 @@ export function computeFastPCurvesForAuthors(params: {
 
   const curves: Record<string, CurvePoint[]> = {}
   const comparisonCounts: Record<string, number> = {}
+  const speedupSums: Record<string, number> = {}
   let totalComparisons = 0
 
   for (const [author, ratios] of authorRatios.entries()) {
@@ -315,6 +317,17 @@ export function computeFastPCurvesForAuthors(params: {
       points.push({ p, percent })
     }
     curves[author] = points
+
+    let area = 0
+    for (let index = 1; index < points.length; index++) {
+      const prev = points[index - 1]
+      const current = points[index]
+      const width = current.p - prev.p
+      if (width <= 0) continue
+      const height = (prev.percent + current.percent) / 200
+      area += width * height
+    }
+    speedupSums[author] = area
   }
 
   const coverage: Record<string, CoverageStats> = {}
@@ -326,7 +339,7 @@ export function computeFastPCurvesForAuthors(params: {
     coverage[author] = { attempted, total, percent }
   }
 
-  return { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage }
+  return { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage, speedupSums }
 }
 
 export function computeAuthorCorrectnessSummary(params: {
