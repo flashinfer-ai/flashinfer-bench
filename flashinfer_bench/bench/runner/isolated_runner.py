@@ -1,3 +1,5 @@
+"""Isolated runner that spawns a new process for each solution."""
+
 from __future__ import annotations
 
 import logging

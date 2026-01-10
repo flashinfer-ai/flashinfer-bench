@@ -1,3 +1,5 @@
+"""FlashInfer integration for automatic tracing and apply functionality."""
+
 from __future__ import annotations
 
 from flashinfer_bench.integration.patch_manager import get_manager

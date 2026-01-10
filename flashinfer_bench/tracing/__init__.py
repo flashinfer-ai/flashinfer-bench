@@ -1,3 +1,5 @@
+"""Tracing subsystem for collecting workload traces."""
+
 from __future__ import annotations
 
 from .builtin.policies import (

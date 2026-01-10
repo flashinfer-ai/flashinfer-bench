@@ -1,3 +1,5 @@
+"""Main benchmark orchestration class."""
+
 from __future__ import annotations
 
 from collections import defaultdict

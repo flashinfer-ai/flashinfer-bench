@@ -1,3 +1,5 @@
+"""Utility classes for integration adapters."""
+
 from __future__ import annotations
 
 import inspect

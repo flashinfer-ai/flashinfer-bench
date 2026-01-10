@@ -1,3 +1,5 @@
+"""Apply subsystem for routing to optimized kernel implementations."""
+
 from .apply_api import apply, disable_apply, enable_apply
 from .config import ApplyConfig, ApplyConfigRegistry
 from .presets import get_default_registry

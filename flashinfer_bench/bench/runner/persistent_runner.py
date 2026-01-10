@@ -1,3 +1,5 @@
+"""Persistent runner that reuses worker processes across solutions."""
+
 from __future__ import annotations
 
 import logging

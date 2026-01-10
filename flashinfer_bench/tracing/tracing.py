@@ -1,3 +1,5 @@
+"""Public API for enabling and disabling tracing."""
+
 from typing import Dict, Optional
 
 from flashinfer_bench.data import TraceSet
