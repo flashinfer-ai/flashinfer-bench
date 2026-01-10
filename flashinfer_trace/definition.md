@@ -20,13 +20,13 @@ Note that a `Definition` does not contain specific input *data* for its variable
 | --- | --- | --- | --- |
 | `name` | string | Yes | A unique, human-readable name for the kernel, should include concrete problem information. Naming convention: `{op_type}_{props}_{constants}` (e.g. `gqa_paged_decode_h32_kv8_d128_ps1`). |
 | `op_type` | string | Yes | The general compute category. |
-| `tags` | array[string] (Default: `null`) | No | The string tags associated with this definition. Used for grouping and filtering. |
-| `description` | string (Default: `null`) | No | A brief, human-readable description of the definition and its purpose. |
-| `axes` | Dict[string, Union[AxisConst, AxisVar]] | Yes | An object mapping symbolic dimension names (e.g., `"M"`, `"N"`, `"K"`) to their definitions. The value is either a constant or a variable axis. The axes will be bound to the input tensor dimensions at runtime. |
-| `inputs` | Dict[string, TensorSpec] | Yes | Named input tensors (e.g.,`"A"`,`"B"`). |
-| `outputs` | Dict[string, TensorSpec] | Yes | Named output tensors (e.g.,`"C"`). |
+| `tags` | array | No | The string tags associated with this definition. Used for grouping and filtering. |
+| `description` | string | No | A brief, human-readable description of the definition and its purpose. |
+| `axes` | object | Yes | Key-value pairs defining the symbolic dimensions used in tensor shapes. |
+| `inputs` | object | Yes | Named input tensors (e.g.,`"A"`,`"B"`). |
+| `outputs` | object | Yes | Named output tensors (e.g.,`"C"`). |
 | `reference` | string | Yes | The reference implementation in PyTorch, serving as the mathematical specification. |
-| `constraints` | array[string] (Default: `null`) | No | An optional list of assertions describing relationships between axes. |
+| `constraints` | array | No | An optional list of assertions describing relationships between axes. |
 
 ### `op_type`: Compute Category
 
@@ -93,11 +93,12 @@ Example:
 
 ### `type`: `var`
 
-Represents a variable axis whose value will be determined by the input data.
+Represents a variable axis whose value will be determined by the input data. The `parent` field can be used to indicate hierarchical axis relationships, such as a grouped dimension structure.
 
 | Field | Type | Required | Description | Default |
 | --- | --- | --- | --- | --- |
 | `type` | string | Yes | Must be `"var"` | — |
+| `parent` | string | No | (Optional) name of parent axis for nesting | `null` |
 | `description` | string | No | Brief description |  |
 
 Example:
@@ -105,6 +106,7 @@ Example:
 ```json
 "sequence_length": {
   "type": "var",
+  "parent": "batch_size"
 }
 
 ```
@@ -253,14 +255,14 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "grouped_gemm_n4096_k4096",
   "description": "A batch of independent GEMM operations, grouped along a 'G' dimension.",
-  "op_type": "grouped_gemm",
+  "type": "grouped_gemm",
   "tags": [
     "status:draft",
     "model:some_model"
   ]
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var" },
+    "M": { "type": "var", "parent": "G" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 }
   },
@@ -290,7 +292,7 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "quantized_grouped_gemm_n4096_k4096_kg128",
   "description": "A batched GEMM operation where the inputs are quantized, with per-group scaling factors.",
-  "op_type": "grouped_gemm",
+  "type": "grouped_gemm",
   "tags": [
     "status:draft",
     "quantization:float8_e4m3fn",
@@ -298,7 +300,7 @@ The `reference` field is a string that contains the reference implementation of 
   ]
   "axes": {
     "G": { "type": "var" },
-    "M": { "type": "var" },
+    "M": { "type": "var", "parent": "G" },
     "N": { "type": "const", "value": 4096 },
     "K": { "type": "const", "value": 4096 },
     "K_group": { "type": "const", "value": 128 }
@@ -376,15 +378,15 @@ The `reference` field is a string that contains the reference implementation of 
 {
   "name": "gqa_hr4_dqk128_dvo128",
   "description": "Grouped-Query Attention with a query-to-key-value head ratio of 4.",
-  "op_type": "gqa",
+  "type": "gqa",
   "tags": [
     "status:draft",
     "model:some_model"
   ]
   "axes": {
     "B": { "type": "var" },
-    "Q": { "type": "var" },
-    "KV": { "type": "var" },
+    "Q": { "type": "var", "parent": "B" },
+    "KV": { "type": "var", "parent": "B" },
     "H_qo": { "type": "var" },
     "H_kv": { "type": "var" },
     "H_r": { "type": "const", "value": 4 },

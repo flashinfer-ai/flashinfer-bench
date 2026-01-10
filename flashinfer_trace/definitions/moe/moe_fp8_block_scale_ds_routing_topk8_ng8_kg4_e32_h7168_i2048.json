@@ -1,0 +1,147 @@
+{
+  "name": "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048",
+  "description": "FP8 block scale MoE operation. Routing and two grouped-GEMM included.",
+  "op_type": "moe",
+  "tags": [
+    "status:verified",
+    "model:deepseek-v3",
+    "model:deepseek-r1",
+    "quantization:float8_e4m3fn"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length (number of tokens)"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 256,
+      "description": "Total number of experts."
+    },
+    "num_local_experts": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of local experts with EP size 8."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 7168,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "MoE intermediate layer size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output size of the first GEMM (W13). Should be 2 * intermediate_size"
+    },
+    "num_hidden_blocks": {
+      "type": "const",
+      "value": 56,
+      "description": "Number of quantized blocks along the hidden_size dimension (block_size=128)."
+    },
+    "num_intermediate_blocks": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of quantized blocks along the intermediate_size dimension (block_size=128)."
+    },
+    "num_gemm1_out_blocks": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of quantized blocks along the gemm1_out_size dimension (block_size=128)."
+    }
+  },
+  "inputs": {
+    "routing_logits": {
+      "shape": [
+        "seq_len",
+        "num_experts"
+      ],
+      "dtype": "float32",
+      "description": "Tensor of routing logits for expert selection"
+    },
+    "routing_bias": {
+      "shape": [
+        "num_experts"
+      ],
+      "dtype": "bfloat16",
+      "description": "Bias tensor for routing. Pass all zeros for no bias."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Input hidden states tensor (FP8 quantized)"
+    },
+    "hidden_states_scale": {
+      "shape": [
+        "num_hidden_blocks",
+        "seq_len"
+      ],
+      "dtype": "float32",
+      "description": "Block-wise scaling factors for hidden states."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "hidden_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "First GEMM weights for all local experts (gate and up projections)."
+    },
+    "gemm1_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "num_gemm1_out_blocks",
+        "num_hidden_blocks"
+      ],
+      "dtype": "float32",
+      "description": "Block-wise scaling factors for first GEMM weights."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "intermediate_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Second GEMM weights for all local experts (down projection)."
+    },
+    "gemm2_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "num_hidden_blocks",
+        "num_intermediate_blocks"
+      ],
+      "dtype": "float32",
+      "description": "Block-wise scaling factors for second GEMM weights."
+    },
+    "local_expert_offset": {
+      "shape": null,
+      "dtype": "int32",
+      "description": "Offset of local experts in global expert space."
+    },
+    "routed_scaling_factor": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Scaling factor for routing weights."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor"
+    }
+  },
+  "reference": "import torch\r\n\r\n\r\n@torch.no_grad()\r\ndef run(\r\n    routing_logits: torch.Tensor,\r\n    routing_bias: torch.Tensor,\r\n    hidden_states: torch.Tensor,\r\n    hidden_states_scale: torch.Tensor,\r\n    gemm1_weights: torch.Tensor,\r\n    gemm1_weights_scale: torch.Tensor,\r\n    gemm2_weights: torch.Tensor,\r\n    gemm2_weights_scale: torch.Tensor,\r\n    local_expert_offset: int,\r\n    routed_scaling_factor: float,\r\n):\r\n    \"\"\"\r\n    • FP8 block-scale dequantization: float ≈ fp8 * scale\r\n    • DeepSeek-V3 no-aux routing:\r\n        s = sigmoid(logits)\r\n        s_with_bias = s + bias\r\n        group by n_group=8; per group take top-2 sum → pick topk_group=4 groups\r\n        on the kept groups, take global top_k=8 experts\r\n        combine with weights derived from s (without bias), normalized and\r\n        scaled by routed_scaling_factor\r\n    • Local computation:\r\n        only experts in [local_expert_offset, local_expert_offset + E_local) are\r\n        computed on this rank (GEMM1 → SwiGLU → GEMM2), then per-token weighted\r\n        accumulation.\r\n    \"\"\"\r\n\r\n    # Fixed DeepSeek-V3/R1 geometry\r\n    H = 7168\r\n    I = 2048\r\n    E_local = gemm1_weights.shape[0]\r\n    \r\n    BLOCK = 128\r\n    E_global = routing_logits.shape[1]\r\n    T = routing_logits.shape[0]\r\n\r\n    assert H == 7168, \"hidden_size must be 7168\" \r\n    assert I == 2048, \"intermediate_size must be 2048\"\r\n    assert E_global == 256, \"num_experts must be 256\"\r\n    assert E_local == 32, \"num_local_experts must be 32\"\r\n\r\n    # Routing constants\r\n    TOP_K = 8\r\n    N_GROUP = 8\r\n    TOPK_GROUP = 4\r\n\r\n    # Block counts\r\n    num_hidden_blocks = H // BLOCK          # 56\r\n    num_intermediate_blocks = I // BLOCK    # 16\r\n    num_gemm1_out_blocks = (2 * I) // BLOCK # 32\r\n\r\n    # Shape checks\r\n    assert hidden_states.shape == (T, H)\r\n    assert hidden_states_scale.shape == (num_hidden_blocks, T)\r\n    assert gemm1_weights.shape == (E_local, 2 * I, H)\r\n    assert gemm1_weights_scale.shape == (E_local, num_gemm1_out_blocks, num_hidden_blocks)\r\n    assert gemm2_weights.shape == (E_local, H, I)\r\n    assert gemm2_weights_scale.shape == (E_local, num_hidden_blocks, num_intermediate_blocks)\r\n    assert routing_bias.shape[-1] == E_global\r\n\r\n    device = hidden_states.device\r\n\r\n    # 1) FP8 block-scale dequantization\r\n    # hidden_states: [T, H], scale: [H/128, T] (transposed layout)\r\n    A_fp32 = hidden_states.to(torch.float32)\r\n    A_scale = hidden_states_scale.to(torch.float32)                # [H/128, T]\r\n    A_scale_TH = A_scale.permute(1, 0).contiguous()            # [T, H/128]\r\n    A_scale_expanded = (\r\n        A_scale_TH.unsqueeze(-1)\r\n        .repeat(1, 1, BLOCK)                                   # [T, H/128, 128]\r\n        .reshape(T, H)                                         # [T, H]\r\n        .contiguous()\r\n    )\r\n    A = A_fp32 * A_scale_expanded                              # [T, H] float32\r\n\r\n    # W13: [E_local, 2I, H], scale: [E_local, (2I)/128, H/128]\r\n    W13_fp32 = gemm1_weights.to(torch.float32)\r\n    S13 = gemm1_weights_scale.to(torch.float32)\r\n    S13_expanded = torch.repeat_interleave(S13, BLOCK, dim=1)  # [E, 2I, H/128]\r\n    S13_expanded = torch.repeat_interleave(S13_expanded, BLOCK, dim=2)  # [E, 2I, H]\r\n    W13 = W13_fp32 * S13_expanded                              # [E, 2I, H] float32\r\n\r\n    # W2: [E_local, H, I], scale: [E_local, H/128, I/128]\r\n    W2_fp32 = gemm2_weights.to(torch.float32)\r\n    S2 = gemm2_weights_scale.to(torch.float32)\r\n    S2_expanded = torch.repeat_interleave(S2, BLOCK, dim=1)    # [E, H, I/128]\r\n    S2_expanded = torch.repeat_interleave(S2_expanded, BLOCK, dim=2)    # [E, H, I]\r\n    W2 = W2_fp32 * S2_expanded                                 # [E, H, I] float32\r\n\r\n    # 2) No-aux routing\r\n    logits = routing_logits.to(torch.float32)                      # [T, E_global]\r\n    bias = routing_bias.to(torch.float32).reshape(-1)              # [E_global]\r\n\r\n    # Sigmoid\r\n    s = 1.0 / (1.0 + torch.exp(-logits))                       # [T, E]\r\n    s_with_bias = s + bias                                     # [T, E] (broadcast)\r\n\r\n    # Grouping\r\n    group_size = E_global // N_GROUP # 32\r\n    s_wb_grouped = s_with_bias.view(T, N_GROUP, group_size)    # [T, 8, 32]\r\n\r\n    # Group scores = sum of top-2 values within each group\r\n    top2_vals, _ = torch.topk(s_wb_grouped, k=2, dim=2, largest=True, sorted=False)  # [T, 8, 2]\r\n    group_scores = top2_vals.sum(dim=2)                        # [T, 8]\r\n\r\n    # Select topk_group groups → group mask\r\n    _, group_idx = torch.topk(group_scores, k=TOPK_GROUP, dim=1, largest=True, sorted=False)  # [T, 4]\r\n    group_mask = torch.zeros_like(group_scores)                # [T, 8]\r\n    group_mask.scatter_(1, group_idx, 1.0)\r\n    score_mask = group_mask.unsqueeze(2).expand(T, N_GROUP, group_size).reshape(T, E_global)  # [T, E]\r\n\r\n    # Global top-k (within kept groups), based on s_with_bias\r\n    neg_inf = torch.finfo(torch.float32).min\r\n    scores_pruned = s_with_bias.masked_fill(score_mask == 0, neg_inf)                  # [T, E]\r\n    _, topk_idx = torch.topk(scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False)  # [T, 8]\r\n\r\n    # Combination weights: use s (without bias) for normalization\r\n    M = torch.zeros_like(s)                                    # [T, E]\r\n    M.scatter_(1, topk_idx, 1.0)                               # 0/1 mask\r\n    weights = s * M                                            # [T, E]\r\n    weights_sum = weights.sum(dim=1, keepdim=True) + 1e-20\r\n    weights = (weights / weights_sum) * routed_scaling_factor  # [T, E]\r\n\r\n    # 3) Local expert compute and accumulation\r\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\r\n\r\n    local_start = int(local_expert_offset)\r\n\r\n    # For each local expert: find selected tokens, run GEMM1→SwiGLU→GEMM2, accumulate by weights\r\n    for le in range(E_local):\r\n        ge = local_start + le\r\n        if ge < 0 or ge >= E_global:\r\n            continue\r\n\r\n        # Tokens that selected this global expert ge in their top-k\r\n        sel_mask_per_token = (topk_idx == ge).any(dim=1)       # [T] bool\r\n        if not sel_mask_per_token.any():\r\n            continue\r\n\r\n        token_idx = torch.nonzero(sel_mask_per_token, as_tuple=False).squeeze(1)  # [Tk]\r\n        Tk = token_idx.numel()\r\n\r\n        # Gather inputs and weights for this expert\r\n        A_e = A.index_select(0, token_idx)                     # [Tk, H]\r\n        W13_e = W13[le]                                        # [2I, H]\r\n        W2_e = W2[le]                                          # [H, I]\r\n\r\n        # GEMM1: [Tk, H] @ [H, 2I] = [Tk, 2I]\r\n        G1 = A_e.matmul(W13_e.t())                             # [Tk, 2I]\r\n\r\n        # SwiGLU: split and apply silu(x) = x / (1 + exp(-x))\r\n        X1 = G1[:, :I]                                         # [Tk, I]\r\n        X2 = G1[:, I:]                                         # [Tk, I]\r\n        silu_X2 = X2 / (1.0 + torch.exp(-X2))                  # [Tk, I]\r\n        C = silu_X2 * X1                                       # [Tk, I]\r\n\r\n        # GEMM2: [Tk, I] @ [I, H] = [Tk, H]\r\n        O = C.matmul(W2_e.t())                                 # [Tk, H]\r\n\r\n        # Accumulate with per-token routing weights for this expert\r\n        w_tok = weights.index_select(0, token_idx)[:, ge]      # [Tk]\r\n        output.index_add_(0, token_idx, O * w_tok.unsqueeze(1))  # [Tk,H] * [Tk,1]\r\n\r\n    return output.to(torch.bfloat16)"
+}
