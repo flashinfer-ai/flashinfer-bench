@@ -88,8 +88,8 @@ def _def2d():
 def test_rand_tensor_and_normalize_cpu():
     dev = torch.device("cpu")
 
-    t = _rand_tensor([2, 3], torch.float32, dev)
-    assert t.shape == (2, 3) and t.dtype == torch.float32 and t.device.type == "cpu"
+    tensor = _rand_tensor([2, 3], torch.float32, dev)
+    assert tensor.shape == (2, 3) and tensor.dtype == torch.float32 and tensor.device.type == "cpu"
 
     b = _rand_tensor([4], torch.bool, dev)
     assert b.dtype == torch.bool and b.device.type == "cpu"
@@ -105,16 +105,17 @@ def test_rand_tensor_and_normalize_cpu():
 
 
 def test_gen_inputs_random_and_scalar_cpu():
-    d = _def2d()
-    wl = Workload(
+    definition = _def2d()
+    workload = Workload(
         axes={"M": 2, "N": 3},
         inputs={"X": RandomInput(), "Y": RandomInput(), "S": ScalarInput(value=7)},
         uuid="w1",
     )
-    out = gen_inputs(d, wl, device="cpu", stensors={})
-    assert out["X"].shape == (2, 3) and out["X"].dtype == torch.float32
-    assert out["Y"].shape == (2, 3) and out["Y"].dtype == torch.int32
-    assert out["S"] == 7
+    # gen_inputs returns list in definition order: [X, Y, S]
+    out = gen_inputs(definition, workload, device="cpu", safe_tensors={})
+    assert out[0].shape == (2, 3) and out[0].dtype == torch.float32  # X
+    assert out[1].shape == (2, 3) and out[1].dtype == torch.int32  # Y
+    assert out[2] == 7  # S
 
 
 @pytest.mark.skipif(
@@ -123,22 +124,23 @@ def test_gen_inputs_random_and_scalar_cpu():
 def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
     import safetensors.torch as st
 
-    d = _def2d()
+    definition = _def2d()
     data = {"X": torch.zeros((2, 3), dtype=torch.float32)}
-    p = tmp_path / "x.safetensors"
-    st.save_file(data, str(p))
-    wl = Workload(
+    path = tmp_path / "x.safetensors"
+    st.save_file(data, str(path))
+    workload = Workload(
         axes={"M": 2, "N": 3},
         inputs={
-            "X": SafetensorsInput(path=str(p), tensor_key="X"),
+            "X": SafetensorsInput(path=str(path), tensor_key="X"),
             "S": ScalarInput(value=1),
             "Y": RandomInput(),
         },
         uuid="w2",
     )
-    stensors = load_safetensors(d, wl)
-    out = gen_inputs(d, wl, device="cpu", stensors=stensors)
-    assert torch.allclose(out["X"], data["X"]) and out["X"].device.type == "cpu"
+    safe_tensors = load_safetensors(definition, workload)
+    # gen_inputs returns list in definition order: [X, Y, S]
+    out = gen_inputs(definition, workload, device="cpu", safe_tensors=safe_tensors)
+    assert torch.allclose(out[0], data["X"]) and out[0].device.type == "cpu"  # X
 
 
 def test_compute_error_stats():
@@ -180,7 +182,7 @@ def test_compute_error_stats():
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_isolated_runner_run_ref_and_solution_minimal():
     # Dataset
-    d = Definition(
+    definition = Definition(
         name="dmp",
         op_type="op",
         axes={"N": AxisConst(value=4)},
@@ -188,28 +190,87 @@ def test_isolated_runner_run_ref_and_solution_minimal():
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
         reference="import torch\n\ndef run(A):\n    return A\n",
     )
-    wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr")
 
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
     )
     srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
-    s = Solution(name="py_ok", definition=d.name, author="me", spec=spec, sources=srcs)
+    solution = Solution(
+        name="py_ok", definition=definition.name, author="me", spec=spec, sources=srcs
+    )
 
-    r = SubprocessWorker(device="cuda:0")
-    h = r.run_ref(d, wl, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None)
-    ev = r.run_solution(s, h, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1))
-    assert ev.status.value in {
+    worker = SubprocessWorker(device="cuda:0")
+    handle = worker.run_ref(
+        definition, workload, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1), None
+    )
+    evaluation = worker.run_solution(
+        solution, handle, BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    )
+    assert evaluation.status.value in {
         "PASSED",
         "RUNTIME_ERROR",
         "COMPILE_ERROR",
     }  # runtime may fail on env, but no shape/dtype errors
-    r.release(h)
+    worker.release(handle)
+
+
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+def test_isolated_runner_with_scalar_input():
+    """E2E test: bench with scalar input in the middle of inputs."""
+    definition = Definition(
+        name="d_scalar_e2e",
+        op_type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={
+            "A": TensorSpec(shape=["N"], dtype="float32"),
+            "scale": TensorSpec(shape=None, dtype="float32"),  # scalar in the middle
+            "B": TensorSpec(shape=["N"], dtype="float32"),
+        },
+        outputs={"C": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A, scale, B):\n    return A * scale + B\n",
+    )
+    workload = Workload(
+        axes={"N": 4},
+        inputs={"A": RandomInput(), "scale": ScalarInput(value=2.0), "B": RandomInput()},
+        uuid="w_scalar_e2e",
+    )
+
+    spec = BuildSpec(
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
+    )
+    srcs = [
+        SourceFile(
+            path="pkg/main.py",
+            content="import torch\n\ndef run(A, scale, B):\n    return A * scale + B\n",
+        )
+    ]
+    solution = Solution(
+        name="py_scalar", definition=definition.name, author="me", spec=spec, sources=srcs
+    )
+
+    worker = SubprocessWorker(device="cuda:0")
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    handle = None
+    try:
+        handle = worker.run_ref(definition, workload, cfg, None)
+        evaluation = worker.run_solution(solution, handle, cfg)
+        assert evaluation.status.value == "PASSED"
+    finally:
+        if handle is not None:
+            worker.release(handle)
+        worker.close()
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 def test_isolated_worker_embeds_stdout(tmp_path: Path):
-    d = Definition(
+    definition = Definition(
         name="dmp_log",
         op_type="op",
         axes={"N": AxisConst(value=4)},
@@ -217,11 +278,14 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
         reference="import torch\n\ndef run(A):\n    return A\n",
     )
-    wl = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_log")
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_log")
 
     message = "isolated worker log line"
     spec = BuildSpec(
-        language=SupportedLanguages.PYTHON, target_hardware=["cuda"], entry_point="pkg/main.py::run"
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
     )
     srcs = [
         SourceFile(
@@ -231,13 +295,15 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
             ),
         )
     ]
-    solution = Solution(name="py_log", definition=d.name, author="me", spec=spec, sources=srcs)
+    solution = Solution(
+        name="py_log", definition=definition.name, author="me", spec=spec, sources=srcs
+    )
 
     worker = SubprocessWorker(device="cuda:0", log_dir=str(tmp_path / "logs"))
     cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
     handle = None
     try:
-        handle = worker.run_ref(d, wl, cfg, None)
+        handle = worker.run_ref(definition, workload, cfg, None)
         evaluation = worker.run_solution(solution, handle, cfg)
         assert isinstance(evaluation.log, str)
         assert message in evaluation.log

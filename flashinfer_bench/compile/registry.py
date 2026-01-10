@@ -146,6 +146,7 @@ class BuilderRegistry:
                 language=SupportedLanguages.PYTHON,
                 target_hardware=["cuda"],
                 entry_point="main.py::run",
+                destination_passing_style=False,
             ),
             sources=[SourceFile(path="main.py", content=definition.reference)],
             description="reference",

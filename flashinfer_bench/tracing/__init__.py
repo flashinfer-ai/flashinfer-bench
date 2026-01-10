@@ -4,7 +4,6 @@ from .builtin.policies import (
     BUILTIN_FILTER_POLICIES,
     BUILTIN_INPUT_DUMP_POLICIES,
     AttentionFilterPolicy,
-    InputDumpPolicyFunction,
     KeepAllPolicy,
     KeepFirstByAxesPolicy,
     KeepFirstKPolicy,
@@ -12,8 +11,7 @@ from .builtin.policies import (
     dump_int32,
     dump_none,
 )
-from .config import TracingConfig
-from .filter_policy import FilterPolicy, FilterPolicyFactory
+from .config import FilterPolicy, FilterPolicyFactory, InputDumpPolicyFunction, TracingConfig
 from .runtime import TracingRuntime, get_tracing_runtime
 from .tracing import disable_tracing, enable_tracing
 from .workload_entry import WorkloadEntry

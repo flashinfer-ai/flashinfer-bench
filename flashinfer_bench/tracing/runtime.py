@@ -1,13 +1,13 @@
 import atexit
+import logging
 import signal
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from flashinfer_bench.data import (
-    Definition,
     InputSpec,
     RandomInput,
     SafetensorsInput,
@@ -16,15 +16,13 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_tracing
-from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import dtype_str_to_python_dtype, dtype_str_to_torch_dtype
+from flashinfer_bench.utils import dtype_str_to_torch_dtype
 
 from .builtin.configs import FULL_TRACING_CONFIGS
-from .config import TracingConfig
-from .filter_policy import FilterPolicy
+from .config import FilterPolicy, TracingConfig
 from .workload_entry import WorkloadEntry
 
-logger = get_logger("TracingRuntime")
+logger = logging.getLogger(__name__)
 
 
 class TracingRuntime:
@@ -42,7 +40,7 @@ class TracingRuntime:
         Parameters
         ----------
         dataset_path : Optional[str]
-            Path to the dataset/traceset directory. Default is the environment variable
+            Path to the dataset/trace_set directory. Default is the environment variable
             FIB_DATASET_PATH if it exists, or `~/.cache/flashinfer_bench/dataset`.
         tracing_configs : Optional[Dict[str, TracingConfig]]
             A set of tracing configs. Default is `fib.tracing.builtin_config.fib_full_tracing`.
@@ -66,10 +64,6 @@ class TracingRuntime:
         self._cuda_graph_entries: List[WorkloadEntry] = []
         self._in_cuda_graph = False
 
-        # Init the var axes table. It maps def name to a list of all its variable axes, described
-        # by tuple (input_name, dim_idx, axis_name).
-        self._var_axes_table = self._init_var_axes_table()
-
         # Create independent filter policy instances for each definition
         # This ensures state isolation between definitions and runtime instances
         self._filter_policies: Dict[str, FilterPolicy] = {}
@@ -86,24 +80,33 @@ class TracingRuntime:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        logger.debug("TracingRuntime Initialized")
-        logger.debug(f"  TraceSet root path: {self._trace_set.root}")
-        logger.debug(f"  Tracing configs: {len(self._tracing_configs)} definitions configured")
+        logger.info("TracingRuntime Initialized")
+        logger.info(f"  TraceSet root path: {self._trace_set.root}")
+        logger.info(f"  Tracing configs: {len(self._tracing_configs)} definitions configured")
 
         from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
 
         install_flashinfer_integrations()
 
-    def collect(self, def_name: str, runtime_args: Dict[str, Any]):
+    def collect(self, def_name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]):
         """
-        Record a workload for later serialization to disk.
+        Record a workload for later serialization to disk. When an error occurs, it will print
+        an error message and return to avoid crashing the runtime.
+
+        Only input arguments are traced; output arguments (for destination-passing style) are
+        ignored. The calling convention is determined by comparing the number of arguments
+        to the definition's inputs and outputs.
 
         Parameters
         ----------
         def_name : str
             Name of the workload definition to trace.
-        runtime_args : Dict[str, Any]
-            Runtime arguments containing tensor inputs and other parameters.
+        args : Tuple[Any, ...]
+            Positional arguments. For value-returning style, only inputs.
+            For destination-passing style, inputs followed by pre-allocated outputs.
+            Only the input portion is traced.
+        kwargs : Dict[str, Any]
+            Keyword arguments to merge into positional arguments.
 
         Notes
         -----
@@ -118,52 +121,63 @@ class TracingRuntime:
         - Tensor validation fails (wrong shape, dtype, etc.)
         - Axis inference fails
         """
-        logger.debug(f"Tracing '{def_name}'")
-        tracing_config = self._tracing_configs.get(def_name)
+        logger.info(f"Tracing '{def_name}'")
+
+        tracing_config = self._tracing_configs.get(def_name, None)
         if tracing_config is None:
             logger.error(f"Tracing config not configured for {def_name}, skipping")
             return
 
-        if def_name not in self._trace_set.definitions:
+        definition = self._trace_set.definitions.get(def_name, None)
+        if definition is None:
             logger.error(f"Definition {def_name} not found")
             return
 
+        # Merge kwargs into args based on definition's input/output order
+        if kwargs:
+            args = definition.merge_kwargs_to_args(args, kwargs)
+
+        # Determine calling convention and extract only inputs
+        num_inputs = len(definition.inputs)
+        num_outputs = len(definition.outputs)
+
+        if len(args) != num_inputs and len(args) != num_inputs + num_outputs:
+            logger.error(
+                f"Invalid number of arguments for {def_name}: expected {num_inputs} "
+                f"(value-returning) or {num_inputs + num_outputs} (destination-passing), "
+                f"got {len(args)}"
+            )
+            return
+
+        input_names = list(definition.inputs.keys())
+        input_values = list(args[:num_inputs])
+
+        # Infer axes
         try:
-            axes = self._infer_axes(def_name, runtime_args)
+            axes = definition.get_axes_values_from_inputs(input_values)
         except ValueError as e:
-            logger.error(f"Error inferring axes for {def_name}: {e}")
+            logger.error(f"Error getting axis values for {def_name}: {e}")
             return
 
-        # Validate runtime arguments
-        definition = self._trace_set.definitions[def_name]
-        definition_input_names = set(definition.inputs.keys())
-        runtime_input_names = set(runtime_args.keys())
-
-        missing = sorted(definition_input_names - runtime_input_names)
-        unexpected = sorted(runtime_input_names - definition_input_names)
-
-        if len(missing) > 0:
-            logger.error(f"Missing inputs for {def_name}: {missing}")
-            return
-
-        if len(unexpected) > 0:
-            logger.error(f"Unexpected inputs for {def_name}: {unexpected}")
-            return
-
-        # At this point, runtime_args exactly matches definition.inputs
-        # Validate inputs_to_dump
-        input_names_to_dump = tracing_config.get_inputs_to_dump(runtime_args)
-
-        inputs_to_dump: Dict[str, torch.Tensor] = {}
-
-        for name in input_names_to_dump:
-            converted = self._convert_arg_to_tensor(definition, axes, name, runtime_args[name])
-            if converted is None:
+        # Get inputs to dump
+        inputs_to_dump = tracing_config.get_inputs_to_dump(input_names, input_values)
+        # Convert to tensors
+        inputs_to_dump_tensors: Dict[str, torch.Tensor] = {}
+        for name, val in inputs_to_dump.items():
+            try:
+                inputs_to_dump_tensors[name] = self._convert_arg_to_tensor(
+                    val, definition.inputs[name].dtype
+                )
+            except ValueError as e:
+                logger.error(f"Error converting argument '{name}' to tensor for {def_name}: {e}")
                 return
-            inputs_to_dump[name] = converted
 
+        # Construct workload entry
         entry = WorkloadEntry(
-            def_name=def_name, axes=axes, inputs_to_dump=inputs_to_dump, order=self.order_counter
+            def_name=def_name,
+            axes=axes,
+            inputs_to_dump=inputs_to_dump_tensors,
+            order=self.order_counter,
         )
 
         with self._lock:
@@ -179,7 +193,7 @@ class TracingRuntime:
             self.order_counter += 1
 
     def _convert_arg_to_tensor(
-        self, definition: Definition, axes: Dict[str, int], name: str, val: Any
+        self, val: Union[int, float, bool, list, tuple, torch.Tensor], dtype: str
     ) -> Optional[torch.Tensor]:
         """Convert a runtime argument to a tensor for further dumping. If the conversion fails,
         log an error and return None.
@@ -200,108 +214,13 @@ class TracingRuntime:
         Optional[torch.Tensor]
             The converted tensor. None if conversion fails.
         """
-        spec = definition.inputs[name]
-
-        try:
-            shape_tuple = _materialize_shape(definition, axes, spec.shape)
-        except ValueError as e:
-            logger.error(f"Error materializing specs for {name}: {e}")
-            return
-
-        torch_dtype = dtype_str_to_torch_dtype(spec.dtype)
-
-        if val is None:
-            logger.error(f'Tensor name "{name}" to dump is not found for {definition.name}')
-            return
-
-        # Scalar input
-        if shape_tuple is None:
-            python_dtype = dtype_str_to_python_dtype(spec.dtype)
-            if not isinstance(val, python_dtype):
-                logger.error(
-                    f'Input "{name}" must be Python scalar of type {python_dtype.__name__},'
-                    f" but got {type(val).__name__}"
-                )
-                return
-
-            val = torch.tensor(val, dtype=torch_dtype)
-
-        # Tensor input
+        if isinstance(val, (int, float, bool, list, tuple)):
+            val = torch.tensor(val, dtype=dtype_str_to_torch_dtype(dtype))
+            return val
+        elif isinstance(val, torch.Tensor):
+            return val.detach().cpu().clone()
         else:
-            if not isinstance(val, torch.Tensor):
-                logger.error(f'Input "{name}" must be a tensor (got {type(val).__name__})')
-                return
-            if val.shape != shape_tuple:
-                logger.error(f'Input "{name}" must have shape {shape_tuple}, got {val.shape}')
-                return
-            if val.dtype != torch_dtype:
-                logger.error(f'Input "{name}" must have dtype {torch_dtype}, got {val.dtype}')
-                return
-
-        if not self._in_cuda_graph:
-            val = val.detach().cpu().clone()
-
-        return val
-
-    def _init_var_axes_table(self) -> Dict[str, List[Tuple[str, int, str]]]:
-        result: Dict[str, List[Tuple[str, int, str]]] = {}
-        for definition in self._trace_set.definitions.values():
-            axes = []
-            for input_name, input_spec in definition.inputs.items():
-                if input_spec.shape is None:
-                    continue
-                for dim_idx, axis_name in enumerate(input_spec.shape):
-                    if definition.axes[axis_name].type == "var":
-                        axes.append((input_name, dim_idx, axis_name))
-            result[definition.name] = axes
-        return result
-
-    def _infer_axes(self, def_name: str, runtime_args: Dict[str, Any]) -> Dict[str, int]:
-        """
-        Use input shape in definition + runtime tensor shapes to determine
-        concrete values for every variable axis.
-
-        Parameters
-        ----------
-        def_name : str
-            Name of the definition to infer axes for.
-        runtime_args : Dict[str, Any]
-            Runtime arguments containing tensor inputs and other parameters.
-
-        Returns
-        -------
-        Dict[str, int]
-            Dictionary mapping axis names to their concrete integer values.
-
-        Raises
-        ------
-        ValueError
-            If var_axes_table is not initialized for the definition, or if the input is missing,
-            or if the axis has different values for different inputs.
-        """
-        var_axes = self._var_axes_table.get(def_name)
-        if var_axes is None:
-            raise ValueError(f"var_axes_table is not initialized for definition {def_name}")
-
-        axes = {}
-        for input_name, dim_idx, axis_name in var_axes:
-            tensor = runtime_args.get(input_name)
-            if tensor is None:
-                raise ValueError(f'Missing input "{input_name}" for definition "{def_name}"')
-            if dim_idx >= len(tensor.shape):
-                raise ValueError(
-                    f'Input "{input_name}" rank {len(tensor.shape)} < dim {dim_idx} of axis '
-                    f'"{axis_name}"'
-                )
-            if axis_name in axes:
-                if axes[axis_name] != int(tensor.shape[dim_idx]):
-                    raise ValueError(
-                        f"Axis {axis_name} has different values for different inputs: "
-                        f"{axes[axis_name]} and {int(tensor.shape[dim_idx])}"
-                    )
-            else:
-                axes[axis_name] = int(tensor.shape[dim_idx])
-        return axes
+            raise ValueError(f"Unsupported argument type: {type(val)}")
 
     def _snapshot_graph_tensors(self):
         """Snapshot tensors from CUDA Graph entries to CPU memory.
@@ -503,73 +422,6 @@ def set_tracing_runtime(rt: Optional["TracingRuntime"]) -> None:
     """
     global _global_tracing_runtime
     _global_tracing_runtime = rt
-
-
-def _get_axis_value(definition: Definition, axes: Dict[str, int], axis_name: str) -> int:
-    """Get the integer value for a named axis from runtime axes or definition.
-
-    Parameters
-    ----------
-    definition : Definition
-        The workload definition containing axis specifications.
-    axes : Dict[str, int]
-        Runtime axis values provided during tracing.
-    axis_name : str
-        Name of the axis to resolve.
-
-    Returns
-    -------
-    int
-        The resolved integer value for the axis.
-
-    Raises
-    ------
-    ValueError
-        If the axis is unknown, has unsupported type, or is missing required values.
-    """
-    axis_spec = definition.axes.get(axis_name)
-    if axis_spec is None:
-        raise ValueError(f'Unknown axis "{axis_name}" in shape')
-
-    if axis_spec.type == "const":
-        return axis_spec.value
-    elif axis_spec.type == "var":
-        if axis_name in axes:
-            return int(axes[axis_name])
-        else:
-            raise ValueError(f'Axis "{axis_name}" is a variable axis but missing in axes')
-    raise ValueError(f'Unsupported axis type for "{axis_name}": {axis_spec.type}')
-
-
-def _materialize_shape(
-    definition: Definition, axes: Dict[str, int], shape: Optional[List[str]]
-) -> Optional[Tuple[int, ...]]:
-    """Convert a shape specification with named axes to concrete integer dimensions.
-
-    Parameters
-    ----------
-    definition : Definition
-        The workload definition containing axis specifications.
-    axes : Dict[str, int]
-        Runtime axis values provided during tracing.
-    shape : Optional[List[str]]
-        The symbolized tensor shape from the definition. None for scalar.
-
-    Returns
-    -------
-    Optional[Tuple[int, ...]]
-        Tuple of concrete integer dimensions representing the materialized shape.
-        Returns None for scalar.
-
-    Raises
-    ------
-    ValueError
-        If shape specification is None, contains unsupported dimensions,
-        or axis resolution fails.
-    """
-    if shape is None:
-        return None
-    return tuple(_get_axis_value(definition, axes, dim) for dim in shape)
 
 
 # TODO: Fix cuda graph support

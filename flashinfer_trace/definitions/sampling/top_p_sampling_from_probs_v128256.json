@@ -1,0 +1,47 @@
+{
+  "name": "top_p_sampling_from_probs_v128256",
+  "op_type": "sampling",
+  "description": "Top-p (nucleus) sampling from probabilities with vocab_size=128256. Filters probabilities using cumulative probability threshold, then samples from the filtered distribution.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-8b"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences to sample from"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 128256,
+      "description": "Size of the vocabulary for Llama 3.1"
+    }
+  },
+  "inputs": {
+    "probs": {
+      "shape": [
+        "batch_size",
+        "vocab_size"
+      ],
+      "dtype": "float32",
+      "description": "Probability distributions (after softmax)"
+    },
+    "top_p": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "float32",
+      "description": "Cumulative probability threshold for nucleus sampling per sequence"
+    }
+  },
+  "outputs": {
+    "samples": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "int64",
+      "description": "Sampled token indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(probs, top_p):\n    batch_size, vocab_size = probs.shape\n    device = probs.device\n\n    # Check constants\n    assert vocab_size == 128256\n\n    probs = probs.to(torch.float32)\n    out = torch.empty(batch_size, dtype=torch.int64, device=device)\n\n    for i in range(batch_size):\n        row = probs[i]\n        p = float(top_p[i].item())\n        \n        if p <= 0.0:\n            # Degenerate to argmax\n            out[i] = torch.argmax(row).to(torch.int64)\n            continue\n\n        if p < 1.0:\n            vals, idx = torch.sort(row, descending=True)\n            cdf = torch.cumsum(vals, dim=0)\n\n            # Shift mask to keep the first token that crosses p\n            to_remove = cdf > p\n            to_remove[1:] = to_remove[:-1].clone()\n            to_remove[0] = False\n            keep = ~to_remove\n            keep_idx = idx[keep]\n\n            # Build filtered distribution in original index space\n            filtered = torch.zeros_like(row)\n            filtered[keep_idx] = row[keep_idx]\n            row = filtered / filtered.sum()\n\n        out[i] = torch.multinomial(row, 1, replacement=True).squeeze(0)\n\n    return out"
+}

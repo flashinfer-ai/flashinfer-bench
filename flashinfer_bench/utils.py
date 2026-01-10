@@ -1,25 +1,16 @@
+from __future__ import annotations
+
 import os
 import platform
 import sys
-from typing import Dict, List, Optional
+from functools import cache
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-import torch
+if TYPE_CHECKING:
+    import torch
 
-from flashinfer_bench.data import Environment
+    from flashinfer_bench.data import Environment
 
-_DTYPE_STR_TO_TORCH_DTYPE = {
-    "float32": torch.float32,
-    "float16": torch.float16,
-    "bfloat16": torch.bfloat16,
-    "float8_e4m3fn": torch.float8_e4m3fn,
-    "float8_e5m2": torch.float8_e5m2,
-    "float4_e2m1": torch.float4_e2m1fn_x2,
-    "int64": torch.int64,
-    "int32": torch.int32,
-    "int16": torch.int16,
-    "int8": torch.int8,
-    "bool": torch.bool,
-}
 
 _DTYPE_STR_TO_PYTHON_DTYPE = {
     "float32": float,
@@ -36,10 +27,30 @@ _DTYPE_STR_TO_PYTHON_DTYPE = {
 }
 
 
+@cache
+def _get_dtype_str_to_torch_dtype() -> Dict[str, torch.dtype]:
+    """Lazily build dtype string to torch dtype mapping."""
+    import torch
+
+    return {
+        "float32": torch.float32,
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "float8_e4m3fn": torch.float8_e4m3fn,
+        "float8_e5m2": torch.float8_e5m2,
+        "float4_e2m1": torch.float4_e2m1fn_x2,
+        "int64": torch.int64,
+        "int32": torch.int32,
+        "int16": torch.int16,
+        "int8": torch.int8,
+        "bool": torch.bool,
+    }
+
+
 def dtype_str_to_torch_dtype(dtype_str: str) -> torch.dtype:
     if not dtype_str:
         raise ValueError("dtype is None or empty")
-    dtype = _DTYPE_STR_TO_TORCH_DTYPE.get(dtype_str, None)
+    dtype = _get_dtype_str_to_torch_dtype().get(dtype_str, None)
     if dtype is None:
         raise ValueError(f"Unsupported dtype '{dtype_str}'")
     return dtype
@@ -56,15 +67,23 @@ def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
 
 def is_cuda_available() -> bool:
     """Check if CUDA is available."""
+    import torch
+
     return torch.cuda.is_available()
 
 
 def list_cuda_devices() -> List[str]:
+    import torch
+
     n = torch.cuda.device_count()
     return [f"cuda:{i}" for i in range(n)]
 
 
 def env_snapshot(device: str) -> Environment:
+    import torch
+
+    from flashinfer_bench.data import Environment
+
     libs: Dict[str, str] = {"torch": torch.__version__}
     try:
         import triton as _tr
@@ -84,6 +103,8 @@ def env_snapshot(device: str) -> Environment:
 
 
 def hardware_from_device(device: str) -> str:
+    import torch
+
     d = torch.device(device)
     if d.type == "cuda":
         return torch.cuda.get_device_name(d.index)
