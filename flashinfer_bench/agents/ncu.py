@@ -15,6 +15,9 @@ from flashinfer_bench.env import get_fib_ncu_path
 # Valid NCU sets
 VALID_SETS = {"basic", "detailed", "full", "nvlink", "pmsampling", "roofline"}
 
+# Valid NCU pages
+VALID_PAGES = {"raw", "details", "source"}
+
 # Valid NCU sections
 VALID_SECTIONS = {
     "C2CLink",
@@ -51,11 +54,12 @@ def _build_ncu_command(
     sections: Optional[List[str]],
     kernel_name: Optional[str],
     report_path: Path,
+    page: str,
 ) -> List[str]:
     """Build the NCU command line."""
     ncu_path = get_fib_ncu_path()
 
-    cmd = [ncu_path, "--export", str(report_path), "--page", "details", "--set", set]
+    cmd = [ncu_path, "--export", str(report_path), "--page", page, "--set", set]
 
     # Add extra sections
     if sections:
@@ -93,13 +97,14 @@ def run_ncu(
     solution: Solution,
     workload: Workload,
     *,
+    page: str = "details",
     set: str = "detailed",
     sections: Optional[List[str]] = None,
     kernel_name: Optional[str] = None,
     device: str = "cuda:0",
+    timeout: int = 60,
     tmpdir: Optional[str] = None,
     max_lines: Optional[int] = None,
-    timeout: int = 60,
 ) -> str:
     """Run NCU profiling on a solution with a specific workload.
 
@@ -121,6 +126,8 @@ def run_ncu(
         The solution to profile.
     workload : Workload
         The workload configuration specifying input dimensions and data.
+    page : str, optional
+        NCU output page format. One of: "raw", "details", "source". Default is "details".
     set : str, optional
         NCU section set to collect. One of: "basic", "detailed", "full",
         "nvlink", "pmsampling", "roofline". Default is "detailed".
@@ -131,12 +138,12 @@ def run_ncu(
         Filter to profile only kernels matching this name (supports regex).
     device : str, optional
         CUDA device to run on. Default is "cuda:0".
+    timeout : int, optional
+        Timeout in seconds for NCU profiling. Default is 60.
     tmpdir : str, optional
         Temporary directory for NCU. If not provided, uses system default.
     max_lines : int, optional
         Maximum number of lines in output. If None, returns full output.
-    timeout : int, optional
-        Timeout in seconds for NCU profiling. Default is 60.
 
     Returns
     -------
@@ -160,6 +167,10 @@ def run_ncu(
     # Validate set
     if set not in VALID_SETS:
         raise ValueError(f"Invalid set '{set}'. Must be one of: {VALID_SETS}")
+
+    # Validate page
+    if page not in VALID_PAGES:
+        raise ValueError(f"Invalid page '{page}'. Must be one of: {VALID_PAGES}")
 
     # Validate sections
     if sections:
@@ -193,7 +204,7 @@ def run_ncu(
 
         # Build NCU command
         report_path = build_path / "report"
-        cmd = _build_ncu_command(data_path, set, sections, kernel_name, report_path)
+        cmd = _build_ncu_command(data_path, set, sections, kernel_name, report_path, page)
 
         # Set up environment
         env = os.environ.copy()
@@ -206,7 +217,10 @@ def run_ncu(
         except subprocess.TimeoutExpired:
             return f"ERROR: NCU profiling timed out after {timeout} seconds."
         except FileNotFoundError:
-            return f"ERROR: NCU executable not found at '{get_fib_ncu_path()}'. Please install NVIDIA Nsight Compute."
+            return (
+                f"ERROR: NCU executable not found at '{get_fib_ncu_path()}'. "
+                "Please install NVIDIA Nsight Compute."
+            )
 
         # Combine stdout and stderr
         output = result.stdout + result.stderr
