@@ -63,6 +63,7 @@ def main():
         api_key=api_key,
         base_url=base_url,
         reasoning_effort="high",
+        use_ffi=False,
     )
 
     total_definitions = len(all_definitions)
