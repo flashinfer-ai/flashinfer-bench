@@ -212,9 +212,9 @@ def run_ncu(
         output = result.stdout + result.stderr
 
         # Check for errors
-        if result.returncode != 0 and "==ERROR==" in output:
-            # Keep error messages visible
-            pass
+        if result.returncode != 0:
+            # On error, return the full output without truncation to aid debugging.
+            return output
 
         # Truncate if requested
         if max_lines:
