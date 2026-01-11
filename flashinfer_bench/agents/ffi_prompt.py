@@ -1,19 +1,11 @@
 FFI_PROMPT_SIMPLE = """
 Use TVM FFI format for your generated kernel host function and bindings
 
-Use the following headers:
-```cpp
-#include <tvm/ffi/container/tensor.h>   // Tensor, TensorView
-#include <tvm/ffi/function.h>           // Function export macros
-#include <tvm/ffi/error.h>              // Error handling
-#include <tvm/ffi/extra/c_env_api.h>    // Environment APIs (streams, allocators)
-```
-
 # TVM FFI API Documentation
 
 ## 1. TensorView (tvm/ffi/container/tensor.h)
 
-**Purpose:** Non-owning view of tensor data. Use `tvm::ffi::TensorView` for function parameters.
+Non-owning view of tensor data. Use `tvm::ffi::TensorView` for function parameters.
 
 ### Essential Methods
 ```cpp
@@ -54,6 +46,7 @@ kDLBfloat = 4       // Brain floating point
 
 // Example: float32 has code=2 (kDLFloat), bits=32, lanes=1
 // Example: half/fp16 has code=2, bits=16, lanes=1
+// Example: float8_e4m3 has code=8, bits=8, lanes=1 (packed in memory)
 ```
 
 ## 2. Function API (tvm/ffi/function.h)
@@ -170,60 +163,6 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
 FFI_PROMPT = """
 Use TVM FFI format for your generated kernel host function and bindings
 
-Use the following headers:
-```cpp
-#include <tvm/ffi/container/tensor.h>   // Tensor, TensorView
-#include <tvm/ffi/function.h>           // Function export macros
-#include <tvm/ffi/error.h>              // Error handling
-#include <tvm/ffi/extra/c_env_api.h>    // Environment APIs (streams, allocators)
-```
-
-# Example: CUDA Kernel Binding
-
-```cpp
-// File: add_one_cuda.cu
-#include <tvm/ffi/container/tensor.h>
-#include <tvm/ffi/extra/c_env_api.h>
-#include <tvm/ffi/function.h>
-#include <tvm/ffi/error.h>
-
-namespace my_kernels {
-
-__global__ void AddOneKernel(float* x, float* y, int n) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < n) {
-    y[idx] = x[idx] + 1.0f;
-  }
-}
-
-void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
-  // Input validation
-  TVM_FFI_ICHECK_EQ(x.ndim(), 1) << "x must be 1D";
-  TVM_FFI_ICHECK_EQ(y.ndim(), 1) << "y must be 1D";
-  TVM_FFI_ICHECK_EQ(x.size(0), y.size(0)) << "Shape mismatch";
-
-  // Get data pointers
-  float* x_data = static_cast<float*>(x.data_ptr());
-  float* y_data = static_cast<float*>(y.data_ptr());
-  int64_t n = x.size(0);
-
-  // Get CUDA stream from environment
-  DLDevice dev = x.device();
-  cudaStream_t stream = static_cast<cudaStream_t>(
-      TVMFFIEnvGetStream(dev.device_type, dev.device_id));
-
-  // Launch kernel
-  int64_t threads = 256;
-  int64_t blocks = (n + threads - 1) / threads;
-  AddOneKernel<<<blocks, threads, 0, stream>>>(x_data, y_data, n);
-}
-
-// Export the function with name "add_one_cuda"
-TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
-
-}  // namespace my_kernels
-```
-
 # TVM FFI API Documentation
 
 ## 1. Tensor API (tvm/ffi/container/tensor.h)
@@ -232,7 +171,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
 A managed n-dimensional array with reference counting.
 
 **Methods:**
-- `void* data_ptr() const` - Returns raw data pointer
+- `void* data_ptr() const` - Returns raw data pointer (already accounts for byte_offset, don't add byte_offset manually)
 - `DLDevice device() const` - Returns device info (`.device_type`, `.device_id`)
 - `int32_t ndim() const` - Returns number of dimensions
 - `DLDataType dtype() const` - Returns data type (`.code`, `.bits`, `.lanes`)
@@ -278,7 +217,6 @@ Non-owning lightweight view of a Tensor. Kernel entrypoints should use `tvm::ffi
 
 ### Utility Functions
 - `bool IsContiguous(const DLTensor& arr)` - Check if DLTensor is contiguous
-- `bool IsAligned(const DLTensor& arr, size_t alignment)` - Check alignment
 - `bool IsDirectAddressDevice(const DLDevice& device)` - Check if device uses direct addressing
 - `size_t GetDataSize(size_t numel, DLDataType dtype)` - Calculate bytes for packed data
 - `size_t GetDataSize(const DLTensor& arr)` - Calculate bytes in DLTensor
@@ -303,6 +241,7 @@ kDLBfloat = 4       // Brain floating point
 
 // Example: float32 has code=2 (kDLFloat), bits=32, lanes=1
 // Example: half/fp16 has code=2, bits=16, lanes=1
+// Example: float8_e4m3 has code=8, bits=8, lanes=1 (packed in memory)
 ```
 
 ## 2. Function API (tvm/ffi/function.h)
@@ -519,7 +458,7 @@ int TVMFFIEnvCheckSignals()
 typedef void* TVMFFIStreamHandle  // Stream handle type
 ```
 
-# Common Patterns
+# Common Use Cases
 
 ## Dtype Validation
 ```cpp
@@ -544,6 +483,11 @@ void MatMul(tvm::ffi::TensorView a, tvm::ffi::TensorView b, tvm::ffi::TensorView
   TVM_FFI_ICHECK_EQ(a.size(1), b.size(0)) << "Shape mismatch for matmul";
   TVM_FFI_ICHECK_EQ(c.size(0), a.size(0)) << "Output shape mismatch";
   TVM_FFI_ICHECK_EQ(c.size(1), b.size(1)) << "Output shape mismatch";
+
+  TVM_FFI_ICHECK_EQ(a.device().device_type, b.device().device_type);
+  TVM_FFI_ICHECK_EQ(a.device().device_id, b.device().device_id);
+  TVM_FFI_ICHECK_EQ(a.device().device_type, c.device().device_type);
+  TVM_FFI_ICHECK_EQ(a.device().device_id, c.device().device_id);
 }
 ```
 
@@ -593,5 +537,51 @@ void CreateOutput(tvm::ffi::TensorView input) {
   ffi::Tensor output = ffi::Tensor::FromEnvAlloc(
       TVMFFIEnvTensorAlloc, shape, dtype, device);
 }
+```
+
+# Example: CUDA Kernel Binding
+
+```cpp
+// File: add_one_cuda.cu
+#include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/extra/c_env_api.h>
+#include <tvm/ffi/function.h>
+#include <tvm/ffi/error.h>
+
+namespace my_kernels {
+
+__global__ void AddOneKernel(float* x, float* y, int n) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    y[idx] = x[idx] + 1.0f;
+  }
+}
+
+void AddOne(tvm::ffi::TensorView x, tvm::ffi::TensorView y) {
+  // Input validation
+  TVM_FFI_ICHECK_EQ(x.ndim(), 1) << "x must be 1D";
+  TVM_FFI_ICHECK_EQ(y.ndim(), 1) << "y must be 1D";
+  TVM_FFI_ICHECK_EQ(x.size(0), y.size(0)) << "Shape mismatch";
+
+  // Get data pointers
+  float* x_data = static_cast<float*>(x.data_ptr());
+  float* y_data = static_cast<float*>(y.data_ptr());
+  int64_t n = x.size(0);
+
+  // Get CUDA stream from environment
+  DLDevice dev = x.device();
+  cudaStream_t stream = static_cast<cudaStream_t>(
+      TVMFFIEnvGetStream(dev.device_type, dev.device_id));
+
+  // Launch kernel
+  int64_t threads = 256;
+  int64_t blocks = (n + threads - 1) / threads;
+  AddOneKernel<<<blocks, threads, 0, stream>>>(x_data, y_data, n);
+}
+
+// Export the function with name "add_one_cuda"
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
+
+}  // namespace my_kernels
 ```
 """
