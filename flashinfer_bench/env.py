@@ -55,3 +55,16 @@ def get_fib_cache_path() -> Path:
     if value:
         return Path(value).expanduser()
     return Path.home() / ".cache" / "flashinfer_bench" / "cache"
+
+
+def get_fib_ncu_path() -> str:
+    """Get the path to the NCU executable.
+
+    Uses FIB_NCU_PATH environment variable if set, otherwise defaults to "ncu".
+
+    Returns
+    -------
+    str
+        Path to the NCU executable.
+    """
+    return os.environ.get("FIB_NCU_PATH", "ncu")
