@@ -11,12 +11,9 @@ from pathlib import Path
 import pytest
 import torch
 import tvm_ffi.cpp
-from dotenv import load_dotenv
-from ffi_prompt import FFI_PROMPT_SIMPLE
 from tvm_ffi import Module
 
-load_dotenv()
-
+from flashinfer_bench.agents.ffi_prompt import FFI_PROMPT_SIMPLE
 
 # System prompt for elementwise add
 ELEMENTWISE_ADD_PROMPT = """Write a CUDA kernel function that performs elementwise addition of two tensors.
