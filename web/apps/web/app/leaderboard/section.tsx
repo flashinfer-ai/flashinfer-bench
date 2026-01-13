@@ -29,6 +29,7 @@ type DefinitionAuthorDetail = {
   totalComparisons: number
   totalWorkloads: number
   coverage: Record<string, CoverageStats>
+  speedupSums: Record<string, number>
   solutionNamesByAuthor: Record<string, string[]>
 }
 
@@ -63,7 +64,7 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
   })
 
   const definitionAuthorDetails: DefinitionAuthorDetail[] = filteredEntries.map((entry) => {
-    const { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage } = computeFastPCurvesForAuthors({
+    const { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage, speedupSums } = computeFastPCurvesForAuthors({
       datasets: [
         {
           solutions: entry.solutions,
@@ -89,6 +90,7 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
       totalComparisons,
       totalWorkloads,
       coverage,
+      speedupSums,
       solutionNamesByAuthor,
     }
   })
