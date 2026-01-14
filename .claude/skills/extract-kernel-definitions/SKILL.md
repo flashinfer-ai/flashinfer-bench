@@ -119,6 +119,7 @@ For each new kernel, generate a Definition JSON:
    - Plain PyTorch implementation
    - Step-by-step computation (no high-level APIs)
    - Serves as mathematical specification
+   - See "Reference Implementation Sources" section below
 
 ### Phase 5: Save Definitions
 
@@ -249,6 +250,94 @@ fused_moe(hidden_states, w1, w2, w3, topk_weights, topk_ids, ...)
 # RMSNorm
 from sglang.srt.layers.layernorm import RMSNorm
 self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+```
+
+## Ground Truth Hierarchy
+
+When extracting kernel definitions, use the following priority order to determine ground truth:
+
+### Priority 1: SGLang Model Config / Vanilla Implementation
+- **When**: Model has a vanilla (non-optimized) kernel implementation in SGLang
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Examples**:
+  - Vanilla attention in `layers/attention/`
+  - Vanilla MoE in `layers/moe/`
+  - RMSNorm in `layers/layernorm.py`
+- **Use for**: Understanding the mathematical specification and tensor shapes
+
+### Priority 2: SGLang FlashInfer API Integration
+- **When**: SGLang integrates FlashInfer APIs for optimized execution
+- **Location**: Look for FlashInfer imports and calls in SGLang model files
+- **Examples**:
+  ```python
+  # In SGLang model file
+  import flashinfer
+  flashinfer.batch_decode_with_paged_kv_cache(...)
+  flashinfer.batch_prefill_with_paged_kv_cache(...)
+  ```
+- **Use for**: Determining the exact FlashInfer API signature and parameters
+
+### Priority 3: FlashInfer API Directly
+- **When**: Kernel is a pure FlashInfer API without SGLang wrapper
+- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Examples**:
+  - `flashinfer.attention.batch_decode_with_paged_kv_cache`
+  - `flashinfer.norm.rmsnorm`
+  - `flashinfer.moe.moe_align_block_size`
+- **Use for**: Ground truth correctness validation
+
+## Reference Implementation Sources
+
+The `reference` field in Definition JSON contains a `run()` function. Source this implementation from:
+
+### Option 1: FlashInfer Test Implementation (Preferred)
+- **Location**: `third_party/flashinfer/tests/`
+- **Why**: Tests contain vanilla PyTorch implementations used to validate FlashInfer kernels
+- **Examples**:
+  ```
+  tests/test_batch_decode.py      # GQA decode reference
+  tests/test_batch_prefill.py     # GQA prefill reference
+  tests/test_norm.py              # RMSNorm reference
+  tests/test_mla.py               # MLA reference
+  ```
+- **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, etc.
+
+### Option 2: SGLang Vanilla Implementation (Fallback)
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Why**: When FlashInfer tests don't cover the kernel, SGLang vanilla implementations provide the reference
+- **Examples**:
+  ```
+  layers/moe/fused_moe.py         # MoE vanilla forward
+  layers/attention/triton_ops/    # Attention vanilla implementations
+  layers/layernorm.py             # Normalization vanilla
+  ```
+
+### Reference Implementation Guidelines
+
+1. **Pure PyTorch**: Use only `torch` operations, no external kernels
+2. **Step-by-step**: Break down computation into clear steps
+3. **Match signatures**: Input/output names must match definition schema
+4. **Include all outputs**: Return all outputs specified in definition (e.g., both `output` and `lse` for attention)
+
+Example reference implementation pattern:
+```python
+import torch
+import math
+
+def run(q, k, v, ...):
+    # Step 1: Compute attention scores
+    scores = torch.matmul(q, k.transpose(-2, -1)) * sm_scale
+
+    # Step 2: Apply softmax
+    attn_weights = torch.softmax(scores, dim=-1)
+
+    # Step 3: Compute output
+    output = torch.matmul(attn_weights, v)
+
+    # Step 4: Compute log-sum-exp (if needed)
+    lse = torch.logsumexp(scores, dim=-1)
+
+    return output, lse
 ```
 
 ## Kernel Type to Model Mapping
