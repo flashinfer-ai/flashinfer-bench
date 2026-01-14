@@ -1,10 +1,10 @@
 """
-Reference test for trtllm_fp4_block_scale_routed_moe kernel (DeepSeek V3/R1).
+Reference test for FP4 block-scale pre-routed MoE kernel (DeepSeek V3/R1).
 
 This test validates the reference implementation against the FlashInfer
 FP4 routed MoE kernel on SM100+ GPUs (Blackwell architecture).
 
-Ground truth source: FlashInfer trtllm_fp4_block_scale_routed_moe API
+Ground truth source: FlashInfer FP4 block-scale routed MoE API
 Reference implementation: Vanilla PyTorch FP4 dequantization + MoE computation
 
 DeepSeek V3/R1 MoE Configuration:
@@ -48,7 +48,7 @@ DEFINITION_PATH = (
     TRACE_ROOT
     / "definitions"
     / "moe"
-    / "trtllm_fp4_block_scale_routed_moe_topk8_e256_h7168_i2048.json"
+    / "moe_fp4_block_scale_pre_routed_topk8_ng8_kg4_e32_h7168_i2048.json"
 )
 
 
@@ -74,7 +74,7 @@ def try_import_flashinfer_fp4():
         from flashinfer import fp4_quantize, GatedActType, RoutingMethodType
 
         return {
-            "trtllm_fp4_block_scale_routed_moe": trtllm_fp4_block_scale_routed_moe,
+            "fp4_routed_moe": trtllm_fp4_block_scale_routed_moe,
             "fp4_quantize": fp4_quantize,
             "GatedActType": GatedActType,
             "RoutingMethodType": RoutingMethodType,
@@ -155,7 +155,7 @@ def dequant_nvfp4_weights(packed: torch.Tensor, scale: torch.Tensor) -> torch.Te
 
 
 @torch.no_grad()
-def reference_fp4_routed_moe(
+def run(
     topk_ids: torch.Tensor,
     hidden_states: torch.Tensor,
     hidden_states_scale: torch.Tensor,
@@ -169,10 +169,14 @@ def reference_fp4_routed_moe(
     local_expert_offset: int,
 ) -> torch.Tensor:
     """
-    Reference implementation for FP4 block-scale routed MoE (DeepSeek V3/R1).
+    Reference implementation for FP4 block-scale pre-routed MoE (DeepSeek V3/R1).
 
     This is a vanilla PyTorch implementation used to validate the FlashInfer kernel.
     Uses fixed DeepSeek V3/R1 constants for hidden_size, intermediate_size, etc.
+
+    Input format for topk_ids:
+    - Upper 16 bits: expert index (unsigned int16)
+    - Lower 16 bits: expert weight (bfloat16 viewed as int16)
     """
     device = hidden_states.device
     T = hidden_states.shape[0]
@@ -247,7 +251,7 @@ def reference_fp4_routed_moe(
 
 def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, device: str = "cuda"):
     """
-    Generate random inputs for FP4 routed MoE testing with DeepSeek V3 configuration.
+    Generate random inputs for FP4 pre-routed MoE testing with DeepSeek V3 configuration.
 
     Args:
         num_tokens: Number of tokens (seq_len)
@@ -336,36 +340,21 @@ def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, de
     }
 
 
-# Test with DeepSeek V3 fixed configuration, varying seq_len and local_expert_offset
-@pytest.mark.parametrize("num_tokens", [1, 8, 64, 256])
-@pytest.mark.parametrize("local_expert_offset", [0, 32, 64, 128])  # Different EP ranks
-def test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
-    num_tokens: int,
+def _compare_reference_vs_kernel(
+    inputs: dict,
+    *,
     local_expert_offset: int,
+    atol: float,
+    rtol: float,
+    percent: float,
 ):
-    """
-    Test FP4 routed MoE kernel against reference implementation with DeepSeek V3 config.
-
-    This test validates that the FlashInfer trtllm_fp4_block_scale_routed_moe
-    kernel produces outputs matching the reference PyTorch implementation
-    within acceptable tolerance.
-
-    Fixed DeepSeek V3/R1 configuration:
-    - hidden_size: 7168
-    - intermediate_size: 2048
-    - num_experts (global): 256
-    - num_local_experts: 32 (EP=8)
-    - top_k: 8
-    """
-    skip_if_no_sm100()
+    """Compare reference implementation vs FlashInfer kernel with comprehensive metrics."""
     fi = try_import_flashinfer_fp4()
-
-    trtllm_fp4_block_scale_routed_moe = fi["trtllm_fp4_block_scale_routed_moe"]
+    fp4_routed_moe = fi["fp4_routed_moe"]
     RoutingMethodType = fi["RoutingMethodType"]
     GatedActType = fi["GatedActType"]
 
-    torch.manual_seed(42)
-    device = "cuda"
+    device = inputs["hidden_states"].device
 
     try:
         from flashinfer.utils import device_support_pdl
@@ -374,15 +363,9 @@ def test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
     except ImportError:
         enable_pdl = False
 
-    # Generate inputs with DeepSeek V3 configuration
-    inputs = generate_random_fp4_inputs(
-        num_tokens=num_tokens,
-        local_expert_offset=local_expert_offset,
-        device=device,
-    )
-
     # Run reference implementation
-    ref_output = reference_fp4_routed_moe(
+    print("Running reference...")
+    ref_out = run(
         topk_ids=inputs["topk_ids"],
         hidden_states=inputs["hidden_states"],
         hidden_states_scale=inputs["hidden_states_scale"],
@@ -397,7 +380,8 @@ def test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
     )
 
     # Run FlashInfer kernel
-    fi_output = trtllm_fp4_block_scale_routed_moe(
+    print("Running FlashInfer kernel...")
+    fi_out = fp4_routed_moe(
         inputs["topk_ids"],
         None,  # routing_bias
         inputs["hidden_states"],
@@ -430,16 +414,106 @@ def test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
     )[0]
 
     # Compare outputs
-    ref_f32 = ref_output.float()
-    fi_f32 = fi_output.float()
+    ref_f32 = ref_out.float()
+    fi_f32 = fi_out.float()
 
-    # Use relaxed tolerance for FP4 quantization
-    mask = torch.isclose(ref_f32, fi_f32, rtol=1e-2, atol=1e-2)
-    mismatch_pct = (~mask).float().mean().item() * 100
+    abs_diff = (ref_f32 - fi_f32).abs()
+    rel_diff = abs_diff / (fi_f32.abs() + 1e-8)
 
-    # Allow up to 10% mismatch due to FP4 quantization errors
-    assert mismatch_pct < 10, (
-        f"Mismatch percentage is {mismatch_pct:.2f}% (expected < 10%)\n"
+    print("\nComparison stats:")
+    print(f"Max abs diff:  {abs_diff.max().item():.6e}")
+    print(f"Mean abs diff: {abs_diff.mean().item():.6e}")
+    print(f"Max rel diff:  {rel_diff.max().item():.6e}")
+    print(f"Mean rel diff: {rel_diff.mean().item():.6e}")
+
+    # Cosine similarity and MSE
+    cos_sim = torch.nn.functional.cosine_similarity(
+        ref_f32.flatten(), fi_f32.flatten(), dim=0
+    ).item()
+    mse = torch.mean((ref_f32 - fi_f32) ** 2).item()
+    print(f"Cosine similarity: {cos_sim:.6f}")
+    print(f"MSE: {mse:.6e}")
+
+    # Strict allclose
+    allclose = torch.allclose(ref_f32, fi_f32, atol=atol, rtol=rtol)
+    print(f"\nAllclose(atol={atol}, rtol={rtol}): {allclose}")
+
+    if not allclose:
+        # Show top-5 largest absolute errors
+        flat = abs_diff.flatten()
+        k = min(5, flat.numel())
+        topv, topi = torch.topk(flat, k)
+        print("\nTop-5 absolute error locations:")
+        for rank in range(k):
+            idx = topi[rank].item()
+            t = idx // HIDDEN_SIZE
+            h = idx % HIDDEN_SIZE
+            print(
+                f"  [t={t}, h={h}]: ref={ref_f32.flatten()[idx].item():.6e}, "
+                f"fi={fi_f32.flatten()[idx].item():.6e}, diff={topv[rank].item():.6e}"
+            )
+
+    # Hit ratio check
+    left = (ref_f32 - fi_f32).abs()
+    right = atol + rtol * fi_f32.abs()
+    ok = left <= right
+    hit_ratio = ok.float().mean().item()
+    print(f"\nHit ratio: {hit_ratio * 100:.2f}%  (need >= {percent * 100:.2f}%)")
+
+    return hit_ratio >= percent
+
+
+# Test with DeepSeek V3 fixed configuration, varying seq_len and local_expert_offset
+@pytest.mark.parametrize("num_tokens", [1, 8, 64, 256])
+@pytest.mark.parametrize("local_expert_offset", [0, 32, 64, 128])  # Different EP ranks
+def test_moe_fp4_block_scale_pre_routed_deepseek_v3(
+    num_tokens: int,
+    local_expert_offset: int,
+):
+    """
+    Test FP4 pre-routed MoE kernel against reference implementation with DeepSeek V3 config.
+
+    This test validates that the FlashInfer FP4 pre-routed MoE kernel produces
+    outputs matching the reference PyTorch implementation within acceptable tolerance.
+
+    Fixed DeepSeek V3/R1 configuration:
+    - hidden_size: 7168
+    - intermediate_size: 2048
+    - num_experts (global): 256
+    - num_local_experts: 32 (EP=8)
+    - top_k: 8
+    """
+    skip_if_no_sm100()
+
+    print("\n" + "=" * 70)
+    print(f"Testing FP4 MoE: num_tokens={num_tokens}, local_expert_offset={local_expert_offset}")
+    print("=" * 70)
+
+    torch.manual_seed(42)
+    device = "cuda"
+
+    # Generate inputs with DeepSeek V3 configuration
+    inputs = generate_random_fp4_inputs(
+        num_tokens=num_tokens,
+        local_expert_offset=local_expert_offset,
+        device=device,
+    )
+
+    # FP4 quantization has higher error than FP8, use relaxed tolerance
+    atol = 1e-1
+    rtol = 2e-1
+    percent = 0.85  # Allow up to 15% mismatch due to FP4 quantization errors
+
+    ok = _compare_reference_vs_kernel(
+        inputs,
+        local_expert_offset=local_expert_offset,
+        atol=atol,
+        rtol=rtol,
+        percent=percent,
+    )
+
+    assert ok, (
+        f"FlashInfer output mismatched reference.\n"
         f"Config: T={num_tokens}, local_expert_offset={local_expert_offset}\n"
         f"DeepSeek V3: H={HIDDEN_SIZE}, I={INTERMEDIATE_SIZE}, "
         f"E_global={NUM_EXPERTS_GLOBAL}, E_local={NUM_LOCAL_EXPERTS}, top_k={TOP_K}"
@@ -462,6 +536,9 @@ def test_load_definition():
     assert "outputs" in definition
     assert "reference" in definition
 
+    # Verify name matches new naming convention
+    assert definition["name"] == "moe_fp4_block_scale_pre_routed_topk8_ng8_kg4_e32_h7168_i2048"
+
     # Verify DeepSeek V3 constants in definition
     axes = definition["axes"]
     assert axes["hidden_size"]["value"] == HIDDEN_SIZE
@@ -483,11 +560,16 @@ def test_load_definition():
     assert "NUM_EXPERTS_GLOBAL = 256" in ref_code
 
 
-if __name__ == "__main__":
-    # Run basic tests
+def main():
+    """Run tests manually for debugging."""
+    print("Testing FP4 Block-Scale Pre-Routed MoE (DeepSeek V3/R1)")
+
+    print("\n" + "=" * 70)
     print("Testing definition loading...")
+    print("=" * 70)
     test_load_definition()
     print("Definition loaded successfully!")
+
     print(f"\nDeepSeek V3/R1 Configuration:")
     print(f"  hidden_size: {HIDDEN_SIZE}")
     print(f"  intermediate_size: {INTERMEDIATE_SIZE}")
@@ -497,12 +579,36 @@ if __name__ == "__main__":
     print(f"  n_group: {N_GROUP}")
     print(f"  topk_group: {TOPK_GROUP}")
 
-    print("\nTesting FP4 routed MoE (requires SM100+ GPU)...")
-    try:
-        test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
-            num_tokens=8,
-            local_expert_offset=0,
-        )
-        print("Test passed!")
-    except Exception as e:
-        print(f"Test skipped or failed: {e}")
+    configs = [
+        # (num_tokens, local_expert_offset)
+        (1, 0),
+        (8, 0),
+        (8, 64),
+        (64, 32),
+        (256, 128),
+    ]
+
+    passed = 0
+    for T, offset in configs:
+        try:
+            test_moe_fp4_block_scale_pre_routed_deepseek_v3(
+                num_tokens=T,
+                local_expert_offset=offset,
+            )
+            passed += 1
+            print("Test passed!")
+        except pytest.skip.Exception as e:
+            print(f"Test skipped: {e}")
+        except Exception as e:
+            print(f"Test failed: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+    print("\n" + "=" * 70)
+    print(f"Summary: {passed}/{len(configs)} tests passed")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()

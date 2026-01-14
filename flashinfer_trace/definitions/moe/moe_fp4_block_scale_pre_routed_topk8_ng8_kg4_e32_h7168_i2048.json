@@ -1,5 +1,5 @@
 {
-  "name": "trtllm_fp4_block_scale_routed_moe_topk8_e256_h7168_i2048",
+  "name": "moe_fp4_block_scale_pre_routed_topk8_ng8_kg4_e32_h7168_i2048",
   "description": "FP4 block scale routed MoE operation for DeepSeek V3/R1. Takes pre-computed topk routing indices instead of routing logits. Configured for 8-node expert parallelism (EP=8).",
   "op_type": "moe",
   "tags": [
