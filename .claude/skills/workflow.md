@@ -12,7 +12,7 @@ The workflow consists of three main phases:
 
 ## Phase 1: Repository Setup
 
-### Clone All Required Repositories
+### Clone Required Repositories
 
 ```bash
 /clone-repos
@@ -27,23 +27,26 @@ This clones to `third_party/`:
   - Ground truth kernel implementations
   - Python bindings in `python/flashinfer/`
 
-- **flashinfer-trace**: `https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace`
-  - Kernel definitions in `definitions/`
-  - Reference tests in `tests/references/`
+**Note**: The `flashinfer_trace/` directory is already included in this project (no cloning needed):
+- Kernel definitions in `definitions/`
+- Workloads in `workloads/`
+- Reference tests in `tests/references/`
 
-### Output Structure
+### Directory Structure
 
 ```
-third_party/
-├── sglang/
-│   └── python/sglang/srt/
-│       ├── models/        # Model implementations (kernel extraction source)
-│       └── layers/        # Layer implementations (ground truth fallback)
-├── flashinfer/
-│   └── python/flashinfer/ # Ground truth implementations
-└── flashinfer-trace/
-    ├── definitions/       # Our output: kernel definition JSONs
-    └── tests/references/  # Our output: reference tests
+flashinfer-bench/
+├── flashinfer_trace/          # Local (already in project)
+│   ├── definitions/           # Kernel definition JSONs (output)
+│   ├── workloads/             # Workload configurations
+│   └── tests/references/      # Reference tests (output)
+└── third_party/               # Cloned repositories
+    ├── sglang/
+    │   └── python/sglang/srt/
+    │       ├── models/        # Model implementations (kernel extraction source)
+    │       └── layers/        # Layer implementations (ground truth fallback)
+    └── flashinfer/
+        └── python/flashinfer/ # Ground truth implementations
 ```
 
 ## Phase 2: Kernel Definition Extraction
@@ -87,7 +90,7 @@ Shared kernels:
 ### Output Structure
 
 ```
-third_party/flashinfer-trace/definitions/
+flashinfer_trace/definitions/
 ├── rmsnorm/
 │   ├── rmsnorm_h4096.json
 │   ├── rmsnorm_h7168.json
@@ -157,7 +160,7 @@ Tests compare reference implementations against:
 ### Test Output
 
 ```
-third_party/flashinfer-trace/tests/references/
+flashinfer_trace/tests/references/
 ├── conftest.py              # Shared fixtures and utilities
 ├── test_rmsnorm.py          # RMSNorm tests
 ├── test_gqa_paged.py        # GQA paged tests
@@ -168,17 +171,17 @@ third_party/flashinfer-trace/tests/references/
 
 ### Running Tests
 
-```bash
-cd third_party/flashinfer-trace
+Run from the project root:
 
+```bash
 # Run all reference tests
-pytest tests/references/ -v
+pytest flashinfer_trace/tests/references/ -v
 
 # Run specific test file
-pytest tests/references/test_mla_paged.py -v
+pytest flashinfer_trace/tests/references/test_mla_paged.py -v
 
 # Run with GPU
-pytest tests/references/ -v --device cuda
+pytest flashinfer_trace/tests/references/ -v --device cuda
 ```
 
 ## Complete Example: Adding DeepSeek V3
@@ -206,9 +209,8 @@ pytest tests/references/ -v --device cuda
 # Step 5: Add tests for normalization
 /add-reference-tests --op-type rmsnorm
 
-# Step 6: Run tests to validate
-cd third_party/flashinfer-trace
-pytest tests/references/ -v
+# Step 6: Run tests to validate (from project root)
+pytest flashinfer_trace/tests/references/ -v
 ```
 
 ## Complete Example: Adding Multiple Models
@@ -230,9 +232,8 @@ pytest tests/references/ -v
 /add-reference-tests --op-type rmsnorm
 /add-reference-tests --op-type gemm
 
-# Validate
-cd third_party/flashinfer-trace
-pytest tests/references/ -v --tb=short
+# Validate (from project root)
+pytest flashinfer_trace/tests/references/ -v --tb=short
 ```
 
 ## Troubleshooting
@@ -270,9 +271,9 @@ Deduplication is automatic. If a conflict is detected:
 
 | Phase | Skill | Input | Output |
 |-------|-------|-------|--------|
-| 1. Setup | `/clone-repos` | None | `third_party/` with all repos |
-| 2. Extract | `/extract-kernel-definitions` | SGLang model files | `definitions/{op_type}/*.json` |
-| 3. Test | `/add-reference-tests` | Definition JSONs | `tests/references/test_*.py` |
+| 1. Setup | `/clone-repos` | None | `third_party/` with SGLang and FlashInfer |
+| 2. Extract | `/extract-kernel-definitions` | SGLang model files | `flashinfer_trace/definitions/{op_type}/*.json` |
+| 3. Test | `/add-reference-tests` | Definition JSONs | `flashinfer_trace/tests/references/test_*.py` |
 
 ## Workflow Diagram
 
@@ -283,8 +284,12 @@ Deduplication is automatic. If a conflict is detected:
 ├─────────────────────────────────────┤
 │  third_party/                       │
 │  ├── sglang/      (GitHub)          │
-│  ├── flashinfer/  (GitHub)          │
-│  └── flashinfer-trace/ (HuggingFace)│
+│  └── flashinfer/  (GitHub)          │
+│                                     │
+│  flashinfer_trace/ (already local)  │
+│  ├── definitions/                   │
+│  ├── workloads/                     │
+│  └── tests/references/              │
 └─────────────────────────────────────┘
                 ↓
 ┌─────────────────────────────────────┐
@@ -297,7 +302,7 @@ Deduplication is automatic. If a conflict is detected:
 │  • Write reference implementations  │
 │  • Deduplicate across models        │
 │  Output:                            │
-│    → definitions/{op_type}/*.json   │
+│    → flashinfer_trace/definitions/  │
 └─────────────────────────────────────┘
                 ↓
 ┌─────────────────────────────────────┐
@@ -309,26 +314,26 @@ Deduplication is automatic. If a conflict is detected:
 │  • Generate pytest test cases       │
 │  • Parametrize for multiple sizes   │
 │  Output:                            │
-│    → tests/references/test_*.py     │
+│    → flashinfer_trace/tests/        │
 └─────────────────────────────────────┘
                 ↓
 ┌─────────────────────────────────────┐
 │     4. Run Tests & Validate         │
-│     pytest tests/references/        │
+│  pytest flashinfer_trace/tests/     │
 └─────────────────────────────────────┘
 ```
 
 ## Next Steps After Workflow
 
-1. **Review definitions**: Check generated JSON files for accuracy
+1. **Review definitions**: Check generated JSON files in `flashinfer_trace/definitions/`
 2. **Run tests**: Ensure all tests pass
-3. **Submit to dataset**: Push to flashinfer-trace HuggingFace repo
+3. **Commit changes**: Commit new definitions and tests to the repository
 4. **Create optimized solutions**: Use kernel_generator for Triton/CUDA implementations
 5. **Run benchmarks**: `flashinfer-bench run --local ./data`
 
 ## See Also
 
-- [clone-repos](./clone-repos.md)
-- [extract-kernel-definitions](./extract-kernel-definitions.md)
-- [add-reference-tests](./add-reference-tests.md)
+- [clone-repos](./clone-repos/SKILL.md)
+- [extract-kernel-definitions](./extract-kernel-definitions/SKILL.md)
+- [add-reference-tests](./add-reference-tests/SKILL.md)
 - [CLAUDE.md](../../CLAUDE.md)

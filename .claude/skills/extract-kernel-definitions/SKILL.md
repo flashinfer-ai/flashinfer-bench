@@ -1,11 +1,11 @@
 ---
 name: extract-kernel-definitions
-description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for flashinfer-trace.
+description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for flashinfer_trace.
 ---
 
 # Extract Kernel Definitions
 
-Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to flashinfer-trace dataset with vanilla Python reference implementations.
+Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations.
 
 ## Description
 
@@ -39,7 +39,7 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `third_party/` directory with SGLang and flashinfer-trace.
+Run `/clone-repos` first to set up the `third_party/` directory with SGLang and FlashInfer. The `flashinfer_trace/` directory is already included in this project.
 
 ## What This Skill Does
 
@@ -87,7 +87,7 @@ For each layer component, extract:
 ### Phase 3: Deduplication
 
 1. **Load Existing Definitions**:
-   - Scan `third_party/flashinfer-trace/definitions/` for existing JSONs
+   - Scan `flashinfer_trace/definitions/` for existing JSONs
    - Build index of definition names and signatures
 
 2. **Compare Extracted Kernels**:
@@ -122,7 +122,7 @@ For each new kernel, generate a Definition JSON:
 
 ### Phase 5: Save Definitions
 
-Output to `third_party/flashinfer-trace/definitions/{op_type}/{definition_name}.json`
+Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
 
 ## Output Format
 
@@ -211,11 +211,11 @@ When executing this skill:
 
 4. **Check existing definitions**:
    ```bash
-   ls third_party/flashinfer-trace/definitions/*/
+   ls flashinfer_trace/definitions/*/
    ```
 
 5. **Generate new definition JSONs**:
-   - Create directory if needed: `mkdir -p third_party/flashinfer-trace/definitions/{op_type}/`
+   - Create directory if needed: `mkdir -p flashinfer_trace/definitions/{op_type}/`
    - Write JSON file with reference implementation
 
 6. **Report results**:
@@ -300,6 +300,6 @@ self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
 
 ## See Also
 
-- [clone-repos](./clone-repos.md)
-- [add-reference-tests](./add-reference-tests.md)
-- [workflow](./workflow.md)
+- [clone-repos](../clone-repos/SKILL.md)
+- [add-reference-tests](../add-reference-tests/SKILL.md)
+- [workflow](../workflow.md)

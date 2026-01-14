@@ -7,7 +7,7 @@ Automated workflows for adding new models, extracting kernel definitions, and va
 ### Complete Workflow: Add Model with Kernel Definitions and Tests
 
 ```bash
-# Step 1: Clone all required repositories to third_party/
+# Step 1: Clone SGLang and FlashInfer repositories to third_party/
 /clone-repos
 
 # Step 2: Extract kernel definitions from a model (e.g., deepseek_v3)
@@ -21,30 +21,32 @@ Automated workflows for adding new models, extracting kernel definitions, and va
 
 | Skill | Description |
 |-------|-------------|
-| [clone-repos](./clone-repos.md) | Clone SGLang, FlashInfer (GitHub) and flashinfer-trace (HuggingFace) to `third_party/` |
-| [extract-kernel-definitions](./extract-kernel-definitions.md) | Extract kernel schemas from SGLang with deduplication |
-| [add-reference-tests](./add-reference-tests.md) | Add tests to validate reference implementations |
+| [clone-repos](./clone-repos/SKILL.md) | Clone SGLang, FlashInfer from GitHub to `third_party/` |
+| [extract-kernel-definitions](./extract-kernel-definitions/SKILL.md) | Extract kernel schemas from SGLang with deduplication |
+| [add-reference-tests](./add-reference-tests/SKILL.md) | Add tests to validate reference implementations |
 | [workflow](./workflow.md) | Complete workflow documentation |
 
-## Repository Structure After Setup
+## Directory Structure
 
 ```
-third_party/
-├── sglang/                    # SGLang source code (GitHub)
-│   └── python/sglang/srt/
-│       ├── models/            # Model implementations (kernel calls)
-│       └── layers/            # Layer implementations
-├── flashinfer/                # FlashInfer source code (GitHub)
-│   └── python/flashinfer/     # Ground truth implementations
-└── flashinfer-trace/          # HuggingFace dataset
-    ├── definitions/           # Kernel definition JSONs (output)
-    │   ├── rmsnorm/
-    │   ├── gemm/
-    │   ├── gqa_paged/
-    │   ├── mla_paged/
-    │   └── moe/
-    └── tests/
-        └── references/        # Reference implementation tests (output)
+flashinfer-bench/
+├── flashinfer_trace/              # Local (included in project)
+│   ├── definitions/               # Kernel definition JSONs
+│   │   ├── rmsnorm/
+│   │   ├── gemm/
+│   │   ├── gqa_paged/
+│   │   ├── mla_paged/
+│   │   └── moe/
+│   ├── workloads/                 # Workload configurations
+│   └── tests/
+│       └── references/            # Reference implementation tests
+└── third_party/                   # Cloned repositories
+    ├── sglang/                    # SGLang source code (GitHub)
+    │   └── python/sglang/srt/
+    │       ├── models/            # Model implementations (kernel calls)
+    │       └── layers/            # Layer implementations
+    └── flashinfer/                # FlashInfer source code (GitHub)
+        └── python/flashinfer/     # Ground truth implementations
 ```
 
 ## Kernel Types Supported
@@ -71,9 +73,8 @@ third_party/
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
 
-# 4. Run tests to validate
-cd third_party/flashinfer-trace
-pytest tests/references/ -v
+# 4. Run tests to validate (from project root)
+pytest flashinfer_trace/tests/references/ -v
 ```
 
 ## Example: Adding Multiple Models with Deduplication

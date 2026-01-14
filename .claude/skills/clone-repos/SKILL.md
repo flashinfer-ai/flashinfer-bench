@@ -180,11 +180,11 @@ Example workflow:
 
 - Uses shallow clones (--depth 1) by default to save disk space
 - SGLang and FlashInfer are actively developed; pin versions for reproducibility
-- flashinfer-trace may contain large trace files; consider partial download
+- The `flashinfer_trace/` directory is part of this repository; no external cloning needed
 - All output paths are relative to project root
 
 ## See Also
 
-- [extract-kernel-definitions](./extract-kernel-definitions.md)
-- [add-reference-tests](./add-reference-tests.md)
-- [workflow](./workflow.md)
+- [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
+- [add-reference-tests](../add-reference-tests/SKILL.md)
+- [workflow](../workflow.md)

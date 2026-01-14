@@ -1,15 +1,15 @@
 ---
 name: add-reference-tests
-description: Add pytest tests to validate reference implementations in flashinfer-trace against FlashInfer or SGLang ground truth. Use when validating kernel definitions, adding tests for new op_types, or verifying reference implementations are correct.
+description: Add pytest tests to validate reference implementations in flashinfer_trace against FlashInfer or SGLang ground truth. Use when validating kernel definitions, adding tests for new op_types, or verifying reference implementations are correct.
 ---
 
 # Add Reference Tests
 
-Add tests to validate reference implementations in flashinfer-trace. Ground truth is sourced from FlashInfer repository or SGLang when FlashInfer doesn't have the implementation.
+Add tests to validate reference implementations in `./flashinfer_trace/`. Ground truth is sourced from FlashInfer repository or SGLang when FlashInfer doesn't have the implementation.
 
 ## Description
 
-This skill creates test cases under `./tests/references` in the `third_party/flashinfer-trace` dataset to validate that reference implementations in Definition JSON files produce correct outputs. The ground truth comes from:
+This skill creates test cases under `./flashinfer_trace/tests/references/` to validate that reference implementations in Definition JSON files produce correct outputs. The ground truth comes from:
 
 1. **FlashInfer repository** (preferred): Official optimized GPU kernels in `third_party/flashinfer/`
 2. **SGLang repository** (fallback): When FlashInfer doesn't have the kernel, use `third_party/sglang/`
@@ -43,7 +43,7 @@ This skill creates test cases under `./tests/references` in the `third_party/fla
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `third_party/` directory with all required repositories.
+Run `/clone-repos` first to set up the `third_party/` directory with SGLang and FlashInfer repositories. The `flashinfer_trace/` directory is already included in this project.
 
 ## What This Skill Does
 
@@ -51,11 +51,11 @@ Run `/clone-repos` first to set up the `third_party/` directory with all require
 
 1. **Load Target Definitions**:
    - If `definition_name` specified: load single definition
-   - If `op_type` specified: load all definitions matching op_type from `third_party/flashinfer-trace/definitions/{op_type}/`
+   - If `op_type` specified: load all definitions matching op_type from `flashinfer_trace/definitions/{op_type}/`
    - If `all`: scan all definitions
 
 2. **Check Existing Tests**:
-   - Scan `third_party/flashinfer-trace/tests/references/` for existing test files
+   - Scan `flashinfer_trace/tests/references/` for existing test files
    - Skip definitions that already have tests (unless force=true)
 
 3. **Parse Definition Schema**:
@@ -141,12 +141,12 @@ MEDIUM_SIZES = {
 
 ### Phase 5: Write Test Files
 
-Output to `third_party/flashinfer-trace/tests/references/`
+Output to `flashinfer_trace/tests/references/`
 
 ## Output Structure
 
 ```
-third_party/flashinfer-trace/tests/references/
+flashinfer_trace/tests/references/
 ├── conftest.py                    # Shared fixtures and utilities
 ├── test_rmsnorm.py                # RMSNorm tests
 ├── test_gqa_paged.py              # GQA paged tests
@@ -319,12 +319,12 @@ When executing this skill:
 
 1. **Identify definitions to test**:
    ```bash
-   ls third_party/flashinfer-trace/definitions/{op_type}/
+   ls flashinfer_trace/definitions/{op_type}/
    ```
 
 2. **Check for existing tests**:
    ```bash
-   ls third_party/flashinfer-trace/tests/references/
+   ls flashinfer_trace/tests/references/
    ```
 
 3. **For each definition**:
@@ -336,7 +336,7 @@ When executing this skill:
 4. **Create test file**:
    ```bash
    # Create tests directory if needed
-   mkdir -p third_party/flashinfer-trace/tests/references/
+   mkdir -p flashinfer_trace/tests/references/
    ```
 
 5. **Write test file**:
@@ -347,22 +347,20 @@ When executing this skill:
 
 ## Running Tests
 
-After generating tests:
+After generating tests, run from the project root:
 
 ```bash
-cd third_party/flashinfer-trace
-
 # Run all reference tests
-pytest tests/references/ -v
+pytest flashinfer_trace/tests/references/ -v
 
 # Run specific test file
-pytest tests/references/test_mla_paged.py -v
+pytest flashinfer_trace/tests/references/test_mla_paged.py -v
 
 # Run with GPU
-pytest tests/references/ -v --device cuda
+pytest flashinfer_trace/tests/references/ -v --device cuda
 
 # Run with verbose output
-pytest tests/references/ -v -s
+pytest flashinfer_trace/tests/references/ -v -s
 ```
 
 ## Error Handling
@@ -396,9 +394,8 @@ pytest tests/references/ -v -s
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
 
-# Run tests
-cd third_party/flashinfer-trace
-pytest tests/references/ -v
+# Run tests from project root
+pytest flashinfer_trace/tests/references/ -v
 ```
 
 ## Notes
@@ -411,6 +408,6 @@ pytest tests/references/ -v
 
 ## See Also
 
-- [clone-repos](./clone-repos.md)
-- [extract-kernel-definitions](./extract-kernel-definitions.md)
-- [workflow](./workflow.md)
+- [clone-repos](../clone-repos/SKILL.md)
+- [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
+- [workflow](../workflow.md)
