@@ -101,7 +101,109 @@ For each layer component, extract:
 
 ### Phase 4: Definition Generation
 
-For each new kernel, generate a Definition JSON:
+For each new kernel, generate a Definition JSON following the standards below.
+
+## Definition JSON Standards
+
+### Naming Convention
+
+Follow the pattern: `{op_type}_{variant}_{key_params}`
+
+**Parameter Abbreviations:**
+- `h` = num_heads or hidden_size (context-dependent)
+- `kv` = num_kv_heads
+- `d` = head_dim
+- `ps` = page_size
+- `ckv` = compressed_kv_dim
+- `kpe` = key_positional_encoding_dim
+- `e` = num_experts
+- `i` = intermediate_size
+- `topk` = top_k_experts
+- `ng` = n_group
+- `kg` = topk_group
+- `v` = vocab_size
+
+**Examples by op_type:**
+- Attention: `gqa_paged_decode_h32_kv8_d128_ps1`, `mla_paged_prefill_h16_ckv512_kpe64_ps1`
+- MoE: `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048`
+- Normalization: `rmsnorm_h4096`, `fused_add_rmsnorm_h7168`
+- Sampling: `top_k_sampling_from_probs_v129280`
+
+### Tag Patterns
+
+Tags follow the pattern `{category}:{value}`:
+
+| Category | Values | Description |
+|----------|--------|-------------|
+| `status` | `verified`, `unverified` | Whether reference implementation is validated |
+| `stage` | `decode`, `prefill` | Inference execution mode |
+| `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
+| `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
+| `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
+
+**Example tags array:**
+```json
+"tags": [
+  "stage:decode",
+  "status:verified",
+  "model:deepseek-v3",
+  "model:deepseek-r1",
+  "quantization:float8_e4m3fn"
+]
+```
+
+### Axes Structure
+
+```json
+"axes": {
+  "batch_size": {
+    "type": "var",
+    "description": "Batch size (number of sequences)"
+  },
+  "num_qo_heads": {
+    "type": "const",
+    "value": 16,
+    "description": "Number of query heads after tensor parallel split (128/8=16)."
+  }
+}
+```
+
+**Rules:**
+- Variable axes (`type: "var"`): runtime dimensions like batch_size, seq_len, num_pages
+- Constant axes (`type: "const"`): model-specific values with `value` field
+- Always include `description` for complex or model-specific axes
+
+### Constraints Field
+
+Add constraints for input validation:
+
+```json
+"constraints": [
+  "len_indptr == batch_size + 1",
+  "num_kv_indices == kv_indptr[-1].item()"
+]
+```
+
+### Inputs/Outputs Structure
+
+```json
+"inputs": {
+  "tensor_name": {
+    "shape": ["axis1", "axis2", "axis3"],
+    "dtype": "bfloat16",
+    "description": "Description of the tensor"
+  },
+  "scalar_input": {
+    "shape": null,
+    "dtype": "float32",
+    "description": "Scalar parameter"
+  }
+}
+```
+
+**dtype values:** `float32`, `float16`, `bfloat16`, `float8_e4m3fn`, `float8_e5m2`, `int32`, `int64`
+
+### Reference Implementation
 
 1. **Generate Name**: Follow naming convention `{op_type}_{variant}_{params}`
    - Example: `mla_paged_decode_h16_ckv512_kpe64_ps1`
@@ -119,6 +221,7 @@ For each new kernel, generate a Definition JSON:
    - Plain PyTorch implementation
    - Step-by-step computation (no high-level APIs)
    - Serves as mathematical specification
+   - See "Reference Implementation Sources" section below
 
 ### Phase 5: Save Definitions
 
@@ -131,32 +234,78 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
 ```json
 {
   "name": "mla_paged_decode_h16_ckv512_kpe64_ps1",
+  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from DeepSeek-V3 with tensor parallel size 8.",
   "op_type": "mla_paged",
-  "description": "Multi-head Latent Attention decode with paged KV cache",
-  "tags": ["stage:decode", "model:deepseek-v3"],
+  "tags": [
+    "stage:decode",
+    "status:verified",
+    "model:deepseek-v3",
+    "model:deepseek-r1"
+  ],
   "axes": {
     "batch_size": { "type": "var" },
-    "num_pages": { "type": "var" },
-    "num_kv_indices": { "type": "var" },
-    "num_qo_heads": { "type": "const", "value": 16 },
+    "num_qo_heads": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of query heads after tensor parallel split (128/8=16)."
+    },
     "head_dim_ckv": { "type": "const", "value": 512 },
     "head_dim_kpe": { "type": "const", "value": 64 },
-    "page_size": { "type": "const", "value": 1 }
+    "page_size": { "type": "const", "value": 1 },
+    "num_pages": { "type": "var", "description": "Total number of allocated pages in the KV cache." },
+    "len_indptr": { "type": "var", "description": "Length of kv_indptr array." },
+    "num_kv_indices": { "type": "var", "description": "Total number of KV page indices." }
   },
+  "constraints": [
+    "len_indptr == batch_size + 1",
+    "num_kv_indices == kv_indptr[-1].item()"
+  ],
   "inputs": {
-    "q_nope": { "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"], "dtype": "float16" },
-    "q_pe": { "shape": ["batch_size", "num_qo_heads", "head_dim_kpe"], "dtype": "float16" },
-    "ckv_cache": { "shape": ["num_pages", "page_size", "head_dim_ckv"], "dtype": "float16" },
-    "kpe_cache": { "shape": ["num_pages", "page_size", "head_dim_kpe"], "dtype": "float16" },
-    "kv_indptr": { "shape": ["batch_size"], "dtype": "int32" },
-    "kv_indices": { "shape": ["num_kv_indices"], "dtype": "int32" },
-    "sm_scale": { "shape": null, "dtype": "float32" }
+    "q_nope": {
+      "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"],
+      "dtype": "bfloat16",
+      "description": "Query tensor without positional encoding component."
+    },
+    "q_pe": {
+      "shape": ["batch_size", "num_qo_heads", "head_dim_kpe"],
+      "dtype": "bfloat16",
+      "description": "Query positional encoding component."
+    },
+    "ckv_cache": {
+      "shape": ["num_pages", "page_size", "head_dim_ckv"],
+      "dtype": "bfloat16",
+      "description": "Compressed key-value cache."
+    },
+    "kpe_cache": {
+      "shape": ["num_pages", "page_size", "head_dim_kpe"],
+      "dtype": "bfloat16",
+      "description": "Key positional encoding cache."
+    },
+    "kv_indptr": {
+      "shape": ["len_indptr"],
+      "dtype": "int32",
+      "description": "KV page offsets for each sequence."
+    },
+    "kv_indices": {
+      "shape": ["num_kv_indices"],
+      "dtype": "int32",
+      "description": "Page indices for KV cache lookups."
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale. Default is (1/sqrt(128 + 64) = 1/sqrt(192))."
+    }
   },
   "outputs": {
-    "output": { "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"], "dtype": "float16" },
-    "lse": { "shape": ["batch_size", "num_qo_heads"], "dtype": "float32" }
+    "output": { "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"], "dtype": "bfloat16" },
+    "lse": {
+      "shape": ["batch_size", "num_qo_heads"],
+      "dtype": "float32",
+      "description": "The 2-based log-sum-exp of attention logits."
+    }
   },
-  "reference": "import torch\nimport math\n\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):\n    ..."
+  "reference": "import math\nimport torch\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):\n    # Check constants\n    assert num_qo_heads == 16\n    assert head_dim_ckv == 512\n    ..."
 }
 ```
 
@@ -165,29 +314,67 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
 ```json
 {
   "name": "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048",
+  "description": "FP8 block scale MoE operation. Routing and two grouped-GEMM included.",
   "op_type": "moe",
-  "description": "DeepSeek-style MoE with FP8 block-scaled weights and top-8 expert routing",
-  "tags": ["model:deepseek-v3", "quantization:float8_e4m3fn"],
+  "tags": [
+    "status:verified",
+    "model:deepseek-v3",
+    "model:deepseek-r1",
+    "quantization:float8_e4m3fn"
+  ],
   "axes": {
-    "seq_len": { "type": "var" },
-    "num_experts": { "type": "const", "value": 32 },
-    "topk": { "type": "const", "value": 8 },
-    "num_groups": { "type": "const", "value": 8 },
-    "group_size": { "type": "const", "value": 4 },
-    "hidden_size": { "type": "const", "value": 7168 },
-    "intermediate_size": { "type": "const", "value": 2048 }
+    "seq_len": { "type": "var", "description": "Sequence length (number of tokens)" },
+    "num_experts": {
+      "type": "const",
+      "value": 256,
+      "description": "Total number of experts."
+    },
+    "num_local_experts": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of local experts with EP size 8."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 7168,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "MoE intermediate layer size."
+    }
   },
   "inputs": {
-    "hidden_states": { "shape": ["seq_len", "hidden_size"], "dtype": "float8_e4m3fn" },
-    "hidden_states_scale": { "shape": ["seq_len"], "dtype": "float32" },
-    "routing_logits": { "shape": ["seq_len", "num_experts"], "dtype": "float32" },
-    "expert_weights": { "shape": ["num_experts", "intermediate_size", "hidden_size"], "dtype": "float8_e4m3fn" },
-    "expert_weights_scale": { "shape": ["num_experts", "intermediate_size"], "dtype": "float32" }
+    "routing_logits": {
+      "shape": ["seq_len", "num_experts"],
+      "dtype": "float32",
+      "description": "Tensor of routing logits for expert selection"
+    },
+    "hidden_states": {
+      "shape": ["seq_len", "hidden_size"],
+      "dtype": "float8_e4m3fn",
+      "description": "Input hidden states tensor (FP8 quantized)"
+    },
+    "local_expert_offset": {
+      "shape": null,
+      "dtype": "int32",
+      "description": "Offset of local experts in global expert space."
+    },
+    "routed_scaling_factor": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Scaling factor for routing weights."
+    }
   },
   "outputs": {
-    "output": { "shape": ["seq_len", "hidden_size"], "dtype": "bfloat16" }
+    "output": {
+      "shape": ["seq_len", "hidden_size"],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor"
+    }
   },
-  "reference": "..."
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(routing_logits, hidden_states, ...):\n    # Check constants\n    assert H == 7168, 'hidden_size must be 7168'\n    ..."
 }
 ```
 
@@ -249,6 +436,94 @@ fused_moe(hidden_states, w1, w2, w3, topk_weights, topk_ids, ...)
 # RMSNorm
 from sglang.srt.layers.layernorm import RMSNorm
 self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
+```
+
+## Ground Truth Hierarchy
+
+When extracting kernel definitions, use the following priority order to determine ground truth:
+
+### Priority 1: SGLang Model Config / Vanilla Implementation
+- **When**: Model has a vanilla (non-optimized) kernel implementation in SGLang
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Examples**:
+  - Vanilla attention in `layers/attention/`
+  - Vanilla MoE in `layers/moe/`
+  - RMSNorm in `layers/layernorm.py`
+- **Use for**: Understanding the mathematical specification and tensor shapes
+
+### Priority 2: SGLang FlashInfer API Integration
+- **When**: SGLang integrates FlashInfer APIs for optimized execution
+- **Location**: Look for FlashInfer imports and calls in SGLang model files
+- **Examples**:
+  ```python
+  # In SGLang model file
+  import flashinfer
+  flashinfer.batch_decode_with_paged_kv_cache(...)
+  flashinfer.batch_prefill_with_paged_kv_cache(...)
+  ```
+- **Use for**: Determining the exact FlashInfer API signature and parameters
+
+### Priority 3: FlashInfer API Directly
+- **When**: Kernel is a pure FlashInfer API without SGLang wrapper
+- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Examples**:
+  - `flashinfer.attention.batch_decode_with_paged_kv_cache`
+  - `flashinfer.norm.rmsnorm`
+  - `flashinfer.moe.moe_align_block_size`
+- **Use for**: Ground truth correctness validation
+
+## Reference Implementation Sources
+
+The `reference` field in Definition JSON contains a `run()` function. Source this implementation from:
+
+### Option 1: FlashInfer Test Implementation (Preferred)
+- **Location**: `third_party/flashinfer/tests/`
+- **Why**: Tests contain vanilla PyTorch implementations used to validate FlashInfer kernels
+- **Examples**:
+  ```
+  tests/test_batch_decode.py      # GQA decode reference
+  tests/test_batch_prefill.py     # GQA prefill reference
+  tests/test_norm.py              # RMSNorm reference
+  tests/test_mla.py               # MLA reference
+  ```
+- **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, etc.
+
+### Option 2: SGLang Vanilla Implementation (Fallback)
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Why**: When FlashInfer tests don't cover the kernel, SGLang vanilla implementations provide the reference
+- **Examples**:
+  ```
+  layers/moe/fused_moe.py         # MoE vanilla forward
+  layers/attention/triton_ops/    # Attention vanilla implementations
+  layers/layernorm.py             # Normalization vanilla
+  ```
+
+### Reference Implementation Guidelines
+
+1. **Pure PyTorch**: Use only `torch` operations, no external kernels
+2. **Step-by-step**: Break down computation into clear steps
+3. **Match signatures**: Input/output names must match definition schema
+4. **Include all outputs**: Return all outputs specified in definition (e.g., both `output` and `lse` for attention)
+
+Example reference implementation pattern:
+```python
+import torch
+import math
+
+def run(q, k, v, ...):
+    # Step 1: Compute attention scores
+    scores = torch.matmul(q, k.transpose(-2, -1)) * sm_scale
+
+    # Step 2: Apply softmax
+    attn_weights = torch.softmax(scores, dim=-1)
+
+    # Step 3: Compute output
+    output = torch.matmul(attn_weights, v)
+
+    # Step 4: Compute log-sum-exp (if needed)
+    lse = torch.logsumexp(scores, dim=-1)
+
+    return output, lse
 ```
 
 ## Kernel Type to Model Mapping

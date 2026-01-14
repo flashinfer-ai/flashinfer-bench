@@ -135,27 +135,44 @@ Each definition includes:
 /add-reference-tests --all
 ```
 
-### Ground Truth Sources
+### Ground Truth Hierarchy
 
-Tests compare reference implementations against:
+Tests compare reference implementations against ground truth using this priority order:
 
-1. **FlashInfer** (preferred): Optimized GPU kernels
-   - Location: `third_party/flashinfer/python/flashinfer/`
-   - For: GQA, MLA, RMSNorm, GEMM
-
-2. **SGLang** (fallback): When FlashInfer doesn't have the kernel
+1. **SGLang Model Config / Vanilla Implementation** (highest priority)
    - Location: `third_party/sglang/python/sglang/srt/layers/`
-   - For: MoE, custom kernels
+   - For: Understanding mathematical specification and tensor shapes
+   - Examples: vanilla attention, vanilla MoE, RMSNorm
+
+2. **SGLang FlashInfer API Integration**
+   - Location: FlashInfer imports/calls in SGLang model files
+   - For: Determining exact FlashInfer API signatures
+
+3. **FlashInfer API Directly** (lowest priority)
+   - Location: `third_party/flashinfer/python/flashinfer/`
+   - For: Ground truth correctness validation
+
+### Reference `run()` Function Sources
+
+The reference implementation should be sourced from:
+
+1. **FlashInfer Test Implementation** (preferred)
+   - Location: `third_party/flashinfer/tests/`
+   - Contains vanilla PyTorch implementations for validation
+
+2. **SGLang Vanilla Implementation** (fallback)
+   - Location: `third_party/sglang/python/sglang/srt/layers/`
+   - When FlashInfer tests don't cover the kernel
 
 ### Ground Truth Mapping
 
-| Op Type | Primary (FlashInfer) | Fallback (SGLang) |
-|---------|---------------------|-------------------|
-| `rmsnorm` | `norm/rmsnorm.py` | `layers/layernorm.py` |
-| `gqa_paged` | `attention/decode.py` | `layers/attention/` |
-| `mla_paged` | `attention/mla.py` | `layers/attention/mla_decode.py` |
-| `moe` | `moe/` | `layers/moe/fused_moe.py` |
-| `gemm` | `gemm/` | `torch.nn.functional.linear` |
+| Op Type | Primary Source | Location |
+|---------|----------------|----------|
+| `rmsnorm` | SGLang vanilla / FlashInfer | `sglang/layers/layernorm.py` or `flashinfer/norm/` |
+| `gqa_paged` | FlashInfer API via SGLang | `flashinfer/attention/` |
+| `mla_paged` | SGLang FlashInfer integration | `sglang/layers/attention/` + `flashinfer/attention/` |
+| `moe` | SGLang vanilla | `sglang/layers/moe/fused_moe.py` |
+| `gemm` | PyTorch | `torch.nn.functional.linear` |
 
 ### Test Output
 
