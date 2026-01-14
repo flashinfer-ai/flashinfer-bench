@@ -1,18 +1,19 @@
 ---
 name: clone-repos
-description: Clone SGLang, FlashInfer repositories from GitHub and flashinfer-trace dataset from HuggingFace to third_party/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
+description: Clone SGLang, FlashInfer repositories from GitHub to third_party/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
 ---
 
 # Clone Repositories
 
-Clone SGLang, FlashInfer repositories from GitHub and flashinfer-trace dataset from HuggingFace to the `third_party/` directory.
+Clone SGLang, FlashInfer repositories from GitHub to the `third_party/` directory.
 
 ## Description
 
-This skill sets up the required repositories for kernel extraction and testing workflows. It clones three repositories:
+This skill sets up the required repositories for kernel extraction and testing workflows. It clones two repositories:
 - **SGLang**: Inference engine with model implementations and kernel calls
 - **FlashInfer**: GPU kernel library with optimized implementations (ground truth)
-- **flashinfer-trace**: HuggingFace dataset containing Definition schemas and tests
+
+**Note**: The `flashinfer_trace` directory containing definitions, workloads, and tests is already included in the flashinfer-bench project at `./flashinfer_trace/`. No cloning required.
 
 ## Usage
 
@@ -32,7 +33,6 @@ This skill sets up the required repositories for kernel extraction and testing w
 - `force_update` (optional): Force pull latest changes if repos exist (default: false)
 - `sglang_branch` (optional): SGLang branch to checkout (default: "main")
 - `flashinfer_branch` (optional): FlashInfer branch to checkout (default: "main")
-- `flashinfer_trace_revision` (optional): flashinfer-trace dataset revision (default: "main")
 
 ## What This Skill Does
 
@@ -62,21 +62,12 @@ mkdir -p third_party
    - `csrc/` - CUDA source files
    - `tests/` - Test implementations
 
-### Step 4: Clone/Update flashinfer-trace Dataset
-
-1. Clone from HuggingFace: `https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace`
-2. Use `huggingface_hub` library or git-lfs
-3. Key directories:
-   - `definitions/` - Kernel Definition JSON schemas
-   - `solutions/` - Optimized kernel implementations
-   - `traces/` - Execution traces and benchmarks
-   - `tests/references/` - Reference implementation tests
-
-### Step 5: Verification
+### Step 4: Verification
 
 1. Verify all repositories cloned successfully
 2. Check required directories exist
-3. Report repository status
+3. Verify local `flashinfer_trace/` directory exists with definitions and tests
+4. Report repository status
 
 ## Implementation Steps
 
@@ -97,106 +88,85 @@ When executing this skill:
    git clone --depth 1 https://github.com/flashinfer-ai/flashinfer.git third_party/flashinfer
    ```
 
-4. **Clone flashinfer-trace** (if not exists):
-   ```python
-   from huggingface_hub import snapshot_download
-   snapshot_download(
-       repo_id="flashinfer-ai/flashinfer-trace",
-       repo_type="dataset",
-       local_dir="third_party/flashinfer-trace",
-       revision="main"
-   )
-   ```
-   Or via git:
-   ```bash
-   git clone https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace third_party/flashinfer-trace
-   ```
-
-5. **Update if force_update=true**:
+4. **Update if force_update=true**:
    ```bash
    cd third_party/sglang && git fetch origin && git pull origin main
    cd third_party/flashinfer && git fetch origin && git pull origin main
-   cd third_party/flashinfer-trace && git pull origin main
    ```
 
-6. **Verify structure**:
+5. **Verify structure**:
    ```bash
    ls third_party/sglang/python/sglang/srt/models/
    ls third_party/flashinfer/python/flashinfer/
-   ls third_party/flashinfer-trace/
+   ls flashinfer_trace/definitions/
+   ls flashinfer_trace/tests/references/
    ```
 
 ## Output Directory Structure
 
 ```
-third_party/
-├── sglang/                           # SGLang repository
-│   └── python/sglang/srt/
-│       ├── models/                   # Model implementations
-│       │   ├── llama.py
-│       │   ├── deepseek_v3.py
-│       │   ├── qwen2_moe.py
-│       │   └── ...
-│       └── layers/                   # Layer implementations
-│           ├── attention/
-│           ├── moe/
-│           └── layernorm.py
-├── flashinfer/                       # FlashInfer repository
-│   ├── python/flashinfer/            # Python bindings (ground truth)
-│   │   ├── attention/
-│   │   ├── norm/
+flashinfer-bench/
+├── flashinfer_trace/                 # Local (already in project)
+│   ├── definitions/                  # Kernel definitions
+│   │   ├── rmsnorm/
+│   │   ├── gemm/
+│   │   ├── gqa_paged/
+│   │   ├── mla_paged/
 │   │   └── moe/
-│   └── tests/                        # Reference tests
-└── flashinfer-trace/                 # HuggingFace dataset
-    ├── definitions/                  # Kernel definitions (our output)
-    │   ├── rmsnorm/
-    │   ├── gemm/
-    │   ├── gqa_paged/
-    │   ├── mla_paged/
-    │   └── moe/
-    └── tests/
-        └── references/               # Reference tests (our output)
+│   ├── workloads/                    # Workload configurations
+│   └── tests/
+│       └── references/               # Reference tests
+└── third_party/                      # Cloned repositories
+    ├── sglang/                       # SGLang repository
+    │   └── python/sglang/srt/
+    │       ├── models/               # Model implementations
+    │       │   ├── llama.py
+    │       │   ├── deepseek_v3.py
+    │       │   ├── qwen2_moe.py
+    │       │   └── ...
+    │       └── layers/               # Layer implementations
+    │           ├── attention/
+    │           ├── moe/
+    │           └── layernorm.py
+    └── flashinfer/                   # FlashInfer repository
+        ├── python/flashinfer/        # Python bindings (ground truth)
+        │   ├── attention/
+        │   ├── norm/
+        │   └── moe/
+        └── tests/                    # Reference tests
 ```
 
 ## Requirements
 
-- Git with LFS support (for flashinfer-trace)
-- Python packages:
-  - `huggingface_hub` (for dataset cloning)
-- Network access to:
-  - GitHub (sglang, flashinfer)
-  - HuggingFace Hub (flashinfer-trace)
-- Sufficient disk space (~5GB total)
+- Git
+- Network access to GitHub (for sglang, flashinfer)
+- Sufficient disk space (~4GB total)
 
 ## Error Handling
 
 ### Network Errors
-- **Error**: Cannot reach GitHub/HuggingFace
+- **Error**: Cannot reach GitHub
 - **Handling**: Retry with exponential backoff, report specific endpoint failure
-
-### Authentication Errors
-- **Error**: Private repository access denied
-- **Handling**: Check HF_TOKEN environment variable for HuggingFace
 
 ### Disk Space Errors
 - **Error**: Insufficient disk space
 - **Handling**: Report space requirements, suggest cleanup
 
-### Git LFS Errors
-- **Error**: LFS files not downloaded
-- **Handling**: Run `git lfs pull`, verify LFS is installed
+### Missing Local flashinfer_trace
+- **Error**: `flashinfer_trace/` directory not found in project root
+- **Handling**: Report error - this directory should be part of the flashinfer-bench repository
 
 ## Integration with Other Skills
 
 This skill provides the foundation for:
 
-1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels
-2. **add-reference-tests**: Uses FlashInfer for ground truth, flashinfer-trace for test location
+1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, outputs to `./flashinfer_trace/definitions/`
+2. **add-reference-tests**: Uses FlashInfer for ground truth, outputs tests to `./flashinfer_trace/tests/references/`
 
 Example workflow:
 
 ```bash
-# Step 1: Clone all repositories
+# Step 1: Clone SGLang and FlashInfer repositories
 /clone-repos
 
 # Step 2: Extract kernel definitions from a model
