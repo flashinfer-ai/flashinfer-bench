@@ -1,3 +1,5 @@
+"""Evaluator for low-bit quantized kernels with relaxed tolerances."""
+
 from __future__ import annotations
 
 import traceback

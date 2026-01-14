@@ -1,4 +1,4 @@
-"""API for applying best-performing kernels from trace database."""
+"""Public API for the apply subsystem. Apply best-performing kernels from trace database."""
 
 from __future__ import annotations
 
