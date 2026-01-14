@@ -1,0 +1,180 @@
+{
+  "name": "trtllm_fp4_block_scale_routed_moe_topk8_e128_h4096_i2048",
+  "description": "FP4 block scale routed MoE operation. Takes pre-computed topk routing indices instead of routing logits.",
+  "op_type": "moe",
+  "tags": [
+    "status:verified",
+    "quantization:nvfp4",
+    "routing:pre-computed"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length (number of tokens)"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 128,
+      "description": "Total number of experts."
+    },
+    "num_local_experts": {
+      "type": "const",
+      "value": 128,
+      "description": "Number of local experts (all experts on single node)."
+    },
+    "top_k": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of experts to route to per token."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "MoE intermediate layer size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output size of the first GEMM (W13). Should be 2 * intermediate_size"
+    },
+    "hidden_size_packed": {
+      "type": "const",
+      "value": 2048,
+      "description": "Hidden size divided by 2 for packed FP4 storage (uint8)."
+    },
+    "intermediate_size_packed": {
+      "type": "const",
+      "value": 1024,
+      "description": "Intermediate size divided by 2 for packed FP4 storage (uint8)."
+    },
+    "num_hidden_sf_blocks": {
+      "type": "const",
+      "value": 256,
+      "description": "Number of scale factor blocks along hidden dimension (hidden_size / sf_vec_size where sf_vec_size=16)."
+    },
+    "num_gemm1_out_sf_blocks": {
+      "type": "const",
+      "value": 256,
+      "description": "Number of scale factor blocks along gemm1 output dimension (gemm1_out_size / sf_vec_size)."
+    },
+    "num_hidden_sf_blocks_w2": {
+      "type": "const",
+      "value": 256,
+      "description": "Number of scale factor blocks for W2 along hidden dimension."
+    },
+    "num_intermediate_sf_blocks": {
+      "type": "const",
+      "value": 128,
+      "description": "Number of scale factor blocks for W2 along intermediate dimension."
+    }
+  },
+  "inputs": {
+    "topk_ids": {
+      "shape": [
+        "seq_len",
+        "top_k"
+      ],
+      "dtype": "int32",
+      "description": "Packed tensor containing top-k expert indices and weights. Most significant 16 bits = expert weight (bfloat16 as int16), least significant 16 bits = expert index."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size_packed"
+      ],
+      "dtype": "uint8",
+      "description": "Input hidden states tensor (NvFP4 packed, 2 values per uint8 byte)."
+    },
+    "hidden_states_scale": {
+      "shape": [
+        "seq_len",
+        "num_hidden_sf_blocks"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Scale factors for hidden states (per 16-element block)."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "hidden_size_packed"
+      ],
+      "dtype": "uint8",
+      "description": "First GEMM weights (W13) for all local experts (NvFP4 packed)."
+    },
+    "gemm1_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "num_hidden_sf_blocks"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Scale factors for first GEMM weights."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "intermediate_size_packed"
+      ],
+      "dtype": "uint8",
+      "description": "Second GEMM weights (W2) for all local experts (NvFP4 packed)."
+    },
+    "gemm2_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "num_intermediate_sf_blocks"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Scale factors for second GEMM weights."
+    },
+    "output1_scale_scalar": {
+      "shape": [
+        "num_local_experts"
+      ],
+      "dtype": "float32",
+      "description": "Per-expert scaling factor for first layer activation output."
+    },
+    "output1_scale_gate_scalar": {
+      "shape": [
+        "num_local_experts"
+      ],
+      "dtype": "float32",
+      "description": "Per-expert scaling factor for first layer gate output."
+    },
+    "output2_scale_scalar": {
+      "shape": [
+        "num_local_experts"
+      ],
+      "dtype": "float32",
+      "description": "Per-expert scaling factor for second layer output."
+    },
+    "local_expert_offset": {
+      "shape": null,
+      "dtype": "int32",
+      "description": "Offset of local experts in global expert space (0 for single-node)."
+    },
+    "intermediate_size_param": {
+      "shape": null,
+      "dtype": "int32",
+      "description": "Intermediate size parameter passed to kernel."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor"
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\n\n@torch.no_grad()\ndef run(\n    topk_ids: torch.Tensor,\n    hidden_states: torch.Tensor,\n    hidden_states_scale: torch.Tensor,\n    gemm1_weights: torch.Tensor,\n    gemm1_weights_scale: torch.Tensor,\n    gemm2_weights: torch.Tensor,\n    gemm2_weights_scale: torch.Tensor,\n    output1_scale_scalar: torch.Tensor,\n    output1_scale_gate_scalar: torch.Tensor,\n    output2_scale_scalar: torch.Tensor,\n    local_expert_offset: int,\n    intermediate_size_param: int,\n):\n    \"\"\"\n    Reference implementation for FP4 block-scale routed MoE.\n    \n    This kernel takes pre-computed topk routing indices (packed with weights)\n    instead of computing routing from logits. This allows external routing\n    computation to be fused with other operations.\n    \n    Input format for topk_ids:\n    - Most significant 16 bits: expert weight (bfloat16 viewed as int16)\n    - Least significant 16 bits: expert index (unsigned int16)\n    \n    FP4 quantization uses NvFP4 format with per-16-element block scaling.\n    \"\"\"\n    \n    device = hidden_states.device\n    T = hidden_states.shape[0]\n    \n    # Fixed configuration\n    H = 4096  # hidden_size\n    I = intermediate_size_param  # intermediate_size\n    E_local = gemm1_weights.shape[0]\n    TOP_K = topk_ids.shape[1]\n    SF_VEC_SIZE = 16  # NvFP4 scale factor block size\n    \n    # Unpack topk_ids to get expert indices and weights\n    expert_indices = (topk_ids & 0xFFFF).to(torch.int32)  # [T, top_k]\n    expert_weights_packed = (topk_ids >> 16).to(torch.int16)  # [T, top_k]\n    expert_weights = expert_weights_packed.view(torch.bfloat16).to(torch.float32)  # [T, top_k]\n    \n    # Dequantize hidden states from NvFP4\n    # FP4 is packed: 2 values per uint8 byte\n    # Lower 4 bits = first value, upper 4 bits = second value\n    def dequant_nvfp4(packed: torch.Tensor, scale: torch.Tensor, sf_vec_size: int = 16):\n        # Unpack uint8 to two fp4 values\n        T, packed_size = packed.shape\n        H_full = packed_size * 2\n        \n        low_nibble = (packed & 0x0F).to(torch.float32)  # [T, packed_size]\n        high_nibble = ((packed >> 4) & 0x0F).to(torch.float32)  # [T, packed_size]\n        \n        # Interleave: low, high, low, high...\n        unpacked = torch.stack([low_nibble, high_nibble], dim=-1)  # [T, packed_size, 2]\n        unpacked = unpacked.reshape(T, H_full)  # [T, H]\n        \n        # Convert FP4 E2M1 to float\n        # E2M1 format: 1 sign + 2 exp + 1 mantissa\n        # For simplicity, use lookup table or direct conversion\n        # Values: 0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0\n        fp4_lut = torch.tensor(\n            [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,\n             0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0],\n            device=device, dtype=torch.float32\n        )\n        unpacked_fp32 = fp4_lut[unpacked.long()]  # [T, H]\n        \n        # Apply block-wise scale factors\n        # scale shape: [T, H/sf_vec_size]\n        scale_fp32 = scale.to(torch.float32)  # [T, num_blocks]\n        scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, sf_vec_size)  # [T, num_blocks, sf_vec_size]\n        scale_expanded = scale_expanded.reshape(T, H_full)  # [T, H]\n        \n        return unpacked_fp32 * scale_expanded\n    \n    # Dequantize hidden states\n    A = dequant_nvfp4(hidden_states, hidden_states_scale, SF_VEC_SIZE)  # [T, H]\n    \n    # Dequantize weights\n    def dequant_weights_nvfp4(packed: torch.Tensor, scale: torch.Tensor, sf_vec_size: int = 16):\n        # packed: [E, out_dim, in_dim_packed]\n        # scale: [E, out_dim, num_sf_blocks]\n        E, out_dim, in_dim_packed = packed.shape\n        in_dim = in_dim_packed * 2\n        \n        low_nibble = (packed & 0x0F).to(torch.float32)\n        high_nibble = ((packed >> 4) & 0x0F).to(torch.float32)\n        \n        unpacked = torch.stack([low_nibble, high_nibble], dim=-1)\n        unpacked = unpacked.reshape(E, out_dim, in_dim)\n        \n        fp4_lut = torch.tensor(\n            [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,\n             0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0],\n            device=device, dtype=torch.float32\n        )\n        unpacked_fp32 = fp4_lut[unpacked.long()]\n        \n        # Apply scale factors\n        scale_fp32 = scale.to(torch.float32)\n        scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, 1, sf_vec_size)\n        scale_expanded = scale_expanded.reshape(E, out_dim, in_dim)\n        \n        return unpacked_fp32 * scale_expanded\n    \n    W13 = dequant_weights_nvfp4(gemm1_weights, gemm1_weights_scale, SF_VEC_SIZE)  # [E_local, 2I, H]\n    W2 = dequant_weights_nvfp4(gemm2_weights, gemm2_weights_scale, SF_VEC_SIZE)  # [E_local, H, I]\n    \n    # Initialize output\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\n    \n    local_start = int(local_expert_offset)\n    \n    # For each local expert: find selected tokens, run GEMM1 -> SwiGLU -> GEMM2, accumulate\n    for le in range(E_local):\n        ge = local_start + le  # Global expert index\n        \n        # Find tokens that selected this expert in their top-k\n        sel_mask = (expert_indices == ge).any(dim=1)  # [T] bool\n        if not sel_mask.any():\n            continue\n        \n        token_idx = torch.nonzero(sel_mask, as_tuple=False).squeeze(1)  # [Tk]\n        Tk = token_idx.numel()\n        \n        # Get routing weights for this expert\n        expert_mask = (expert_indices[token_idx] == ge)  # [Tk, top_k]\n        weights = (expert_weights[token_idx] * expert_mask.float()).sum(dim=1)  # [Tk]\n        \n        # Gather inputs\n        A_e = A.index_select(0, token_idx)  # [Tk, H]\n        W13_e = W13[le]  # [2I, H]\n        W2_e = W2[le]  # [H, I]\n        \n        # Apply output scale factors\n        scale1 = output1_scale_scalar[le].item()\n        scale1_gate = output1_scale_gate_scalar[le].item()\n        scale2 = output2_scale_scalar[le].item()\n        \n        # GEMM1: [Tk, H] @ [H, 2I] = [Tk, 2I]\n        G1 = A_e.matmul(W13_e.t())  # [Tk, 2I]\n        \n        # Apply scaling\n        G1_scaled = G1 * scale1\n        \n        # SwiGLU: split and apply silu(x) * x\n        X1 = G1_scaled[:, :I]  # gate\n        X2 = G1_scaled[:, I:] * scale1_gate / scale1  # up\n        silu_X1 = X1 * torch.sigmoid(X1)  # silu(gate)\n        C = silu_X1 * X2  # [Tk, I]\n        \n        # GEMM2: [Tk, I] @ [I, H] = [Tk, H]\n        O = C.matmul(W2_e.t()) * scale2  # [Tk, H]\n        \n        # Accumulate with routing weights\n        output.index_add_(0, token_idx, O * weights.unsqueeze(1))\n    \n    return output.to(torch.bfloat16)"
+}
