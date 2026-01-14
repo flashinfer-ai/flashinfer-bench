@@ -1,11 +1,21 @@
 """
-Reference test for trtllm_fp4_block_scale_routed_moe kernel.
+Reference test for trtllm_fp4_block_scale_routed_moe kernel (DeepSeek V3/R1).
 
 This test validates the reference implementation against the FlashInfer
 FP4 routed MoE kernel on SM100+ GPUs (Blackwell architecture).
 
 Ground truth source: FlashInfer trtllm_fp4_block_scale_routed_moe API
 Reference implementation: Vanilla PyTorch FP4 dequantization + MoE computation
+
+DeepSeek V3/R1 MoE Configuration:
+- hidden_size: 7168
+- intermediate_size: 2048
+- num_experts (global): 256
+- num_local_experts (EP=8): 32
+- top_k: 8
+- n_group: 8
+- topk_group: 4
+- routed_scaling_factor: 2.5
 """
 
 import json
@@ -14,12 +24,31 @@ from pathlib import Path
 import pytest
 import torch
 
+# DeepSeek V3/R1 MoE constants
+HIDDEN_SIZE = 7168
+INTERMEDIATE_SIZE = 2048
+NUM_EXPERTS_GLOBAL = 256
+NUM_LOCAL_EXPERTS = 32  # EP=8 (256 / 8 = 32)
+TOP_K = 8
+N_GROUP = 8
+TOPK_GROUP = 4
+SF_VEC_SIZE = 16  # NvFP4 scale factor block size
+ROUTED_SCALING_FACTOR = 2.5
+
+# Derived constants
+GEMM1_OUT_SIZE = 2 * INTERMEDIATE_SIZE  # 4096
+HIDDEN_SIZE_PACKED = HIDDEN_SIZE // 2  # 3584
+INTERMEDIATE_SIZE_PACKED = INTERMEDIATE_SIZE // 2  # 1024
+NUM_HIDDEN_SF_BLOCKS = HIDDEN_SIZE // SF_VEC_SIZE  # 448
+NUM_GEMM1_OUT_SF_BLOCKS = GEMM1_OUT_SIZE // SF_VEC_SIZE  # 256
+NUM_INTERMEDIATE_SF_BLOCKS = INTERMEDIATE_SIZE // SF_VEC_SIZE  # 128
+
 TRACE_ROOT = Path(__file__).resolve().parents[2]
 DEFINITION_PATH = (
     TRACE_ROOT
     / "definitions"
     / "moe"
-    / "trtllm_fp4_block_scale_routed_moe_topk8_e128_h4096_i2048.json"
+    / "trtllm_fp4_block_scale_routed_moe_topk8_e256_h7168_i2048.json"
 )
 
 
@@ -61,19 +90,16 @@ FP4_LUT = torch.tensor(
 )
 
 
-def dequant_nvfp4_activations(
-    packed: torch.Tensor, scale: torch.Tensor, sf_vec_size: int = 16
-) -> torch.Tensor:
+def dequant_nvfp4_activations(packed: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """
     Dequantize NvFP4 packed activations.
 
     Args:
-        packed: [T, H/2] uint8 tensor (2 FP4 values per byte)
-        scale: [T, H/sf_vec_size] float8_e4m3fn scale factors
-        sf_vec_size: Scale factor block size (16 for NvFP4)
+        packed: [T, HIDDEN_SIZE_PACKED] uint8 tensor (2 FP4 values per byte)
+        scale: [T, NUM_HIDDEN_SF_BLOCKS] float8_e4m3fn scale factors
 
     Returns:
-        Dequantized [T, H] float32 tensor
+        Dequantized [T, HIDDEN_SIZE] float32 tensor
     """
     device = packed.device
     T, packed_size = packed.shape
@@ -92,21 +118,18 @@ def dequant_nvfp4_activations(
 
     # Apply block-wise scale factors
     scale_fp32 = scale.to(torch.float32)
-    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, sf_vec_size).reshape(T, H)
+    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, SF_VEC_SIZE).reshape(T, H)
 
     return unpacked_fp32 * scale_expanded
 
 
-def dequant_nvfp4_weights(
-    packed: torch.Tensor, scale: torch.Tensor, sf_vec_size: int = 16
-) -> torch.Tensor:
+def dequant_nvfp4_weights(packed: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """
     Dequantize NvFP4 packed weights.
 
     Args:
         packed: [E, out_dim, in_dim/2] uint8 tensor
-        scale: [E, out_dim, in_dim/sf_vec_size] float8_e4m3fn scale factors
-        sf_vec_size: Scale factor block size (16 for NvFP4)
+        scale: [E, out_dim, in_dim/SF_VEC_SIZE] float8_e4m3fn scale factors
 
     Returns:
         Dequantized [E, out_dim, in_dim] float32 tensor
@@ -124,7 +147,7 @@ def dequant_nvfp4_weights(
     unpacked_fp32 = lut[unpacked]
 
     scale_fp32 = scale.to(torch.float32)
-    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, 1, sf_vec_size).reshape(
+    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, 1, SF_VEC_SIZE).reshape(
         E, out_dim, in_dim
     )
 
@@ -144,41 +167,44 @@ def reference_fp4_routed_moe(
     output1_scale_gate_scalar: torch.Tensor,
     output2_scale_scalar: torch.Tensor,
     local_expert_offset: int,
-    intermediate_size: int,
-    top_k: int,
 ) -> torch.Tensor:
     """
-    Reference implementation for FP4 block-scale routed MoE.
+    Reference implementation for FP4 block-scale routed MoE (DeepSeek V3/R1).
 
     This is a vanilla PyTorch implementation used to validate the FlashInfer kernel.
+    Uses fixed DeepSeek V3/R1 constants for hidden_size, intermediate_size, etc.
     """
     device = hidden_states.device
     T = hidden_states.shape[0]
-    H = gemm2_weights.shape[1] * 2  # W2 shape is [E, H, I/2]
-    I = intermediate_size
     E_local = gemm1_weights.shape[0]
-    SF_VEC_SIZE = 16
+
+    # Verify DeepSeek V3 constants
+    assert E_local == NUM_LOCAL_EXPERTS, f"Expected {NUM_LOCAL_EXPERTS} local experts, got {E_local}"
+    assert topk_ids.shape[1] == TOP_K, f"Expected top_k={TOP_K}, got {topk_ids.shape[1]}"
 
     # Unpack topk_ids to get expert indices and weights
-    expert_indices = (topk_ids & 0xFFFF).to(torch.int32)
-    expert_weights_packed = (topk_ids >> 16).to(torch.int16)
+    # Format: upper 16 bits = expert index, lower 16 bits = weight (bfloat16 as int16)
+    expert_indices = ((topk_ids >> 16) & 0xFFFF).to(torch.int32)
+    expert_weights_packed = (topk_ids & 0xFFFF).to(torch.int16)
     expert_weights = expert_weights_packed.view(torch.bfloat16).to(torch.float32)
 
     # Dequantize hidden states
-    A = dequant_nvfp4_activations(hidden_states, hidden_states_scale, SF_VEC_SIZE)
+    A = dequant_nvfp4_activations(hidden_states, hidden_states_scale)
 
     # Dequantize weights
-    W13 = dequant_nvfp4_weights(gemm1_weights, gemm1_weights_scale, SF_VEC_SIZE)
-    W2 = dequant_nvfp4_weights(gemm2_weights, gemm2_weights_scale, SF_VEC_SIZE)
+    W13 = dequant_nvfp4_weights(gemm1_weights, gemm1_weights_scale)
+    W2 = dequant_nvfp4_weights(gemm2_weights, gemm2_weights_scale)
 
     # Initialize output
-    output = torch.zeros((T, H), dtype=torch.float32, device=device)
+    output = torch.zeros((T, HIDDEN_SIZE), dtype=torch.float32, device=device)
 
     local_start = int(local_expert_offset)
 
     # For each local expert: find selected tokens, run GEMM1 -> SwiGLU -> GEMM2
     for le in range(E_local):
-        ge = local_start + le
+        ge = local_start + le  # Global expert index
+        if ge < 0 or ge >= NUM_EXPERTS_GLOBAL:
+            continue
 
         # Find tokens that selected this expert
         sel_mask = (expert_indices == ge).any(dim=1)
@@ -186,7 +212,6 @@ def reference_fp4_routed_moe(
             continue
 
         token_idx = torch.nonzero(sel_mask, as_tuple=False).squeeze(1)
-        Tk = token_idx.numel()
 
         # Get routing weights for this expert
         expert_mask = expert_indices[token_idx] == ge
@@ -206,8 +231,8 @@ def reference_fp4_routed_moe(
         G1 = A_e.matmul(W13_e.t()) * scale1
 
         # SwiGLU: silu(gate) * up
-        gate = G1[:, :I]
-        up = G1[:, I:] * (scale1_gate / scale1)
+        gate = G1[:, :INTERMEDIATE_SIZE]
+        up = G1[:, INTERMEDIATE_SIZE:] * (scale1_gate / scale1)
         silu_gate = gate * torch.sigmoid(gate)
         C = silu_gate * up
 
@@ -220,24 +245,25 @@ def reference_fp4_routed_moe(
     return output.to(torch.bfloat16)
 
 
-def generate_random_fp4_inputs(
-    num_tokens: int,
-    hidden_size: int,
-    intermediate_size: int,
-    num_experts: int,
-    top_k: int,
-    device: str = "cuda",
-):
-    """Generate random inputs for FP4 routed MoE testing."""
+def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, device: str = "cuda"):
+    """
+    Generate random inputs for FP4 routed MoE testing with DeepSeek V3 configuration.
+
+    Args:
+        num_tokens: Number of tokens (seq_len)
+        local_expert_offset: Offset for local experts (0, 32, 64, ..., 224 for EP=8)
+        device: Device to create tensors on
+
+    Returns:
+        Dictionary of input tensors
+    """
     fi = try_import_flashinfer_fp4()
     fp4_quantize = fi["fp4_quantize"]
-    RoutingMethodType = fi["RoutingMethodType"]
 
-    T, H, I, E = num_tokens, hidden_size, intermediate_size, num_experts
-    SF_VEC_SIZE = 16
+    T = num_tokens
 
     # Generate random hidden states and quantize
-    hidden_states_bf16 = torch.randn(T, H, device=device, dtype=torch.bfloat16) * 0.1
+    hidden_states_bf16 = torch.randn(T, HIDDEN_SIZE, device=device, dtype=torch.bfloat16) * 0.1
     hidden_states, hidden_states_scale = fp4_quantize(
         hidden_states_bf16,
         torch.tensor([448.0 * 6.0], device=device),
@@ -247,9 +273,13 @@ def generate_random_fp4_inputs(
     )
     hidden_states_scale = hidden_states_scale.view(torch.float8_e4m3fn).reshape(T, -1)
 
-    # Generate weights and quantize
-    w13_bf16 = torch.randn(E, I * 2, H, device=device, dtype=torch.bfloat16) * 0.1
-    w2_bf16 = torch.randn(E, H, I, device=device, dtype=torch.bfloat16) * 0.1
+    # Generate weights for local experts and quantize
+    w13_bf16 = torch.randn(
+        NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
+    ) * 0.1
+    w2_bf16 = torch.randn(
+        NUM_LOCAL_EXPERTS, HIDDEN_SIZE, INTERMEDIATE_SIZE, device=device, dtype=torch.bfloat16
+    ) * 0.1
 
     w13, w13_scale = fp4_quantize(
         w13_bf16,
@@ -257,7 +287,7 @@ def generate_random_fp4_inputs(
         sf_vec_size=SF_VEC_SIZE,
         sf_use_ue8m0=False,
     )
-    w13_scale = w13_scale.view(torch.float8_e4m3fn).reshape(E, I * 2, -1)
+    w13_scale = w13_scale.view(torch.float8_e4m3fn).reshape(NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, -1)
 
     w2, w2_scale = fp4_quantize(
         w2_bf16,
@@ -265,24 +295,30 @@ def generate_random_fp4_inputs(
         sf_vec_size=SF_VEC_SIZE,
         sf_use_ue8m0=False,
     )
-    w2_scale = w2_scale.view(torch.float8_e4m3fn).reshape(E, H, -1)
+    w2_scale = w2_scale.view(torch.float8_e4m3fn).reshape(NUM_LOCAL_EXPERTS, HIDDEN_SIZE, -1)
 
     # Global scales
     global_scale = 1.0 / 448.0 / 6.0
-    output1_scale_scalar = torch.full((E,), global_scale * global_scale, device=device)
-    output1_scale_gate_scalar = torch.full((E,), global_scale * global_scale, device=device)
-    output2_scale_scalar = torch.full((E,), global_scale * global_scale, device=device)
+    output1_scale_scalar = torch.full(
+        (NUM_LOCAL_EXPERTS,), global_scale * global_scale, device=device
+    )
+    output1_scale_gate_scalar = torch.full(
+        (NUM_LOCAL_EXPERTS,), global_scale * global_scale, device=device
+    )
+    output2_scale_scalar = torch.full(
+        (NUM_LOCAL_EXPERTS,), global_scale * global_scale, device=device
+    )
 
-    # Generate routing logits and compute topk indices
-    routing_logits = torch.rand(T, E, device=device, dtype=torch.bfloat16)
+    # Generate routing logits over all global experts
+    routing_logits = torch.rand(T, NUM_EXPERTS_GLOBAL, device=device, dtype=torch.bfloat16)
 
-    # Simple topk routing
-    topk_weights, topk_indices = torch.topk(routing_logits.float(), k=top_k, dim=1)
+    # Simple topk routing (ensure some tokens go to local experts)
+    topk_weights, topk_indices = torch.topk(routing_logits.float(), k=TOP_K, dim=1)
     topk_weights = torch.softmax(topk_weights, dim=1).to(torch.bfloat16)
 
     # Pack indices and weights: (indices << 16) | weights_as_int16
-    packed_tensor = (topk_indices.to(torch.int32) << 16) | topk_weights.view(torch.int16).to(
-        torch.int32
+    packed_tensor = (topk_indices.to(torch.int32) << 16) | (
+        topk_weights.view(torch.int16).to(torch.int32) & 0xFFFF
     )
 
     return {
@@ -296,30 +332,30 @@ def generate_random_fp4_inputs(
         "output1_scale_scalar": output1_scale_scalar,
         "output1_scale_gate_scalar": output1_scale_gate_scalar,
         "output2_scale_scalar": output2_scale_scalar,
-        "routing_logits": routing_logits,
-        "topk_weights": topk_weights,
-        "topk_indices": topk_indices,
+        "local_expert_offset": local_expert_offset,
     }
 
 
-@pytest.mark.parametrize("num_tokens", [1, 8, 64])
-@pytest.mark.parametrize("hidden_size", [1024, 2048])
-@pytest.mark.parametrize("intermediate_size", [1024, 2048])
-@pytest.mark.parametrize("num_experts", [64, 128])
-@pytest.mark.parametrize("top_k", [4, 8])
-def test_trtllm_fp4_block_scale_routed_moe(
+# Test with DeepSeek V3 fixed configuration, varying seq_len and local_expert_offset
+@pytest.mark.parametrize("num_tokens", [1, 8, 64, 256])
+@pytest.mark.parametrize("local_expert_offset", [0, 32, 64, 128])  # Different EP ranks
+def test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
     num_tokens: int,
-    hidden_size: int,
-    intermediate_size: int,
-    num_experts: int,
-    top_k: int,
+    local_expert_offset: int,
 ):
     """
-    Test FP4 routed MoE kernel against reference implementation.
+    Test FP4 routed MoE kernel against reference implementation with DeepSeek V3 config.
 
     This test validates that the FlashInfer trtllm_fp4_block_scale_routed_moe
     kernel produces outputs matching the reference PyTorch implementation
     within acceptable tolerance.
+
+    Fixed DeepSeek V3/R1 configuration:
+    - hidden_size: 7168
+    - intermediate_size: 2048
+    - num_experts (global): 256
+    - num_local_experts: 32 (EP=8)
+    - top_k: 8
     """
     skip_if_no_sm100()
     fi = try_import_flashinfer_fp4()
@@ -338,17 +374,12 @@ def test_trtllm_fp4_block_scale_routed_moe(
     except ImportError:
         enable_pdl = False
 
-    # Generate inputs
+    # Generate inputs with DeepSeek V3 configuration
     inputs = generate_random_fp4_inputs(
         num_tokens=num_tokens,
-        hidden_size=hidden_size,
-        intermediate_size=intermediate_size,
-        num_experts=num_experts,
-        top_k=top_k,
+        local_expert_offset=local_expert_offset,
         device=device,
     )
-
-    local_expert_offset = 0
 
     # Run reference implementation
     ref_output = reference_fp4_routed_moe(
@@ -363,8 +394,6 @@ def test_trtllm_fp4_block_scale_routed_moe(
         output1_scale_gate_scalar=inputs["output1_scale_gate_scalar"],
         output2_scale_scalar=inputs["output2_scale_scalar"],
         local_expert_offset=local_expert_offset,
-        intermediate_size=intermediate_size,
-        top_k=top_k,
     )
 
     # Run FlashInfer kernel
@@ -385,14 +414,14 @@ def test_trtllm_fp4_block_scale_routed_moe(
         inputs["output1_scale_scalar"],
         inputs["output1_scale_gate_scalar"],
         inputs["output2_scale_scalar"],
-        num_experts,
-        top_k,
-        None,  # n_group
-        None,  # topk_group
-        intermediate_size,
+        NUM_EXPERTS_GLOBAL,
+        TOP_K,
+        N_GROUP,
+        TOPK_GROUP,
+        INTERMEDIATE_SIZE,
         local_expert_offset,
-        num_experts,  # local_num_experts
-        None,  # routed_scaling_factor
+        NUM_LOCAL_EXPERTS,
+        ROUTED_SCALING_FACTOR,
         RoutingMethodType.TopK.value,
         True,  # do_finalize
         enable_pdl,
@@ -411,8 +440,9 @@ def test_trtllm_fp4_block_scale_routed_moe(
     # Allow up to 10% mismatch due to FP4 quantization errors
     assert mismatch_pct < 10, (
         f"Mismatch percentage is {mismatch_pct:.2f}% (expected < 10%)\n"
-        f"Config: T={num_tokens}, H={hidden_size}, I={intermediate_size}, "
-        f"E={num_experts}, top_k={top_k}"
+        f"Config: T={num_tokens}, local_expert_offset={local_expert_offset}\n"
+        f"DeepSeek V3: H={HIDDEN_SIZE}, I={INTERMEDIATE_SIZE}, "
+        f"E_global={NUM_EXPERTS_GLOBAL}, E_local={NUM_LOCAL_EXPERTS}, top_k={TOP_K}"
     )
 
 
@@ -432,16 +462,25 @@ def test_load_definition():
     assert "outputs" in definition
     assert "reference" in definition
 
-    # Verify key axes
-    assert "hidden_size" in definition["axes"]
-    assert "intermediate_size" in definition["axes"]
-    assert "num_experts" in definition["axes"]
-    assert "top_k" in definition["axes"]
+    # Verify DeepSeek V3 constants in definition
+    axes = definition["axes"]
+    assert axes["hidden_size"]["value"] == HIDDEN_SIZE
+    assert axes["intermediate_size"]["value"] == INTERMEDIATE_SIZE
+    assert axes["num_experts"]["value"] == NUM_EXPERTS_GLOBAL
+    assert axes["num_local_experts"]["value"] == NUM_LOCAL_EXPERTS
+    assert axes["top_k"]["value"] == TOP_K
+    assert axes["n_group"]["value"] == N_GROUP
+    assert axes["topk_group"]["value"] == TOPK_GROUP
+
+    # Verify model tags
+    assert "model:deepseek-v3" in definition["tags"]
+    assert "model:deepseek-r1" in definition["tags"]
 
     # Verify reference can be compiled
     ref_code = definition["reference"]
     assert "def run(" in ref_code
-    assert "torch" in ref_code
+    assert "HIDDEN_SIZE = 7168" in ref_code
+    assert "NUM_EXPERTS_GLOBAL = 256" in ref_code
 
 
 if __name__ == "__main__":
@@ -449,15 +488,20 @@ if __name__ == "__main__":
     print("Testing definition loading...")
     test_load_definition()
     print("Definition loaded successfully!")
+    print(f"\nDeepSeek V3/R1 Configuration:")
+    print(f"  hidden_size: {HIDDEN_SIZE}")
+    print(f"  intermediate_size: {INTERMEDIATE_SIZE}")
+    print(f"  num_experts (global): {NUM_EXPERTS_GLOBAL}")
+    print(f"  num_local_experts (EP=8): {NUM_LOCAL_EXPERTS}")
+    print(f"  top_k: {TOP_K}")
+    print(f"  n_group: {N_GROUP}")
+    print(f"  topk_group: {TOPK_GROUP}")
 
     print("\nTesting FP4 routed MoE (requires SM100+ GPU)...")
     try:
-        test_trtllm_fp4_block_scale_routed_moe(
+        test_trtllm_fp4_block_scale_routed_moe_deepseek_v3(
             num_tokens=8,
-            hidden_size=1024,
-            intermediate_size=1024,
-            num_experts=64,
-            top_k=4,
+            local_expert_offset=0,
         )
         print("Test passed!")
     except Exception as e:
