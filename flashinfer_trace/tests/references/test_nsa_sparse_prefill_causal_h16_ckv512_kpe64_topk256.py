@@ -314,6 +314,12 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
     num_pages = 1024
     head_dim = HEAD_DIM_CKV + HEAD_DIM_KPE  # Combined head dim = 576
 
+    # Determine required head padding based on GPU architecture
+    # FlashMLA kernel requires h_q to be multiple of 64 (Hopper SM90) or 128 (Blackwell SM100+)
+    device_sm_major = torch.cuda.get_device_properties(device).major
+    required_padding = 128 if device_sm_major >= 10 else 64
+    print(f"GPU SM major: {device_sm_major}, required head padding: {required_padding}")
+
     # Generate query tensors
     q_nope = torch.randn(
         total_num_tokens, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
@@ -353,7 +359,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
 
     # Run FlashMLA sparse prefill
     # flash_mla_sparse_fwd expects:
-    #   q: [s_q, h_q, d_qk] bfloat16
+    #   q: [s_q, h_q, d_qk] bfloat16 - h_q must be multiple of 64 (SM90) or 128 (SM100+)
     #   kv: [s_kv, h_kv, d_qk] bfloat16 (h_kv=1 for MLA)
     #   indices: [s_q, h_kv, topk] int32
     print("Running SGLang FlashMLA sparse prefill...")
@@ -363,12 +369,36 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         # indices: [s_q, h_kv=1, topk]
         indices_for_mla = sparse_indices.unsqueeze(1)  # [total_num_tokens, 1, topk]
 
-        fi_output, fi_max_logits, fi_lse = flash_mla_sparse_fwd(
-            q=q_all, kv=kv_for_mla, indices=indices_for_mla, sm_scale=sm_scale, d_v=HEAD_DIM_CKV
+        # Pad query heads to required multiple (64 or 128) as done in SGLang's nsa_backend.py
+        need_padding = NUM_QO_HEADS % required_padding != 0
+        if need_padding:
+            assert required_padding % NUM_QO_HEADS == 0, (
+                f"required_padding ({required_padding}) must be divisible by NUM_QO_HEADS ({NUM_QO_HEADS})"
+            )
+            q_padded = q_all.new_zeros((total_num_tokens, required_padding, head_dim))
+            q_padded[:, :NUM_QO_HEADS, :] = q_all
+            q_input = q_padded
+            print(f"Padded q from {NUM_QO_HEADS} to {required_padding} heads")
+        else:
+            q_input = q_all
+
+        fi_output_full, fi_max_logits, fi_lse_full = flash_mla_sparse_fwd(
+            q=q_input, kv=kv_for_mla, indices=indices_for_mla, sm_scale=sm_scale, d_v=HEAD_DIM_CKV
         )
+
+        # Trim output back to original number of heads if padding was applied
+        if need_padding:
+            fi_output = fi_output_full[:, :NUM_QO_HEADS, :]
+            fi_lse = fi_lse_full[:, :NUM_QO_HEADS]
+        else:
+            fi_output = fi_output_full
+            fi_lse = fi_lse_full
+
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
         print("This may be due to API differences - skipping SGLang test")
+        import traceback
+        traceback.print_exc()
         return None
 
     # Compare outputs

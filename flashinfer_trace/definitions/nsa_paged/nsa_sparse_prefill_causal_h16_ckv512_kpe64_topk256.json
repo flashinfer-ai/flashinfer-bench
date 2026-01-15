@@ -98,7 +98,7 @@
     "sm_scale": {
       "shape": null,
       "dtype": "float32",
-      "description": "Softmax scale. Default is 1/sqrt(head_dim_ckv + head_dim_kpe) = 1/sqrt(576)."
+      "description": "Softmax scale. For MLA, uses pre-absorption head dimension: 1/sqrt(head_dim_qk + head_dim_kpe) = 1/sqrt(128 + 64) = 1/sqrt(192)."
     }
   },
   "outputs": {
