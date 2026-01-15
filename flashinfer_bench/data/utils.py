@@ -1,3 +1,5 @@
+"""Common utilities and base classes for data models."""
+
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
