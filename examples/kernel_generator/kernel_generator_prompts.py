@@ -2,7 +2,7 @@
 This file contains the prompts for baseline agent generation.
 """
 
-from flashinfer_bench import Definition, EvaluationStatus, Trace
+from flashinfer_bench import FFI_PROMPT_SIMPLE, Definition, EvaluationStatus, Trace
 
 
 def _format_definition(definition: Definition) -> str:
@@ -318,19 +318,31 @@ Requirements:
 - Handle exceptions gracefully with proper error messages"""
 
 
-def get_prompt(language: str, definition: Definition, target_gpu: str = "H100") -> str:
+def get_prompt(
+    language: str, definition: Definition, target_gpu: str = "H100", use_ffi: bool = True
+) -> str:
     prompts = {"triton": TRITON_PROMPT, "python": PYTHON_PROMPT, "cuda": CUDA_PROMPT}
 
     if language not in prompts:
         raise ValueError(f"Unsupported language: {language}")
 
     definition_str = _format_definition(definition)
+    base_prompt = prompts[language].format(definition=definition_str, target_gpu=target_gpu)
 
-    return prompts[language].format(definition=definition_str, target_gpu=target_gpu)
+    if language.lower() == "cuda":
+        binding_prompt = FFI_PROMPT_SIMPLE if use_ffi else TORCH_BINDINGS_PROMPT
+        base_prompt = base_prompt + "\n\n" + binding_prompt
+
+    return base_prompt
 
 
 def get_optimization_prompt(
-    language: str, definition, trace: Trace, current_code: str, target_gpu: str = "H100"
+    language: str,
+    definition,
+    trace: Trace,
+    current_code: str,
+    target_gpu: str = "H100",
+    use_ffi: bool = True,
 ) -> str:
     optimization_prompts = {"triton": TRITON_OPTIMIZATION_PROMPT, "cuda": CUDA_OPTIMIZATION_PROMPT}
 
@@ -340,9 +352,15 @@ def get_optimization_prompt(
     definition_str = _format_definition(definition)
     trace_logs = _format_trace_logs(trace)
 
-    return optimization_prompts[language].format(
+    base_prompt = optimization_prompts[language].format(
         definition=definition_str,
         trace_logs=trace_logs,
         current_code=current_code,
         target_gpu=target_gpu,
     )
+
+    if language.lower() == "cuda":
+        binding_prompt = FFI_PROMPT_SIMPLE if use_ffi else TORCH_BINDINGS_PROMPT
+        base_prompt = base_prompt + "\n\n" + binding_prompt
+
+    return base_prompt
