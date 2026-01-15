@@ -2,39 +2,27 @@
 
 from __future__ import annotations
 
-from .builtin.policies import (
-    BUILTIN_FILTER_POLICIES,
-    BUILTIN_INPUT_DUMP_POLICIES,
-    AttentionFilterPolicy,
-    KeepAllPolicy,
-    KeepFirstByAxesPolicy,
-    KeepFirstKPolicy,
-    dump_all,
-    dump_int32,
-    dump_none,
-)
-from .config import FilterPolicy, FilterPolicyFactory, InputDumpPolicyFunction, TracingConfig
-from .runtime import TracingRuntime, get_tracing_runtime
+from .config import TracingConfig, TracingConfigRegistry
+from .policy import FilterPolicy, InputDumpPolicy, PolicyRegistry
+from .presets import get_attention_only_configs, get_default_configs, get_full_configs
+from .runtime import TracingRuntime
 from .tracing import disable_tracing, enable_tracing
 from .workload_entry import WorkloadEntry
 
 __all__ = [
+    # Core
     "disable_tracing",
     "enable_tracing",
-    "get_tracing_runtime",
     "TracingRuntime",
-    "TracingConfig",
     "WorkloadEntry",
+    # Config
+    "TracingConfig",
+    "TracingConfigRegistry",
+    "PolicyRegistry",
     "FilterPolicy",
-    "FilterPolicyFactory",
-    "InputDumpPolicyFunction",
-    "BUILTIN_FILTER_POLICIES",
-    "KeepAllPolicy",
-    "KeepFirstKPolicy",
-    "KeepFirstByAxesPolicy",
-    "AttentionFilterPolicy",
-    "BUILTIN_INPUT_DUMP_POLICIES",
-    "dump_all",
-    "dump_none",
-    "dump_int32",
+    "InputDumpPolicy",
+    # Registry presets
+    "get_default_configs",
+    "get_full_configs",
+    "get_attention_only_configs",
 ]

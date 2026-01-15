@@ -1,43 +1,50 @@
 """Public API for enabling and disabling tracing."""
 
-from typing import Dict, Optional
+import logging
+from typing import Dict, Optional, Union
 
 from flashinfer_bench.data import TraceSet
-from flashinfer_bench.logging import get_logger
-from flashinfer_bench.tracing.config import TracingConfig
-from flashinfer_bench.tracing.runtime import (
-    TracingRuntime,
-    get_tracing_runtime,
-    set_tracing_runtime,
-)
 
-logger = get_logger("Tracing")
+from .config import TracingConfig, TracingConfigRegistry
+from .runtime import TracingRuntime
+
+logger = logging.getLogger(__name__)
 
 
 def enable_tracing(
-    dataset_path: Optional[str] = None, tracing_configs: Optional[Dict[str, TracingConfig]] = None
+    dataset_path: Optional[str] = None,
+    tracing_config: Union[
+        TracingConfigRegistry, TracingConfig, Dict[str, TracingConfig], None
+    ] = None,
 ) -> TracingRuntime:
-    """Enable tracing with the given tracing config set.
+    """Enable tracing by creating and pushing a new tracing runtime onto the global stack.
 
-    Creates or replaces the process-wide singleton tracing runtime.
-    If replacing, flushes the previous instance first. The returned runtime
-    can be used as a context manager to automatically flush and restore the
-    previous runtime on exit.
+    The returned runtime can be used as a context manager to automatically
+    flush and pop from the stack on exit.
+
+    The tracing runtime is process-level. This function is recommended to be called in the main
+    thread.
 
     Parameters
     ----------
     dataset_path : Optional[str]
         Path to the dataset/trace_set directory. If None, uses the environment
         variable FIB_DATASET_PATH or defaults to `~/.cache/flashinfer_bench/dataset`.
-    tracing_configs : Optional[Dict[str, TracingConfig]]
-        Dictionary mapping definition names to their tracing configurations.
-        If None, defaults to `fib.tracing.builtin_config.fib_full_tracing`.
+    tracing_config : Union[TracingConfigRegistry, TracingConfig, \
+            Dict[str, TracingConfig], None], optional
+        Configuration for the tracing runtime. Can be:
+
+        - TracingConfig: A single config used as the default for all definitions.
+        - Dict[str, TracingConfig]: A dict mapping the names of the kernels to trace and their
+          configs.
+        - TracingConfigRegistry: A registry with per-definition configs.
+        - None: Uses the full configs preset.
 
     Returns
     -------
     TracingRuntime
-        The newly created tracing runtime instance that has been set as the
-        global runtime.
+        The newly created tracing runtime instance that has been pushed onto
+        the global stack.
 
     Examples
     --------
@@ -58,34 +65,41 @@ def enable_tracing(
     Custom tracing configuration:
 
     >>> from flashinfer_bench.tracing import TracingConfig
-    >>> configs = {"rmsnorm_d4096": TracingConfig(input_dump_policy=["x", "weight"], filter_policy="keep_all")}
-    >>> with enable_tracing("/path/to/trace_set", tracing_configs=configs):
+    >>> configs = {
+    ...     "rmsnorm_d4096": TracingConfig(input_dump_policy=["x", "weight"]),
+    ...     "silu_and_mul": TracingConfig(
+    ...         filter_policy="keep_first_k", filter_policy_kwargs={"k": 10}
+    ...     ),
+    ... }
+    >>> with enable_tracing("/path/to/trace_set", configs):
     ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
-    """
 
-    prev_runtime = get_tracing_runtime()
-    # Flush the previous runtime if it exists
-    if prev_runtime is not None:
-        prev_runtime.flush()
+    Nested tracing with different configs:
+
+    >>> with enable_tracing("/path/to/trace_set", config_a):
+    ...     # Tracing with config_a
+    ...     with enable_tracing("/path/to/trace_set", config_b):
+    ...         # Tracing with config_b (config_a is paused)
+    ...     # Back to config_a
+    """
     trace_set = TraceSet.from_path(dataset_path)
-    runtime = TracingRuntime(trace_set, tracing_configs, prev_runtime)
-    set_tracing_runtime(runtime)
+    runtime = TracingRuntime(trace_set, tracing_config)
+    runtime.start()
     return runtime
 
 
 def disable_tracing():
-    """Disable tracing and flush any pending data.
+    """Disable tracing by popping the current runtime from the stack and flushing.
 
-    Flushes the current global tracing runtime (if one exists) to persist
-    all buffered trace entries to disk, then clears the global runtime
-    instance. This is safe to call even if no tracing runtime is active.
+    Pops the top runtime from the global stack, flushes all buffered trace
+    entries to disk, and restores the previous runtime (if any) as the active
+    instance. Safe to call even if no tracing runtime is active.
 
     Notes
     -----
-    This function logs errors but does not raise exceptions if flushing
-    fails. The global runtime will be cleared regardless of flush status.
-    When using enable_tracing() as a context manager, disable_tracing()
-    is called automatically on exit.
+    This function logs errors but does not raise exceptions if flushing fails.
+    When using enable_tracing() as a context manager, this is called automatically
+    on exit.
 
     Examples
     --------
@@ -100,13 +114,10 @@ def disable_tracing():
 
     >>> disable_tracing()  # No-op if tracing is not active
     """
-    # Flush the current tracing runtime if it exists
-    tracing_runtime = get_tracing_runtime()
+    tracing_runtime = TracingRuntime.get_instance()
 
     if tracing_runtime is not None:
         try:
-            tracing_runtime.flush()
+            tracing_runtime.stop()
         except Exception as e:
-            logger.error(f"Cannot flush existing tracing runtime: {e}, ignoring")
-
-    set_tracing_runtime(None)
+            logger.error(f"Cannot stop existing tracing runtime: {e}, ignoring")
