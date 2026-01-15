@@ -14,19 +14,31 @@ if TYPE_CHECKING:
     from flashinfer_bench.data import Environment
 
 
-_DTYPE_STR_TO_PYTHON_DTYPE = {
-    "float32": float,
-    "float16": float,
-    "bfloat16": float,
-    "float8_e4m3fn": float,
-    "float8_e5m2": float,
-    "float4_e2m1": float,
-    "int64": int,
-    "int32": int,
-    "int16": int,
-    "int8": int,
-    "bool": bool,
-}
+@cache
+def _get_dtype_str_to_python_dtype() -> Dict[str, type]:
+    """Get dtype string to Python type mapping (cached)."""
+    return {
+        "float32": float,
+        "float16": float,
+        "bfloat16": float,
+        "float8_e4m3fn": float,
+        "float8_e5m2": float,
+        "float4_e2m1": float,
+        "int64": int,
+        "int32": int,
+        "int16": int,
+        "int8": int,
+        "bool": bool,
+    }
+
+
+def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
+    if not dtype_str:
+        raise ValueError("dtype is None or empty")
+    dtype = _get_dtype_str_to_python_dtype().get(dtype_str, None)
+    if dtype is None:
+        raise ValueError(f"Unsupported dtype '{dtype_str}'")
+    return dtype
 
 
 @cache
@@ -58,13 +70,29 @@ def dtype_str_to_torch_dtype(dtype_str: str) -> torch.dtype:
     return dtype
 
 
-def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
-    if not dtype_str:
-        raise ValueError("dtype is None or empty")
-    dtype = _DTYPE_STR_TO_PYTHON_DTYPE.get(dtype_str, None)
-    if dtype is None:
-        raise ValueError(f"Unsupported dtype '{dtype_str}'")
-    return dtype
+@cache
+def _get_integer_dtypes() -> frozenset:
+    """Get frozenset of integer and boolean dtypes (cached)."""
+    import torch
+
+    return frozenset(
+        (
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.uint8,
+            torch.uint16,
+            torch.uint32,
+            torch.uint64,
+            torch.bool,
+        )
+    )
+
+
+def is_dtype_integer(dtype: torch.dtype) -> bool:
+    """Check if dtype is an integer or boolean type."""
+    return dtype in _get_integer_dtypes()
 
 
 def is_cuda_available() -> bool:

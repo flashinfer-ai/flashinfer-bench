@@ -6,7 +6,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from flashinfer_bench.data import TraceSet
-from flashinfer_bench.tracing import get_tracing_runtime
+from flashinfer_bench.tracing import TracingRuntime
 
 from .config import ApplyConfig, ApplyConfigRegistry
 from .runtime import ApplyRuntime
@@ -170,7 +170,7 @@ def _dispatch_apply_or_tracing(
     if apply_rt is not None:
         return apply_rt.dispatch(def_name, args, kwargs, fallback)
 
-    tracing_rt = get_tracing_runtime()
+    tracing_rt = TracingRuntime.get_instance()
 
     # Tracing
     if tracing_rt is not None:
