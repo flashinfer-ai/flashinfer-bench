@@ -1,5 +1,5 @@
 {
-  "name": "nsa_sparse_prefill_causal_h16_ckv512_kpe64_topk256",
+  "name": "nsa_sparse_prefill_causal_h16_ckv512_kpe64_topk256_ps1",
   "description": "Batched Native Sparse Attention (NSA) prefill with causal masking and sparse TopK KV cache selection. Captured from DeepSeek-V3 with tensor parallel size 8. Uses sparse indexing to select only top-K KV cache entries for attention computation during prefill.",
   "op_type": "nsa_paged",
   "tags": [
@@ -72,7 +72,7 @@
     "ckv_cache": {
       "shape": [
         "num_pages",
-        1,
+        "page_size",
         "head_dim_ckv"
       ],
       "dtype": "bfloat16",
@@ -81,7 +81,7 @@
     "kpe_cache": {
       "shape": [
         "num_pages",
-        1,
+        "page_size",
         "head_dim_kpe"
       ],
       "dtype": "bfloat16",

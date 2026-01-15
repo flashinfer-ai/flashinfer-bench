@@ -1,5 +1,5 @@
 {
-  "name": "nsa_topk_indexer_h16_ckv512_kpe64_topk256",
+  "name": "nsa_topk_indexer_h16_ckv512_kpe64_topk256_ps1",
   "description": "Native Sparse Attention (NSA) TopK indexer for DeepSeek-V3.2. Computes sparse attention scores and selects top-K KV cache indices for each query token.",
   "op_type": "nsa_paged",
   "tags": [
@@ -21,6 +21,11 @@
       "type": "const",
       "value": 64,
       "description": "Indexer head dimension."
+    },
+    "page_size": {
+      "type": "const",
+      "value": 1,
+      "description": "Page size for KV cache (token-level)."
     },
     "topk": {
       "type": "const",
@@ -52,7 +57,7 @@
     "k_index_cache": {
       "shape": [
         "num_pages",
-        1,
+        "page_size",
         "index_head_dim"
       ],
       "dtype": "bfloat16",
