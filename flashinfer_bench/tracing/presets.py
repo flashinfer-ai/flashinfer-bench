@@ -187,11 +187,11 @@ class AttentionFilterPolicy:
             )
             return None
 
-        avg_kv_len = int(round(num_kv_indices / (len_indptr - 1)))
+        avg_kv_len = int(round(num_kv_indices / (len_indptr - 1))) if len_indptr > 1 else 0
         axes["avg_kv_len"] = avg_kv_len
 
         if total_q is not None:
-            axes["avg_q_len"] = int(round(total_q / (len_indptr - 1)))
+            axes["avg_q_len"] = int(round(total_q / (len_indptr - 1))) if len_indptr > 1 else 0
         else:
             axes["avg_q_len"] = 1
 

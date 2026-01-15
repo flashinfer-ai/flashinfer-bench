@@ -43,7 +43,9 @@ class TracingRuntime:
     def get_instance(cls) -> Optional["TracingRuntime"]:
         """Get the current global TracingRuntime instance (top of stack).
 
-        Lazily initializes from environment variables on first call if stack is empty.
+        Lazily initializes from environment variable FIB_ENABLE_TRACING on first call.
+
+        Should be called in the main thread.
 
         Returns
         -------
@@ -131,7 +133,8 @@ class TracingRuntime:
         install_flashinfer_integrations()
 
     def start(self):
-        """Activate this runtime by pushing it onto the global stack."""
+        """Activate this runtime by pushing it onto the global stack. Should be called in the
+        main thread."""
         TracingRuntime._register_cleanup()
         TracingRuntime._stack.append(self)
 
@@ -144,7 +147,8 @@ class TracingRuntime:
         )
 
     def stop(self):
-        """Deactivate this runtime by removing it from the stack and flushing.
+        """Deactivate this runtime by removing it from the stack and flushing. Should be called
+        in the main thread.
 
         Raises
         ------
