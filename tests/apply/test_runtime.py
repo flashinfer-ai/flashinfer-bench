@@ -515,8 +515,7 @@ def test_build_caching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _, trace_set = make_traces()
     runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.0)))
 
-    # Clear registry cache to ensure f
-    # resh build
+    # Clear registry cache to ensure fresh build
     BuilderRegistry.get_instance()._cache.clear()
 
     build_count = {"n": 0}

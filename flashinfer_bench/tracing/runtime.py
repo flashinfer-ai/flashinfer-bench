@@ -1,5 +1,7 @@
 """Runtime system for collecting and managing workload traces."""
 
+from __future__ import annotations
+
 import atexit
 import logging
 import os
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 class TracingRuntime:
     """Process-wide singleton tracer for workload collection."""
 
-    _stack: ClassVar[List["TracingRuntime"]] = []
+    _stack: ClassVar[List[TracingRuntime]] = []
     """Global runtime stack."""
     _cleanup_registered: ClassVar[bool] = False
     """Whether the cleanup handlers have been registered."""
@@ -40,7 +42,7 @@ class TracingRuntime:
     """Whether initialization from environment variables has been attempted."""
 
     @classmethod
-    def get_instance(cls) -> Optional["TracingRuntime"]:
+    def get_instance(cls) -> Optional[TracingRuntime]:
         """Get the current global TracingRuntime instance (top of stack).
 
         Lazily initializes from environment variable FIB_ENABLE_TRACING on first call.
@@ -415,7 +417,7 @@ class TracingRuntime:
             f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
         )
 
-    def __enter__(self) -> "TracingRuntime":
+    def __enter__(self) -> TracingRuntime:
         """Context manager entry point.
 
         Returns
@@ -447,7 +449,7 @@ class TracingRuntime:
         return False
 
     @classmethod
-    def _create_from_env(cls) -> Optional["TracingRuntime"]:
+    def _create_from_env(cls) -> Optional[TracingRuntime]:
         """Initialize the global runtime from environment variables if configured."""
         fib_enable_tracing = get_fib_enable_tracing()
         if not fib_enable_tracing:
@@ -501,7 +503,7 @@ class CudaGraphTracingRuntime:
     graph tensors for tracing purposes.
     """
 
-    def __init__(self, tracing_runtime: "TracingRuntime"):
+    def __init__(self, tracing_runtime: TracingRuntime):
         """Initialize the CUDA graph tracing runtime context manager.
 
         Parameters

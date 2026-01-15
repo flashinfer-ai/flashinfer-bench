@@ -86,6 +86,8 @@ class TracingConfig(BaseModel):
         if isinstance(self.input_dump_policy, list):
             raise ValueError("input_dump_policy is a static list, use get_inputs_to_dump() instead")
         policy_cls = PolicyRegistry.get_input_dump_policy(self.input_dump_policy)
+        if policy_cls is None:
+            raise ValueError(f"Unknown input_dump_policy: {self.input_dump_policy}")
         return policy_cls(**self.input_dump_policy_kwargs)
 
     def create_filter_policy(self) -> FilterPolicy:
@@ -97,6 +99,8 @@ class TracingConfig(BaseModel):
             A new policy instance with independent state.
         """
         policy_cls = PolicyRegistry.get_filter_policy(self.filter_policy)
+        if policy_cls is None:
+            raise ValueError(f"Unknown filter_policy: {self.filter_policy}")
         return policy_cls(**self.filter_policy_kwargs)
 
     def get_inputs_to_dump(self, names: List[str], values: List[Any]) -> Dict[str, Any]:
