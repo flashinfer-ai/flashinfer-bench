@@ -18,7 +18,8 @@ This module enables LLM agents to:
 
 .. autofunction:: get_all_tool_schemas
 
-.. autodata:: FFI_PROMPT
+.. automodule:: flashinfer_bench.agents.ffi_prompt
+   :members:
+   :no-value:
 
-.. autodata:: FFI_PROMPT_SIMPLE
 ```
