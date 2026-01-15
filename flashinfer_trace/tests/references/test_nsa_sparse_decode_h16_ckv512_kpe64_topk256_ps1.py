@@ -439,9 +439,9 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         # Pad query heads to required multiple (64 or 128) as done in SGLang's nsa_backend.py
         need_padding = NUM_QO_HEADS % required_padding != 0
         if need_padding:
-            assert required_padding % NUM_QO_HEADS == 0, (
-                f"required_padding ({required_padding}) must be divisible by NUM_QO_HEADS ({NUM_QO_HEADS})"
-            )
+            assert (
+                required_padding % NUM_QO_HEADS == 0
+            ), f"required_padding ({required_padding}) must be divisible by NUM_QO_HEADS ({NUM_QO_HEADS})"
             q_padded = q_all.new_zeros((batch_size, required_padding, head_dim))
             q_padded[:, :NUM_QO_HEADS, :] = q_all
             q_input = q_padded
@@ -465,6 +465,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
         print("This may be due to API differences - skipping SGLang test")
         import traceback
+
         traceback.print_exc()
         return None
 
