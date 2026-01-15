@@ -57,12 +57,21 @@ def flashinfer_bench_list_ncu_options(ncu_path: str = "ncu") -> str:
     except subprocess.TimeoutExpired:
         return "ERROR: NCU command timed out."
 
-    output = "=== NCU Sets ===\n"
-    output += sets_result.stdout + sets_result.stderr
-    output += "\n=== NCU Sections ===\n"
-    output += sections_result.stdout + sections_result.stderr
+    set_result_str = sets_result.stdout + sets_result.stderr
+    sections_result_str = sections_result.stdout + sections_result.stderr
 
-    return output
+    if sets_result.returncode != 0:
+        return (
+            f"ERROR: ncu --list-sets failed with code {sets_result.returncode}:\n"
+            f"{set_result_str}"
+        )
+    if sections_result.returncode != 0:
+        return (
+            f"ERROR: ncu --list-sections failed with code {sections_result.returncode}:\n"
+            f"{sections_result_str}"
+        )
+
+    return f"=== NCU Sets ===\n{set_result_str}\n=== NCU Sections ===\n{sections_result_str}"
 
 
 def _build_ncu_command(
