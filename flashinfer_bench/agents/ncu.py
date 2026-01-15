@@ -165,10 +165,7 @@ def flashinfer_bench_run_ncu(
     All inputs and outputs are JSON-serializable, making it suitable as a target
     for LLM agent tool calling.
 
-    Environment Variables
-    ---------------------
-    FIB_DATASET_PATH : str
-        Path to the trace dataset. Used when trace_set_path is not provided.
+    Uses FIB_DATASET_PATH environment variable when trace_set_path is not provided.
 
     Parameters
     ----------
