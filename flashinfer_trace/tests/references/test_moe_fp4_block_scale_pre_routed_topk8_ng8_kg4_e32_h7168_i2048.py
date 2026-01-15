@@ -70,8 +70,8 @@ def skip_if_no_sm100():
 def try_import_flashinfer_fp4():
     """Try to import FlashInfer FP4 MoE functions."""
     try:
+        from flashinfer import GatedActType, RoutingMethodType, fp4_quantize
         from flashinfer.fused_moe import trtllm_fp4_block_scale_routed_moe
-        from flashinfer import fp4_quantize, GatedActType, RoutingMethodType
 
         return {
             "fp4_routed_moe": trtllm_fp4_block_scale_routed_moe,
@@ -147,8 +147,8 @@ def dequant_nvfp4_weights(packed: torch.Tensor, scale: torch.Tensor) -> torch.Te
     unpacked_fp32 = lut[unpacked]
 
     scale_fp32 = scale.to(torch.float32)
-    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, 1, SF_VEC_SIZE).reshape(
-        E, out_dim, in_dim
+    scale_expanded = (
+        scale_fp32.unsqueeze(-1).repeat(1, 1, 1, SF_VEC_SIZE).reshape(E, out_dim, in_dim)
     )
 
     return unpacked_fp32 * scale_expanded
@@ -183,7 +183,9 @@ def run(
     E_local = gemm1_weights.shape[0]
 
     # Verify DeepSeek V3 constants
-    assert E_local == NUM_LOCAL_EXPERTS, f"Expected {NUM_LOCAL_EXPERTS} local experts, got {E_local}"
+    assert (
+        E_local == NUM_LOCAL_EXPERTS
+    ), f"Expected {NUM_LOCAL_EXPERTS} local experts, got {E_local}"
     assert topk_ids.shape[1] == TOP_K, f"Expected top_k={TOP_K}, got {topk_ids.shape[1]}"
 
     # Unpack topk_ids to get expert indices and weights
@@ -278,12 +280,18 @@ def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, de
     hidden_states_scale = hidden_states_scale.view(torch.float8_e4m3fn).reshape(T, -1)
 
     # Generate weights for local experts and quantize
-    w13_bf16 = torch.randn(
-        NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
-    ) * 0.1
-    w2_bf16 = torch.randn(
-        NUM_LOCAL_EXPERTS, HIDDEN_SIZE, INTERMEDIATE_SIZE, device=device, dtype=torch.bfloat16
-    ) * 0.1
+    w13_bf16 = (
+        torch.randn(
+            NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
+        )
+        * 0.1
+    )
+    w2_bf16 = (
+        torch.randn(
+            NUM_LOCAL_EXPERTS, HIDDEN_SIZE, INTERMEDIATE_SIZE, device=device, dtype=torch.bfloat16
+        )
+        * 0.1
+    )
 
     w13, w13_scale = fp4_quantize(
         w13_bf16,
@@ -341,12 +349,7 @@ def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, de
 
 
 def _compare_reference_vs_kernel(
-    inputs: dict,
-    *,
-    local_expert_offset: int,
-    atol: float,
-    rtol: float,
-    percent: float,
+    inputs: dict, *, local_expert_offset: int, atol: float, rtol: float, percent: float
 ):
     """Compare reference implementation vs FlashInfer kernel with comprehensive metrics."""
     fi = try_import_flashinfer_fp4()
@@ -466,10 +469,7 @@ def _compare_reference_vs_kernel(
 # Test with DeepSeek V3 fixed configuration, varying seq_len and local_expert_offset
 @pytest.mark.parametrize("num_tokens", [1, 8, 64, 256])
 @pytest.mark.parametrize("local_expert_offset", [0, 32, 64, 128])  # Different EP ranks
-def test_moe_fp4_block_scale_pre_routed_deepseek_v3(
-    num_tokens: int,
-    local_expert_offset: int,
-):
+def test_moe_fp4_block_scale_pre_routed_deepseek_v3(num_tokens: int, local_expert_offset: int):
     """
     Test FP4 pre-routed MoE kernel against reference implementation with DeepSeek V3 config.
 
@@ -494,9 +494,7 @@ def test_moe_fp4_block_scale_pre_routed_deepseek_v3(
 
     # Generate inputs with DeepSeek V3 configuration
     inputs = generate_random_fp4_inputs(
-        num_tokens=num_tokens,
-        local_expert_offset=local_expert_offset,
-        device=device,
+        num_tokens=num_tokens, local_expert_offset=local_expert_offset, device=device
     )
 
     # FP4 quantization has higher error than FP8, use relaxed tolerance
@@ -505,11 +503,7 @@ def test_moe_fp4_block_scale_pre_routed_deepseek_v3(
     percent = 0.85  # Allow up to 15% mismatch due to FP4 quantization errors
 
     ok = _compare_reference_vs_kernel(
-        inputs,
-        local_expert_offset=local_expert_offset,
-        atol=atol,
-        rtol=rtol,
-        percent=percent,
+        inputs, local_expert_offset=local_expert_offset, atol=atol, rtol=rtol, percent=percent
     )
 
     assert ok, (
@@ -592,8 +586,7 @@ def main():
     for T, offset in configs:
         try:
             test_moe_fp4_block_scale_pre_routed_deepseek_v3(
-                num_tokens=T,
-                local_expert_offset=offset,
+                num_tokens=T, local_expert_offset=offset
             )
             passed += 1
             print("Test passed!")
