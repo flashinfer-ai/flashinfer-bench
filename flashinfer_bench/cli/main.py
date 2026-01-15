@@ -1,3 +1,5 @@
+"""Main CLI entry point and command implementations."""
+
 import argparse
 import logging
 from pathlib import Path

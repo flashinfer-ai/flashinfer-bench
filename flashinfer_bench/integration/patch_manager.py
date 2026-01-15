@@ -1,3 +1,5 @@
+"""Patch manager for monkey-patching external library functions."""
+
 from __future__ import annotations
 
 import importlib

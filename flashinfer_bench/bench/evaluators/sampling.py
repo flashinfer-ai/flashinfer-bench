@@ -1,3 +1,5 @@
+"""Evaluator for sampling operations with statistical validation."""
+
 import sys
 import traceback
 import uuid

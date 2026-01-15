@@ -1,3 +1,4 @@
+from flashinfer_bench.agents import FFI_PROMPT, FFI_PROMPT_SIMPLE
 from flashinfer_bench.apply import apply, disable_apply, enable_apply
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import (
@@ -70,4 +71,7 @@ __all__ = [
     "EvaluationStatus",
     "configure_logging",
     "get_logger",
+    # FFI Prompts
+    "FFI_PROMPT_SIMPLE",
+    "FFI_PROMPT",
 ]
