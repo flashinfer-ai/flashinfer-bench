@@ -600,6 +600,10 @@ def run(q, k, v, ...):
 - Model tags enable tracing which models use each kernel
 - Deduplication is essential for maintaining a clean dataset
 
+## Maintaining This Document
+
+Update this file when adding new op_types, changing Definition JSON schema, or modifying extraction patterns.
+
 ## See Also
 
 - [clone-repos](../clone-repos/SKILL.md)

@@ -183,6 +183,10 @@ Example workflow:
 - The `flashinfer_trace/` directory is part of this repository; no external cloning needed
 - All output paths are relative to project root
 
+## Maintaining This Document
+
+Update this file when changing repository URLs, directory structure, or adding new repositories.
+
 ## See Also
 
 - [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)

@@ -302,6 +302,12 @@ Optimized kernels can be submitted to:
 https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
 ```
 
+## Maintaining Documentation
+
+**When making architectural changes, update these files accordingly:**
+- `CLAUDE.md` - project overview, supported op_types, architecture patterns
+- `.claude/skills/*.md` - skill-specific documentation
+
 ## References
 
 - [FlashInfer Documentation](https://docs.flashinfer.ai)

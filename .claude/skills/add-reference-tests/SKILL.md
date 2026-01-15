@@ -871,6 +871,10 @@ pytest flashinfer_trace/tests/references/ -v
 - Test parametrization covers common batch/sequence sizes
 - Tests marked with `@pytest.mark.slow` for large sizes
 
+## Maintaining This Document
+
+Update this file when changing ground truth sources, test patterns, tolerance values, or adding new op_types.
+
 ## See Also
 
 - [clone-repos](../clone-repos/SKILL.md)
