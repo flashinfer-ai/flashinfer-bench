@@ -74,6 +74,8 @@ class DType(str, Enum):
     """16-bit signed integer."""
     INT8 = "int8"
     """8-bit signed integer."""
+    UINT8 = "uint8"
+    """8-bit unsigned integer (used for packed FP4 data)."""
     BOOL = "bool"
     """Boolean type."""
 

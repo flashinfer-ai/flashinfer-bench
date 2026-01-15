@@ -28,6 +28,7 @@ def _get_dtype_str_to_python_dtype() -> Dict[str, type]:
         "int32": int,
         "int16": int,
         "int8": int,
+        "uint8": int,
         "bool": bool,
     }
 
@@ -57,6 +58,7 @@ def _get_dtype_str_to_torch_dtype() -> Dict[str, torch.dtype]:
         "int32": torch.int32,
         "int16": torch.int16,
         "int8": torch.int8,
+        "uint8": torch.uint8,
         "bool": torch.bool,
     }
 
