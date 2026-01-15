@@ -55,8 +55,12 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
             output[b].zero_()
             continue
 
-        k_batch = torch.zeros((total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device)
-        v_batch = torch.zeros((total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device)
+        k_batch = torch.zeros(
+            (total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device
+        )
+        v_batch = torch.zeros(
+            (total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device
+        )
 
         token_idx = 0
         for p_idx, page_id in enumerate(page_ids):
@@ -65,8 +69,12 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
                 v_batch[token_idx : token_idx + page_size] = v_cache_f32[page_id]
                 token_idx += page_size
             else:
-                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[page_id, :last_page_len]
-                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[page_id, :last_page_len]
+                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[
+                    page_id, :last_page_len
+                ]
+                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[
+                    page_id, :last_page_len
+                ]
                 token_idx += last_page_len
 
         q_batch = q[b].to(torch.float32)
@@ -194,7 +202,9 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
 
-    decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace_buffer, kv_layout="NHD")
+    decode_wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
+        workspace_buffer, kv_layout="NHD"
+    )
 
     # Plan the attention computation
     decode_wrapper.plan(
@@ -313,12 +323,7 @@ def main():
     """Run comprehensive tests."""
     print("Testing Batch GQA Paged Decode Reference Implementation (page_size=64)")
 
-    test_configs = [
-        (1, 64),
-        (4, 128),
-        (8, 256),
-        (16, 512),
-    ]
+    test_configs = [(1, 64), (4, 128), (8, 256), (16, 512)]
 
     passed = 0
     total = len(test_configs)

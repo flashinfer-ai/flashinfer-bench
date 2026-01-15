@@ -311,13 +311,7 @@ def main():
     """Run comprehensive tests."""
     print("Testing Batch MLA Paged Decode Reference Implementation (page_size=64)")
 
-    test_configs = [
-        (1, 64),
-        (4, 128),
-        (8, 256),
-        (16, 512),
-        (32, 1024),
-    ]
+    test_configs = [(1, 64), (4, 128), (8, 256), (16, 512), (32, 1024)]
 
     passed = 0
     total = len(test_configs)

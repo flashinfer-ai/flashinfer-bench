@@ -6,7 +6,9 @@ import torch
 
 
 @torch.no_grad()
-def run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
+def run(
+    q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len, sm_scale
+):
     total_q, num_qo_heads, head_dim_ckv = q_nope.shape
     head_dim_kpe = q_pe.shape[-1]
     page_size = ckv_cache.shape[1]
@@ -29,9 +31,7 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, kv
     ckv_cache_f32 = ckv_cache.to(torch.float32)
     kpe_cache_f32 = kpe_cache.to(torch.float32)
 
-    output = torch.zeros(
-        (total_q, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
-    )
+    output = torch.zeros((total_q, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device)
     lse = torch.full((total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
 
     for b in range(batch_size):
@@ -334,11 +334,7 @@ def main():
     """Run comprehensive tests."""
     print("Testing Batch MLA Paged Prefill Reference Implementation (page_size=64)")
 
-    test_configs = [
-        (1, 16, 64, True),
-        (4, 32, 128, True),
-        (8, 64, 256, True),
-    ]
+    test_configs = [(1, 16, 64, True), (4, 32, 128, True), (8, 64, 256, True)]
 
     passed = 0
     total = len(test_configs)

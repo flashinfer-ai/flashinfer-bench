@@ -65,8 +65,12 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len,
                 v_batch[token_idx : token_idx + page_size] = v_cache_f32[page_id]
                 token_idx += page_size
             else:
-                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[page_id, :last_page_len]
-                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[page_id, :last_page_len]
+                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[
+                    page_id, :last_page_len
+                ]
+                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[
+                    page_id, :last_page_len
+                ]
                 token_idx += last_page_len
 
         q_batch = q_f32[q_start:q_end]
@@ -371,12 +375,7 @@ def main():
     """Run comprehensive tests."""
     print("Testing Batch GQA Paged Prefill Reference Implementation (page_size=64)")
 
-    test_configs = [
-        (1, 16, 64, True),
-        (4, 32, 128, True),
-        (8, 64, 256, True),
-        (16, 128, 512, True),
-    ]
+    test_configs = [(1, 16, 64, True), (4, 32, 128, True), (8, 64, 256, True), (16, 128, 512, True)]
 
     passed = 0
     total = len(test_configs)
