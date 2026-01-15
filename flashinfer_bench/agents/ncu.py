@@ -15,6 +15,7 @@ from flashinfer_bench.data import Solution, TraceSet, Workload
 
 logger = logging.getLogger(__name__)
 
+
 # Valid NCU pages
 VALID_PAGES = {"raw", "details", "source"}
 
@@ -142,6 +143,7 @@ def _truncate_output(output: str, max_lines: int) -> str:
 def flashinfer_bench_run_ncu(
     solution: Union[Solution, str],
     workload: Union[Workload, str],
+    *,
     # Runtime environment
     device: str = "cuda:0",
     trace_set_path: Optional[str] = None,
