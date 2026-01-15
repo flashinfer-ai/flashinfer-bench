@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, List, Optional, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, List, Union, get_args, get_origin, get_type_hints
 
 import docstring_parser
 from pydantic import BaseModel
