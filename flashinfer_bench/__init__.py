@@ -1,3 +1,4 @@
+from flashinfer_bench.agents import FFI_PROMPT, FFI_PROMPT_SIMPLE
 from flashinfer_bench.apply import apply, disable_apply, enable_apply
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import (
@@ -21,12 +22,7 @@ from flashinfer_bench.data import (
     Workload,
 )
 from flashinfer_bench.logging import configure_logging, get_logger
-from flashinfer_bench.tracing import (
-    TracingConfig,
-    disable_tracing,
-    enable_tracing,
-    get_tracing_runtime,
-)
+from flashinfer_bench.tracing import TracingConfig, TracingRuntime, disable_tracing, enable_tracing
 
 try:
     from ._version import __version__, __version_tuple__
@@ -44,9 +40,9 @@ __all__ = [
     "disable_apply",
     # Tracing API
     "enable_tracing",
-    "get_tracing_runtime",
     "disable_tracing",
     "TracingConfig",
+    "TracingRuntime",
     "Definition",
     "Solution",
     "Trace",
@@ -70,4 +66,7 @@ __all__ = [
     "EvaluationStatus",
     "configure_logging",
     "get_logger",
+    # FFI Prompts
+    "FFI_PROMPT_SIMPLE",
+    "FFI_PROMPT",
 ]

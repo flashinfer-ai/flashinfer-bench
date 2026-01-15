@@ -1,3 +1,5 @@
+"""Logging utilities."""
+
 import logging
 from typing import Optional, Union
 

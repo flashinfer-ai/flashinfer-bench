@@ -1,3 +1,5 @@
+"""Abstract base class for kernel evaluators."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
