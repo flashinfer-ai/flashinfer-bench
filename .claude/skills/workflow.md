@@ -137,42 +137,37 @@ Each definition includes:
 
 ### Ground Truth Hierarchy
 
-Tests compare reference implementations against ground truth using this priority order:
+Tests compare reference implementations against ground truth using this priority:
 
-1. **SGLang Model Config / Vanilla Implementation** (highest priority)
-   - Location: `third_party/sglang/python/sglang/srt/layers/`
-   - For: Understanding mathematical specification and tensor shapes
-   - Examples: vanilla attention, vanilla MoE, RMSNorm
+#### For Model Constants: SGLang Model Config (Required)
+- **Location**: `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+- **For**: Model-specific constant values (num_heads, hidden_size, etc.)
+- **Important**: Always align constants with SGLang model config
 
-2. **SGLang FlashInfer API Integration**
-   - Location: FlashInfer imports/calls in SGLang model files
-   - For: Determining exact FlashInfer API signatures
+#### For Reference `run()` Implementation: FlashInfer Unit Tests (Primary)
+- **Location**: `third_party/flashinfer/tests/`
+- **For**: Ground-truth vanilla PyTorch implementations
+- **Files**: `test_batch_decode.py`, `test_batch_prefill.py`, `test_mla.py`, `test_norm.py`
+- **Important**: This is the PRIMARY source for reference implementations
 
-3. **FlashInfer API Directly** (lowest priority)
-   - Location: `third_party/flashinfer/python/flashinfer/`
-   - For: Ground truth correctness validation
+#### For Reference `run()` Implementation: SGLang (Fallback ONLY)
+- **When**: FlashInfer does NOT have the kernel
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Examples**: MoE kernels, custom quantized ops
 
-### Reference `run()` Function Sources
-
-The reference implementation should be sourced from:
-
-1. **FlashInfer Test Implementation** (preferred)
-   - Location: `third_party/flashinfer/tests/`
-   - Contains vanilla PyTorch implementations for validation
-
-2. **SGLang Vanilla Implementation** (fallback)
-   - Location: `third_party/sglang/python/sglang/srt/layers/`
-   - When FlashInfer tests don't cover the kernel
+#### For Ground Truth Execution: FlashInfer API (Primary)
+- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **For**: Running optimized GPU kernels as ground truth in tests
 
 ### Ground Truth Mapping
 
-| Op Type | Primary Source | Location |
-|---------|----------------|----------|
-| `rmsnorm` | SGLang vanilla / FlashInfer | `sglang/layers/layernorm.py` or `flashinfer/norm/` |
-| `gqa_paged` | FlashInfer API via SGLang | `flashinfer/attention/` |
-| `mla_paged` | SGLang FlashInfer integration | `sglang/layers/attention/` + `flashinfer/attention/` |
-| `moe` | SGLang vanilla | `sglang/layers/moe/fused_moe.py` |
-| `gemm` | PyTorch | `torch.nn.functional.linear` |
+| Op Type | Reference `run()` Source | Ground Truth Execution | Fallback |
+|---------|--------------------------|------------------------|----------|
+| `rmsnorm` | FlashInfer tests | `flashinfer.norm.rmsnorm` | N/A |
+| `gqa_paged` | FlashInfer tests | `flashinfer.BatchDecodeWithPagedKVCacheWrapper` | N/A |
+| `mla_paged` | FlashInfer tests | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | N/A |
+| `moe` | SGLang (fallback) | SGLang vanilla | `sglang/layers/moe/fused_moe.py` |
+| `gemm` | PyTorch | `torch.nn.functional.linear` | N/A |
 
 ### Test Output
 

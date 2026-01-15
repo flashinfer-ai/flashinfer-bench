@@ -440,45 +440,22 @@ self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
 
 ## Ground Truth Hierarchy
 
-When extracting kernel definitions, use the following priority order to determine ground truth:
+When extracting kernel definitions, use different sources for different purposes:
 
-### Priority 1: SGLang Model Config / Vanilla Implementation
-- **When**: Model has a vanilla (non-optimized) kernel implementation in SGLang
-- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+### For Model Constants: SGLang Model Config (Required)
+- **Location**: `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+- **Use for**: Extracting model-specific constant values
 - **Examples**:
-  - Vanilla attention in `layers/attention/`
-  - Vanilla MoE in `layers/moe/`
-  - RMSNorm in `layers/layernorm.py`
-- **Use for**: Understanding the mathematical specification and tensor shapes
+  - `num_attention_heads`, `num_key_value_heads`, `head_dim`
+  - `hidden_size`, `intermediate_size`
+  - `num_experts`, `topk`, `n_group`, `topk_group`
+  - `page_size` (from SGLang's paged attention configuration)
+- **Important**: Always align constants with SGLang's model config to ensure compatibility
 
-### Priority 2: SGLang FlashInfer API Integration
-- **When**: SGLang integrates FlashInfer APIs for optimized execution
-- **Location**: Look for FlashInfer imports and calls in SGLang model files
-- **Examples**:
-  ```python
-  # In SGLang model file
-  import flashinfer
-  flashinfer.batch_decode_with_paged_kv_cache(...)
-  flashinfer.batch_prefill_with_paged_kv_cache(...)
-  ```
-- **Use for**: Determining the exact FlashInfer API signature and parameters
-
-### Priority 3: FlashInfer API Directly
-- **When**: Kernel is a pure FlashInfer API without SGLang wrapper
-- **Location**: `third_party/flashinfer/python/flashinfer/`
-- **Examples**:
-  - `flashinfer.attention.batch_decode_with_paged_kv_cache`
-  - `flashinfer.norm.rmsnorm`
-  - `flashinfer.moe.moe_align_block_size`
-- **Use for**: Ground truth correctness validation
-
-## Reference Implementation Sources
-
-The `reference` field in Definition JSON contains a `run()` function. Source this implementation from:
-
-### Option 1: FlashInfer Test Implementation (Preferred)
+### For Reference `run()` Implementation: FlashInfer Unit Tests (Primary)
+- **When**: FlashInfer has a kernel implementation and corresponding unit test
 - **Location**: `third_party/flashinfer/tests/`
-- **Why**: Tests contain vanilla PyTorch implementations used to validate FlashInfer kernels
+- **Why**: FlashInfer tests contain vanilla PyTorch implementations that serve as ground truth
 - **Examples**:
   ```
   tests/test_batch_decode.py      # GQA decode reference
@@ -486,16 +463,66 @@ The `reference` field in Definition JSON contains a `run()` function. Source thi
   tests/test_norm.py              # RMSNorm reference
   tests/test_mla.py               # MLA reference
   ```
-- **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, etc.
+- **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, `ref_mla()`, etc.
+- **Use for**: Writing the `reference` field in Definition JSON
 
-### Option 2: SGLang Vanilla Implementation (Fallback)
+### For Reference `run()` Implementation: SGLang Vanilla (Fallback Only)
+- **When**: FlashInfer does NOT have the kernel (e.g., some MoE variants, custom ops)
 - **Location**: `third_party/sglang/python/sglang/srt/layers/`
-- **Why**: When FlashInfer tests don't cover the kernel, SGLang vanilla implementations provide the reference
 - **Examples**:
   ```
-  layers/moe/fused_moe.py         # MoE vanilla forward
-  layers/attention/triton_ops/    # Attention vanilla implementations
-  layers/layernorm.py             # Normalization vanilla
+  layers/moe/fused_moe.py         # MoE vanilla forward (when FlashInfer MoE not available)
+  layers/attention/triton_ops/    # Custom attention implementations
+  ```
+- **Important**: Only use SGLang vanilla implementation when FlashInfer doesn't have the kernel
+
+### For API Signature: FlashInfer Python API
+- **When**: Determining input/output tensor specifications
+- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Examples**:
+  - `flashinfer.attention.batch_decode_with_paged_kv_cache`
+  - `flashinfer.norm.rmsnorm`
+  - `flashinfer.mla.BatchMLAPagedAttentionWrapper`
+- **Use for**: Input/output shape and dtype specifications in Definition JSON
+
+## Reference Implementation Sources
+
+The `reference` field in Definition JSON contains a `run()` function. **Always prioritize FlashInfer unit tests over SGLang implementations.**
+
+### Primary Source: FlashInfer Unit Tests (REQUIRED when available)
+- **Location**: `third_party/flashinfer/tests/`
+- **Why**: FlashInfer tests contain ground-truth vanilla PyTorch implementations
+- **How to find**: Search for reference functions in test files
+  ```bash
+  # Search for reference implementations
+  grep -r "def ref_" third_party/flashinfer/tests/
+  grep -r "def reference" third_party/flashinfer/tests/
+  ```
+- **Kernel type to test file mapping**:
+  | Kernel Type | Test File | Reference Function |
+  |-------------|-----------|-------------------|
+  | GQA decode | `test_batch_decode.py` | `ref_attention()` or inline reference |
+  | GQA prefill | `test_batch_prefill.py` | `ref_attention()` or inline reference |
+  | MLA | `test_mla.py` | `ref_mla()` or inline reference |
+  | RMSNorm | `test_norm.py` | `ref_rmsnorm()` or `ref_fused_add_rmsnorm()` |
+  | Sampling | `test_sampling.py` | Reference sampling implementations |
+
+- **Important**: The reference `run()` should match FlashInfer's test implementation exactly, with constant values updated to match SGLang model config
+
+### Fallback Source: SGLang Vanilla Implementation (ONLY when FlashInfer unavailable)
+- **When to use**: ONLY when FlashInfer does NOT have a unit test for this kernel
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Common cases requiring SGLang fallback**:
+  - Custom MoE implementations: `layers/moe/fused_moe.py`
+  - Model-specific attention variants not in FlashInfer
+  - Quantized kernels not yet supported by FlashInfer
+- **How to check if FlashInfer has the kernel**:
+  ```bash
+  # Check if FlashInfer has a test for this kernel type
+  ls third_party/flashinfer/tests/test_*.py | xargs grep -l "your_kernel_name"
+
+  # Check if FlashInfer has the API
+  grep -r "def your_kernel" third_party/flashinfer/python/flashinfer/
   ```
 
 ### Reference Implementation Guidelines

@@ -67,66 +67,88 @@ Run `/clone-repos` first to set up the `third_party/` directory with SGLang and 
 
 For each definition, locate ground truth implementation using this priority order:
 
-#### Priority 1: SGLang Model Config / Vanilla Implementation
-- **When**: Model has a vanilla (non-optimized) kernel implementation in SGLang
-- **Location**: `third_party/sglang/python/sglang/srt/layers/`
-- **Use for**: Understanding the mathematical specification and tensor shapes
+#### For Model Constants: SGLang Model Config (Required)
+- **Location**: `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+- **Use for**: Extracting and validating model-specific constant values
 - **Examples**:
-  ```
-  layers/attention/           # Vanilla attention implementations
-  layers/moe/                 # Vanilla MoE implementations
-  layers/layernorm.py         # RMSNorm vanilla
-  ```
+  - `num_attention_heads`, `num_key_value_heads`, `head_dim`
+  - `hidden_size`, `intermediate_size`
+  - `num_experts`, `topk`, `n_group`, `topk_group`
+- **Important**: Test constants must match SGLang model config
 
-#### Priority 2: SGLang FlashInfer API Integration
-- **When**: SGLang integrates FlashInfer APIs for optimized execution
-- **Location**: Look for FlashInfer imports and calls in SGLang model files
-- **Use for**: Determining the exact FlashInfer API signature and parameters
+#### For Ground Truth Execution: FlashInfer API (Primary)
+- **When**: FlashInfer has the kernel implementation (MOST kernels)
+- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Use for**: Running optimized GPU kernel as ground truth
 - **Examples**:
   ```python
-  # In SGLang model file
   import flashinfer
-  flashinfer.batch_decode_with_paged_kv_cache(...)
-  flashinfer.batch_prefill_with_paged_kv_cache(...)
+  # GQA decode
+  flashinfer.BatchDecodeWithPagedKVCacheWrapper(...)
+  # GQA prefill
+  flashinfer.BatchPrefillWithPagedKVCacheWrapper(...)
+  # MLA
+  flashinfer.mla.BatchMLAPagedAttentionWrapper(...)
+  # RMSNorm
+  flashinfer.norm.rmsnorm(...)
   ```
+- **Important**: FlashInfer is the PRIMARY ground truth for correctness validation
 
-#### Priority 3: FlashInfer API Directly
-- **When**: Kernel is a pure FlashInfer API without SGLang wrapper
-- **Location**: `third_party/flashinfer/python/flashinfer/`
-- **Use for**: Ground truth correctness validation
+#### For Ground Truth Execution: SGLang (Fallback ONLY)
+- **When**: FlashInfer does NOT have the kernel (e.g., some MoE variants)
+- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Use for**: Ground truth when FlashInfer unavailable
 - **Examples**:
   ```
-  flashinfer.attention.batch_decode_with_paged_kv_cache
-  flashinfer.norm.rmsnorm
-  flashinfer.moe.moe_align_block_size
+  layers/moe/fused_moe.py         # MoE when FlashInfer MoE unavailable
   ```
+- **Important**: ONLY use SGLang as ground truth when FlashInfer doesn't support the kernel
 
 #### Ground Truth Source Mapping
 
-| Op Type | Primary Source | Location |
-|---------|----------------|----------|
-| `rmsnorm` | SGLang vanilla / FlashInfer | `sglang/layers/layernorm.py` or `flashinfer/norm/` |
-| `fused_add_rmsnorm` | SGLang vanilla / FlashInfer | `sglang/layers/layernorm.py` or `flashinfer/norm/` |
-| `gqa_paged` | FlashInfer API via SGLang | `flashinfer/attention/` |
-| `gqa_ragged` | FlashInfer API via SGLang | `flashinfer/attention/` |
-| `mla_paged` | SGLang FlashInfer integration | `sglang/layers/attention/` + `flashinfer/attention/` |
-| `moe` | SGLang vanilla | `sglang/layers/moe/fused_moe.py` |
-| `gemm` | PyTorch | `torch.nn.functional.linear` |
+| Op Type | Ground Truth Source | FlashInfer API | Fallback (if FlashInfer unavailable) |
+|---------|---------------------|----------------|--------------------------------------|
+| `rmsnorm` | FlashInfer | `flashinfer.norm.rmsnorm` | N/A (FlashInfer has it) |
+| `fused_add_rmsnorm` | FlashInfer | `flashinfer.norm.fused_add_rmsnorm` | N/A (FlashInfer has it) |
+| `gqa_paged` | FlashInfer | `flashinfer.BatchDecodeWithPagedKVCacheWrapper`, `flashinfer.BatchPrefillWithPagedKVCacheWrapper` | N/A |
+| `gqa_ragged` | FlashInfer | `flashinfer.BatchPrefillWithRaggedKVCacheWrapper` | N/A |
+| `mla_paged` | FlashInfer | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | N/A (FlashInfer has it) |
+| `moe` | SGLang (fallback) | N/A (FlashInfer MoE may not cover all variants) | `sglang/layers/moe/fused_moe.py` |
+| `gemm` | PyTorch | N/A | `torch.nn.functional.linear` |
+| `sampling` | FlashInfer | `flashinfer.sampling.*` | N/A |
 
 #### Reference `run()` Function Sources
 
-The reference implementation in Definition JSON should be sourced from:
+The reference implementation in Definition JSON should be sourced from FlashInfer unit tests. **SGLang should only be used as a fallback when FlashInfer doesn't have the kernel.**
 
-1. **FlashInfer Test Implementation (Preferred)**:
-   - Location: `third_party/flashinfer/tests/`
-   - Contains vanilla PyTorch implementations used to validate FlashInfer kernels
-   - Examples: `test_batch_decode.py`, `test_batch_prefill.py`, `test_norm.py`, `test_mla.py`
-   - Look for functions like `ref_attention()`, `ref_rmsnorm()`, etc.
+1. **FlashInfer Unit Tests (REQUIRED - Primary Source)**:
+   - **Location**: `third_party/flashinfer/tests/`
+   - **Why**: Contains ground-truth vanilla PyTorch implementations
+   - **How to find**:
+     ```bash
+     # Search for reference implementations
+     grep -r "def ref_" third_party/flashinfer/tests/
+     ```
+   - **Kernel to test file mapping**:
+     | Kernel Type | Test File | Reference Function |
+     |-------------|-----------|-------------------|
+     | GQA decode | `test_batch_decode.py` | `ref_attention()` |
+     | GQA prefill | `test_batch_prefill.py` | `ref_attention()` |
+     | MLA | `test_mla.py` | `ref_mla()` |
+     | RMSNorm | `test_norm.py` | `ref_rmsnorm()` |
+   - **Important**: Adapt FlashInfer's reference to use constants from SGLang model config
 
-2. **SGLang Vanilla Implementation (Fallback)**:
-   - Location: `third_party/sglang/python/sglang/srt/layers/`
-   - When FlashInfer tests don't cover the kernel
-   - Examples: `layers/moe/fused_moe.py`, `layers/layernorm.py`
+2. **SGLang Vanilla Implementation (FALLBACK ONLY)**:
+   - **When to use**: ONLY when FlashInfer does NOT have a unit test for the kernel
+   - **Location**: `third_party/sglang/python/sglang/srt/layers/`
+   - **Common fallback cases**:
+     - MoE kernels: `layers/moe/fused_moe.py`
+     - Custom quantized kernels not in FlashInfer
+   - **Check before using**:
+     ```bash
+     # First verify FlashInfer doesn't have a test
+     ls third_party/flashinfer/tests/ | grep -i "kernel_name"
+     ```
 
 ### Phase 3: Test Generation
 
