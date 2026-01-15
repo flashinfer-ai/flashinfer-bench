@@ -16,15 +16,18 @@
     },
     "head_dim_ckv": {
       "type": "const",
-      "value": 512
+      "value": 512,
+      "description": "Dimension of compressed key-value representation."
     },
     "head_dim_kpe": {
       "type": "const",
-      "value": 64
+      "value": 64,
+      "description": "Dimension of key positional encoding."
     },
     "page_size": {
       "type": "const",
-      "value": 64
+      "value": 64,
+      "description": "Number of tokens stored per page."
     },
     "total_q": {
       "type": "var",
@@ -41,6 +44,10 @@
     "num_kv_indices": {
       "type": "var",
       "description": "Total number of KV indices."
+    },
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences in the batch."
     }
   },
   "constraints": [
@@ -125,7 +132,8 @@
         "num_qo_heads",
         "head_dim_ckv"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Attention output tensor."
     },
     "lse": {
       "shape": [

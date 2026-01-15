@@ -10,19 +10,23 @@
   "axes": {
     "num_qo_heads": {
       "type": "const",
-      "value": 32
+      "value": 32,
+      "description": "Number of query/output attention heads."
     },
     "num_kv_heads": {
       "type": "const",
-      "value": 4
+      "value": 4,
+      "description": "Number of key-value attention heads."
     },
     "head_dim": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head."
     },
     "page_size": {
       "type": "const",
-      "value": 64
+      "value": 64,
+      "description": "Number of tokens stored per page."
     },
     "len_indptr": {
       "type": "var",
@@ -37,7 +41,12 @@
       "description": "Total number of KV page indices."
     },
     "num_pages": {
-      "type": "var"
+      "type": "var",
+      "description": "Total number of allocated pages in the KV cache."
+    },
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences in the batch."
     }
   },
   "constraints": [
@@ -51,7 +60,8 @@
         "num_qo_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Query tensor for prefill."
     },
     "k_cache": {
       "shape": [
@@ -60,7 +70,8 @@
         "num_kv_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Paged key cache."
     },
     "v_cache": {
       "shape": [
@@ -69,7 +80,8 @@
         "num_kv_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Paged value cache."
     },
     "qo_indptr": {
       "shape": [
@@ -112,7 +124,8 @@
         "num_qo_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Attention output tensor."
     },
     "lse": {
       "shape": [

@@ -14,22 +14,27 @@
     },
     "num_qo_heads": {
       "type": "const",
-      "value": 32
+      "value": 32,
+      "description": "Number of query/output attention heads."
     },
     "num_kv_heads": {
       "type": "const",
-      "value": 8
+      "value": 8,
+      "description": "Number of key-value attention heads."
     },
     "head_dim": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head."
     },
     "num_pages": {
-      "type": "var"
+      "type": "var",
+      "description": "Total number of allocated pages in the KV cache."
     },
     "page_size": {
       "type": "const",
-      "value": 64
+      "value": 64,
+      "description": "Number of tokens stored per page."
     },
     "len_indptr": {
       "type": "var",
@@ -51,7 +56,8 @@
         "num_qo_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Query tensor for decode."
     },
     "k_cache": {
       "shape": [
@@ -60,7 +66,8 @@
         "num_kv_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Paged key cache."
     },
     "v_cache": {
       "shape": [
@@ -69,7 +76,8 @@
         "num_kv_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Paged value cache."
     },
     "kv_indptr": {
       "shape": [
@@ -105,7 +113,8 @@
         "num_qo_heads",
         "head_dim"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Attention output tensor."
     },
     "lse": {
       "shape": [
