@@ -384,6 +384,7 @@ def _compare_reference_vs_kernel(
     # Run FlashInfer kernel
     # Use keyword arguments for optional parameters to ensure correct mapping
     print("Running FlashInfer kernel...")
+    num_tokens = inputs["topk_ids"].shape[0]
     fi_out = fp4_routed_moe(
         inputs["topk_ids"],
         None,  # routing_bias
@@ -409,11 +410,13 @@ def _compare_reference_vs_kernel(
         local_expert_offset,  # local_expert_offset
         NUM_LOCAL_EXPERTS,  # local_num_experts
         None,  # routed_scaling_factor (None for simple TopK routing)
-        routing_method_type=RoutingMethodType.TopK.value,
-        do_finalize=True,
-        enable_pdl=enable_pdl,
-        gated_act_type=int(GatedActType.SwiGlu),
-        output=None,
+        None,  # tile_tokens_dim (auto-determined by kernel)
+        RoutingMethodType.TopK.value,  # routing_method_type
+        True,  # do_finalize
+        enable_pdl,  # enable_pdl
+        int(GatedActType.SwiGlu),  # gated_act_type
+        None,  # output
+        max(8, min(64, num_tokens)),  # tune_max_num_tokens
     )[0]
 
     # Compare outputs
