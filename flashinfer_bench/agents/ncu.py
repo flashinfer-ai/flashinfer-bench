@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
@@ -101,7 +102,7 @@ def _build_ncu_command(
 
     # Run the runner module with data directory
     runner_cmd = [
-        "python",
+        sys.executable,
         "-u",
         "-m",
         "flashinfer_bench.agents._solution_runner",
