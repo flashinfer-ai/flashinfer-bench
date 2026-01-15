@@ -252,7 +252,7 @@ class ApplyRuntime:
                 "Runtimes must be stopped in LIFO order."
             )
         ApplyRuntime._stack.pop()
-        logging.info("ApplyRuntime stopped")
+        logger.info("ApplyRuntime stopped")
 
     def __enter__(self) -> ApplyRuntime:
         self.start()
