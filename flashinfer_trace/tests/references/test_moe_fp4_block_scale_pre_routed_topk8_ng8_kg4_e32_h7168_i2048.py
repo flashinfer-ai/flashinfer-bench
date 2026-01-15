@@ -33,7 +33,6 @@ TOP_K = 8
 N_GROUP = 8
 TOPK_GROUP = 4
 SF_VEC_SIZE = 16  # NvFP4 scale factor block size
-ROUTED_SCALING_FACTOR = 2.5
 
 # Derived constants
 GEMM1_OUT_SIZE = 2 * INTERMEDIATE_SIZE  # 4096
@@ -383,6 +382,7 @@ def _compare_reference_vs_kernel(
     )
 
     # Run FlashInfer kernel
+    # Use keyword arguments for optional parameters to ensure correct mapping
     print("Running FlashInfer kernel...")
     fi_out = fp4_routed_moe(
         inputs["topk_ids"],
@@ -391,29 +391,29 @@ def _compare_reference_vs_kernel(
         inputs["hidden_states_scale"],
         inputs["gemm1_weights"],
         inputs["gemm1_weights_scale"],
-        None,  # w13_bias
+        None,  # gemm1_bias
         None,  # gemm1_alpha
         None,  # gemm1_beta
         None,  # gemm1_clamp_limit
         inputs["gemm2_weights"],
         inputs["gemm2_weights_scale"],
-        None,  # w2_bias
+        None,  # gemm2_bias
         inputs["output1_scale_scalar"],
         inputs["output1_scale_gate_scalar"],
         inputs["output2_scale_scalar"],
-        NUM_EXPERTS_GLOBAL,
-        TOP_K,
-        N_GROUP,
-        TOPK_GROUP,
-        INTERMEDIATE_SIZE,
-        local_expert_offset,
-        NUM_LOCAL_EXPERTS,
-        ROUTED_SCALING_FACTOR,
-        RoutingMethodType.TopK.value,
-        True,  # do_finalize
-        enable_pdl,
-        GatedActType.SwiGlu.value,
-        None,
+        NUM_EXPERTS_GLOBAL,  # num_experts
+        TOP_K,  # top_k
+        None,  # n_group (None for simple TopK routing)
+        None,  # topk_group (None for simple TopK routing)
+        INTERMEDIATE_SIZE,  # intermediate_size
+        local_expert_offset,  # local_expert_offset
+        NUM_LOCAL_EXPERTS,  # local_num_experts
+        None,  # routed_scaling_factor (None for simple TopK routing)
+        routing_method_type=RoutingMethodType.TopK.value,
+        do_finalize=True,
+        enable_pdl=enable_pdl,
+        gated_act_type=int(GatedActType.SwiGlu),
+        output=None,
     )[0]
 
     # Compare outputs
