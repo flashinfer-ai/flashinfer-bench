@@ -8,6 +8,7 @@ Ground truth sources:
 Note: FlashInfer's sparse.py provides BlockSparseAttentionWrapper which uses BSR format,
 different from DeepSeek's NSA token-level sparse attention.
 """
+
 import math
 from pathlib import Path
 
@@ -17,7 +18,8 @@ import torch
 
 # Ground truth imports with availability checks
 try:
-    from sgl_kernel.flash_mla import flash_mla_sparse_fwd, get_mla_metadata, flash_mla_with_kvcache
+    from sgl_kernel.flash_mla import flash_mla_sparse_fwd, flash_mla_with_kvcache, get_mla_metadata
+
     SGLANG_AVAILABLE = True
 except ImportError:
     SGLANG_AVAILABLE = False
@@ -25,6 +27,7 @@ except ImportError:
 # FlashInfer sparse is BSR-based, different from NSA's token-level sparse
 try:
     import flashinfer
+
     FLASHINFER_AVAILABLE = True
 except ImportError:
     FLASHINFER_AVAILABLE = False
@@ -111,7 +114,9 @@ def generate_random_inputs(
     # Generate random sequence lengths for each batch
     # Ensure seq_lens >= topk so we have enough tokens to select
     min_seq_len = max(topk, 256)
-    seq_lens = torch.randint(min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
+    seq_lens = torch.randint(
+        min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device
+    )
 
     # Calculate total pages needed
     total_pages_needed = seq_lens.sum().item()
@@ -122,7 +127,9 @@ def generate_random_inputs(
     page_offset = 0
     for b in range(batch_size):
         seq_len = seq_lens[b].item()
-        page_table[b, :seq_len] = torch.arange(page_offset, page_offset + seq_len, dtype=torch.int32, device=device)
+        page_table[b, :seq_len] = torch.arange(
+            page_offset, page_offset + seq_len, dtype=torch.int32, device=device
+        )
         page_offset += seq_len
 
     # Generate sparse indices (top-K selection for each batch element)
@@ -263,14 +270,21 @@ def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
     seq_len = topk
     num_pages = seq_len + 10
 
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     ckv_cache = torch.randn(num_pages, 1, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
     kpe_cache = torch.randn(num_pages, 1, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     sm_scale = torch.tensor(1.0 / np.sqrt(128 + HEAD_DIM_KPE), dtype=torch.float32, device=device)
 
     # All indices valid (0 to seq_len-1)
-    sparse_indices = torch.arange(seq_len, dtype=torch.int32, device=device).unsqueeze(0).expand(batch_size, -1).contiguous()
+    sparse_indices = (
+        torch.arange(seq_len, dtype=torch.int32, device=device)
+        .unsqueeze(0)
+        .expand(batch_size, -1)
+        .contiguous()
+    )
 
     result = run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
     output = result["output"]
@@ -303,7 +317,9 @@ def test_padding_handling(batch_size=4, topk=TOPK):
 
     num_pages = 1000
 
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     ckv_cache = torch.randn(num_pages, 1, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
     kpe_cache = torch.randn(num_pages, 1, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
@@ -315,7 +331,9 @@ def test_padding_handling(batch_size=4, topk=TOPK):
 
     for b in range(batch_size):
         valid_count = valid_counts[b % len(valid_counts)]
-        sparse_indices[b, :valid_count] = torch.randint(0, num_pages, (valid_count,), dtype=torch.int32, device=device)
+        sparse_indices[b, :valid_count] = torch.randint(
+            0, num_pages, (valid_count,), dtype=torch.int32, device=device
+        )
 
     result = run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
     output = result["output"]
@@ -337,12 +355,7 @@ def test_padding_handling(batch_size=4, topk=TOPK):
         return False
 
 
-def test_correctness_vs_sglang(
-    batch_size=4,
-    max_seq_len=512,
-    atol=1e-2,
-    rtol=5e-2,
-):
+def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e-2):
     """
     Test correctness against SGLang FlashMLA sparse kernel.
 
@@ -370,7 +383,9 @@ def test_correctness_vs_sglang(
     head_dim = HEAD_DIM_CKV + HEAD_DIM_KPE  # Combined head dim = 576
 
     # Generate query tensors
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
 
     # Combined q for FlashMLA: [s_q, h_q, d_qk]
@@ -386,13 +401,19 @@ def test_correctness_vs_sglang(
     sm_scale = 1.0 / np.sqrt(128 + HEAD_DIM_KPE)
 
     # Generate sparse indices: [batch_size, topk] for reference
-    sparse_indices = torch.randint(0, num_pages, (batch_size, TOPK), dtype=torch.int32, device=device)
+    sparse_indices = torch.randint(
+        0, num_pages, (batch_size, TOPK), dtype=torch.int32, device=device
+    )
 
     # Run reference implementation
     print("Running reference implementation...")
     ref_result = run(
-        q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices,
-        torch.tensor(sm_scale, dtype=torch.float32, device=device)
+        q_nope,
+        q_pe,
+        ckv_cache,
+        kpe_cache,
+        sparse_indices,
+        torch.tensor(sm_scale, dtype=torch.float32, device=device),
     )
     ref_output = ref_result["output"]
     ref_lse = ref_result["lse"]
@@ -413,11 +434,7 @@ def test_correctness_vs_sglang(
         indices_for_mla = sparse_indices.unsqueeze(1)  # [batch_size, 1, topk]
 
         fi_output, fi_max_logits, fi_lse = flash_mla_sparse_fwd(
-            q=q_for_mla,
-            kv=kv_for_mla,
-            indices=indices_for_mla,
-            sm_scale=sm_scale,
-            d_v=HEAD_DIM_CKV,
+            q=q_for_mla, kv=kv_for_mla, indices=indices_for_mla, sm_scale=sm_scale, d_v=HEAD_DIM_CKV
         )
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
@@ -444,8 +461,10 @@ def test_correctness_vs_sglang(
         print(f"\nTop-{k} absolute error locations:")
         for rank in range(k):
             idx = topi[rank].item()
-            print(f"  idx={idx}: ref={ref_output.flatten()[idx].item():.6e}, "
-                  f"fi={fi_output.flatten()[idx].item():.6e}, diff={topv[rank].item():.6e}")
+            print(
+                f"  idx={idx}: ref={ref_output.flatten()[idx].item():.6e}, "
+                f"fi={fi_output.flatten()[idx].item():.6e}, diff={topv[rank].item():.6e}"
+            )
 
         # Use hit ratio as secondary check
         passed = check_hit_ratio(ref_output, fi_output, atol, rtol, required_percent=0.85)
@@ -456,7 +475,9 @@ def main():
     """Run comprehensive tests."""
     print("Testing NSA (Native Sparse Attention) Sparse Decode Reference Implementation")
     print("=" * 70)
-    print(f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}")
+    print(
+        f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
+    )
     print(f"SGLang available: {SGLANG_AVAILABLE}")
     print(f"FlashInfer available: {FLASHINFER_AVAILABLE}")
     print("=" * 70)
@@ -469,11 +490,7 @@ def main():
     test_results.append(("padding_handling", test_padding_handling()))
 
     # Ground truth comparison tests
-    test_configs = [
-        (1, 512),   # Single batch
-        (4, 512),   # Small batch
-        (8, 1024),  # Medium batch
-    ]
+    test_configs = [(1, 512), (4, 512), (8, 1024)]  # Single batch  # Small batch  # Medium batch
 
     for batch_size, max_seq_len in test_configs:
         name = f"sglang_bs{batch_size}_seq{max_seq_len}"
@@ -483,6 +500,7 @@ def main():
         except Exception as e:
             print(f"\n✗ Test {name} crashed: {e}")
             import traceback
+
             traceback.print_exc()
             test_results.append((name, False))
 
