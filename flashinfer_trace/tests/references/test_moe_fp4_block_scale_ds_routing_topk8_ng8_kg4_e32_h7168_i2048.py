@@ -69,10 +69,29 @@ def quant_fp4_batches(a, num_experts, is_sf_swizzled_layout=True):
     return result_quant_a, result_sfs, result_global_sfs
 
 
+def quant_fp4_batches_fixed_scale(a, num_experts, fixed_global_scale, is_sf_swizzled_layout=True):
+    """FP4 batch quantization function with fixed global scale factor for all experts."""
+    quant_a = []
+    sfs = []
+    global_sfs = []
+    for i in range(num_experts):
+        a_fp4, a_sf, _ = quant_fp4_single(a[i], fixed_global_scale, is_sf_swizzled_layout)
+        quant_a.append(a_fp4)
+        sfs.append(a_sf)
+        global_sfs.append(fixed_global_scale)
+
+    result_quant_a = torch.stack(quant_a)
+    result_sfs = torch.stack(sfs)
+    result_global_sfs = torch.stack(global_sfs)
+
+    return result_quant_a, result_sfs, result_global_sfs
+
+
 def e2m1_and_ufp8_scale_batches(
     mat_fp4: torch.Tensor,
     scale_tensor: torch.Tensor,
     global_scale_tensor: torch.Tensor,
+    is_sf_swizzled_layout: bool = False,
 ):
     """Batch FP4 dequantization helper."""
     num_batches = mat_fp4.size(0)
@@ -85,7 +104,7 @@ def e2m1_and_ufp8_scale_batches(
             global_scale_tensor[b].cpu(),
             SF_VEC_SIZE,
             1,  # ufp8_type for NvFP4
-            True,  # is_sf_swizzled_layout
+            is_sf_swizzled_layout,
         )
         for b in range(num_batches)
     ]
@@ -218,38 +237,45 @@ def generate_random_inputs_moe(
 
     # Routing inputs - DeepSeekV3 routing uses float32 for logits
     routing_logits = torch.randn(T, E_global, dtype=torch.float32, device=device)
+    # Boost logits for local expert range to ensure they get selected
+    # This ensures test coverage for the local computation path
+    local_end = min(local_expert_offset + E_local, E_global)
+    routing_logits[:, local_expert_offset:local_end] += 3.0  # Boost by 3 to favor local experts
     if use_bias:
         routing_bias = torch.randn(E_global, dtype=torch.bfloat16, device=device)
     else:
         routing_bias = torch.zeros(E_global, dtype=torch.bfloat16, device=device)
 
+    # Use fixed global scale factor (448.0 * 6.0) for all quantization
+    # This matches the official FlashInfer test approach
+    fixed_global_scale = torch.tensor([448.0 * 6.0], device=device)
+
     # Hidden states: generate bf16, then quantize to FP4
     # Note: hidden_states use non-swizzled layout for scales (is_sf_swizzled_layout=False)
-    # This is different from weights which use swizzled layout for the kernel
-    hidden_states_bf16 = 2.0 * torch.randn(T, H, dtype=torch.bfloat16, device=device)
-    hidden_states_scale_global = calculate_fp4_global_scale_factor(hidden_states_bf16)
+    # Scale data to fit within FP4 range (values should be < 6.0 after scaling)
+    hidden_states_bf16 = torch.randn(T, H, dtype=torch.bfloat16, device=device) * 0.1
     hidden_states_fp4, hidden_states_scale, _ = quant_fp4_single(
-        hidden_states_bf16, hidden_states_scale_global, is_sf_swizzled_layout=False
+        hidden_states_bf16, fixed_global_scale, is_sf_swizzled_layout=False
     )
 
-    # Weights per local expert
-    w13_bf16 = torch.randn(E_local, 2 * I, H, dtype=torch.bfloat16, device=device)
-    w2_bf16 = torch.randn(E_local, H, I, dtype=torch.bfloat16, device=device)
+    # Weights per local expert (scaled to fit FP4 range)
+    w13_bf16 = torch.randn(E_local, 2 * I, H, dtype=torch.bfloat16, device=device) * 0.1
+    w2_bf16 = torch.randn(E_local, H, I, dtype=torch.bfloat16, device=device) * 0.1
 
-    # Quantize weights with swizzled layout for kernel
-    w13_fp4_swizzled, w13_scales_swizzled, w13_scales_global = quant_fp4_batches(
-        w13_bf16, E_local, is_sf_swizzled_layout=True
+    # Quantize weights with swizzled layout for kernel (using fixed global scale)
+    w13_fp4_swizzled, w13_scales_swizzled, w13_scales_global = quant_fp4_batches_fixed_scale(
+        w13_bf16, E_local, fixed_global_scale, is_sf_swizzled_layout=True
     )
-    w2_fp4_swizzled, w2_scales_swizzled, w2_scales_global = quant_fp4_batches(
-        w2_bf16, E_local, is_sf_swizzled_layout=True
+    w2_fp4_swizzled, w2_scales_swizzled, w2_scales_global = quant_fp4_batches_fixed_scale(
+        w2_bf16, E_local, fixed_global_scale, is_sf_swizzled_layout=True
     )
 
     # Also quantize with linear layout for reference dequantization
-    w13_fp4_linear, w13_scales_linear, _ = quant_fp4_batches(
-        w13_bf16, E_local, is_sf_swizzled_layout=False
+    w13_fp4_linear, w13_scales_linear, _ = quant_fp4_batches_fixed_scale(
+        w13_bf16, E_local, fixed_global_scale, is_sf_swizzled_layout=False
     )
-    w2_fp4_linear, w2_scales_linear, _ = quant_fp4_batches(
-        w2_bf16, E_local, is_sf_swizzled_layout=False
+    w2_fp4_linear, w2_scales_linear, _ = quant_fp4_batches_fixed_scale(
+        w2_bf16, E_local, fixed_global_scale, is_sf_swizzled_layout=False
     )
 
     return {
@@ -258,7 +284,7 @@ def generate_random_inputs_moe(
         # FP4 quantized (swizzled for kernel)
         "hidden_states_fp4": hidden_states_fp4,
         "hidden_states_scale": hidden_states_scale,
-        "hidden_states_scale_global": hidden_states_scale_global,
+        "hidden_states_scale_global": fixed_global_scale,
         "gemm1_weights_fp4": w13_fp4_swizzled,
         "gemm1_scales": w13_scales_swizzled,
         "gemm1_scales_global": w13_scales_global,
@@ -471,17 +497,23 @@ def test_correctness_moe(
     )
 
     # Compute output scales
-    c_global_sf = 1.0  # For MxFP8 intermediate
-    hidden_states_scale_global = inputs["hidden_states_scale_global"]
-    scale_c_fc1 = (
-        c_global_sf
-        * (1.0 / inputs["gemm1_scales_global"])
-        * (1.0 / hidden_states_scale_global)
+    # For NvFP4, the dequantization scale is 1.0 / (448.0 * 6.0)
+    # Output scale = hidden_states_dequant_scale * weight_dequant_scale
+    nvfp4_dequant_scale = 1.0 / 448.0 / 6.0
+
+    # Create per-expert scale tensors (same value for all experts, matching official test)
+    scale_c_fc1 = torch.tensor(
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        device=device,
     )
-    scale_gate_fc1 = (1.0 / inputs["gemm1_scales_global"]) * (
-        1.0 / hidden_states_scale_global
+    scale_gate_fc1 = torch.tensor(
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        device=device,
     )
-    scale_c_fc2 = (1.0 / c_global_sf) * (1.0 / inputs["gemm2_scales_global"])
+    scale_c_fc2 = torch.tensor(
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        device=device,
+    )
 
     # Run FlashInfer kernel
     print("Running FlashInfer kernel...")
