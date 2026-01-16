@@ -239,8 +239,11 @@ def generate_random_inputs_moe(
     routing_logits = torch.randn(T, E_global, dtype=torch.float32, device=device)
     # Boost logits for local expert range to ensure they get selected
     # This ensures test coverage for the local computation path
+    # DeepSeek V3 routing selects top 4 groups first, then top 8 experts from those groups
+    # We need to ensure the group containing local experts has high enough scores
     local_end = min(local_expert_offset + E_local, E_global)
-    routing_logits[:, local_expert_offset:local_end] += 3.0  # Boost by 3 to favor local experts
+    # Large boost (+10.0) ensures the group scores are high enough to be selected
+    routing_logits[:, local_expert_offset:local_end] += 10.0
     if use_bias:
         routing_bias = torch.randn(E_global, dtype=torch.bfloat16, device=device)
     else:
@@ -501,17 +504,19 @@ def test_correctness_moe(
     # Output scale = hidden_states_dequant_scale * weight_dequant_scale
     nvfp4_dequant_scale = 1.0 / 448.0 / 6.0
 
-    # Create per-expert scale tensors (same value for all experts, matching official test)
+    # Create per-expert scale tensors
+    # IMPORTANT: Size should be NUM_EXPERTS_GLOBAL (256), not NUM_LOCAL_EXPERTS (32)
+    # The kernel expects scale tensors for all global experts
     scale_c_fc1 = torch.tensor(
-        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_EXPERTS_GLOBAL,
         device=device,
     )
     scale_gate_fc1 = torch.tensor(
-        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_EXPERTS_GLOBAL,
         device=device,
     )
     scale_c_fc2 = torch.tensor(
-        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_LOCAL_EXPERTS,
+        [nvfp4_dequant_scale * nvfp4_dequant_scale] * NUM_EXPERTS_GLOBAL,
         device=device,
     )
 
