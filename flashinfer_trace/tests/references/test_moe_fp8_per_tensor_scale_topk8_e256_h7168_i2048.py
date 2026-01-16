@@ -1,7 +1,6 @@
 """Reference test for FP8 per-tensor scale MoE with simple TopK routing."""
 
 import torch
-
 from flashinfer import RoutingMethodType
 from flashinfer.fused_moe import trtllm_fp8_per_tensor_scale_moe
 
@@ -308,9 +307,7 @@ def test_correctness_moe(
     # For simplicity, we use c_global_sf = 1.0
     c_global_sf = 1.0
     hidden_states_scale = inputs["hidden_states_scale"]
-    scale_c_fc1 = (
-        c_global_sf * (1.0 / inputs["gemm1_scales"]) * (1.0 / hidden_states_scale)
-    )
+    scale_c_fc1 = c_global_sf * (1.0 / inputs["gemm1_scales"]) * (1.0 / hidden_states_scale)
     scale_gate_fc1 = (1.0 / inputs["gemm1_scales"]) * (1.0 / hidden_states_scale)
     scale_c_fc2 = (1.0 / c_global_sf) * (1.0 / inputs["gemm2_scales"])
 
