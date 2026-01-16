@@ -1,5 +1,4 @@
 import json
-import math
 from pathlib import Path
 
 import numpy as np
@@ -259,20 +258,6 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     return w_fp8, scales
 
 
-def next_power_of_2(n: int):
-    return 1 << (n - 1).bit_length() if n > 0 else 1
-
-
-def get_tile_tokens_dim(num_tokens, top_k, num_experts):
-    # Guess tokens per expert assuming perfect expert distribution first.
-    num_tokens_per_expert = (num_tokens * top_k) // num_experts
-    # And pad the number to the next power of 2.
-    tile_tokens_dim = next_power_of_2(num_tokens_per_expert)
-    # Cap to 8-64 tokens per CTA tile as it's the range supported by the kernel.
-    tile_tokens_dim = min(max(tile_tokens_dim, 8), 64)
-    return tile_tokens_dim
-
-
 # read jsonl file to locate the workload record at index
 def _load_workload_record(workload_index: int):
     if not WORKLOAD_JSONL_PATH.exists():
@@ -408,27 +393,26 @@ def _compare_reference_vs_kernel(
     )
 
     print("Running FlashInfer kernel...")
-    tile_tokens_dim = get_tile_tokens_dim(seq_len, TOP_K, NUM_EXPERTS_GLOBAL)
     fi_out = trtllm_fp8_block_scale_moe(
-        inputs["routing_logits"].to(torch.float32),
-        inputs["routing_bias"],
-        inputs["hidden_states"],
-        inputs["hidden_states_scale"],
-        inputs["gemm1_weights"],
-        inputs["gemm1_weights_scale"].to(torch.float32),
-        inputs["gemm2_weights"],
-        inputs["gemm2_weights_scale"].to(torch.float32),
-        NUM_EXPERTS_GLOBAL,
-        TOP_K,
-        N_GROUP,
-        TOPK_GROUP,
-        INTERMEDIATE_SIZE,
-        inputs["local_expert_offset"],
-        inputs["local_num_experts"],
-        inputs["routed_scaling_factor"],
-        tile_tokens_dim=tile_tokens_dim,
-        routing_method_type=2,
+        routing_logits=inputs["routing_logits"].to(torch.float32),
+        routing_bias=inputs["routing_bias"],
+        hidden_states=inputs["hidden_states"],
+        hidden_states_scale=inputs["hidden_states_scale"],
+        gemm1_weights=inputs["gemm1_weights"],
+        gemm1_weights_scale=inputs["gemm1_weights_scale"].to(torch.float32),
+        gemm2_weights=inputs["gemm2_weights"],
+        gemm2_weights_scale=inputs["gemm2_weights_scale"].to(torch.float32),
+        num_experts=NUM_EXPERTS_GLOBAL,
+        top_k=TOP_K,
+        n_group=N_GROUP,
+        topk_group=TOPK_GROUP,
+        intermediate_size=INTERMEDIATE_SIZE,
+        local_expert_offset=inputs["local_expert_offset"],
+        local_num_experts=inputs["local_num_experts"],
+        routed_scaling_factor=inputs["routed_scaling_factor"],
+        routing_method_type=2,  # DeepSeek-V3 routing
         use_shuffled_weight=False,
+        tune_max_num_tokens=max(8, min(seq_len * TOP_K, 8192)),
     )
 
     ref_f32 = ref_out.float()
@@ -600,27 +584,26 @@ def test_correctness_moe(
 
     # Run FlashInfer fused kernel
     print("Running FlashInfer kernel...")
-    tile_tokens_dim = get_tile_tokens_dim(seq_len, TOP_K, E_GLOBAL)
     fi_out = trtllm_fp8_block_scale_moe(
-        inputs["routing_logits"].to(torch.float32),
-        inputs["routing_bias"],  # bf16
-        inputs["hidden_states"],  # fp8
-        inputs["hidden_states_scale"],  # [H/128, T]
-        inputs["gemm1_weights"],  # fp8
-        inputs["gemm1_weights_scale"].to(torch.float32),
-        inputs["gemm2_weights"],  # fp8
-        inputs["gemm2_weights_scale"].to(torch.float32),
-        E_GLOBAL,
-        TOP_K,
-        N_GROUP,
-        TOPK_GROUP,
-        I,
-        inputs["local_expert_offset"],
-        inputs["local_num_experts"],
-        inputs["routed_scaling_factor"],
-        tile_tokens_dim=tile_tokens_dim,
-        routing_method_type=2,  # DeepSeek-styled
+        routing_logits=inputs["routing_logits"].to(torch.float32),
+        routing_bias=inputs["routing_bias"],  # bf16
+        hidden_states=inputs["hidden_states"],  # fp8
+        hidden_states_scale=inputs["hidden_states_scale"],  # [H/128, T]
+        gemm1_weights=inputs["gemm1_weights"],  # fp8
+        gemm1_weights_scale=inputs["gemm1_weights_scale"].to(torch.float32),
+        gemm2_weights=inputs["gemm2_weights"],  # fp8
+        gemm2_weights_scale=inputs["gemm2_weights_scale"].to(torch.float32),
+        num_experts=E_GLOBAL,
+        top_k=TOP_K,
+        n_group=N_GROUP,
+        topk_group=TOPK_GROUP,
+        intermediate_size=I,
+        local_expert_offset=inputs["local_expert_offset"],
+        local_num_experts=inputs["local_num_experts"],
+        routed_scaling_factor=inputs["routed_scaling_factor"],
+        routing_method_type=2,  # DeepSeek-V3 routing
         use_shuffled_weight=False,
+        tune_max_num_tokens=max(8, min(seq_len * TOP_K, 8192)),
     )
 
     # Compare
