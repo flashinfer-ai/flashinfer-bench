@@ -410,7 +410,6 @@ def _compare_reference_vs_kernel(
         local_expert_offset,  # local_expert_offset
         NUM_LOCAL_EXPERTS,  # local_num_experts
         None,  # routed_scaling_factor (None for simple TopK routing)
-        None,  # tile_tokens_dim (auto-determined by kernel)
         RoutingMethodType.TopK.value,  # routing_method_type
         True,  # do_finalize
         enable_pdl,  # enable_pdl
