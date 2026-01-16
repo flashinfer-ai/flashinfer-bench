@@ -191,10 +191,8 @@ def run_reference(
         O = C.matmul(W2_e.t())
 
         # Get routing weights for this expert
-        topk_idx_tok = topk_idx.index_select(0, token_idx)
-        topk_weights_tok = topk_weights.index_select(0, token_idx)
-        expert_mask = topk_idx_tok == ge
-        w_tok = (topk_weights_tok * expert_mask.float()).sum(dim=1)
+        # topk_weights is [T, E_global] with weights at the selected expert positions
+        w_tok = topk_weights.index_select(0, token_idx)[:, ge]  # [Tk]
 
         output.index_add_(0, token_idx, O * w_tok.unsqueeze(1))
 
@@ -226,10 +224,12 @@ def generate_random_inputs_moe(
         routing_bias = torch.zeros(E_global, dtype=torch.bfloat16, device=device)
 
     # Hidden states: generate bf16, then quantize to FP4
+    # Note: hidden_states use non-swizzled layout for scales (is_sf_swizzled_layout=False)
+    # This is different from weights which use swizzled layout for the kernel
     hidden_states_bf16 = 2.0 * torch.randn(T, H, dtype=torch.bfloat16, device=device)
     hidden_states_scale_global = calculate_fp4_global_scale_factor(hidden_states_bf16)
     hidden_states_fp4, hidden_states_scale, _ = quant_fp4_single(
-        hidden_states_bf16, hidden_states_scale_global, is_sf_swizzled_layout=True
+        hidden_states_bf16, hidden_states_scale_global, is_sf_swizzled_layout=False
     )
 
     # Weights per local expert
@@ -432,7 +432,7 @@ def test_correctness_moe(
         (1 / inputs["hidden_states_scale_global"]).cpu(),
         SF_VEC_SIZE,
         1,  # ufp8_type for NvFP4
-        True,  # is_sf_swizzled_layout
+        False,  # is_sf_swizzled_layout - hidden_states use non-swizzled layout
     ).cuda()
 
     gemm1_weights_dequant = e2m1_and_ufp8_scale_batches(
