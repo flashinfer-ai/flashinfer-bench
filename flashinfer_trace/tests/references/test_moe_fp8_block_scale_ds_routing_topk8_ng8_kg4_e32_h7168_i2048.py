@@ -485,12 +485,6 @@ def generate_random_inputs_moe(
 
     # Inputs for routing
     routing_logits = torch.randn(T, E_global, dtype=torch.float32, device=device)
-    # Boost logits for local expert range to ensure they get selected
-    # DeepSeek V3 routing selects top 4 groups first, then top 8 experts from those groups
-    # Without this boost, the group containing local experts may not be selected
-    local_end = min(local_expert_offset + E_local, E_global)
-    routing_logits[:, local_expert_offset:local_end] += 10.0
-
     if use_bias:
         routing_bias = torch.randn(E_global, dtype=torch.bfloat16, device=device)
     else:
