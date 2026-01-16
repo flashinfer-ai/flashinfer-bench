@@ -1,7 +1,6 @@
 """Reference test for FP8 per-tensor scale MoE with Renormalize routing (TopK -> Softmax)."""
 
 import torch
-from flashinfer import RoutingMethodType
 from flashinfer.fused_moe import trtllm_fp8_per_tensor_scale_moe
 
 # Fixed geometry
@@ -331,7 +330,7 @@ def test_correctness_moe(
         inputs["local_num_experts"],  # local_num_experts
         inputs["routed_scaling_factor"],  # routed_scaling_factor
         False,  # use_routing_scales_on_input
-        int(RoutingMethodType.Renormalize),  # routing_method_type (TopK -> Softmax)
+        1,  # routing_method_type: 1 = Renormalize (TopK -> Softmax)
         tune_max_num_tokens=max(8, min(64, num_tokens)),
     )
 
