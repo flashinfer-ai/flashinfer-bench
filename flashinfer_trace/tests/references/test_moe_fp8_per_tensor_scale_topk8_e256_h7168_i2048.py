@@ -206,8 +206,8 @@ def generate_random_inputs_moe(
     T, H, I = seq_len, hidden_size, intermediate_size
     E_global, E_local = num_experts_global, num_local_experts
 
-    # Inputs for routing
-    routing_logits = torch.randn(T, E_global, dtype=torch.float32, device=device)
+    # Inputs for routing (bfloat16 for FlashInfer kernel)
+    routing_logits = torch.randn(T, E_global, dtype=torch.bfloat16, device=device)
     if use_bias:
         routing_bias = torch.randn(E_global, dtype=torch.bfloat16, device=device)
     else:
@@ -318,7 +318,7 @@ def test_correctness_moe(
     print("Running FlashInfer kernel...")
     num_tokens = inputs["hidden_states"].shape[0]
     fi_out = trtllm_fp8_per_tensor_scale_moe(
-        inputs["routing_logits"].to(torch.float32),
+        inputs["routing_logits"],  # already bfloat16
         inputs["routing_bias"],  # bf16
         inputs["hidden_states"],  # fp8
         inputs["gemm1_weights"],  # fp8

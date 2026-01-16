@@ -44,7 +44,7 @@
         "seq_len",
         "num_experts"
       ],
-      "dtype": "float32",
+      "dtype": "bfloat16",
       "description": "Tensor of routing logits for expert selection"
     },
     "routing_bias": {
