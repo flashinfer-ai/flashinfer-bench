@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import numpy as np
-import pytest
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file
@@ -188,7 +186,7 @@ def run(
 
 
 # -----------------------------
-# Helpers: FP8 block quantization (dequant scale semantics)
+# Helpers: FP8 block quantization (dequant scale semantics) - Vectorized
 # -----------------------------
 def _fp8_block_quant_1d(x_bf16: torch.Tensor, block: int = 128):
     """
@@ -202,22 +200,22 @@ def _fp8_block_quant_1d(x_bf16: torch.Tensor, block: int = 128):
     assert H % block == 0
     nb = H // block
 
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    max_fp8 = finfo.max
-
+    max_fp8 = torch.finfo(torch.float8_e4m3fn).max
     x_f32 = x_bf16.to(torch.float32)
-    x_fp8 = torch.empty((T, H), dtype=torch.float8_e4m3fn, device=x_bf16.device)
-    scales = torch.empty((T, nb), dtype=torch.float32, device=x_bf16.device)
 
-    for j in range(nb):
-        sl = slice(j * block, (j + 1) * block)
-        blk = x_f32[:, sl]  # [T, 128]
-        amax = torch.amax(torch.abs(blk), dim=1)  # [T]
-        # dequant scale s = amax / max_fp8  (float ≈ fp8 * s)
-        s = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
-        q = (blk / s.unsqueeze(1)).to(torch.float8_e4m3fn)  # quantization
-        x_fp8[:, sl] = q
-        scales[:, j] = s
+    # Reshape to [T, nb, block] for vectorized block operations
+    x_blocked = x_f32.view(T, nb, block)
+
+    # Compute per-block amax: [T, nb]
+    amax = torch.amax(torch.abs(x_blocked), dim=2)
+
+    # Compute scales (dequant scale = amax / max_fp8)
+    scales = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
+
+    # Quantize: x_fp8 = x / scale
+    x_scaled = x_blocked / scales.unsqueeze(2)
+    x_fp8 = x_scaled.view(T, H).to(torch.float8_e4m3fn)
+
     return x_fp8, scales  # scales in [T, H/128]
 
 
@@ -228,6 +226,8 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     Returns:
       w_fp8: [*, R, C] (float8_e4m3fn)
       scales: [*, R/128, C/128] (float32) -- dequant scales
+
+    Fully vectorized implementation for speed.
     """
     assert w_bf16.dim() >= 2
     *prefix, R, C = w_bf16.shape
@@ -235,26 +235,29 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     nb_r = R // block
     nb_c = C // block
 
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    max_fp8 = finfo.max
-
+    max_fp8 = torch.finfo(torch.float8_e4m3fn).max
     w_f32 = w_bf16.to(torch.float32).contiguous()
-    w_fp8 = torch.empty_like(w_f32, dtype=torch.float8_e4m3fn)
-    scales = torch.empty((*prefix, nb_r, nb_c), dtype=torch.float32, device=w_bf16.device)
 
-    it = np.ndindex(*prefix) if prefix else [()]
-    for idx in it:
-        sel = idx if isinstance(idx, tuple) else (idx,)
-        for i in range(nb_r):
-            rs = slice(i * block, (i + 1) * block)
-            for j in range(nb_c):
-                cs = slice(j * block, (j + 1) * block)
-                blk = w_f32[(*sel, rs, cs)]  # [128, 128]
-                amax = torch.amax(torch.abs(blk))
-                s = (amax / max_fp8) if amax > 0 else torch.tensor(1.0, device=w_bf16.device)
-                q = (blk / s).to(torch.float8_e4m3fn)
-                w_fp8[(*sel, rs, cs)] = q
-                scales[(*sel, i, j)] = s
+    # Reshape to [*, nb_r, block, nb_c, block] for vectorized block operations
+    # Original shape: [*, R, C] -> [*, nb_r, block, nb_c, block]
+    new_shape = (*prefix, nb_r, block, nb_c, block)
+    w_blocked = w_f32.view(new_shape)
+
+    # Compute per-block amax: [*, nb_r, nb_c]
+    # Reduce over the block dimensions (dims -3 and -1 after reshape)
+    amax = torch.amax(torch.abs(w_blocked), dim=(-3, -1))  # [*, nb_r, nb_c]
+
+    # Compute scales (dequant scale = amax / max_fp8)
+    scales = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
+
+    # Expand scales back to block shape for division
+    # scales: [*, nb_r, nb_c] -> [*, nb_r, 1, nb_c, 1]
+    scales_expanded = scales.unsqueeze(-2).unsqueeze(-1)  # [*, nb_r, 1, nb_c, 1]
+
+    # Quantize: w_fp8 = w / scale
+    w_scaled = w_blocked / scales_expanded
+    w_fp8 = w_scaled.view(*prefix, R, C).to(torch.float8_e4m3fn)
+
     return w_fp8, scales
 
 
