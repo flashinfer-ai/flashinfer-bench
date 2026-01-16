@@ -106,7 +106,7 @@
     },
     "kv_last_page_len": {
       "shape": [
-        "total_q"
+        "batch_size"
       ],
       "dtype": "int32",
       "description": "Number of valid tokens in the last page for each sequence."
