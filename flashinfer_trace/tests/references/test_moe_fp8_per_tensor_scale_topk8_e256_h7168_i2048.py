@@ -1,4 +1,4 @@
-"""Reference test for FP8 per-tensor scale MoE with simple TopK routing."""
+"""Reference test for FP8 per-tensor scale MoE with Renormalize routing (TopK -> Softmax)."""
 
 import torch
 from flashinfer import RoutingMethodType
@@ -74,21 +74,20 @@ def run(
     S2 = gemm2_scales.to(torch.float32)  # [E_local]
     W2 = W2_fp32 / S2.view(E_local, 1, 1)  # [E, H, I] float32
 
-    # 2) Simple TopK routing with softmax
+    # 2) Renormalize routing: TopK -> Softmax
     logits = routing_logits.to(torch.float32)  # [T, E_global]
     bias = routing_bias.to(torch.float32).reshape(-1)  # [E_global]
 
-    # Softmax with bias
-    scores = torch.softmax(logits + bias, dim=-1)  # [T, E]
-
-    # Global top-k
-    topk_weights, topk_idx = torch.topk(
-        scores, k=TOP_K, dim=1, largest=True, sorted=False
+    # First take top-k on raw logits (with bias added)
+    topk_logits, topk_idx = torch.topk(
+        logits + bias, k=TOP_K, dim=1, largest=True, sorted=False
     )  # [T, K]
 
-    # Normalize weights and apply scaling
-    weights_sum = topk_weights.sum(dim=1, keepdim=True) + 1e-20
-    topk_weights = (topk_weights / weights_sum) * routed_scaling_factor  # [T, K]
+    # Then apply softmax on top-k values only
+    topk_weights = torch.softmax(topk_logits, dim=-1)  # [T, K]
+
+    # Apply routing scaling factor
+    topk_weights = topk_weights * routed_scaling_factor  # [T, K]
 
     # 3) Local expert compute and accumulation
     output = torch.zeros((T, H), dtype=torch.float32, device=device)
@@ -325,14 +324,14 @@ def test_correctness_moe(
         scale_c_fc2,  # [E_local]
         NUM_EXPERTS_GLOBAL,  # num_experts
         TOP_K,  # top_k
-        None,  # n_group (None for simple TopK routing)
-        None,  # topk_group (None for simple TopK routing)
+        None,  # n_group (None for Renormalize routing)
+        None,  # topk_group (None for Renormalize routing)
         INTERMEDIATE_SIZE,  # intermediate_size
         inputs["local_expert_offset"],  # local_expert_offset
         inputs["local_num_experts"],  # local_num_experts
         inputs["routed_scaling_factor"],  # routed_scaling_factor
         False,  # use_routing_scales_on_input
-        RoutingMethodType.TopK.value,  # routing_method_type
+        RoutingMethodType.Renormalize.value,  # routing_method_type (TopK -> Softmax)
         tune_max_num_tokens=max(8, min(64, num_tokens)),
     )
 
