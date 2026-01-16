@@ -1,10 +1,11 @@
 {
   "name": "moe_fp4_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048",
-  "description": "FP4 block scale MoE operation with DeepSeek V3 routing. Uses NvFP4/MxFP4 quantization with block-wise scaling factors. DeepSeek V3 routing: grouped top-k selection with n_groups=8, topk_group=4.",
+  "description": "FP4 block scale MoE operation with DeepSeek V3 no-aux routing. Uses NvFP4/MxFP4 quantization with block-wise scaling factors. DeepSeek V3 routing: sigmoid scoring, grouped top-k selection with n_groups=8, topk_group=4.",
   "op_type": "moe",
   "tags": [
     "status:draft",
     "model:deepseek-v3",
+    "model:deepseek-r1",
     "quantization:fp4_block_scale"
   ],
   "axes": {
@@ -154,27 +155,6 @@
       "shape": null,
       "dtype": "float32",
       "description": "Scaling factor for routing weights (typically 2.5 for DeepSeek V3)."
-    },
-    "output1_scale": {
-      "shape": [
-        "num_local_experts"
-      ],
-      "dtype": "float32",
-      "description": "Derived: c_global_sf * (1/gemm1_scales_global) * (1/hidden_states_scale_global). Per-expert scale for GEMM1 output."
-    },
-    "output1_scale_gate": {
-      "shape": [
-        "num_local_experts"
-      ],
-      "dtype": "float32",
-      "description": "Derived: (1/gemm1_scales_global) * (1/hidden_states_scale_global). Per-expert scale for GEMM1 gate output."
-    },
-    "output2_scale": {
-      "shape": [
-        "num_local_experts"
-      ],
-      "dtype": "float32",
-      "description": "Derived: (1/c_global_sf) * (1/gemm2_scales_global). Per-expert scale for GEMM2 output."
     }
   },
   "outputs": {
@@ -187,5 +167,5 @@
       "description": "Final MoE output tensor."
     }
   },
-  "reference": "import torch\r\n\r\n\r\n@torch.no_grad()\r\ndef run(\r\n    routing_logits: torch.Tensor,\r\n    routing_bias: torch.Tensor,\r\n    hidden_states: torch.Tensor,\r\n    hidden_states_scale: torch.Tensor,\r\n    hidden_states_scale_global: float,\r\n    gemm1_weights: torch.Tensor,\r\n    gemm1_weights_scale: torch.Tensor,\r\n    gemm1_scales_global: torch.Tensor,\r\n    gemm2_weights: torch.Tensor,\r\n    gemm2_weights_scale: torch.Tensor,\r\n    gemm2_scales_global: torch.Tensor,\r\n    local_expert_offset: int,\r\n    routed_scaling_factor: float,\r\n):\r\n    \"\"\"\r\n    FP4 block scale MoE with DeepSeek V3 routing.\r\n\r\n    This is a simplified reference that documents the expected behavior.\r\n    The actual FP4 dequantization involves complex shuffling and interleaving\r\n    operations that are handled by FlashInfer's fp4_quantize utilities.\r\n\r\n    DeepSeek V3 routing:\r\n    1. Add bias to logits\r\n    2. Group experts into n_groups groups\r\n    3. For each group, take top-k within group\r\n    4. Select topk_group groups with highest scores\r\n    5. Take top_k experts overall from selected groups\r\n    6. Apply softmax and routing scaling factor\r\n\r\n    Local computation:\r\n    - Only experts in [local_expert_offset, local_expert_offset + E_local) are computed\r\n    - GEMM1 -> SwiGLU -> GEMM2, then per-token weighted accumulation\r\n    \"\"\"\r\n\r\n    # Fixed geometry\r\n    H = 7168\r\n    I = 2048\r\n    TOP_K = 8\r\n    N_GROUPS = 8\r\n    TOPK_GROUP = 4\r\n    E_local = 32\r\n\r\n    E_global = routing_logits.shape[1]\r\n    T = routing_logits.shape[0]\r\n\r\n    assert E_global == 256, \"num_experts must be 256\"\r\n    device = routing_logits.device\r\n\r\n    # DeepSeek V3 routing: grouped top-k selection\r\n    logits = routing_logits.to(torch.float32)\r\n    bias = routing_bias.to(torch.float32).reshape(-1)\r\n    logits_biased = logits + bias\r\n\r\n    # Group experts and select top groups\r\n    experts_per_group = E_global // N_GROUPS\r\n    logits_grouped = logits_biased.view(T, N_GROUPS, experts_per_group)\r\n\r\n    # Get top-k within each group\r\n    group_max_scores, _ = logits_grouped.max(dim=2)\r\n\r\n    # Select top groups\r\n    _, top_group_idx = torch.topk(group_max_scores, TOPK_GROUP, dim=1)\r\n\r\n    # Create mask for selected groups\r\n    group_mask = torch.zeros(T, N_GROUPS, dtype=torch.bool, device=device)\r\n    group_mask.scatter_(1, top_group_idx, True)\r\n\r\n    # Mask out non-selected groups\r\n    masked_logits = logits_biased.clone()\r\n    group_mask_expanded = group_mask.unsqueeze(2).expand(-1, -1, experts_per_group)\r\n    group_mask_flat = group_mask_expanded.reshape(T, E_global)\r\n    masked_logits[~group_mask_flat] = float('-inf')\r\n\r\n    # Select top-k experts from selected groups\r\n    topk_logits, topk_idx = torch.topk(masked_logits, k=TOP_K, dim=1, largest=True, sorted=False)\r\n\r\n    # Apply softmax and scaling\r\n    topk_weights = torch.softmax(topk_logits, dim=-1) * routed_scaling_factor\r\n\r\n    # Note: Full FP4 dequantization requires FlashInfer utilities\r\n    # This reference shows the routing and accumulation logic\r\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\r\n\r\n    # For actual computation, would need to:\r\n    # 1. Dequantize hidden_states using hidden_states_scale and hidden_states_scale_global\r\n    # 2. For each expert, dequantize weights using block scales and global scales\r\n    # 3. Compute GEMM1 -> SwiGLU -> GEMM2\r\n    # 4. Accumulate with routing weights\r\n\r\n    return output.to(torch.bfloat16)"
+  "reference": "import torch\r\n\r\n\r\n@torch.no_grad()\r\ndef run(\r\n    routing_logits: torch.Tensor,\r\n    routing_bias: torch.Tensor,\r\n    hidden_states: torch.Tensor,\r\n    hidden_states_scale: torch.Tensor,\r\n    hidden_states_scale_global: float,\r\n    gemm1_weights: torch.Tensor,\r\n    gemm1_weights_scale: torch.Tensor,\r\n    gemm1_scales_global: torch.Tensor,\r\n    gemm2_weights: torch.Tensor,\r\n    gemm2_weights_scale: torch.Tensor,\r\n    gemm2_scales_global: torch.Tensor,\r\n    local_expert_offset: int,\r\n    routed_scaling_factor: float,\r\n):\r\n    \"\"\"\r\n    FP4 block scale MoE with DeepSeek V3 no-aux routing.\r\n\r\n    This is a simplified reference that documents the expected behavior.\r\n    The actual FP4 dequantization involves complex shuffling and interleaving\r\n    operations that are handled by FlashInfer's fp4_quantize utilities.\r\n\r\n    DeepSeek V3 no-aux routing:\r\n    1. s = sigmoid(logits)\r\n    2. s_with_bias = s + bias\r\n    3. Group by n_group=8; per group take top-2 sum -> pick topk_group=4 groups\r\n    4. On the kept groups, take global top_k=8 experts\r\n    5. Combine with weights derived from s (without bias), normalized and\r\n       scaled by routed_scaling_factor\r\n\r\n    Local computation:\r\n    - Only experts in [local_expert_offset, local_expert_offset + E_local) are computed\r\n    - GEMM1 -> SwiGLU -> GEMM2, then per-token weighted accumulation\r\n    \"\"\"\r\n\r\n    # Fixed geometry\r\n    H = 7168\r\n    I = 2048\r\n    TOP_K = 8\r\n    N_GROUP = 8\r\n    TOPK_GROUP = 4\r\n    E_local = 32\r\n\r\n    E_global = routing_logits.shape[1]\r\n    T = routing_logits.shape[0]\r\n\r\n    assert E_global == 256, \"num_experts must be 256\"\r\n    device = routing_logits.device\r\n\r\n    # DeepSeek V3 no-aux routing\r\n    logits = routing_logits.to(torch.float32)\r\n    bias = routing_bias.to(torch.float32).reshape(-1)\r\n\r\n    # Sigmoid scoring\r\n    s = 1.0 / (1.0 + torch.exp(-logits))  # [T, E_global]\r\n    s_with_bias = s + bias                 # [T, E_global]\r\n\r\n    # Group experts\r\n    group_size = E_global // N_GROUP  # 32\r\n    s_wb_grouped = s_with_bias.view(T, N_GROUP, group_size)  # [T, 8, 32]\r\n\r\n    # Group scores = sum of top-2 values within each group\r\n    top2_vals, _ = torch.topk(s_wb_grouped, k=2, dim=2, largest=True, sorted=False)\r\n    group_scores = top2_vals.sum(dim=2)  # [T, 8]\r\n\r\n    # Select topk_group groups -> group mask\r\n    _, group_idx = torch.topk(group_scores, k=TOPK_GROUP, dim=1, largest=True, sorted=False)\r\n    group_mask = torch.zeros_like(group_scores)  # [T, 8]\r\n    group_mask.scatter_(1, group_idx, 1.0)\r\n    score_mask = group_mask.unsqueeze(2).expand(T, N_GROUP, group_size).reshape(T, E_global)\r\n\r\n    # Global top-k (within kept groups), based on s_with_bias\r\n    neg_inf = torch.finfo(torch.float32).min\r\n    scores_pruned = s_with_bias.masked_fill(score_mask == 0, neg_inf)\r\n    _, topk_idx = torch.topk(scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False)\r\n\r\n    # Combination weights: use s (without bias) for normalization\r\n    M = torch.zeros_like(s)  # [T, E_global]\r\n    M.scatter_(1, topk_idx, 1.0)  # 0/1 mask\r\n    weights = s * M  # [T, E_global]\r\n    weights_sum = weights.sum(dim=1, keepdim=True) + 1e-20\r\n    weights = (weights / weights_sum) * routed_scaling_factor\r\n\r\n    # Note: Full FP4 dequantization requires FlashInfer utilities\r\n    # This reference shows the routing and accumulation logic\r\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\r\n\r\n    # For actual computation, would need to:\r\n    # 1. Dequantize hidden_states using hidden_states_scale and hidden_states_scale_global\r\n    # 2. For each expert, dequantize weights using block scales and global scales\r\n    # 3. Compute GEMM1 -> SwiGLU -> GEMM2\r\n    # 4. Accumulate with routing weights\r\n\r\n    return output.to(torch.bfloat16)"
 }

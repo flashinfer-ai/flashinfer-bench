@@ -105,8 +105,16 @@ def run_reference(
     routed_scaling_factor: float,
 ):
     """
-    FP4 block scale MoE reference with DeepSeek V3 routing.
+    FP4 block scale MoE reference with DeepSeek V3 no-aux routing.
     Uses dequantized tensors for computation.
+
+    DeepSeek V3 no-aux routing:
+    1. s = sigmoid(logits)
+    2. s_with_bias = s + bias
+    3. Group by n_group=8; per group take top-2 sum → pick topk_group=4 groups
+    4. On the kept groups, take global top_k=8 experts
+    5. Combine with weights derived from s (without bias), normalized and
+       scaled by routed_scaling_factor
     """
     H = HIDDEN_SIZE
     I = INTERMEDIATE_SIZE
@@ -116,38 +124,39 @@ def run_reference(
 
     device = hidden_states_dequant.device
 
-    # DeepSeek V3 routing: grouped top-k selection
+    # DeepSeek V3 no-aux routing
     logits = routing_logits.to(torch.float32)
     bias = routing_bias.to(torch.float32).reshape(-1)
-    logits_biased = logits + bias
 
-    # Group experts and select top groups
-    experts_per_group = E_global // N_GROUPS
-    logits_grouped = logits_biased.view(T, N_GROUPS, experts_per_group)
+    # Sigmoid scoring
+    s = 1.0 / (1.0 + torch.exp(-logits))  # [T, E_global]
+    s_with_bias = s + bias  # [T, E_global]
 
-    # Get max score within each group
-    group_max_scores, _ = logits_grouped.max(dim=2)
+    # Group experts
+    group_size = E_global // N_GROUPS  # 32
+    s_wb_grouped = s_with_bias.view(T, N_GROUPS, group_size)  # [T, 8, 32]
 
-    # Select top groups
-    _, top_group_idx = torch.topk(group_max_scores, TOPK_GROUP, dim=1)
+    # Group scores = sum of top-2 values within each group
+    top2_vals, _ = torch.topk(s_wb_grouped, k=2, dim=2, largest=True, sorted=False)
+    group_scores = top2_vals.sum(dim=2)  # [T, 8]
 
-    # Create mask for selected groups
-    group_mask = torch.zeros(T, N_GROUPS, dtype=torch.bool, device=device)
-    group_mask.scatter_(1, top_group_idx, True)
+    # Select topk_group groups -> group mask
+    _, group_idx = torch.topk(group_scores, k=TOPK_GROUP, dim=1, largest=True, sorted=False)
+    group_mask = torch.zeros_like(group_scores)  # [T, 8]
+    group_mask.scatter_(1, group_idx, 1.0)
+    score_mask = group_mask.unsqueeze(2).expand(T, N_GROUPS, group_size).reshape(T, E_global)
 
-    # Mask out non-selected groups
-    masked_logits = logits_biased.clone()
-    group_mask_expanded = group_mask.unsqueeze(2).expand(-1, -1, experts_per_group)
-    group_mask_flat = group_mask_expanded.reshape(T, E_global)
-    masked_logits[~group_mask_flat] = float('-inf')
+    # Global top-k (within kept groups), based on s_with_bias
+    neg_inf = torch.finfo(torch.float32).min
+    scores_pruned = s_with_bias.masked_fill(score_mask == 0, neg_inf)
+    _, topk_idx = torch.topk(scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False)
 
-    # Select top-k experts from selected groups
-    topk_logits, topk_idx = torch.topk(
-        masked_logits, k=TOP_K, dim=1, largest=True, sorted=False
-    )
-
-    # Apply softmax and scaling
-    topk_weights = torch.softmax(topk_logits, dim=-1) * routed_scaling_factor
+    # Combination weights: use s (without bias) for normalization
+    M = torch.zeros_like(s)  # [T, E_global]
+    M.scatter_(1, topk_idx, 1.0)  # 0/1 mask
+    topk_weights = s * M  # [T, E_global]
+    weights_sum = topk_weights.sum(dim=1, keepdim=True) + 1e-20
+    topk_weights = (topk_weights / weights_sum) * routed_scaling_factor
 
     # Local expert compute and accumulation
     output = torch.zeros((T, H), dtype=torch.float32, device=device)
