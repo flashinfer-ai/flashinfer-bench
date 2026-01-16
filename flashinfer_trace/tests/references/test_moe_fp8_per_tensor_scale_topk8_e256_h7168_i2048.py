@@ -331,7 +331,7 @@ def test_correctness_moe(
         inputs["local_num_experts"],  # local_num_experts
         inputs["routed_scaling_factor"],  # routed_scaling_factor
         False,  # use_routing_scales_on_input
-        RoutingMethodType.Renormalize.value,  # routing_method_type (TopK -> Softmax)
+        int(RoutingMethodType.Renormalize),  # routing_method_type (TopK -> Softmax)
         tune_max_num_tokens=max(8, min(64, num_tokens)),
     )
 
