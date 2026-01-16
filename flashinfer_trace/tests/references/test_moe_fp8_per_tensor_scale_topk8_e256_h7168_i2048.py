@@ -28,8 +28,9 @@ def run(
     """
     FP8 per-tensor scale MoE with Renormalize routing (TopK -> Softmax).
 
-    • FP8 per-tensor dequantization (TRT-LLM convention): float = fp8 / scale
-      where scale = 448/amax, so effectively float = fp8 * (amax/448)
+    This reference simulates FlashInfer's compute order:
+    • FP8 GEMM first, then dequantize output (not dequantize inputs first)
+    • Dequant scale for GEMM output: (1/weight_scale) * (1/input_scale)
     • Renormalize routing: TopK(logits + bias) → Softmax on top-k values
     • Local computation:
         only experts in [local_expert_offset, local_expert_offset + E_local) are
@@ -60,20 +61,17 @@ def run(
 
     device = hidden_states.device
 
-    # 1) FP8 per-tensor dequantization (TRT-LLM convention): float = fp8 / scale
-    # where scale = 448/amax, so dequant = fp8 * (amax/448)
-    # hidden_states: [T, H], scale: scalar
-    A = hidden_states.to(torch.float32) / hidden_states_scale  # [T, H] float32
+    # Keep FP8 tensors for GEMM, convert to float32 for computation
+    # FlashInfer does: FP8 GEMM -> dequantize output
+    # We simulate: float32 GEMM of FP8 values -> quantize to FP8 -> dequantize
+    A_fp8 = hidden_states  # [T, H] fp8
+    W13_fp8 = gemm1_weights  # [E_local, 2I, H] fp8
+    W2_fp8 = gemm2_weights  # [E_local, H, I] fp8
 
-    # W13: [E_local, 2I, H], scale: [E_local]
-    W13_fp32 = gemm1_weights.to(torch.float32)
+    # Dequant scales for GEMM outputs (TRT-LLM convention: scale = 448/amax)
+    # Output dequant: out_float = out_fp8 * (1/weight_scale) * (1/input_scale)
     S13 = gemm1_scales.to(torch.float32)  # [E_local]
-    W13 = W13_fp32 / S13.view(E_local, 1, 1)  # [E, 2I, H] float32
-
-    # W2: [E_local, H, I], scale: [E_local]
-    W2_fp32 = gemm2_weights.to(torch.float32)
     S2 = gemm2_scales.to(torch.float32)  # [E_local]
-    W2 = W2_fp32 / S2.view(E_local, 1, 1)  # [E, H, I] float32
 
     # 2) Renormalize routing: TopK -> Softmax
     logits = routing_logits.to(torch.float32)  # [T, E_global]
@@ -109,22 +107,34 @@ def run(
 
         token_idx = torch.nonzero(sel_mask_per_token, as_tuple=False).squeeze(1)  # [Tk]
 
-        # Gather inputs and weights for this expert
-        A_e = A.index_select(0, token_idx)  # [Tk, H]
-        W13_e = W13[le]  # [2I, H]
-        W2_e = W2[le]  # [H, I]
+        # Gather FP8 inputs for this expert
+        A_e_fp8 = A_fp8.index_select(0, token_idx)  # [Tk, H] fp8
+        W13_e_fp8 = W13_fp8[le]  # [2I, H] fp8
+        W2_e_fp8 = W2_fp8[le]  # [H, I] fp8
 
-        # GEMM1: [Tk, H] @ [H, 2I] = [Tk, 2I]
-        G1 = A_e.matmul(W13_e.t())  # [Tk, 2I]
+        # GEMM1: Simulate FP8 GEMM then dequantize
+        # FlashInfer: FP8 @ FP8 -> accumulate in higher precision -> output
+        # We simulate: float32 matmul of FP8 values, then apply dequant scale
+        G1_raw = A_e_fp8.to(torch.float32).matmul(W13_e_fp8.to(torch.float32).t())  # [Tk, 2I]
+        # Dequantize GEMM1 output: scale = (1/gemm1_scale) * (1/hidden_scale)
+        gemm1_dequant_scale = (1.0 / S13[le]) * (1.0 / hidden_states_scale)
+        G1 = G1_raw * gemm1_dequant_scale  # [Tk, 2I]
 
         # SwiGLU: split and apply silu(x) = x / (1 + exp(-x))
-        X1 = G1[:, :I]  # [Tk, I]
-        X2 = G1[:, I:]  # [Tk, I]
+        X1 = G1[:, :I]  # [Tk, I] - this is the "up" projection (gate)
+        X2 = G1[:, I:]  # [Tk, I] - this is for silu activation
         silu_X2 = X2 / (1.0 + torch.exp(-X2))  # [Tk, I]
         C = silu_X2 * X1  # [Tk, I]
 
-        # GEMM2: [Tk, I] @ [I, H] = [Tk, H]
-        O = C.matmul(W2_e.t())  # [Tk, H]
+        # Quantize intermediate result C to FP8 for GEMM2 (simulate FlashInfer behavior)
+        # FlashInfer quantizes the SwiGLU output before GEMM2
+        C_fp8, C_scale = _fp8_per_tensor_quant_single(C)
+
+        # GEMM2: Simulate FP8 GEMM then dequantize
+        O_raw = C_fp8.to(torch.float32).matmul(W2_e_fp8.to(torch.float32).t())  # [Tk, H]
+        # Dequantize GEMM2 output: scale = (1/gemm2_scale) * (1/C_scale)
+        gemm2_dequant_scale = (1.0 / S2[le]) * (1.0 / C_scale)
+        O = O_raw * gemm2_dequant_scale  # [Tk, H]
 
         # Get routing weights for this expert from topk_weights
         # Find which position in top-k this expert is at for each token
@@ -136,6 +146,24 @@ def run(
         output.index_add_(0, token_idx, O * w_tok.unsqueeze(1))  # [Tk,H] * [Tk,1]
 
     return output.to(torch.bfloat16)
+
+
+def _fp8_per_tensor_quant_single(x: torch.Tensor):
+    """
+    Quantize a single tensor to FP8 with per-tensor scale (TRT-LLM convention).
+    Used for intermediate activations in the reference.
+    """
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    max_fp8 = finfo.max  # 448
+
+    x_f32 = x.to(torch.float32)
+    amax = torch.amax(torch.abs(x_f32)).nan_to_num()
+
+    # TRT-LLM convention: scale = max_fp8 / amax
+    scale = (max_fp8 / amax) if amax > 0 else torch.tensor(1.0, device=x.device)
+    x_fp8 = (x_f32 * scale).to(torch.float8_e4m3fn)
+
+    return x_fp8, scale
 
 
 # -----------------------------
