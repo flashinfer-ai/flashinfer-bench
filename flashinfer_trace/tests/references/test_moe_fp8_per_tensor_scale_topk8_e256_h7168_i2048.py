@@ -26,10 +26,10 @@ def run(
     routed_scaling_factor: float,
 ):
     """
-    FP8 per-tensor scale MoE with simple TopK routing.
+    FP8 per-tensor scale MoE with Renormalize routing (TopK -> Softmax).
 
-    • FP8 per-tensor dequantization: float ≈ fp8 / scale
-    • Simple TopK routing: softmax(logits + bias) → top_k experts
+    • FP8 per-tensor dequantization: float ≈ fp8 * scale
+    • Renormalize routing: TopK(logits + bias) → Softmax on top-k values
     • Local computation:
         only experts in [local_expert_offset, local_expert_offset + E_local) are
         computed on this rank (GEMM1 → SwiGLU → GEMM2), then per-token weighted
@@ -59,19 +59,19 @@ def run(
 
     device = hidden_states.device
 
-    # 1) FP8 per-tensor dequantization
+    # 1) FP8 per-tensor dequantization: float = fp8 * scale
     # hidden_states: [T, H], scale: scalar
-    A = hidden_states.to(torch.float32) / hidden_states_scale  # [T, H] float32
+    A = hidden_states.to(torch.float32) * hidden_states_scale  # [T, H] float32
 
     # W13: [E_local, 2I, H], scale: [E_local]
     W13_fp32 = gemm1_weights.to(torch.float32)
     S13 = gemm1_scales.to(torch.float32)  # [E_local]
-    W13 = W13_fp32 / S13.view(E_local, 1, 1)  # [E, 2I, H] float32
+    W13 = W13_fp32 * S13.view(E_local, 1, 1)  # [E, 2I, H] float32
 
     # W2: [E_local, H, I], scale: [E_local]
     W2_fp32 = gemm2_weights.to(torch.float32)
     S2 = gemm2_scales.to(torch.float32)  # [E_local]
-    W2 = W2_fp32 / S2.view(E_local, 1, 1)  # [E, H, I] float32
+    W2 = W2_fp32 * S2.view(E_local, 1, 1)  # [E, H, I] float32
 
     # 2) Renormalize routing: TopK -> Softmax
     logits = routing_logits.to(torch.float32)  # [T, E_global]
@@ -144,7 +144,7 @@ def _fp8_per_tensor_quant(x: torch.Tensor):
     Quantize tensor to FP8 with per-tensor scale.
     Returns:
       x_fp8: same shape as x (float8_e4m3fn)
-      scale: scalar (float32) -- the scale used for quantization (fp8 = float * scale)
+      scale: scalar (float32) -- the scale used for dequantization (float = fp8 * scale)
     """
     finfo = torch.finfo(torch.float8_e4m3fn)
     max_fp8 = finfo.max
@@ -152,8 +152,8 @@ def _fp8_per_tensor_quant(x: torch.Tensor):
     x_f32 = x.to(torch.float32)
     amax = torch.amax(torch.abs(x_f32))
 
-    # scale = amax / max_fp8, so fp8 = float / (amax / max_fp8) = float * (max_fp8 / amax)
-    # Dequant: float = fp8 / scale
+    # scale = amax / max_fp8, so fp8 = float / scale fits in [-max_fp8, max_fp8]
+    # Dequant: float = fp8 * scale
     scale = (amax / max_fp8) if amax > 0 else torch.tensor(1.0, device=x.device)
     x_fp8 = (x_f32 / scale).to(torch.float8_e4m3fn)
 
@@ -299,15 +299,16 @@ def test_correctness_moe(
     )
 
     # Compute output scales for the kernel
-    # scale_c_fc1 = c_global_sf * (1.0 / gemm1_scales) * (1.0 / hidden_states_scale)
-    # scale_gate_fc1 = (1.0 / gemm1_scales) * (1.0 / hidden_states_scale)
-    # scale_c_fc2 = (1.0 / c_global_sf) * (1.0 / gemm2_scales)
-    # For simplicity, we use c_global_sf = 1.0
-    c_global_sf = 1.0
+    # The kernel expects dequantization scales: for GEMM with FP8 inputs A and B,
+    # the output is computed as: out = A_fp8 @ B_fp8.T * scale_A * scale_B
+    # So we pass the product of input scales as the output scale.
     hidden_states_scale = inputs["hidden_states_scale"]
-    scale_c_fc1 = c_global_sf * (1.0 / inputs["gemm1_scales"]) * (1.0 / hidden_states_scale)
-    scale_gate_fc1 = (1.0 / inputs["gemm1_scales"]) * (1.0 / hidden_states_scale)
-    scale_c_fc2 = (1.0 / c_global_sf) * (1.0 / inputs["gemm2_scales"])
+    # scale_c_fc1 = hidden_states_scale * gemm1_scales (for the C/up projection)
+    # scale_gate_fc1 = hidden_states_scale * gemm1_scales (for the gate projection)
+    # scale_c_fc2 = gemm2_scales (intermediate is already in float)
+    scale_c_fc1 = hidden_states_scale * inputs["gemm1_scales"]
+    scale_gate_fc1 = hidden_states_scale * inputs["gemm1_scales"]
+    scale_c_fc2 = inputs["gemm2_scales"].clone()
 
     # Run FlashInfer fused kernel
     print("Running FlashInfer kernel...")
