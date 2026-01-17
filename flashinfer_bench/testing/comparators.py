@@ -1,4 +1,4 @@
-"""Comparators for comparing reference and baseline outputs."""
+"""Comparators for comparing reference and baseline outputs. Used by DefinitionTest."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
