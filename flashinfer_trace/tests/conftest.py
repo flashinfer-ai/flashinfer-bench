@@ -3,7 +3,8 @@
 import os
 from pathlib import Path
 
-# Skip references directory during test collection
+# The references tests are replaced by tests under definitions directory. The references
+# directory will be removed in the future.
 collect_ignore = ["references"]
 
 

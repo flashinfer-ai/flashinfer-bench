@@ -1,4 +1,4 @@
-"""Definition-based testing framework for comparing baseline against reference."""
+"""Test definitions: schema correctness, reference correctness, etc."""
 
 import json
 import math
@@ -11,14 +11,10 @@ import torch
 
 from flashinfer_bench.data import Definition
 from flashinfer_bench.env import get_fib_dataset_path
-from flashinfer_bench.testing.comparators import (
-    Comparator,
-    CompareResult,
-    MultiOutputComparator,
-    TensorComparator,
-)
-from flashinfer_bench.testing.pytest_config import requires_torch_cuda
 from flashinfer_bench.utils import dtype_str_to_torch_dtype
+
+from .comparators import Comparator, CompareResult, MultiOutputComparator, TensorComparator
+from .pytest_config import requires_torch_cuda
 
 
 class DefinitionRunner:
@@ -249,8 +245,13 @@ class DefinitionTest:
         if not path.is_absolute():
             dataset_path = get_fib_dataset_path()
             path = dataset_path / path
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        if not path.exists():
+            pytest.fail(f"Definition file not found: {path}")
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            pytest.fail(f"Invalid JSON in definition file {path}: {e}")
 
     @pytest.fixture(params=[])
     def config(self, request: pytest.FixtureRequest) -> Dict[str, Any]:

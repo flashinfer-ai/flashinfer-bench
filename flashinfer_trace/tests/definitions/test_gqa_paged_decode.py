@@ -1,8 +1,10 @@
 """Tests for GQA paged decode definitions."""
 
 import math
+import sys
 
 import flashinfer
+import pytest
 import torch
 
 from flashinfer_bench.testing import DefinitionTest
@@ -160,3 +162,7 @@ class TestGQAPagedDecodeH32KV8(DefinitionTest):
         )
 
         return wrapper.run(q, (k_cache, v_cache), return_lse=True)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

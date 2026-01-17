@@ -6,7 +6,7 @@ import os
 import platform
 import sys
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     import torch

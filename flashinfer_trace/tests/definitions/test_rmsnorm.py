@@ -1,6 +1,9 @@
 """Tests for RMSNorm definitions."""
 
+import sys
+
 import flashinfer
+import pytest
 import torch
 
 from flashinfer_bench.testing import DefinitionTest
@@ -67,7 +70,6 @@ class TestRMSNormH2048(DefinitionTest):
 class TestRMSNormH4096(DefinitionTest):
     """Test RMSNorm with hidden_size=4096."""
 
-    # Relative path to FIB_DATASET_PATH
     definition_path = "definitions/rmsnorm/rmsnorm_h4096.json"
     configs = [{"batch_size": 1}, {"batch_size": 4}, {"batch_size": 8}]
     atol = 8e-3
@@ -80,3 +82,24 @@ class TestRMSNormH4096(DefinitionTest):
     def baseline_fn(self, hidden_states, weight):
         """FlashInfer baseline implementation."""
         return flashinfer.norm.rmsnorm(hidden_states.contiguous(), weight.contiguous(), eps=1e-6)
+
+
+class TestRMSNormH7168(DefinitionTest):
+    """Test RMSNorm with hidden_size=7168."""
+
+    definition_path = "definitions/rmsnorm/rmsnorm_h7168.json"
+    configs = [{"batch_size": 1}, {"batch_size": 4}, {"batch_size": 8}]
+    atol = 8e-3
+    rtol = 1e-2
+
+    @staticmethod
+    def input_generator(**config):
+        return generate_rmsnorm_inputs(batch_size=config["batch_size"], hidden_size=7168)
+
+    def baseline_fn(self, hidden_states, weight):
+        """FlashInfer baseline implementation."""
+        return flashinfer.norm.rmsnorm(hidden_states.contiguous(), weight.contiguous(), eps=1e-6)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
