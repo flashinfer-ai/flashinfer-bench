@@ -110,6 +110,27 @@ class PolicyRegistry:
 
         Can be used as a decorator or called directly.
 
+        Parameters
+        ----------
+        name : str
+            The name to register the policy under.
+        policy_cls : Type[InputDumpPolicy], optional
+            The policy class to register. If not provided, returns a decorator.
+        override : bool, optional
+            If True, allows overriding an existing policy with the same name.
+            Default is False.
+
+        Returns
+        -------
+        Type[InputDumpPolicy] | Callable[[Type[InputDumpPolicy]], Type[InputDumpPolicy]]
+            If policy_cls is provided, returns the registered policy class.
+            Otherwise, returns a decorator that registers the class.
+
+        Raises
+        ------
+        ValueError
+            If a policy with the same name is already registered and override is False.
+
         Examples
         --------
         As decorator:
@@ -133,12 +154,29 @@ class PolicyRegistry:
 
     @classmethod
     def get_input_dump_policy(cls, name: str) -> Optional[Type[InputDumpPolicy]]:
-        """Get an input dump policy class by name."""
+        """Get an input dump policy class by name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the policy to retrieve.
+
+        Returns
+        -------
+        Type[InputDumpPolicy] | None
+            The policy class if found, otherwise None.
+        """
         return cls._input_dump_policies.get(name)
 
     @classmethod
     def list_input_dump_policies(cls) -> list[str]:
-        """List all registered input dump policy names."""
+        """List all registered input dump policy names.
+
+        Returns
+        -------
+        list[str]
+            A list of all registered input dump policy names.
+        """
         return list(cls._input_dump_policies.keys())
 
     @overload
@@ -160,6 +198,27 @@ class PolicyRegistry:
         """Register a filter policy class.
 
         Can be used as a decorator or called directly.
+
+        Parameters
+        ----------
+        name : str
+            The name to register the policy under.
+        policy_cls : Type[FilterPolicy], optional
+            The policy class to register. If not provided, returns a decorator.
+        override : bool, optional
+            If True, allows overriding an existing policy with the same name.
+            Default is False.
+
+        Returns
+        -------
+        Type[FilterPolicy] | Callable[[Type[FilterPolicy]], Type[FilterPolicy]]
+            If policy_cls is provided, returns the registered policy class.
+            Otherwise, returns a decorator that registers the class.
+
+        Raises
+        ------
+        ValueError
+            If a policy with the same name is already registered and override is False.
 
         Examples
         --------
@@ -186,10 +245,27 @@ class PolicyRegistry:
 
     @classmethod
     def get_filter_policy(cls, name: str) -> Optional[Type[FilterPolicy]]:
-        """Get a filter policy class by name."""
+        """Get a filter policy class by name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the policy to retrieve.
+
+        Returns
+        -------
+        Type[FilterPolicy] | None
+            The policy class if found, otherwise None.
+        """
         return cls._filter_policies.get(name)
 
     @classmethod
     def list_filter_policies(cls) -> list[str]:
-        """List all registered filter policy names."""
+        """List all registered filter policy names.
+
+        Returns
+        -------
+        list[str]
+            A list of all registered filter policy names.
+        """
         return list(cls._filter_policies.keys())
