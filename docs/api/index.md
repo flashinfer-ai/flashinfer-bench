@@ -12,4 +12,5 @@ rst/schema
 rst/apply
 rst/tracing
 rst/compile
+rst/agents
 ```

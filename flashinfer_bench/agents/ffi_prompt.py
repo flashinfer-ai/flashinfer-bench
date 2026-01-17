@@ -1,3 +1,5 @@
+"""Prompt templates for TVM FFI API documentation used by agents."""
+
 FFI_PROMPT_SIMPLE = """
 Use TVM FFI format for your generated kernel host function and bindings
 
@@ -159,6 +161,7 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
 }  // namespace my_kernels
 ```
 """
+"""Simplified TVM FFI API documentation with essential methods and a basic example."""
 
 FFI_PROMPT = """
 Use TVM FFI format for your generated kernel host function and bindings
@@ -585,3 +588,4 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(add_one_cuda, AddOne);
 }  // namespace my_kernels
 ```
 """
+"""Comprehensive TVM FFI API documentation with full method signatures and multiple examples."""
