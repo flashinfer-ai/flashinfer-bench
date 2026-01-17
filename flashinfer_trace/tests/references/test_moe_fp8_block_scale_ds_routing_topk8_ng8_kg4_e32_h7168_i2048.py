@@ -1,9 +1,7 @@
 import json
-import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file

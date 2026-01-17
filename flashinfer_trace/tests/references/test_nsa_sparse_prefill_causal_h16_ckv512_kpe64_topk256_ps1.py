@@ -12,7 +12,6 @@ import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 # Ground truth imports with availability checks
@@ -22,13 +21,6 @@ try:
     SGLANG_AVAILABLE = True
 except ImportError:
     SGLANG_AVAILABLE = False
-
-try:
-    import flashinfer
-
-    FLASHINFER_AVAILABLE = True
-except ImportError:
-    FLASHINFER_AVAILABLE = False
 
 # Module-level constants (DeepSeek V3/R1 with TP=8)
 NUM_QO_HEADS = 16
@@ -440,7 +432,6 @@ def main():
         f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
     )
     print(f"SGLang available: {SGLANG_AVAILABLE}")
-    print(f"FlashInfer available: {FLASHINFER_AVAILABLE}")
     print("=" * 70)
 
     test_results = []
