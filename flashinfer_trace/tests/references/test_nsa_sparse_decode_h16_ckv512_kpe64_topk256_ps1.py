@@ -249,7 +249,7 @@ def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
 def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
     """Test that sparse attention with all tokens selected equals dense attention."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA sparse vs dense consistency")
+    print("Testing NSA sparse vs dense consistency")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -299,7 +299,7 @@ def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
 def test_padding_handling(batch_size=4, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA padding handling")
+    print("Testing NSA padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -354,7 +354,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
     If not available, the test will be skipped.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA correctness against SGLang FlashMLA")
+    print("Testing NSA correctness against SGLang FlashMLA")
     print(f"batch_size={batch_size}, max_seq_len={max_seq_len}")
     print(f"{'='*60}")
 

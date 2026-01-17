@@ -230,7 +230,7 @@ def test_output_shape(total_num_tokens=64, topk=TOPK):
 def test_padding_handling(total_num_tokens=64, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill padding handling")
+    print("Testing NSA prefill padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -287,7 +287,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
     If not available, the test will be skipped.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill correctness against SGLang FlashMLA")
+    print("Testing NSA prefill correctness against SGLang FlashMLA")
     print(f"total_num_tokens={total_num_tokens}")
     print(f"{'='*60}")
 
