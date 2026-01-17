@@ -149,7 +149,6 @@ def generate_moe_fp8_inputs(
         "gemm2_weights_scale": gemm2_weights_scale,
         "local_expert_offset": local_expert_offset,
         "routed_scaling_factor": routed_scaling_factor,
-        "_local_num_experts": num_local_experts,
     }
 
 
@@ -181,10 +180,10 @@ class TestMoEFP8BlockScale(DefinitionTest):
         gemm2_weights_scale,
         local_expert_offset,
         routed_scaling_factor,
-        _local_num_experts=NUM_EXPERTS_LOCAL,
     ):
         """FlashInfer TRT-LLM FP8 MoE baseline implementation."""
         seq_len = hidden_states.shape[0]
+        local_num_experts = gemm1_weights.shape[0]
         tile_tokens_dim = get_tile_tokens_dim(seq_len, TOP_K, NUM_EXPERTS_GLOBAL)
 
         return trtllm_fp8_block_scale_moe(
@@ -202,7 +201,7 @@ class TestMoEFP8BlockScale(DefinitionTest):
             TOPK_GROUP,
             INTERMEDIATE_SIZE,
             int(local_expert_offset),
-            _local_num_experts,
+            local_num_experts,
             float(routed_scaling_factor),
             tile_tokens_dim=tile_tokens_dim,
             routing_method_type=2,

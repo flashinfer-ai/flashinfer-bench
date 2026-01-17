@@ -58,8 +58,6 @@ def generate_gqa_decode_inputs(
         "kv_indptr": kv_indptr,
         "kv_indices": kv_indices,
         "sm_scale": sm_scale,
-        # Extra metadata for baseline setup
-        "_seq_lens": seq_lens,
     }
 
 
@@ -85,7 +83,7 @@ class TestGQAPagedDecodeH32KV4(DefinitionTest):
             num_kv_heads=4,
         )
 
-    def baseline_fn(self, q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale, _seq_lens=None):
+    def baseline_fn(self, q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
         """FlashInfer baseline implementation."""
         device = q.device
         batch_size = q.shape[0]
@@ -137,7 +135,7 @@ class TestGQAPagedDecodeH32KV8(DefinitionTest):
             num_kv_heads=8,
         )
 
-    def baseline_fn(self, q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale, _seq_lens=None):
+    def baseline_fn(self, q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
         """FlashInfer baseline implementation."""
         device = q.device
         batch_size = q.shape[0]

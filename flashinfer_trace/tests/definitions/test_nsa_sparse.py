@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from flashinfer_bench.testing import DefinitionTest
-from flashinfer_bench.testing.comparators import HitRatioComparator
+from flashinfer_bench.testing.comparators import HitRatioComparator, MultiOutputComparator
 
 # Check SGLang availability
 try:
@@ -137,7 +137,13 @@ class TestNSASparseDecode(DefinitionTest):
     ]
     atol = 1e-2
     rtol = 5e-2
-    comparator = HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85)
+    comparator = MultiOutputComparator(
+        output_names=["output", "lse"],
+        comparators={
+            "output": HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85),
+            "lse": HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85),
+        },
+    )
 
     @staticmethod
     def input_generator(**config):
@@ -201,7 +207,13 @@ class TestNSASparsePrefill(DefinitionTest):
     configs = [{"total_num_tokens": 32}, {"total_num_tokens": 64}, {"total_num_tokens": 128}]
     atol = 1e-2
     rtol = 5e-2
-    comparator = HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85)
+    comparator = MultiOutputComparator(
+        output_names=["output", "lse"],
+        comparators={
+            "output": HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85),
+            "lse": HitRatioComparator(atol=1e-1, rtol=2e-1, min_hit_ratio=0.85),
+        },
+    )
 
     @staticmethod
     def input_generator(**config):

@@ -71,8 +71,6 @@ def generate_gqa_paged_prefill_inputs(
         "kv_indptr": kv_indptr,
         "kv_indices": kv_indices,
         "sm_scale": sm_scale,
-        # Metadata for baseline
-        "_kv_lens": kv_lens,
     }
 
 
@@ -98,9 +96,7 @@ class TestGQAPagedPrefillH32KV4(DefinitionTest):
             num_kv_heads=4,
         )
 
-    def baseline_fn(
-        self, q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale, _kv_lens=None
-    ):
+    def baseline_fn(self, q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
         """FlashInfer baseline implementation."""
         device = q.device
         batch_size = qo_indptr.shape[0] - 1
@@ -154,9 +150,7 @@ class TestGQAPagedPrefillH32KV8(DefinitionTest):
             num_kv_heads=8,
         )
 
-    def baseline_fn(
-        self, q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale, _kv_lens=None
-    ):
+    def baseline_fn(self, q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
         """FlashInfer baseline implementation."""
         device = q.device
         batch_size = qo_indptr.shape[0] - 1

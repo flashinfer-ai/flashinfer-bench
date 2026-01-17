@@ -52,7 +52,6 @@ def generate_mla_decode_inputs(
         "kv_indptr": kv_indptr,
         "kv_indices": kv_indices,
         "sm_scale": sm_scale,
-        "_seq_lens": seq_lens,
     }
 
 
@@ -108,7 +107,6 @@ def generate_mla_prefill_inputs(
         "kv_indptr": kv_indptr,
         "kv_indices": kv_indices,
         "sm_scale": sm_scale,
-        "_kv_lens": kv_lens,
     }
 
 
@@ -130,16 +128,14 @@ class TestMLAPagedDecode(DefinitionTest):
             batch_size=config["batch_size"], max_seq_len=config["max_seq_len"]
         )
 
-    def baseline_fn(
-        self, q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale, _seq_lens=None
-    ):
+    def baseline_fn(self, q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):
         """FlashInfer baseline implementation."""
         device = q_nope.device
         batch_size = q_nope.shape[0]
 
         workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
         qo_indptr = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device)
-        kv_len_arr = _seq_lens if _seq_lens is not None else (kv_indptr[1:] - kv_indptr[:-1])
+        kv_len_arr = kv_indptr[1:] - kv_indptr[:-1]
 
         wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(workspace_buffer, backend="auto")
         wrapper.plan(
@@ -181,20 +177,11 @@ class TestMLAPagedPrefill(DefinitionTest):
         )
 
     def baseline_fn(
-        self,
-        q_nope,
-        q_pe,
-        ckv_cache,
-        kpe_cache,
-        qo_indptr,
-        kv_indptr,
-        kv_indices,
-        sm_scale,
-        _kv_lens=None,
+        self, q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, sm_scale
     ):
         """FlashInfer baseline implementation."""
         device = q_nope.device
-        kv_len_arr = _kv_lens if _kv_lens is not None else (kv_indptr[1:] - kv_indptr[:-1])
+        kv_len_arr = kv_indptr[1:] - kv_indptr[:-1]
 
         workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
 

@@ -168,12 +168,9 @@ class DefinitionRunner:
         """
         inputs = self._generate_inputs(**config)
 
-        # Filter out metadata keys (starting with '_') for reference function
-        ref_inputs = {k: v for k, v in inputs.items() if not k.startswith("_")}
-
         # Execute reference and baseline
         with torch.no_grad():
-            ref_output = self.reference_fn(**ref_inputs)
+            ref_output = self.reference_fn(**inputs)
             baseline_output = self.baseline_fn(**inputs)
 
         # Compare outputs
