@@ -41,7 +41,6 @@ class TestTopPSampling:
         probs = generate_sampling_inputs(batch_size, vocab_size, device)
         top_p = torch.rand(batch_size, device=device) * 0.8 + 0.1
 
-        ref_counter = torch.zeros(batch_size, vocab_size, dtype=torch.int32, device=device)
         fi_counter = torch.zeros(batch_size, vocab_size, dtype=torch.int32, device=device)
 
         for trial in range(num_trials):

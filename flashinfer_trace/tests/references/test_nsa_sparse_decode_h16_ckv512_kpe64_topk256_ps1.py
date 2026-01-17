@@ -413,7 +413,6 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         torch.tensor(sm_scale, dtype=torch.float32, device=device),
     )
     ref_output = ref_result["output"]
-    ref_lse = ref_result["lse"]
 
     # Run FlashMLA sparse
     # flash_mla_sparse_fwd expects:
@@ -447,10 +446,8 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         # Trim output back to original number of heads if padding was applied
         if need_padding:
             fi_output = fi_output_full[:, :NUM_QO_HEADS, :]
-            fi_lse = fi_lse_full[:, :NUM_QO_HEADS]
         else:
             fi_output = fi_output_full
-            fi_lse = fi_lse_full
 
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")

@@ -347,7 +347,6 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         torch.tensor(sm_scale, dtype=torch.float32, device=device),
     )
     ref_output = ref_result["output"]
-    ref_lse = ref_result["lse"]
 
     # Run FlashMLA sparse prefill
     # flash_mla_sparse_fwd expects:
@@ -381,10 +380,8 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         # Trim output back to original number of heads if padding was applied
         if need_padding:
             fi_output = fi_output_full[:, :NUM_QO_HEADS, :]
-            fi_lse = fi_lse_full[:, :NUM_QO_HEADS]
         else:
             fi_output = fi_output_full
-            fi_lse = fi_lse_full
 
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
@@ -396,7 +393,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
 
     # Compare outputs
     print("\nComparing outputs...")
-    abs_diff, rel_diff, cos_sim = compute_error_metrics(ref_output, fi_output, "output")
+    compute_error_metrics(ref_output, fi_output, "output")
 
     # Check tolerance
     allclose = torch.allclose(ref_output.float(), fi_output.float(), atol=atol, rtol=rtol)
