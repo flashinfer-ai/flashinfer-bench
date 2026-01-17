@@ -14,10 +14,7 @@ def _resolve_def_name(weight: torch.Tensor) -> str:
 
 
 def _extract_arg(
-    name: str,
-    position: int,
-    args: Sequence[Any],
-    kwargs: Dict[str, Any],
+    name: str, position: int, args: Sequence[Any], kwargs: Dict[str, Any]
 ) -> Optional[Any]:
     if name in kwargs:
         return kwargs[name]
