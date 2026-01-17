@@ -67,7 +67,7 @@ class LinearAdapter:
                 return orig(*args, **kwargs)
 
             try:
-                out_2d = apply(_resolve_def_name, runtime_kwargs=rk, fallback=_fb)
+                out_2d = apply(_resolve_def_name(weight), runtime_kwargs=rk, fallback=_fb)
             except Exception:
                 return orig(*args, **kwargs)
 
