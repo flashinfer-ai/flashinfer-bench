@@ -1,22 +1,18 @@
 """Testing utilities for flashinfer-bench."""
 
-from .definition import (
+from .comparators import (
     Comparator,
     CompareResult,
-    DefinitionTest,
-    DefinitionTestCase,
     HitRatioComparator,
     MultiOutputComparator,
     TensorComparator,
-    TestResult,
 )
+from .definition import DefinitionTest
 from .pytest_config import requires_torch_cuda
 
 __all__ = [
     "DefinitionTest",
-    "DefinitionTestCase",
     "CompareResult",
-    "TestResult",
     "Comparator",
     "TensorComparator",
     "MultiOutputComparator",

@@ -5,7 +5,7 @@ import math
 import flashinfer
 import torch
 
-from flashinfer_bench.testing import DefinitionTestCase
+from flashinfer_bench.testing import DefinitionTest
 
 
 def generate_gqa_decode_inputs(
@@ -61,7 +61,7 @@ def generate_gqa_decode_inputs(
     }
 
 
-class TestGQAPagedDecodeH32KV4(DefinitionTestCase):
+class TestGQAPagedDecodeH32KV4(DefinitionTest):
     """Test GQA paged decode with 32 QO heads and 4 KV heads."""
 
     definition_path = "definitions/gqa_paged/gqa_paged_decode_h32_kv4_d128_ps1.json"
@@ -113,7 +113,7 @@ class TestGQAPagedDecodeH32KV4(DefinitionTestCase):
         return wrapper.run(q, (k_cache, v_cache), return_lse=True)
 
 
-class TestGQAPagedDecodeH32KV8(DefinitionTestCase):
+class TestGQAPagedDecodeH32KV8(DefinitionTest):
     """Test GQA paged decode with 32 QO heads and 8 KV heads."""
 
     # Relative path to FIB_DATASET_PATH

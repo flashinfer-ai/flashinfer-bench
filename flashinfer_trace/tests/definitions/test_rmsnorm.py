@@ -3,7 +3,7 @@
 import flashinfer
 import torch
 
-from flashinfer_bench.testing import DefinitionTestCase
+from flashinfer_bench.testing import DefinitionTest
 
 
 def generate_rmsnorm_inputs(batch_size: int, hidden_size: int, device: str = "cuda"):
@@ -18,7 +18,7 @@ def generate_rmsnorm_inputs(batch_size: int, hidden_size: int, device: str = "cu
     return {"hidden_states": hidden_states, "weight": weight}
 
 
-class TestRMSNormH128(DefinitionTestCase):
+class TestRMSNormH128(DefinitionTest):
     """Test RMSNorm with hidden_size=128."""
 
     # Relative path to FIB_DATASET_PATH
@@ -46,7 +46,7 @@ class TestRMSNormH128(DefinitionTestCase):
         return flashinfer.norm.rmsnorm(hidden_states.contiguous(), weight.contiguous(), eps=1e-6)
 
 
-class TestRMSNormH2048(DefinitionTestCase):
+class TestRMSNormH2048(DefinitionTest):
     """Test RMSNorm with hidden_size=2048."""
 
     # Relative path to FIB_DATASET_PATH
@@ -64,7 +64,7 @@ class TestRMSNormH2048(DefinitionTestCase):
         return flashinfer.norm.rmsnorm(hidden_states.contiguous(), weight.contiguous(), eps=1e-6)
 
 
-class TestRMSNormH4096(DefinitionTestCase):
+class TestRMSNormH4096(DefinitionTest):
     """Test RMSNorm with hidden_size=4096."""
 
     # Relative path to FIB_DATASET_PATH

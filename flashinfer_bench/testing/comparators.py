@@ -12,8 +12,11 @@ class CompareResult:
     """Result of comparing reference and baseline outputs."""
 
     passed: bool
+    """Whether the comparison passed."""
     stats: Dict[str, Any] = field(default_factory=dict)
+    """Statistics from the comparison (e.g., max_abs_diff, mse)."""
     details: Optional[str] = None
+    """Detailed error information if comparison failed."""
 
 
 class Comparator(ABC):
@@ -23,12 +26,17 @@ class Comparator(ABC):
     def compare(self, ref_output: Any, baseline_output: Any) -> CompareResult:
         """Compare reference output with baseline output.
 
-        Args:
-            ref_output: Output from reference implementation
-            baseline_output: Output from baseline implementation
+        Parameters
+        ----------
+        ref_output : Any
+            Output from reference implementation.
+        baseline_output : Any
+            Output from baseline implementation.
 
-        Returns:
-            CompareResult with pass/fail status and statistics
+        Returns
+        -------
+        CompareResult
+            Comparison result with pass/fail status and statistics.
         """
         ...
 
@@ -37,17 +45,33 @@ class TensorComparator(Comparator):
     """Comparator for single tensor outputs using torch.allclose."""
 
     def __init__(self, atol: float = 1e-2, rtol: float = 5e-2):
-        """Initialize tensor comparator.
+        """Initialize with tolerance values.
 
-        Args:
-            atol: Absolute tolerance for comparison
-            rtol: Relative tolerance for comparison
+        Parameters
+        ----------
+        atol : float
+            Absolute tolerance for comparison.
+        rtol : float
+            Relative tolerance for comparison.
         """
         self.atol = atol
         self.rtol = rtol
 
     def compare(self, ref_output: torch.Tensor, baseline_output: torch.Tensor) -> CompareResult:
-        """Compare two tensors."""
+        """Compare two tensors using torch.allclose.
+
+        Parameters
+        ----------
+        ref_output : torch.Tensor
+            Reference tensor output.
+        baseline_output : torch.Tensor
+            Baseline tensor output.
+
+        Returns
+        -------
+        CompareResult
+            Comparison result with pass/fail status and statistics.
+        """
         ref = ref_output.float()
         base = baseline_output.float()
 
@@ -59,9 +83,6 @@ class TensorComparator(Comparator):
             "mean_abs_diff": abs_diff.mean().item(),
             "max_rel_diff": rel_diff.max().item(),
             "mean_rel_diff": rel_diff.mean().item(),
-            "cosine_sim": torch.nn.functional.cosine_similarity(
-                ref.flatten(), base.flatten(), dim=0
-            ).item(),
             "mse": torch.mean((ref - base) ** 2).item(),
         }
 
@@ -87,7 +108,8 @@ class TensorComparator(Comparator):
             ref_val = ref.flatten()[idx].item()
             base_val = base.flatten()[idx].item()
             lines.append(
-                f"  [{idx}]: ref={ref_val:.6e}, base={base_val:.6e}, diff={top_errors[i].item():.6e}"
+                f"  [{idx}]: ref={ref_val:.6e}, base={base_val:.6e}, "
+                f"diff={top_errors[i].item():.6e}"
             )
 
         return "\n".join(lines)
@@ -103,13 +125,18 @@ class MultiOutputComparator(Comparator):
         atol: float = 1e-2,
         rtol: float = 5e-2,
     ):
-        """Initialize multi-output comparator.
+        """Initialize with output names and optional per-output comparators.
 
-        Args:
-            output_names: Names of outputs in order (for tuple unpacking)
-            comparators: Optional dict mapping output names to specific comparators
-            atol: Default absolute tolerance
-            rtol: Default relative tolerance
+        Parameters
+        ----------
+        output_names : List[str]
+            Names of outputs in order (for tuple unpacking).
+        comparators : Dict[str, Comparator], optional
+            Dict mapping output names to specific comparators.
+        atol : float
+            Default absolute tolerance.
+        rtol : float
+            Default relative tolerance.
         """
         self.output_names = output_names
         self.comparators = comparators or {
@@ -119,7 +146,20 @@ class MultiOutputComparator(Comparator):
     def compare(
         self, ref_output: Union[tuple, dict], baseline_output: Union[tuple, dict]
     ) -> CompareResult:
-        """Compare multiple outputs."""
+        """Compare multiple outputs.
+
+        Parameters
+        ----------
+        ref_output : Union[tuple, dict]
+            Reference outputs as tuple or dict.
+        baseline_output : Union[tuple, dict]
+            Baseline outputs as tuple or dict.
+
+        Returns
+        -------
+        CompareResult
+            Comparison result with pass/fail status and per-output statistics.
+        """
         # Convert tuples to dicts
         if isinstance(ref_output, tuple):
             ref_dict = dict(zip(self.output_names, ref_output))
@@ -159,19 +199,36 @@ class HitRatioComparator(Comparator):
     """
 
     def __init__(self, atol: float = 1e-1, rtol: float = 2e-1, min_hit_ratio: float = 0.85):
-        """Initialize hit ratio comparator.
+        """Initialize with tolerance values and minimum hit ratio.
 
-        Args:
-            atol: Absolute tolerance for per-element comparison
-            rtol: Relative tolerance for per-element comparison
-            min_hit_ratio: Minimum fraction of elements that must pass (0.0-1.0)
+        Parameters
+        ----------
+        atol : float
+            Absolute tolerance for per-element comparison.
+        rtol : float
+            Relative tolerance for per-element comparison.
+        min_hit_ratio : float
+            Minimum fraction of elements that must pass (0.0-1.0).
         """
         self.atol = atol
         self.rtol = rtol
         self.min_hit_ratio = min_hit_ratio
 
     def compare(self, ref_output: torch.Tensor, baseline_output: torch.Tensor) -> CompareResult:
-        """Compare tensors with hit ratio criterion."""
+        """Compare tensors with hit ratio criterion.
+
+        Parameters
+        ----------
+        ref_output : torch.Tensor
+            Reference tensor output.
+        baseline_output : torch.Tensor
+            Baseline tensor output.
+
+        Returns
+        -------
+        CompareResult
+            Comparison result with hit ratio statistics.
+        """
         ref = ref_output.float()
         base = baseline_output.float()
 
@@ -185,9 +242,6 @@ class HitRatioComparator(Comparator):
             "required_ratio": self.min_hit_ratio,
             "max_abs_diff": abs_diff.max().item(),
             "mean_abs_diff": abs_diff.mean().item(),
-            "cosine_sim": torch.nn.functional.cosine_similarity(
-                ref.flatten(), base.flatten(), dim=0
-            ).item(),
         }
 
         passed = hit_ratio >= self.min_hit_ratio
