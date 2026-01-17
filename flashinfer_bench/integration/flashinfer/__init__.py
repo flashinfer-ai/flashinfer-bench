@@ -6,6 +6,7 @@ from flashinfer_bench.integration.patch_manager import get_manager
 
 from .adapters.gqa_paged_decode import GQAPagedDecodeAdapter
 from .adapters.gqa_paged_prefill import GQAPagedPrefillAdapter
+from .adapters.linear import LinearAdapter
 from .adapters.mla_paged import MLAPagedAdapter
 from .adapters.ragged_prefill import RaggedPrefillAdapter
 from .adapters.rmsnorm import RMSNormAdapter
@@ -24,6 +25,7 @@ def install_flashinfer_integrations() -> None:
         RaggedPrefillAdapter(),
         GQAPagedDecodeAdapter(),
         MLAPagedAdapter(),
+        LinearAdapter(),
         RMSNormAdapter(),
     ]
 
