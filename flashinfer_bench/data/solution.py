@@ -215,3 +215,12 @@ class Solution(BaseModelWithDocstrings):
     def hash(self) -> str:
         """Return memoized hash of the solution content."""
         return self._hash_cache
+
+    def __hash__(self) -> int:  # pragma: no cover - trivial wrapper
+        # Use the memoized content hash for fast hashing in dict/set keys.
+        return hash(self._hash_cache)
+
+    def __eq__(self, other: object) -> bool:  # pragma: no cover - trivial wrapper
+        if not isinstance(other, Solution):
+            return NotImplemented
+        return self._hash_cache == other._hash_cache
