@@ -32,7 +32,7 @@ def _get_dtype_str_to_python_dtype() -> Dict[str, type]:
     }
 
 
-def dtype_str_to_python_dtype(dtype_str: str) -> Optional[type]:
+def dtype_str_to_python_dtype(dtype_str: str) -> type:
     if not dtype_str:
         raise ValueError("dtype is None or empty")
     dtype = _get_dtype_str_to_python_dtype().get(dtype_str, None)

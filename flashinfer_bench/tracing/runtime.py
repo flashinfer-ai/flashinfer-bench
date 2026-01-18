@@ -1,5 +1,7 @@
 """Runtime system for collecting and managing workload traces."""
 
+from __future__ import annotations
+
 import atexit
 import logging
 import os
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 class TracingRuntime:
     """Process-wide singleton tracer for workload collection."""
 
-    _stack: ClassVar[List["TracingRuntime"]] = []
+    _stack: ClassVar[List[TracingRuntime]] = []
     """Global runtime stack."""
     _cleanup_registered: ClassVar[bool] = False
     """Whether the cleanup handlers have been registered."""
@@ -40,7 +42,7 @@ class TracingRuntime:
     """Whether initialization from environment variables has been attempted."""
 
     @classmethod
-    def get_instance(cls) -> Optional["TracingRuntime"]:
+    def get_instance(cls) -> Optional[TracingRuntime]:
         """Get the current global TracingRuntime instance (top of stack).
 
         Lazily initializes from environment variable FIB_ENABLE_TRACING on first call.
@@ -133,8 +135,15 @@ class TracingRuntime:
         install_flashinfer_integrations()
 
     def start(self):
-        """Activate this runtime by pushing it onto the global stack. Should be called in the
-        main thread."""
+        """Activate this runtime instance. Should be called in the
+        main thread.
+
+        If this runtime is already the active instance, this method has no effect.
+        Multiple runtimes can be nested; internally they are managed via a stack.
+        """
+        # The current runtime is already activated, do nothing.
+        if len(TracingRuntime._stack) > 0 and TracingRuntime._stack[-1] is self:
+            return
         TracingRuntime._register_cleanup()
         TracingRuntime._stack.append(self)
 
@@ -147,13 +156,16 @@ class TracingRuntime:
         )
 
     def stop(self):
-        """Deactivate this runtime by removing it from the stack and flushing. Should be called
+        """Deactivate this runtime instance and flush buffered traces. Should be called
         in the main thread.
+
+        The runtime must be currently active. After stopping, the previously active
+        runtime (if any) is restored.
 
         Raises
         ------
         RuntimeError
-            If this runtime is not the current active instance (not at stack top).
+            If this runtime is not the currently active instance.
         """
         if not TracingRuntime._stack or TracingRuntime._stack[-1] is not self:
             raise RuntimeError(
@@ -161,8 +173,9 @@ class TracingRuntime:
                 "Runtimes must be stopped in LIFO order."
             )
 
-        TracingRuntime._stack.pop()
         self.flush()
+        TracingRuntime._stack.pop()
+        logger.info("TracingRuntime stopped")
 
     def collect(self, def_name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]):
         """Record a workload for later serialization to disk.
@@ -404,7 +417,7 @@ class TracingRuntime:
             f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
         )
 
-    def __enter__(self) -> "TracingRuntime":
+    def __enter__(self) -> TracingRuntime:
         """Context manager entry point.
 
         Returns
@@ -436,7 +449,7 @@ class TracingRuntime:
         return False
 
     @classmethod
-    def _create_from_env(cls) -> Optional["TracingRuntime"]:
+    def _create_from_env(cls) -> Optional[TracingRuntime]:
         """Initialize the global runtime from environment variables if configured."""
         fib_enable_tracing = get_fib_enable_tracing()
         if not fib_enable_tracing:
@@ -490,7 +503,7 @@ class CudaGraphTracingRuntime:
     graph tensors for tracing purposes.
     """
 
-    def __init__(self, tracing_runtime: "TracingRuntime"):
+    def __init__(self, tracing_runtime: TracingRuntime):
         """Initialize the CUDA graph tracing runtime context manager.
 
         Parameters
