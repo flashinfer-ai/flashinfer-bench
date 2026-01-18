@@ -12,7 +12,6 @@ import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 # Ground truth imports with availability checks
@@ -22,13 +21,6 @@ try:
     SGLANG_AVAILABLE = True
 except ImportError:
     SGLANG_AVAILABLE = False
-
-try:
-    import flashinfer
-
-    FLASHINFER_AVAILABLE = True
-except ImportError:
-    FLASHINFER_AVAILABLE = False
 
 # Module-level constants (DeepSeek V3/R1 with TP=8)
 NUM_QO_HEADS = 16
@@ -238,7 +230,7 @@ def test_output_shape(total_num_tokens=64, topk=TOPK):
 def test_padding_handling(total_num_tokens=64, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill padding handling")
+    print("Testing NSA prefill padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -295,7 +287,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
     If not available, the test will be skipped.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill correctness against SGLang FlashMLA")
+    print("Testing NSA prefill correctness against SGLang FlashMLA")
     print(f"total_num_tokens={total_num_tokens}")
     print(f"{'='*60}")
 
@@ -355,7 +347,6 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         torch.tensor(sm_scale, dtype=torch.float32, device=device),
     )
     ref_output = ref_result["output"]
-    ref_lse = ref_result["lse"]
 
     # Run FlashMLA sparse prefill
     # flash_mla_sparse_fwd expects:
@@ -389,10 +380,8 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         # Trim output back to original number of heads if padding was applied
         if need_padding:
             fi_output = fi_output_full[:, :NUM_QO_HEADS, :]
-            fi_lse = fi_lse_full[:, :NUM_QO_HEADS]
         else:
             fi_output = fi_output_full
-            fi_lse = fi_lse_full
 
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
@@ -404,7 +393,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
 
     # Compare outputs
     print("\nComparing outputs...")
-    abs_diff, rel_diff, cos_sim = compute_error_metrics(ref_output, fi_output, "output")
+    compute_error_metrics(ref_output, fi_output, "output")
 
     # Check tolerance
     allclose = torch.allclose(ref_output.float(), fi_output.float(), atol=atol, rtol=rtol)
@@ -440,7 +429,6 @@ def main():
         f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
     )
     print(f"SGLang available: {SGLANG_AVAILABLE}")
-    print(f"FlashInfer available: {FLASHINFER_AVAILABLE}")
     print("=" * 70)
 
     test_results = []

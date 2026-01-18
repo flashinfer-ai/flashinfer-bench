@@ -13,24 +13,15 @@ import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 
 # Ground truth imports with availability checks
 try:
-    from sgl_kernel.flash_mla import flash_mla_sparse_fwd, flash_mla_with_kvcache, get_mla_metadata
+    from sgl_kernel.flash_mla import flash_mla_sparse_fwd
 
     SGLANG_AVAILABLE = True
 except ImportError:
     SGLANG_AVAILABLE = False
-
-# FlashInfer sparse is BSR-based, different from NSA's token-level sparse
-try:
-    import flashinfer
-
-    FLASHINFER_AVAILABLE = True
-except ImportError:
-    FLASHINFER_AVAILABLE = False
 
 # Module-level constants (DeepSeek V3/R1 with TP=8)
 NUM_QO_HEADS = 16
@@ -258,7 +249,7 @@ def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
 def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
     """Test that sparse attention with all tokens selected equals dense attention."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA sparse vs dense consistency")
+    print("Testing NSA sparse vs dense consistency")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -308,7 +299,7 @@ def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
 def test_padding_handling(batch_size=4, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA padding handling")
+    print("Testing NSA padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -363,7 +354,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
     If not available, the test will be skipped.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA correctness against SGLang FlashMLA")
+    print("Testing NSA correctness against SGLang FlashMLA")
     print(f"batch_size={batch_size}, max_seq_len={max_seq_len}")
     print(f"{'='*60}")
 
@@ -422,7 +413,6 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         torch.tensor(sm_scale, dtype=torch.float32, device=device),
     )
     ref_output = ref_result["output"]
-    ref_lse = ref_result["lse"]
 
     # Run FlashMLA sparse
     # flash_mla_sparse_fwd expects:
@@ -456,10 +446,8 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         # Trim output back to original number of heads if padding was applied
         if need_padding:
             fi_output = fi_output_full[:, :NUM_QO_HEADS, :]
-            fi_lse = fi_lse_full[:, :NUM_QO_HEADS]
         else:
             fi_output = fi_output_full
-            fi_lse = fi_lse_full
 
     except Exception as e:
         print(f"WARNING: FlashMLA sparse fwd failed: {e}")
@@ -507,7 +495,6 @@ def main():
         f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
     )
     print(f"SGLang available: {SGLANG_AVAILABLE}")
-    print(f"FlashInfer available: {FLASHINFER_AVAILABLE}")
     print("=" * 70)
 
     test_results = []

@@ -1,9 +1,7 @@
 import json
-import math
 from pathlib import Path
 
 import numpy as np
-import pytest
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file
@@ -162,7 +160,6 @@ def run(
             continue
 
         token_idx = torch.nonzero(sel_mask_per_token, as_tuple=False).squeeze(1)  # [Tk]
-        Tk = token_idx.numel()
 
         # Gather inputs and weights for this expert
         A_e = A.index_select(0, token_idx)  # [Tk, H]
@@ -309,7 +306,7 @@ def _load_workload_tensors(record: dict, *, device: str):
 
         file_path = Path(spec["path"])
         if not file_path.is_absolute():
-            file_path = REPO_ROOT / file_path
+            file_path = TRACE_ROOT / file_path
 
         if file_path not in tensor_cache:
             tensor_cache[file_path] = load_file(file_path)
