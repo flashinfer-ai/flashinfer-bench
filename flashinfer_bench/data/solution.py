@@ -213,7 +213,22 @@ class Solution(BaseModelWithDocstrings):
         return h.hexdigest()
 
     def hash(self) -> str:
-        """Return memoized hash of the solution content."""
+    def hash(self) -> str:
+        """Return the memoized deterministic hash of the solution content.
+
+        This hash is computed from all fields that affect the solution's behavior:
+        name, definition, language, entry point, dependencies, and all source file
+        paths and contents. This ensures that any meaningful change to the solution
+        results in a different hash.
+
+        The hash is used for caching build artifacts, allowing solutions with the same
+        hash to reuse the same cached build result.
+
+        Returns
+        -------
+        str
+            A SHA1 hash (40 hex characters) uniquely identifying this solution's content.
+        """
         return self._hash_cache
 
     def __hash__(self) -> int:  # pragma: no cover - trivial wrapper
