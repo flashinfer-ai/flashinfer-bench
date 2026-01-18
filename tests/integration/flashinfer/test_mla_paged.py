@@ -1,4 +1,5 @@
 import math
+import sys
 
 import pytest
 import torch
@@ -173,26 +174,26 @@ def test_mla_paged_decode_apply_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    ApplyRuntime.set_instance(runtime)
 
-    # Decode through adapter
-    mla_d = flashinfer.mla.BatchMLAPagedAttentionWrapper(torch.zeros_like(ws))
-    mla_d.plan(
-        qo_indptr_decode,
-        kv_indptr,
-        kv_indices,
-        kv_len_arr,
-        H,
-        D_ckv,
-        D_kpe,
-        PS,
-        causal=True,
-        sm_scale=sm_scale,
-        q_data_type=q_nope_decode.dtype,
-        kv_data_type=ckv.dtype,
-    )
-    out_decode_apply = mla_d.run(q_nope_decode, q_pe_decode, ckv, kpe)
-    assert out_decode_apply == "__SUB__mla_decode__"
+    with runtime:
+        # Decode through adapter
+        mla_d = flashinfer.mla.BatchMLAPagedAttentionWrapper(torch.zeros_like(ws))
+        mla_d.plan(
+            qo_indptr_decode,
+            kv_indptr,
+            kv_indices,
+            kv_len_arr,
+            H,
+            D_ckv,
+            D_kpe,
+            PS,
+            causal=True,
+            sm_scale=sm_scale,
+            q_data_type=q_nope_decode.dtype,
+            kv_data_type=ckv.dtype,
+        )
+        out_decode_apply = mla_d.run(q_nope_decode, q_pe_decode, ckv, kpe)
+        assert out_decode_apply == "__SUB__mla_decode__"
 
 
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
@@ -333,7 +334,11 @@ def test_mla_paged_prefill_apply_substitution(tmp_path, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
     runtime = ApplyRuntime(trace_set, ApplyConfig())
-    ApplyRuntime.set_instance(runtime)
 
-    out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
-    assert out_prefill_apply == "__SUB__mla_prefill__"
+    with runtime:
+        out_prefill_apply = mla_p.run(q_nope_prefill, q_pe_prefill, ckv, kpe)
+        assert out_prefill_apply == "__SUB__mla_prefill__"
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

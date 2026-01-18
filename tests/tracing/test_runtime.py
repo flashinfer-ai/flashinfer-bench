@@ -93,6 +93,23 @@ def test_runtime_lifecycle(minimal_trace_set: TraceSet):
     assert TracingRuntime.get_instance() is None
 
 
+def test_runtime_multiple_start(minimal_trace_set: TraceSet):
+    """Test start() idempotency and reactivation (stack re-push)."""
+    config = TracingConfig(input_dump_policy=[], filter_policy="keep_all")
+    rt1 = TracingRuntime(minimal_trace_set, config)
+    rt2 = TracingRuntime(minimal_trace_set, config)
+
+    # Idempotent: multiple start() on active runtime has no effect
+    rt1.start()
+    rt1.start()
+    assert TracingRuntime._stack == [rt1]
+
+    # Reactivate: start() on inactive runtime pushes it again
+    rt2.start()
+    rt1.start()
+    assert TracingRuntime._stack == [rt1, rt2, rt1]
+
+
 def test_policy_isolation(minimal_trace_set: TraceSet):
     """Test filter policies are isolated between definitions and runtimes."""
     config = TracingConfig(
