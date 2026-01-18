@@ -1,9 +1,6 @@
 import json
-import math
 from pathlib import Path
 
-import numpy as np
-import pytest
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file
@@ -189,7 +186,7 @@ def run(
 
 
 # -----------------------------
-# Helpers: FP8 block quantization (dequant scale semantics)
+# Helpers: FP8 block quantization (dequant scale semantics) - Vectorized
 # -----------------------------
 def _fp8_block_quant_1d(x_bf16: torch.Tensor, block: int = 128):
     """
@@ -203,22 +200,22 @@ def _fp8_block_quant_1d(x_bf16: torch.Tensor, block: int = 128):
     assert H % block == 0
     nb = H // block
 
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    max_fp8 = finfo.max
-
+    max_fp8 = torch.finfo(torch.float8_e4m3fn).max
     x_f32 = x_bf16.to(torch.float32)
-    x_fp8 = torch.empty((T, H), dtype=torch.float8_e4m3fn, device=x_bf16.device)
-    scales = torch.empty((T, nb), dtype=torch.float32, device=x_bf16.device)
 
-    for j in range(nb):
-        sl = slice(j * block, (j + 1) * block)
-        blk = x_f32[:, sl]  # [T, 128]
-        amax = torch.amax(torch.abs(blk), dim=1)  # [T]
-        # dequant scale s = amax / max_fp8  (float ≈ fp8 * s)
-        s = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
-        q = (blk / s.unsqueeze(1)).to(torch.float8_e4m3fn)  # quantization
-        x_fp8[:, sl] = q
-        scales[:, j] = s
+    # Reshape to [T, nb, block] for vectorized block operations
+    x_blocked = x_f32.view(T, nb, block)
+
+    # Compute per-block amax: [T, nb]
+    amax = torch.amax(torch.abs(x_blocked), dim=2)
+
+    # Compute scales (dequant scale = amax / max_fp8)
+    scales = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
+
+    # Quantize: x_fp8 = x / scale
+    x_scaled = x_blocked / scales.unsqueeze(2)
+    x_fp8 = x_scaled.view(T, H).to(torch.float8_e4m3fn)
+
     return x_fp8, scales  # scales in [T, H/128]
 
 
@@ -229,6 +226,8 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     Returns:
       w_fp8: [*, R, C] (float8_e4m3fn)
       scales: [*, R/128, C/128] (float32) -- dequant scales
+
+    Fully vectorized implementation for speed.
     """
     assert w_bf16.dim() >= 2
     *prefix, R, C = w_bf16.shape
@@ -236,41 +235,30 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     nb_r = R // block
     nb_c = C // block
 
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    max_fp8 = finfo.max
-
+    max_fp8 = torch.finfo(torch.float8_e4m3fn).max
     w_f32 = w_bf16.to(torch.float32).contiguous()
-    w_fp8 = torch.empty_like(w_f32, dtype=torch.float8_e4m3fn)
-    scales = torch.empty((*prefix, nb_r, nb_c), dtype=torch.float32, device=w_bf16.device)
 
-    it = np.ndindex(*prefix) if prefix else [()]
-    for idx in it:
-        sel = idx if isinstance(idx, tuple) else (idx,)
-        for i in range(nb_r):
-            rs = slice(i * block, (i + 1) * block)
-            for j in range(nb_c):
-                cs = slice(j * block, (j + 1) * block)
-                blk = w_f32[(*sel, rs, cs)]  # [128, 128]
-                amax = torch.amax(torch.abs(blk))
-                s = (amax / max_fp8) if amax > 0 else torch.tensor(1.0, device=w_bf16.device)
-                q = (blk / s).to(torch.float8_e4m3fn)
-                w_fp8[(*sel, rs, cs)] = q
-                scales[(*sel, i, j)] = s
+    # Reshape to [*, nb_r, block, nb_c, block] for vectorized block operations
+    # Original shape: [*, R, C] -> [*, nb_r, block, nb_c, block]
+    new_shape = (*prefix, nb_r, block, nb_c, block)
+    w_blocked = w_f32.view(new_shape)
+
+    # Compute per-block amax: [*, nb_r, nb_c]
+    # Reduce over the block dimensions (dims -3 and -1 after reshape)
+    amax = torch.amax(torch.abs(w_blocked), dim=(-3, -1))  # [*, nb_r, nb_c]
+
+    # Compute scales (dequant scale = amax / max_fp8)
+    scales = torch.where(amax > 0, amax / max_fp8, torch.ones_like(amax))
+
+    # Expand scales back to block shape for division
+    # scales: [*, nb_r, nb_c] -> [*, nb_r, 1, nb_c, 1]
+    scales_expanded = scales.unsqueeze(-2).unsqueeze(-1)  # [*, nb_r, 1, nb_c, 1]
+
+    # Quantize: w_fp8 = w / scale
+    w_scaled = w_blocked / scales_expanded
+    w_fp8 = w_scaled.view(*prefix, R, C).to(torch.float8_e4m3fn)
+
     return w_fp8, scales
-
-
-def next_power_of_2(n: int):
-    return 1 << (n - 1).bit_length() if n > 0 else 1
-
-
-def get_tile_tokens_dim(num_tokens, top_k, num_experts):
-    # Guess tokens per expert assuming perfect expert distribution first.
-    num_tokens_per_expert = (num_tokens * top_k) // num_experts
-    # And pad the number to the next power of 2.
-    tile_tokens_dim = next_power_of_2(num_tokens_per_expert)
-    # Cap to 8-64 tokens per CTA tile as it's the range supported by the kernel.
-    tile_tokens_dim = min(max(tile_tokens_dim, 8), 64)
-    return tile_tokens_dim
 
 
 # read jsonl file to locate the workload record at index
@@ -408,27 +396,26 @@ def _compare_reference_vs_kernel(
     )
 
     print("Running FlashInfer kernel...")
-    tile_tokens_dim = get_tile_tokens_dim(seq_len, TOP_K, NUM_EXPERTS_GLOBAL)
     fi_out = trtllm_fp8_block_scale_moe(
-        inputs["routing_logits"].to(torch.float32),
-        inputs["routing_bias"],
-        inputs["hidden_states"],
-        inputs["hidden_states_scale"],
-        inputs["gemm1_weights"],
-        inputs["gemm1_weights_scale"].to(torch.float32),
-        inputs["gemm2_weights"],
-        inputs["gemm2_weights_scale"].to(torch.float32),
-        NUM_EXPERTS_GLOBAL,
-        TOP_K,
-        N_GROUP,
-        TOPK_GROUP,
-        INTERMEDIATE_SIZE,
-        inputs["local_expert_offset"],
-        inputs["local_num_experts"],
-        inputs["routed_scaling_factor"],
-        tile_tokens_dim=tile_tokens_dim,
-        routing_method_type=2,
+        routing_logits=inputs["routing_logits"].to(torch.float32),
+        routing_bias=inputs["routing_bias"],
+        hidden_states=inputs["hidden_states"],
+        hidden_states_scale=inputs["hidden_states_scale"],
+        gemm1_weights=inputs["gemm1_weights"],
+        gemm1_weights_scale=inputs["gemm1_weights_scale"].to(torch.float32),
+        gemm2_weights=inputs["gemm2_weights"],
+        gemm2_weights_scale=inputs["gemm2_weights_scale"].to(torch.float32),
+        num_experts=NUM_EXPERTS_GLOBAL,
+        top_k=TOP_K,
+        n_group=N_GROUP,
+        topk_group=TOPK_GROUP,
+        intermediate_size=INTERMEDIATE_SIZE,
+        local_expert_offset=inputs["local_expert_offset"],
+        local_num_experts=inputs["local_num_experts"],
+        routed_scaling_factor=inputs["routed_scaling_factor"],
+        routing_method_type=2,  # DeepSeek-V3 routing
         use_shuffled_weight=False,
+        tune_max_num_tokens=max(8, min(seq_len * TOP_K, 8192)),
     )
 
     ref_f32 = ref_out.float()
@@ -498,10 +485,21 @@ def generate_random_inputs_moe(
 
     # Inputs for routing
     routing_logits = torch.randn(T, E_global, dtype=torch.float32, device=device)
+
     if use_bias:
         routing_bias = torch.randn(E_global, dtype=torch.bfloat16, device=device)
     else:
         routing_bias = torch.zeros(E_global, dtype=torch.bfloat16, device=device)
+
+    # Boost logits AND bias for local expert range to ensure they get selected
+    # DeepSeek V3 routing uses s_with_bias = sigmoid(logits) + bias for group selection
+    # Both logits and bias need boosting to guarantee local experts are selected
+    local_end = min(local_expert_offset + E_local, E_global)
+    routing_logits[:, local_expert_offset:local_end] += 10.0
+    # Ensure bias is positive for local experts (add large positive value)
+    routing_bias[local_expert_offset:local_end] = (
+        routing_bias[local_expert_offset:local_end].abs() + 5.0
+    )
 
     # Activations: start from bf16, then FP8 block-quant with dequant scales
     a_bf16 = 2.0 * torch.randn(T, H, dtype=torch.bfloat16, device=device)
@@ -600,27 +598,26 @@ def test_correctness_moe(
 
     # Run FlashInfer fused kernel
     print("Running FlashInfer kernel...")
-    tile_tokens_dim = get_tile_tokens_dim(seq_len, TOP_K, E_GLOBAL)
     fi_out = trtllm_fp8_block_scale_moe(
-        inputs["routing_logits"].to(torch.float32),
-        inputs["routing_bias"],  # bf16
-        inputs["hidden_states"],  # fp8
-        inputs["hidden_states_scale"],  # [H/128, T]
-        inputs["gemm1_weights"],  # fp8
-        inputs["gemm1_weights_scale"].to(torch.float32),
-        inputs["gemm2_weights"],  # fp8
-        inputs["gemm2_weights_scale"].to(torch.float32),
-        E_GLOBAL,
-        TOP_K,
-        N_GROUP,
-        TOPK_GROUP,
-        I,
-        inputs["local_expert_offset"],
-        inputs["local_num_experts"],
-        inputs["routed_scaling_factor"],
-        tile_tokens_dim=tile_tokens_dim,
-        routing_method_type=2,  # DeepSeek-styled
+        routing_logits=inputs["routing_logits"].to(torch.float32),
+        routing_bias=inputs["routing_bias"],  # bf16
+        hidden_states=inputs["hidden_states"],  # fp8
+        hidden_states_scale=inputs["hidden_states_scale"],  # [H/128, T]
+        gemm1_weights=inputs["gemm1_weights"],  # fp8
+        gemm1_weights_scale=inputs["gemm1_weights_scale"].to(torch.float32),
+        gemm2_weights=inputs["gemm2_weights"],  # fp8
+        gemm2_weights_scale=inputs["gemm2_weights_scale"].to(torch.float32),
+        num_experts=E_GLOBAL,
+        top_k=TOP_K,
+        n_group=N_GROUP,
+        topk_group=TOPK_GROUP,
+        intermediate_size=I,
+        local_expert_offset=inputs["local_expert_offset"],
+        local_num_experts=inputs["local_num_experts"],
+        routed_scaling_factor=inputs["routed_scaling_factor"],
+        routing_method_type=2,  # DeepSeek-V3 routing
         use_shuffled_weight=False,
+        tune_max_num_tokens=max(8, min(seq_len * TOP_K, 8192)),
     )
 
     # Compare
