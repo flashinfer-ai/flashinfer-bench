@@ -5,7 +5,6 @@ If workloads are not available, tests using workload data will be skipped.
 """
 
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -30,14 +29,6 @@ TOP_K = 8
 N_GROUP = 8
 TOPK_GROUP = 4
 BLOCK_SIZE = 128
-
-TRACE_ROOT = Path(__file__).resolve().parents[2]
-WORKLOAD_JSONL_PATH = (
-    TRACE_ROOT
-    / "workloads"
-    / "moe"
-    / "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048.jsonl"
-)
 
 
 def next_power_of_2(n: int):

@@ -139,8 +139,10 @@ class MultiOutputComparator(Comparator):
             Default relative tolerance.
         """
         self.output_names = output_names
-        self.comparators = comparators or {
-            name: TensorComparator(atol, rtol) for name in output_names
+        comparators = comparators or {}
+        self.comparators = {
+            name: comparators[name] if name in comparators else TensorComparator(atol, rtol)
+            for name in output_names
         }
 
     def compare(
@@ -162,12 +164,12 @@ class MultiOutputComparator(Comparator):
         """
         # Convert tuples to dicts
         if isinstance(ref_output, tuple):
-            ref_dict = dict(zip(self.output_names, ref_output))
+            ref_dict = dict(zip(self.output_names, ref_output, strict=True))
         else:
             ref_dict = ref_output
 
         if isinstance(baseline_output, tuple):
-            base_dict = dict(zip(self.output_names, baseline_output))
+            base_dict = dict(zip(self.output_names, baseline_output, strict=True))
         else:
             base_dict = baseline_output
 
@@ -179,7 +181,7 @@ class MultiOutputComparator(Comparator):
             if name not in ref_dict or name not in base_dict:
                 continue
 
-            comparator = self.comparators.get(name, TensorComparator())
+            comparator = self.comparators[name]
             result = comparator.compare(ref_dict[name], base_dict[name])
 
             all_stats[name] = result.stats

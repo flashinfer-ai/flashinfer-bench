@@ -120,7 +120,7 @@ class Definition(BaseModelWithDocstrings):
     outputs: Dict[NonEmptyString, TensorSpec]
     """Named output tensors produced by this kernel. The names of the output must not overlap
     with the names of the inputs. The order of outputs is preserved as the kernel's interface."""
-    reference: Optional[NonEmptyString] = None
+    reference: NonEmptyString
     """Reference implementation code. It defines the compute logic of the kernel. Must be a valid
     Python code with a 'run' function that takes the input tensors and returns the output tensors.
     """
