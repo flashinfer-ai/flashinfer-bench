@@ -147,14 +147,6 @@ def run(
 
     local_start = int(local_expert_offset)
 
-    # Debug: check routing results
-    # print(f"  [DEBUG] topk_idx range: {topk_idx.min().item()} - {topk_idx.max().item()}")
-    # print(f"  [DEBUG] local_start={local_start}, local_end={local_start + E_local}")
-    # local_experts_selected = ((topk_idx >= local_start) & (topk_idx < local_start + E_local)).any(dim=1).sum().item()
-    # print(f"  [DEBUG] tokens with local experts selected: {local_experts_selected}/{T}")
-    # print(f"  [DEBUG] A (dequant hidden) abs mean: {A.abs().mean().item():.6e}")
-    # print(f"  [DEBUG] W13 (dequant weights) abs mean: {W13.abs().mean().item():.6e}")
-
     # For each local expert: find selected tokens, run GEMM1→SwiGLU→GEMM2, accumulate by weights
     for le in range(E_local):
         ge = local_start + le
@@ -190,7 +182,6 @@ def run(
         w_tok = weights.index_select(0, token_idx)[:, ge]  # [Tk]
         output.index_add_(0, token_idx, O * w_tok.unsqueeze(1))  # [Tk,H] * [Tk,1]
 
-    # print(f"  [DEBUG] output abs mean: {output.abs().mean().item():.6e}, max: {output.abs().max().item():.6e}")
     return output.to(torch.bfloat16)
 
 
@@ -607,9 +598,6 @@ def test_correctness_moe(
 
     # Run FlashInfer fused kernel
     print("Running FlashInfer kernel...")
-    # print(f"  [DEBUG] hidden_states shape: {inputs['hidden_states'].shape}, dtype: {inputs['hidden_states'].dtype}")
-    # print(f"  [DEBUG] hidden_states_scale shape: {inputs['hidden_states_scale'].shape}")
-    # print(f"  [DEBUG] routing_logits[:, :32].max(): {inputs['routing_logits'][:, :32].max().item():.2f}")
     fi_out = trtllm_fp8_block_scale_moe(
         routing_logits=inputs["routing_logits"].to(torch.float32),
         routing_bias=inputs["routing_bias"],  # bf16
@@ -630,9 +618,6 @@ def test_correctness_moe(
         routing_method_type=2,  # DeepSeek-V3 routing
         use_shuffled_weight=False,
         tune_max_num_tokens=max(8, min(seq_len * TOP_K, 8192)),
-    )
-    print(
-        f"  [DEBUG] fi_out abs mean: {fi_out.float().abs().mean().item():.6e}, max: {fi_out.float().abs().max().item():.6e}"
     )
 
     # Compare
