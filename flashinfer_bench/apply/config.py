@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal
+from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,16 +26,16 @@ class ApplyConfig(BaseModel):
 class ApplyConfigRegistry(BaseModel):
     """Per-definition apply configuration registry.
 
-    Allows specifying different ApplyConfig for each kernel definition,
-    with a default fallback config for definitions without specific configuration.
+    If default is not set, only kernels explicitly registered in per_definition are applied.
+    Set default to an ApplyConfig to apply all kernels.
     """
 
-    default: ApplyConfig = Field(default_factory=ApplyConfig)
-    """Fallback config when no per-definition config is specified."""
+    default: Optional[ApplyConfig] = None
+    """Fallback config for definitions not in per_definition. None means skip."""
     per_definition: Dict[str, ApplyConfig] = Field(default_factory=dict)
     """Mapping from definition name to its specific ApplyConfig."""
 
-    def get(self, def_name: str) -> ApplyConfig:
+    def get(self, def_name: str) -> Optional[ApplyConfig]:
         """Get config for a definition, falling back to default if not registered.
 
         Parameters
@@ -45,8 +45,8 @@ class ApplyConfigRegistry(BaseModel):
 
         Returns
         -------
-        ApplyConfig
-            The config for this definition, or the default config.
+        Optional[ApplyConfig]
+            The config for this definition. If the definition shouldn't be applied, return None.
         """
         return self.per_definition.get(def_name, self.default)
 

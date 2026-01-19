@@ -1,5 +1,7 @@
 """Tests for ApplyConfig and ApplyConfigRegistry."""
 
+import sys
+
 import pytest
 from pydantic import ValidationError
 
@@ -34,9 +36,11 @@ def test_apply_config_validation():
 
 def test_registry_get():
     """Test ApplyConfigRegistry.get() with default fallback."""
+    # When default is None, get() returns None for unknown definitions
     registry = ApplyConfigRegistry()
-    assert registry.get("unknown") == ApplyConfig()
+    assert registry.get("unknown") is None
 
+    # When default is set, get() returns default for unknown definitions
     custom_default = ApplyConfig(max_atol=1e-3)
     registry2 = ApplyConfigRegistry(default=custom_default)
     assert registry2.get("any").max_atol == 1e-3
@@ -64,3 +68,7 @@ def test_registry_override():
 
     registry.register("def", ApplyConfig(max_atol=5e-3), override=True)
     assert registry.get("def").max_atol == 5e-3
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)

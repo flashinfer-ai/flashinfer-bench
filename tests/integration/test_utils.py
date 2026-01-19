@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 
@@ -40,3 +44,7 @@ def test_context_store_per_instance_isolated_and_mutable():
     d1["x"] = 42
     assert store.get(a1)["x"] == 42
     assert "x" not in store.get(a2)
+
+
+if __name__ == "__main__":
+    pytest.main(sys.argv)
