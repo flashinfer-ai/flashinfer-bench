@@ -1,3 +1,5 @@
+"""Abstract base class and common types for benchmark runners."""
+
 from __future__ import annotations
 
 import logging

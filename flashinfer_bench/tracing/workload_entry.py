@@ -1,3 +1,5 @@
+"""Collected workload entries."""
+
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 

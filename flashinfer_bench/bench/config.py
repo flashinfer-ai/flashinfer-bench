@@ -1,3 +1,5 @@
+"""Configuration for benchmark execution."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,7 +26,7 @@ class BenchmarkConfig:
     definitions: Optional[List[str]] = field(default=None)
     solutions: Optional[List[str]] = field(default=None)
     timeout_seconds: int = field(default=300)
-    profile_baseline: bool = field(default=False)
+    profile_baseline: bool = field(default=True)
 
     def __post_init__(self):
         if self.warmup_runs < 0:

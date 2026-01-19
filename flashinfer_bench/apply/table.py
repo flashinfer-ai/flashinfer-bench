@@ -1,3 +1,5 @@
+"""Apply table for mapping workload keys to optimal solutions."""
+
 from __future__ import annotations
 
 import hashlib
@@ -165,6 +167,8 @@ class ApplyTable:
 
         for def_name, definition in trace_set.definitions.items():
             config = config_registry.get(def_name)
+            if config is None:
+                continue
             per_key, ranked = cls._sweep_def(trace_set, def_name, config.max_atol, config.max_rtol)
 
             # Build index
@@ -256,6 +260,8 @@ class ApplyTable:
                 continue
 
             config = config_registry.get(def_name)
+            if config is None:
+                continue
             if not (config.aot_ratio and config.aot_ratio > 0.0):
                 continue
 
@@ -274,6 +280,8 @@ class ApplyTable:
         # Build def_best for definitions with on_miss_policy == "use_def_best"
         for def_name, sol_name in table.def_best.items():
             config = config_registry.get(def_name)
+            if config is None:
+                continue
             if config.on_miss_policy == "use_def_best":
                 definition = trace_set.definitions.get(def_name)
                 solution = trace_set.get_solution(sol_name)
@@ -346,7 +354,11 @@ class ApplyTable:
 
         payload = {
             "cfg": {
-                "default": {"max_atol": default_cfg.max_atol, "max_rtol": default_cfg.max_rtol},
+                "default": (
+                    {"max_atol": default_cfg.max_atol, "max_rtol": default_cfg.max_rtol}
+                    if default_cfg
+                    else None
+                ),
                 "per_def": per_def_cfg_dict,
             },
             "definitions": trace_set_dict["definitions"],

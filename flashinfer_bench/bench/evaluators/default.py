@@ -1,3 +1,5 @@
+"""Default evaluator for general kernel correctness and performance."""
+
 import sys
 import traceback
 import uuid

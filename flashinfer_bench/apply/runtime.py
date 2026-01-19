@@ -9,7 +9,7 @@ implementation for each function call based on workload characteristics.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import TraceSet
@@ -35,10 +35,10 @@ class ApplyRuntime:
     available and provides hooks for monitoring and tracing function calls.
     """
 
-    _instance: ClassVar[Optional[ApplyRuntime]] = None
-    """The global ApplyRuntime singleton instance."""
-    _initialized: ClassVar[bool] = False
-    """Whether the global ApplyRuntime singleton instance has been initialized."""
+    _stack: ClassVar[List[ApplyRuntime]] = []
+    """Global runtime stack."""
+    _env_initialized: ClassVar[bool] = False
+    """Whether initialization from environment variables has been attempted."""
 
     @classmethod
     def _create_from_env(cls) -> Optional[ApplyRuntime]:
@@ -48,41 +48,33 @@ class ApplyRuntime:
             return None
         fib_dataset_path = get_fib_dataset_path()
         trace_set = TraceSet.from_path(fib_dataset_path)
-        return cls(trace_set, None, None)
+        return cls(trace_set, None)
 
     @classmethod
     def get_instance(cls) -> Optional[ApplyRuntime]:
-        """Get the global ApplyRuntime singleton instance.
+        """Get the current global ApplyRuntime instance (top of stack).
 
-        Lazily initializes from environment variables on first call.
+        Lazily initializes from environment variables on first call if stack is empty.
 
         Returns
         -------
         Optional[ApplyRuntime]
-            The global runtime instance, or None if not initialized.
+            The global runtime instance (top of stack), or None if stack is empty.
         """
-        if not cls._initialized:
-            cls._instance = cls._create_from_env()
-            cls._initialized = True
-        return cls._instance
+        if len(cls._stack) == 0 and not cls._env_initialized:
+            cls._env_initialized = True
+            env_rt = cls._create_from_env()
+            if env_rt is not None:
+                env_rt.start()
 
-    @classmethod
-    def set_instance(cls, rt: Optional[ApplyRuntime]) -> None:
-        """Set the global ApplyRuntime singleton instance.
-
-        Parameters
-        ----------
-        rt : Optional[ApplyRuntime]
-            The runtime instance to set, or None to clear the global runtime.
-        """
-        cls._instance = rt
-        cls._initialized = True
+        if len(cls._stack) > 0:
+            return cls._stack[-1]
+        return None
 
     def __init__(
         self,
         trace_set: TraceSet,
         apply_config: Union[ApplyConfig, ApplyConfigRegistry, None] = None,
-        prev: Optional[ApplyRuntime] = None,
     ) -> None:
         """Initialize the apply runtime.
 
@@ -96,9 +88,6 @@ class ApplyRuntime:
             - ApplyConfig: A single config used as the default for all definitions.
             - ApplyConfigRegistry: A registry with per-definition configs.
             - None: Uses the default registry.
-
-        prev : Optional[ApplyRuntime], optional
-            The previous apply runtime. Will be used in the __exit__ method. Default is None.
         """
         self._trace_set = trace_set
 
@@ -108,8 +97,6 @@ class ApplyRuntime:
             self._config_registry = ApplyConfigRegistry(default=apply_config)
         else:
             self._config_registry = apply_config
-
-        self._prev = prev
 
         self._table = ApplyTable.load_or_build(self._trace_set, self._config_registry)
 
@@ -164,6 +151,15 @@ class ApplyRuntime:
             If the definition is not found and no fallback is provided, or if
             no suitable implementation is available and no fallback is provided.
         """
+        # Check if apply is configured for this definition
+        apply_config = self._config_registry.get(def_name)
+        if apply_config is None:
+            if fallback is None:
+                raise RuntimeError(
+                    f"Apply config not configured for '{def_name}' and no fallback provided"
+                )
+            return fallback(*args, **kwargs)
+
         definition = self._trace_set.definitions.get(def_name)
         if definition is None:
             if fallback is None:
@@ -208,8 +204,7 @@ class ApplyRuntime:
 
         # Miss policy
         if runnable is None:
-            config = self._config_registry.get(def_name)
-            if config.on_miss_policy == "use_def_best":
+            if apply_config.on_miss_policy == "use_def_best":
                 best_sol_name = self._table.def_best.get(def_name)
                 solution = self._trace_set.get_solution(best_sol_name)
                 if definition and solution:
@@ -227,9 +222,42 @@ class ApplyRuntime:
         else:
             return runnable.call_value_returning(*input_args)
 
+    def start(self) -> None:
+        """Activate this runtime instance.
+
+        If this runtime is already the active instance, this method has no effect.
+        Multiple active runtimes can be nested; internally they are managed via a stack.
+        """
+        # The current runtime is already activated, do nothing.
+        if len(ApplyRuntime._stack) > 0 and ApplyRuntime._stack[-1] is self:
+            return
+        ApplyRuntime._stack.append(self)
+        logger.info("ApplyRuntime started")
+        logger.info(f"  TraceSet root path: {self._trace_set.root}")
+
+    def stop(self) -> None:
+        """Deactivate this runtime instance.
+
+        The runtime must be currently active. After stopping, the previously active
+        runtime (if any) is restored.
+
+        Raises
+        ------
+        RuntimeError
+            If this runtime is not the currently active instance.
+        """
+        if not ApplyRuntime._stack or ApplyRuntime._stack[-1] is not self:
+            raise RuntimeError(
+                "Cannot stop an ApplyRuntime that is not the current active instance. "
+                "Runtimes must be stopped in LIFO order."
+            )
+        ApplyRuntime._stack.pop()
+        logger.info("ApplyRuntime stopped")
+
     def __enter__(self) -> ApplyRuntime:
+        self.start()
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
-        ApplyRuntime.set_instance(self._prev)
+        self.stop()
         return False

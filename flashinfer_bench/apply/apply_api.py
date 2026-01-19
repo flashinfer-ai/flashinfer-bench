@@ -1,15 +1,18 @@
-"""API for applying best-performing kernels from trace database."""
+"""Public API for the apply subsystem. Apply best-performing kernels from trace database."""
 
 from __future__ import annotations
 
+import logging
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from flashinfer_bench.data import TraceSet
-from flashinfer_bench.tracing import get_tracing_runtime
+from flashinfer_bench.tracing import TracingRuntime
 
 from .config import ApplyConfig, ApplyConfigRegistry
 from .runtime import ApplyRuntime
+
+logger = logging.getLogger(__name__)
 
 
 # Decorator mode
@@ -170,7 +173,7 @@ def _dispatch_apply_or_tracing(
     if apply_rt is not None:
         return apply_rt.dispatch(def_name, args, kwargs, fallback)
 
-    tracing_rt = get_tracing_runtime()
+    tracing_rt = TracingRuntime.get_instance()
 
     # Tracing
     if tracing_rt is not None:
@@ -189,7 +192,8 @@ def enable_apply(
     """Enable apply functionality globally and return a ApplyRuntime instance that manages the
     apply functionality.
 
-    There is only one global ApplyRuntime instance. This function must be called in the main thread.
+    The apply runtime is process-level and supports nesting. This function is recommended to be
+    called in the main thread.
 
     Parameters
     ----------
@@ -204,7 +208,7 @@ def enable_apply(
     Returns
     -------
     ApplyRuntime
-        The global ApplyRuntime instance managing the apply functionality.
+        The newly created ApplyRuntime instance that has been pushed onto the global stack.
 
     Examples
     --------
@@ -224,22 +228,23 @@ def enable_apply(
     ...     out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> # Apply is now disabled.
     """
-    prev_runtime = ApplyRuntime.get_instance()
     trace_set = TraceSet.from_path(dataset_path)
-
-    apply_runtime = ApplyRuntime(trace_set, apply_config, prev_runtime)
-    ApplyRuntime.set_instance(apply_runtime)
+    apply_runtime = ApplyRuntime(trace_set, apply_config)
+    apply_runtime.start()
     return apply_runtime
 
 
 def disable_apply() -> None:
     """Disable current apply runtime and restore the previous one (if any).
 
-    After calling this function, if there was a previous runtime, it will be restored.
-    Otherwise, apply() will use fallback functions.
+    Pops the top runtime from the global stack and restores the previous runtime (if any)
+    as the active instance. Safe to call even if no apply runtime is active.
 
     Check out the `enable_apply` function for examples.
     """
     current = ApplyRuntime.get_instance()
     if current is not None:
-        ApplyRuntime.set_instance(current._prev)
+        try:
+            current.stop()
+        except Exception as e:
+            logger.error(f"Cannot stop existing apply runtime: {e}, ignoring")
