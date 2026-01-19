@@ -41,6 +41,11 @@ def run(
     Local computation:
     - Only experts in [local_expert_offset, local_expert_offset + E_local) are computed
     - GEMM1 -> SwiGLU -> GEMM2, then per-token weighted accumulation
+
+    Per-tensor scale convention (TRT-LLM):
+    - Quant scale = 448 / amax (stored in gemm1_scales, gemm2_scales, hidden_states_scale)
+    - x_fp8 = x_f32 * quant_scale
+    - x_f32 = x_fp8 / quant_scale = x_fp8 * (1 / quant_scale)
     """
 
     H = HIDDEN_SIZE
@@ -54,12 +59,20 @@ def run(
 
     device = hidden_states.device
 
-    # Keep FP8 tensors for GEMM
-    A_fp8 = hidden_states
-    W13_fp8 = gemm1_weights
-    W2_fp8 = gemm2_weights
-    S13 = gemm1_scales.to(torch.float32)
-    S2 = gemm2_scales.to(torch.float32)
+    # Dequantize activations: A_f32 = A_fp8 / quant_scale
+    # Per-tensor scale: single scale for entire activation tensor
+    A = hidden_states.to(torch.float32) / hidden_states_scale  # [T, H]
+
+    # Dequantize weights: W_f32 = W_fp8 / quant_scale
+    # Per-expert scales: [E_local]
+    S13 = gemm1_scales.to(torch.float32)  # [E_local]
+    S2 = gemm2_scales.to(torch.float32)  # [E_local]
+
+    W13 = torch.empty(E_local, 2 * I, H, dtype=torch.float32, device=device)
+    W2 = torch.empty(E_local, H, I, dtype=torch.float32, device=device)
+    for e in range(E_local):
+        W13[e] = gemm1_weights[e].to(torch.float32) / S13[e]
+        W2[e] = gemm2_weights[e].to(torch.float32) / S2[e]
 
     # DeepSeek V3 no-aux routing
     logits = routing_logits.to(torch.float32)
@@ -109,48 +122,28 @@ def run(
 
         token_idx = torch.nonzero(sel_mask_per_token, as_tuple=False).squeeze(1)
 
-        A_e_fp8 = A_fp8.index_select(0, token_idx)
-        W13_e_fp8 = W13_fp8[le]
-        W2_e_fp8 = W2_fp8[le]
+        # Gather dequantized inputs for this expert
+        A_e = A.index_select(0, token_idx)  # [Tk, H]
+        W13_e = W13[le]  # [2I, H]
+        W2_e = W2[le]  # [H, I]
 
-        # GEMM1: FP8 GEMM then dequantize
-        G1_raw = A_e_fp8.to(torch.float32).matmul(W13_e_fp8.to(torch.float32).t())
-        gemm1_dequant_scale = (1.0 / S13[le]) * (1.0 / hidden_states_scale)
-        G1 = G1_raw * gemm1_dequant_scale
+        # GEMM1: [Tk, H] @ [H, 2I] = [Tk, 2I]
+        G1 = A_e.matmul(W13_e.t())  # [Tk, 2I]
 
-        # SwiGLU
-        X1 = G1[:, :I]
-        X2 = G1[:, I:]
-        silu_X2 = X2 / (1.0 + torch.exp(-X2))
-        C = silu_X2 * X1
+        # SwiGLU: split and apply silu(x) = x / (1 + exp(-x))
+        X1 = G1[:, :I]  # [Tk, I]
+        X2 = G1[:, I:]  # [Tk, I]
+        silu_X2 = X2 / (1.0 + torch.exp(-X2))  # [Tk, I]
+        C = silu_X2 * X1  # [Tk, I]
 
-        # Quantize intermediate for GEMM2
-        C_fp8, C_scale = _fp8_per_tensor_quant_single(C)
-
-        # GEMM2: FP8 GEMM then dequantize
-        O_raw = C_fp8.to(torch.float32).matmul(W2_e_fp8.to(torch.float32).t())
-        gemm2_dequant_scale = (1.0 / S2[le]) * (1.0 / C_scale)
-        O = O_raw * gemm2_dequant_scale
+        # GEMM2: [Tk, I] @ [I, H] = [Tk, H]
+        O = C.matmul(W2_e.t())  # [Tk, H]
 
         # Weighted accumulation
         w_tok = weights.index_select(0, token_idx)[:, ge]
         output.index_add_(0, token_idx, O * w_tok.unsqueeze(1))
 
     return output.to(torch.bfloat16)
-
-
-def _fp8_per_tensor_quant_single(x: torch.Tensor):
-    """Quantize a single tensor to FP8 with per-tensor scale (TRT-LLM convention)."""
-    finfo = torch.finfo(torch.float8_e4m3fn)
-    max_fp8 = finfo.max  # 448
-
-    x_f32 = x.to(torch.float32)
-    amax = torch.amax(torch.abs(x_f32)).nan_to_num()
-
-    scale = (max_fp8 / amax) if amax > 0 else torch.tensor(1.0, device=x.device)
-    x_fp8 = (x_f32 * scale).to(torch.float8_e4m3fn)
-
-    return x_fp8, scale
 
 
 # -----------------------------
@@ -257,8 +250,8 @@ def test_correctness_moe(
     local_expert_offset: int = 0,
     use_bias: bool = True,
     atol: float = 1e-1,
-    rtol: float = 8.5e-1,
-    percent: float = 0.925,
+    rtol: float = 2e-1,
+    percent: float = 0.85,
 ):
     print("\n" + "=" * 70)
     print(
@@ -403,7 +396,7 @@ def main():
     for T, off, use_bias in configs:
         try:
             ok = test_correctness_moe(
-                seq_len=T, local_expert_offset=off, use_bias=use_bias, percent=0.925
+                seq_len=T, local_expert_offset=off, use_bias=use_bias, percent=0.85
             )
             passed += int(ok)
         except Exception as e:
