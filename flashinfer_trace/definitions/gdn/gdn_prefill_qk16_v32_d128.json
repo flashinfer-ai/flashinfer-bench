@@ -1,0 +1,135 @@
+{
+  "name": "gdn_prefill_qk16_v32_d128",
+  "description": "Gated Delta Net prefill with GVA configuration. Captured from Qwen3 Next linear attention layers.",
+  "op_type": "gdn",
+  "tags": [
+    "stage:prefill",
+    "status:verified",
+    "model:qwen3-next"
+  ],
+  "axes": {
+    "total_seq_len": {
+      "type": "var"
+    },
+    "num_seqs": {
+      "type": "var"
+    },
+    "num_q_heads": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of query heads (same as key heads in GVA mode)."
+    },
+    "num_k_heads": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of key heads."
+    },
+    "num_v_heads": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of value heads (GVA: more value heads than query heads)."
+    },
+    "head_size": {
+      "type": "const",
+      "value": 128
+    },
+    "len_cu_seqlens": {
+      "type": "var",
+      "description": "Length of cu_seqlens array (num_seqs + 1)."
+    }
+  },
+  "constraints": [
+    "len_cu_seqlens == num_seqs + 1",
+    "total_seq_len == cu_seqlens[-1].item()"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "total_seq_len",
+        "num_q_heads",
+        "head_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query tensor."
+    },
+    "k": {
+      "shape": [
+        "total_seq_len",
+        "num_k_heads",
+        "head_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Key tensor."
+    },
+    "v": {
+      "shape": [
+        "total_seq_len",
+        "num_v_heads",
+        "head_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Value tensor."
+    },
+    "g": {
+      "shape": [
+        "total_seq_len",
+        "num_v_heads"
+      ],
+      "dtype": "float32",
+      "description": "Forget gate (alpha). Values typically in (0, 1)."
+    },
+    "beta": {
+      "shape": [
+        "total_seq_len",
+        "num_v_heads"
+      ],
+      "dtype": "float32",
+      "description": "Update gate. Values typically in (0, 1)."
+    },
+    "cu_seqlens": {
+      "shape": [
+        "len_cu_seqlens"
+      ],
+      "dtype": "int64",
+      "description": "Cumulative sequence lengths for variable-length batching."
+    },
+    "initial_state": {
+      "shape": [
+        "num_seqs",
+        "num_v_heads",
+        "head_size",
+        "head_size"
+      ],
+      "dtype": "float32",
+      "description": "Initial KV state. Can be zeros for fresh sequences.",
+      "optional": true
+    },
+    "scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Scale factor. Default is 1/sqrt(head_size)."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "total_seq_len",
+        "num_v_heads",
+        "head_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Attention output. Shape follows num_v_heads in GVA mode."
+    },
+    "final_state": {
+      "shape": [
+        "num_seqs",
+        "num_v_heads",
+        "head_size",
+        "head_size"
+      ],
+      "dtype": "float32",
+      "description": "Final KV state for recurrent continuation."
+    }
+  },
+  "reference": "import math\nimport torch\n\n\ndef matmul(a: torch.Tensor, b: torch.Tensor):\n    \"\"\"Float32 matmul for numerical stability.\"\"\"\n    a_f32 = a.to(torch.float32)\n    b_f32 = b.to(torch.float32)\n    return a_f32 @ b_f32\n\n\n@torch.no_grad()\ndef run(q, k, v, g, beta, cu_seqlens, initial_state, scale):\n    \"\"\"\n    Gated Delta Net reference implementation.\n    \n    Delta rule update:\n    state_new = alpha * state_old - k^T * (k @ state_old) + k^T * (beta * v + (1-beta) * k @ state_old)\n    output = scale * q @ state_new\n    \"\"\"\n    total_seq_len, num_q_heads, head_size = q.shape\n    num_v_heads = v.shape[1]\n    num_k_heads = k.shape[1]\n    num_sab_heads = max(num_q_heads, num_v_heads)\n    num_seqs = cu_seqlens.size(0) - 1\n    device = q.device\n\n    # Check constants\n    assert num_q_heads == 16\n    assert num_k_heads == 16\n    assert num_v_heads == 32\n    assert head_size == 128\n\n    # Default scale\n    if scale is None or scale == 0.0:\n        scale = 1.0 / math.sqrt(head_size)\n\n    # Expand for GVA: q and k get repeated to match v heads\n    q_exp = q.repeat_interleave(num_v_heads // num_q_heads, dim=1)  # [T, 32, 128]\n    k_exp = k.repeat_interleave(num_v_heads // num_k_heads, dim=1)  # [T, 32, 128]\n\n    # Initialize outputs\n    output = torch.zeros(\n        (total_seq_len, num_sab_heads, head_size), dtype=torch.bfloat16, device=device\n    )\n    final_state = torch.zeros(\n        (num_seqs, num_sab_heads, head_size, head_size), dtype=torch.float32, device=device\n    )\n\n    # Process each sequence\n    for seq_idx in range(num_seqs):\n        seq_start = int(cu_seqlens[seq_idx].item())\n        seq_end = int(cu_seqlens[seq_idx + 1].item())\n        seq_len = seq_end - seq_start\n\n        if seq_len <= 0:\n            continue\n\n        # Get initial state for this sequence\n        if initial_state is not None:\n            state_HKV = initial_state[seq_idx].clone().to(torch.float32)\n        else:\n            state_HKV = torch.zeros(\n                (num_sab_heads, head_size, head_size), dtype=torch.float32, device=device\n            )\n\n        # Process token by token (reference implementation)\n        for i in range(seq_len):\n            t = seq_start + i\n            q_H1Q = q_exp[t].unsqueeze(1).to(torch.float32)  # [H, 1, K]\n            k_H1K = k_exp[t].unsqueeze(1).to(torch.float32)  # [H, 1, K]\n            v_H1V = v[t].unsqueeze(1).to(torch.float32)  # [H, 1, V]\n            alpha_H11 = g[t].unsqueeze(1).unsqueeze(2)  # [H, 1, 1]\n            beta_H11 = beta[t].unsqueeze(1).unsqueeze(2)  # [H, 1, 1]\n\n            # Delta rule update\n            old_state_HKV = alpha_H11 * state_HKV\n            old_v_H1V = matmul(k_H1K, old_state_HKV)  # [H, 1, V]\n            new_v_H1V = beta_H11 * v_H1V + (1 - beta_H11) * old_v_H1V\n            state_remove = torch.einsum('htv,htk->hkv', old_v_H1V, k_H1K)\n            state_update = torch.einsum('htv,htk->hkv', new_v_H1V, k_H1K)\n            state_HKV = old_state_HKV - state_remove + state_update\n\n            # Compute output\n            o_H1V = scale * matmul(q_H1Q, state_HKV)\n            output[t] = o_H1V.squeeze(1).to(torch.bfloat16)\n\n        final_state[seq_idx] = state_HKV\n\n    return {\"output\": output, \"final_state\": final_state}"
+}
