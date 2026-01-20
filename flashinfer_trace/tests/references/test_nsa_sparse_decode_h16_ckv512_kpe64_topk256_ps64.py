@@ -65,8 +65,12 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
     device = q_nope.device
 
     # Flatten paged KV cache to token-level: [num_pages, page_size, dim] -> [num_pages * page_size, dim]
-    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(torch.float32)  # [total_kv_tokens, head_dim_ckv]
-    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(torch.float32)  # [total_kv_tokens, head_dim_kpe]
+    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_ckv]
+    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_kpe]
 
     output = torch.zeros(
         (batch_size, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
@@ -412,7 +416,9 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
 
     # KV cache with page_size=64
     # Shape: [num_pages, page_size, head_dim]
-    kv_cache_paged = torch.randn(num_pages, PAGE_SIZE, head_dim, dtype=torch.bfloat16, device=device)
+    kv_cache_paged = torch.randn(
+        num_pages, PAGE_SIZE, head_dim, dtype=torch.bfloat16, device=device
+    )
     ckv_cache = kv_cache_paged[:, :, :HEAD_DIM_CKV]  # [num_pages, 64, ckv]
     kpe_cache = kv_cache_paged[:, :, HEAD_DIM_CKV:]  # [num_pages, 64, kpe]
 

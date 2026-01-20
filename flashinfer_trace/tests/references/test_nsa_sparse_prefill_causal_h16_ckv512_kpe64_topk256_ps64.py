@@ -64,8 +64,12 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
     device = q_nope.device
 
     # Flatten paged KV cache to token-level: [num_pages, page_size, dim] -> [num_pages * page_size, dim]
-    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(torch.float32)  # [total_kv_tokens, head_dim_ckv]
-    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(torch.float32)  # [total_kv_tokens, head_dim_kpe]
+    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_ckv]
+    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_kpe]
 
     output = torch.zeros(
         (total_num_tokens, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
@@ -203,7 +207,9 @@ def check_hit_ratio(ref, gt, atol, rtol, required_percent=0.85):
 def test_output_shape(total_num_tokens=64, topk=TOPK):
     """Test that reference produces correct output shapes."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill ps64 output shape: total_num_tokens={total_num_tokens}, topk={topk}")
+    print(
+        f"Testing NSA prefill ps64 output shape: total_num_tokens={total_num_tokens}, topk={topk}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -344,7 +350,9 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
 
     # KV cache with page_size=64
     # Shape: [num_pages, page_size, head_dim]
-    kv_cache_paged = torch.randn(num_pages, PAGE_SIZE, head_dim, dtype=torch.bfloat16, device=device)
+    kv_cache_paged = torch.randn(
+        num_pages, PAGE_SIZE, head_dim, dtype=torch.bfloat16, device=device
+    )
     ckv_cache = kv_cache_paged[:, :, :HEAD_DIM_CKV]  # [num_pages, 64, ckv]
     kpe_cache = kv_cache_paged[:, :, HEAD_DIM_CKV:]  # [num_pages, 64, kpe]
 
