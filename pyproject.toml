@@ -29,6 +29,7 @@ dependencies = [
   "safetensors>=0.5.0",
   "flashinfer-python>=0.3.1",
   "apache-tvm-ffi>=0.1.2",
+  "docstring-parser>=0.16",
 ]
 
 [project.urls]

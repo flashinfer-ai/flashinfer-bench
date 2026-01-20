@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Tuple
 
 import pytest
+import torch
 
 from flashinfer_bench.apply import ApplyConfig, ApplyConfigRegistry, ApplyRuntime
-from flashinfer_bench.compile import Runnable
+from flashinfer_bench.compile import BuilderRegistry
+from flashinfer_bench.compile.builders.python_builder import PythonBuilder
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -29,48 +31,14 @@ from flashinfer_bench.data import (
 )
 
 
-class FakeTensor:
-    def __init__(self, shape: Tuple[int, ...]):
-        self.shape = tuple(shape)
-
-
-def make_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
-    definition = Definition(
-        name="add",
-        op_type="op",
-        axes={"M": AxisVar(), "N": AxisConst(value=2)},
-        inputs={
-            "X": TensorSpec(shape=["M", "N"], dtype="float32"),
-            "Y": TensorSpec(shape=["M", "N"], dtype="float32"),
-        },
-        outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
-        reference="def run(X, Y):\n    return X\n",
-    )
-    solution1 = Solution(
-        name="add_fast",
-        definition="add",
-        author="t",
-        spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["cpu"],
-            entry_point="main.py::run",
-            destination_passing_style=False,  # VR style
-        ),
-        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
-    )
-    solution2 = Solution(
-        name="add_slow",
-        definition="add",
-        author="t",
-        spec=BuildSpec(
-            language=SupportedLanguages.PYTHON,
-            target_hardware=["cpu"],
-            entry_point="main.py::run",
-            destination_passing_style=False,  # VR style
-        ),
-        sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
-    )
-    return definition, solution1, solution2
+@pytest.fixture(autouse=True)
+def reset_runtime_state():
+    """Reset ApplyRuntime class state before and after each test."""
+    ApplyRuntime._stack = []
+    ApplyRuntime._env_initialized = False
+    yield
+    ApplyRuntime._stack = []
+    ApplyRuntime._env_initialized = False
 
 
 def make_eval(speedup: float) -> Evaluation:
@@ -87,120 +55,7 @@ def make_eval(speedup: float) -> Evaluation:
 
 
 def make_traces() -> Tuple[Definition, TraceSet]:
-    definition, solution1, solution2 = make_def_and_solutions()
-    workload2 = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w2")
-    workload3 = Workload(axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w3")
-    trace21 = Trace(
-        definition="add", workload=workload2, solution="add_fast", evaluation=make_eval(3.0)
-    )
-    trace22 = Trace(
-        definition="add", workload=workload2, solution="add_slow", evaluation=make_eval(1.2)
-    )
-    trace31 = Trace(
-        definition="add", workload=workload3, solution="add_fast", evaluation=make_eval(0.9)
-    )
-    trace32 = Trace(
-        definition="add", workload=workload3, solution="add_slow", evaluation=make_eval(2.5)
-    )
-    trace_set = TraceSet(
-        root=None,
-        definitions={"add": definition},
-        solutions={"add": [solution1, solution2]},
-        traces={"add": [trace21, trace22, trace31, trace32]},
-    )
-    return definition, trace_set
-
-
-def test_runtime_dispatch_hit_and_miss(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    definition, trace_set = make_traces()
-    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-    ApplyRuntime.set_instance(runtime)
-
-    # Test with positional args (VR style)
-    out = runtime.dispatch(
-        "add",
-        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
-        kwargs={},
-        fallback=lambda *_: "fallback",
-    )
-    # Routed to the winning solution implementation; our sources return string tags
-    assert out == "fast"
-
-    # Miss with fallback policy: returns fallback
-    miss_out = runtime.dispatch(
-        "add",
-        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
-        kwargs={},
-        fallback=lambda *_: "fallback",
-    )
-    assert miss_out == "fallback"
-
-    # Miss without fallback: error
-    with pytest.raises(RuntimeError):
-        runtime.dispatch(
-            "add", args=(FakeTensor((999, 2)), FakeTensor((999, 2))), kwargs={}, fallback=None
-        )
-
-
-def test_runtime_dispatch_def_best_policy_without_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    definition, trace_set = make_traces()
-    # Choose def_best when miss
-    registry = ApplyConfigRegistry(
-        default=ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0)
-    )
-    runtime = ApplyRuntime(trace_set, registry)
-
-    # Miss should use def_best; our setup has both solution names ranked; accept either
-    out = runtime.dispatch(
-        "add", args=(FakeTensor((100, 2)), FakeTensor((100, 2))), kwargs={}, fallback=None
-    )
-    assert out in ("fast", "slow")
-
-
-def test_runtime_dispatch_unknown_definition_uses_fallback_or_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    _, trace_set = make_traces()
-    runtime = ApplyRuntime(trace_set)
-
-    with pytest.raises(RuntimeError):
-        runtime.dispatch(
-            "unknown_def", args=(FakeTensor((2, 2)), FakeTensor((2, 2))), kwargs={}, fallback=None
-        )
-
-    fallback_val = runtime.dispatch(
-        "unknown_def",
-        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
-        kwargs={},
-        fallback=lambda *args, **kwargs: "fallback",
-    )
-    assert fallback_val == "fallback"
-
-
-@pytest.mark.skip(reason="TODO: fix this test")
-def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-    dataset_dir = tmp_path / "ds"
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create dataset on disk
+    """Create VR-style traces: M=2 -> fast wins, M=3 -> slow wins."""
     definition = Definition(
         name="add",
         op_type="op",
@@ -212,201 +67,52 @@ def test_runnable_cache_used_by_registry(tmp_path: Path, monkeypatch: pytest.Mon
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X\n",
     )
-    from flashinfer_bench.data import save_json_file, save_jsonl_file
-
-    (dataset_dir / "definitions").mkdir(parents=True, exist_ok=True)
-    (dataset_dir / "solutions").mkdir(parents=True, exist_ok=True)
-    (dataset_dir / "traces").mkdir(parents=True, exist_ok=True)
-    save_json_file(definition, dataset_dir / "definitions" / "add.json")
-
     solution_fast = Solution(
         name="add_fast",
         definition="add",
-        author="tester",
+        author="t",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'fast'\n")],
     )
     solution_slow = Solution(
         name="add_slow",
         definition="add",
-        author="tester",
+        author="t",
         spec=BuildSpec(
-            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=False,
         ),
         sources=[SourceFile(path="main.py", content="def run(X, Y):\n    return 'slow'\n")],
     )
-    save_json_file(solution_fast, dataset_dir / "solutions" / "add_fast.json")
-    save_json_file(solution_slow, dataset_dir / "solutions" / "add_slow.json")
-
-    env = Environment(hardware="cpu")
-
-    def make_evaluation(speedup: float) -> Evaluation:
-        return Evaluation(
-            status=EvaluationStatus.PASSED,
-            log="log",
-            environment=env,
-            timestamp="t",
-            correctness=Correctness(max_relative_error=0.0, max_absolute_error=0.0),
-            performance=Performance(
-                latency_ms=1.0 / max(speedup, 1e-6),
-                reference_latency_ms=1.0,
-                speedup_factor=speedup,
-            ),
-        )
 
     workload2 = Workload(axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w2")
     workload3 = Workload(axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="w3")
+
     traces = [
-        Trace(
-            definition="add",
-            workload=workload2,
-            solution="add_fast",
-            evaluation=make_evaluation(3.0),
-        ),
-        Trace(
-            definition="add",
-            workload=workload2,
-            solution="add_slow",
-            evaluation=make_evaluation(1.0),
-        ),
-        Trace(
-            definition="add",
-            workload=workload3,
-            solution="add_fast",
-            evaluation=make_evaluation(0.9),
-        ),
-        Trace(
-            definition="add",
-            workload=workload3,
-            solution="add_slow",
-            evaluation=make_evaluation(2.0),
-        ),
+        Trace(definition="add", workload=workload2, solution="add_fast", evaluation=make_eval(3.0)),
+        Trace(definition="add", workload=workload2, solution="add_slow", evaluation=make_eval(1.2)),
+        Trace(definition="add", workload=workload3, solution="add_fast", evaluation=make_eval(0.9)),
+        Trace(definition="add", workload=workload3, solution="add_slow", evaluation=make_eval(2.5)),
     ]
-    save_jsonl_file(traces, dataset_dir / "traces" / "add.jsonl")
 
-    trace_set = TraceSet.from_path(str(dataset_dir))
-
-    # Avoid AOT to simplify counting builder invocations
-    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.0)))
-    ApplyRuntime.set_instance(runtime)
-
-    # Patch PythonBuilder._build to count actual builds
-    from flashinfer_bench.compile.builders.python_builder import PythonBuilder
-
-    counts = {"build": 0}
-    orig_build = PythonBuilder.build
-
-    def counting_build(self, definition: Definition, solution: Solution) -> Runnable:
-        counts["build"] += 1
-        return orig_build(self, definition, solution)
-
-    try:
-        # Patch at class so the registry instance picks it up
-        PythonBuilder.build = counting_build  # type: ignore[assignment]
-
-        # Two dispatches for same key should reuse cached runnable
-        class T:
-            def __init__(self, shape: Tuple[int, ...]):
-                self.shape = shape
-
-        assert (
-            runtime.dispatch(
-                "add", {"X": T((2, 2)), "Y": T((2, 2))}, fallback=lambda **_: "fallback"
-            )
-            == "fast"
-        )
-        assert (
-            runtime.dispatch(
-                "add", {"X": T((2, 2)), "Y": T((2, 2))}, fallback=lambda **_: "fallback"
-            )
-            == "fast"
-        )
-        # Only one real build should have occurred
-        assert counts["build"] == 1
-    finally:
-        PythonBuilder.build = orig_build  # type: ignore[assignment]
-        ApplyRuntime.set_instance(None)
+    trace_set = TraceSet(
+        root=None,
+        definitions={"add": definition},
+        solutions={"add": [solution_fast, solution_slow]},
+        traces={"add": traces},
+    )
+    return definition, trace_set
 
 
-class TestDispatchArgsKwargs:
-    """Tests for dispatch args/kwargs handling."""
-
-    def test_dispatch_with_kwargs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch merges kwargs into args correctly."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        # Partial positional args with kwargs
-        out = runtime.dispatch(
-            "add",
-            args=(FakeTensor((2, 2)),),
-            kwargs={"Y": FakeTensor((2, 2))},
-            fallback=lambda *_: "fallback",
-        )
-        assert out == "fast"
-
-    def test_dispatch_with_all_kwargs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch with all kwargs and no positional args."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        out = runtime.dispatch(
-            "add",
-            args=(),
-            kwargs={"X": FakeTensor((2, 2)), "Y": FakeTensor((2, 2))},
-            fallback=lambda *_: "fallback",
-        )
-        assert out == "fast"
-
-    def test_dispatch_invalid_arg_count(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch raises ValueError for invalid argument count."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        # Only 1 arg when definition expects 2 inputs (VR) or 3 (DPS)
-        with pytest.raises(ValueError):
-            runtime.dispatch("add", args=(FakeTensor((2, 2)),), kwargs={}, fallback=None)
-
-
-class TestDispatchCallingConvention:
-    """Tests for dispatch calling convention detection."""
-
-    def test_dispatch_value_returning_style(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch with value-returning style (inputs only)."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        # 2 args = 2 inputs -> VR style
-        out = runtime.dispatch(
-            "add",
-            args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
-            kwargs={},
-            fallback=lambda *_: "fallback",
-        )
-        # VR style returns the result
-        assert out == "fast"
-
-
-def make_dps_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
-    """Create definition and DPS-style solutions for testing."""
+def make_dps_traces() -> Tuple[Definition, TraceSet]:
+    """Create DPS-style traces: M=2 -> fast wins, M=3 -> slow wins."""
     definition = Definition(
         name="add_dps",
         op_type="op",
@@ -418,8 +124,7 @@ def make_dps_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
         outputs={"Z": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference="def run(X, Y):\n    return X + Y\n",
     )
-    # DPS style solution - modifies output in place
-    solution1 = Solution(
+    solution_fast = Solution(
         name="add_dps_fast",
         definition="add_dps",
         author="t",
@@ -427,11 +132,11 @@ def make_dps_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
             language=SupportedLanguages.PYTHON,
             target_hardware=["cpu"],
             entry_point="main.py::run",
-            destination_passing_style=True,  # DPS style
+            destination_passing_style=True,
         ),
-        sources=[SourceFile(path="main.py", content="def run(X, Y, Z):\n    Z.fill_('fast')\n")],
+        sources=[SourceFile(path="main.py", content="def run(X, Y, Z):\n    Z.fill_(1.0)\n")],
     )
-    solution2 = Solution(
+    solution_slow = Solution(
         name="add_dps_slow",
         definition="add_dps",
         author="t",
@@ -439,143 +144,52 @@ def make_dps_def_and_solutions() -> Tuple[Definition, Solution, Solution]:
             language=SupportedLanguages.PYTHON,
             target_hardware=["cpu"],
             entry_point="main.py::run",
-            destination_passing_style=True,  # DPS style
+            destination_passing_style=True,
         ),
-        sources=[SourceFile(path="main.py", content="def run(X, Y, Z):\n    Z.fill_('slow')\n")],
+        sources=[SourceFile(path="main.py", content="def run(X, Y, Z):\n    Z.fill_(2.0)\n")],
     )
-    return definition, solution1, solution2
 
-
-def make_dps_traces() -> Tuple[Definition, TraceSet]:
-    """Create TraceSet with DPS-style solutions."""
-    definition, solution1, solution2 = make_dps_def_and_solutions()
     workload2 = Workload(
         axes={"M": 2}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="dps_w2"
     )
     workload3 = Workload(
         axes={"M": 3}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="dps_w3"
     )
-    trace21 = Trace(
-        definition="add_dps", workload=workload2, solution="add_dps_fast", evaluation=make_eval(3.0)
-    )
-    trace22 = Trace(
-        definition="add_dps", workload=workload2, solution="add_dps_slow", evaluation=make_eval(1.2)
-    )
-    trace31 = Trace(
-        definition="add_dps", workload=workload3, solution="add_dps_fast", evaluation=make_eval(0.9)
-    )
-    trace32 = Trace(
-        definition="add_dps", workload=workload3, solution="add_dps_slow", evaluation=make_eval(2.5)
-    )
+
+    traces = [
+        Trace(
+            definition="add_dps",
+            workload=workload2,
+            solution="add_dps_fast",
+            evaluation=make_eval(3.0),
+        ),
+        Trace(
+            definition="add_dps",
+            workload=workload2,
+            solution="add_dps_slow",
+            evaluation=make_eval(1.2),
+        ),
+        Trace(
+            definition="add_dps",
+            workload=workload3,
+            solution="add_dps_fast",
+            evaluation=make_eval(0.9),
+        ),
+        Trace(
+            definition="add_dps",
+            workload=workload3,
+            solution="add_dps_slow",
+            evaluation=make_eval(2.5),
+        ),
+    ]
+
     trace_set = TraceSet(
         root=None,
         definitions={"add_dps": definition},
-        solutions={"add_dps": [solution1, solution2]},
-        traces={"add_dps": [trace21, trace22, trace31, trace32]},
+        solutions={"add_dps": [solution_fast, solution_slow]},
+        traces={"add_dps": traces},
     )
     return definition, trace_set
-
-
-class FakeTensorWithFill:
-    """Fake tensor that supports fill_ for DPS testing."""
-
-    def __init__(self, shape: Tuple[int, ...]):
-        self.shape = tuple(shape)
-        self.value = None
-
-    def fill_(self, value):
-        self.value = value
-
-
-class TestDispatchDPSStyle:
-    """Tests for dispatch with destination-passing style solutions."""
-
-    def test_dispatch_dps_style_returns_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch with DPS style returns None and modifies output tensor."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        X = FakeTensorWithFill((2, 2))
-        Y = FakeTensorWithFill((2, 2))
-        Z = FakeTensorWithFill((2, 2))
-
-        # 3 args = 2 inputs + 1 output -> DPS style
-        out = runtime.dispatch("add_dps", args=(X, Y, Z), kwargs={}, fallback=lambda *_: "fallback")
-
-        # DPS style returns None
-        assert out is None
-        # Output tensor should be modified
-        assert Z.value == "fast"
-
-    def test_dispatch_dps_with_kwargs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch DPS style with kwargs for output."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        X = FakeTensorWithFill((2, 2))
-        Y = FakeTensorWithFill((2, 2))
-        Z = FakeTensorWithFill((2, 2))
-
-        # Mix args and kwargs for DPS
-        out = runtime.dispatch(
-            "add_dps", args=(X, Y), kwargs={"Z": Z}, fallback=lambda *_: "fallback"
-        )
-
-        assert out is None
-        assert Z.value == "fast"
-
-    def test_dispatch_dps_miss_uses_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch DPS miss uses fallback correctly."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_dps_traces()
-        runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
-
-        X = FakeTensorWithFill((99, 2))  # M=99 not in traces
-        Y = FakeTensorWithFill((99, 2))
-        Z = FakeTensorWithFill((99, 2))
-
-        fallback_called = {"called": False}
-
-        def fallback(*args):
-            fallback_called["called"] = True
-            return "fallback_result"
-
-        out = runtime.dispatch("add_dps", args=(X, Y, Z), kwargs={}, fallback=fallback)
-
-        assert fallback_called["called"]
-        assert out == "fallback_result"
-
-    def test_dispatch_dps_best_policy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test dispatch DPS with def_best miss policy."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
-
-        definition, trace_set = make_dps_traces()
-        registry = ApplyConfigRegistry(
-            default=ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0)
-        )
-        runtime = ApplyRuntime(trace_set, registry)
-
-        X = FakeTensorWithFill((100, 2))  # M=100 not in traces
-        Y = FakeTensorWithFill((100, 2))
-        Z = FakeTensorWithFill((100, 2))
-
-        out = runtime.dispatch("add_dps", args=(X, Y, Z), kwargs={}, fallback=None)
-
-        assert out is None
-        assert Z.value in ("fast", "slow")
 
 
 def make_multi_def_trace_set() -> TraceSet:
@@ -635,26 +249,236 @@ def make_multi_def_trace_set() -> TraceSet:
         axes={"M": 4}, inputs={"X": RandomInput(), "Y": RandomInput()}, uuid="mul_w"
     )
 
-    trace_add = Trace(
-        definition="add", workload=workload_add, solution="add_sol", evaluation=make_eval(2.0)
-    )
-    trace_mul = Trace(
-        definition="mul", workload=workload_mul, solution="mul_sol", evaluation=make_eval(3.0)
-    )
-
     return TraceSet(
         root=None,
         definitions={"add": def_add, "mul": def_mul},
         solutions={"add": [sol_add], "mul": [sol_mul]},
-        traces={"add": [trace_add], "mul": [trace_mul]},
+        traces={
+            "add": [
+                Trace(
+                    definition="add",
+                    workload=workload_add,
+                    solution="add_sol",
+                    evaluation=make_eval(2.0),
+                )
+            ],
+            "mul": [
+                Trace(
+                    definition="mul",
+                    workload=workload_mul,
+                    solution="mul_sol",
+                    evaluation=make_eval(3.0),
+                )
+            ],
+        },
     )
 
 
-def test_per_definition_on_miss_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Test different on_miss_policy for different definitions."""
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+def test_runtime_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test runtime lifecycle: start/stop, stack, nested runtimes, context manager."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    _, trace_set = make_traces()
+    config = ApplyConfigRegistry(default=ApplyConfig())
+
+    # Lazy init returns None without env vars
+    assert ApplyRuntime.get_instance() is None
+    assert ApplyRuntime._env_initialized is True
+
+    # Start/stop and stack operations
+    rt1 = ApplyRuntime(trace_set, config)
+    rt1.start()
+    assert ApplyRuntime._stack == [rt1]
+    assert ApplyRuntime.get_instance() is rt1
+
+    # Nested runtime
+    rt2 = ApplyRuntime(trace_set, config)
+    rt2.start()
+    assert ApplyRuntime._stack == [rt1, rt2]
+    assert ApplyRuntime.get_instance() is rt2
+
+    # Stop in wrong order raises
+    with pytest.raises(RuntimeError, match="LIFO"):
+        rt1.stop()
+
+    # Correct LIFO order
+    rt2.stop()
+    assert ApplyRuntime.get_instance() is rt1
+    rt1.stop()
+    assert ApplyRuntime.get_instance() is None
+
+    # Context manager
+    rt3 = ApplyRuntime(trace_set, config)
+    with rt3:
+        assert ApplyRuntime.get_instance() is rt3
+    assert ApplyRuntime.get_instance() is None
+
+
+def test_runtime_multiple_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test start() idempotency and reactivation (stack re-push)."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    _, trace_set = make_traces()
+    rt1 = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig()))
+    rt2 = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig()))
+
+    # Idempotent: multiple start() on active runtime has no effect
+    rt1.start()
+    rt1.start()
+    assert ApplyRuntime._stack == [rt1]
+
+    # Reactivate: start() on inactive runtime pushes it again
+    rt2.start()
+    rt1.start()
+    assert ApplyRuntime._stack == [rt1, rt2, rt1]
+
+
+def test_dispatch_logic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test dispatch hit/miss/unknown definition logic."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    _, trace_set = make_traces()
+    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
+
+    # Hit: M=2 -> fast wins
+    out = runtime.dispatch(
+        "add",
+        args=(torch.zeros(2, 2), torch.zeros(2, 2)),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    assert out == "fast"
+
+    # Miss with fallback
+    miss_out = runtime.dispatch(
+        "add",
+        args=(torch.zeros(99, 2), torch.zeros(99, 2)),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    assert miss_out == "fallback"
+
+    # Miss without fallback -> error
+    with pytest.raises(RuntimeError):
+        runtime.dispatch(
+            "add", args=(torch.zeros(999, 2), torch.zeros(999, 2)), kwargs={}, fallback=None
+        )
+
+    # Unknown definition with fallback
+    fallback_val = runtime.dispatch(
+        "unknown_def",
+        args=(torch.zeros(2, 2), torch.zeros(2, 2)),
+        kwargs={},
+        fallback=lambda *args, **kwargs: "unknown_fallback",
+    )
+    assert fallback_val == "unknown_fallback"
+
+    # Unknown definition without fallback -> error
+    with pytest.raises(RuntimeError):
+        runtime.dispatch(
+            "unknown_def", args=(torch.zeros(2, 2), torch.zeros(2, 2)), kwargs={}, fallback=None
+        )
+
+
+def test_dispatch_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test dispatch with VR/DPS modes and args/kwargs combinations."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    # VR style
+    _, vr_trace_set = make_traces()
+    vr_runtime = ApplyRuntime(vr_trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0)))
+
+    # VR: positional args
+    out = vr_runtime.dispatch(
+        "add",
+        args=(torch.zeros(2, 2), torch.zeros(2, 2)),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    assert out == "fast"
+
+    # VR: partial kwargs
+    out = vr_runtime.dispatch(
+        "add",
+        args=(torch.zeros(2, 2),),
+        kwargs={"Y": torch.zeros(2, 2)},
+        fallback=lambda *_: "fallback",
+    )
+    assert out == "fast"
+
+    # VR: all kwargs
+    out = vr_runtime.dispatch(
+        "add",
+        args=(),
+        kwargs={"X": torch.zeros(2, 2), "Y": torch.zeros(2, 2)},
+        fallback=lambda *_: "fallback",
+    )
+    assert out == "fast"
+
+    # VR: invalid arg count
+    with pytest.raises(ValueError):
+        vr_runtime.dispatch("add", args=(torch.zeros(2, 2),), kwargs={}, fallback=None)
+
+    # DPS style
+    _, dps_trace_set = make_dps_traces()
+    dps_runtime = ApplyRuntime(
+        dps_trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=1.0))
+    )
+
+    X, Y, Z = torch.zeros(2, 2), torch.zeros(2, 2), torch.zeros(2, 2)
+
+    # DPS: returns None, modifies output
+    out = dps_runtime.dispatch("add_dps", args=(X, Y, Z), kwargs={}, fallback=lambda *_: "fallback")
+    assert out is None
+    assert Z[0, 0].item() == 1.0  # fast solution fills with 1.0
+
+    # DPS: with kwargs for output
+    Z2 = torch.zeros(2, 2)
+    out = dps_runtime.dispatch(
+        "add_dps", args=(X, Y), kwargs={"Z": Z2}, fallback=lambda *_: "fallback"
+    )
+    assert out is None
+    assert Z2[0, 0].item() == 1.0  # fast solution fills with 1.0
+
+
+def test_on_miss_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test on_miss_policy='use_def_best' behavior."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    # VR style with def_best policy
+    _, trace_set = make_traces()
+    registry = ApplyConfigRegistry(
+        default=ApplyConfig(on_miss_policy="use_def_best", aot_ratio=0.0)
+    )
+    runtime = ApplyRuntime(trace_set, registry)
+
+    # Miss should use def_best instead of fallback
+    out = runtime.dispatch(
+        "add", args=(torch.zeros(100, 2), torch.zeros(100, 2)), kwargs={}, fallback=None
+    )
+    assert out in ("fast", "slow")
+
+    # DPS style with def_best policy
+    _, dps_trace_set = make_dps_traces()
+    dps_runtime = ApplyRuntime(dps_trace_set, registry)
+
+    Z = torch.zeros(100, 2)
+    out = dps_runtime.dispatch(
+        "add_dps", args=(torch.zeros(100, 2), torch.zeros(100, 2), Z), kwargs={}, fallback=None
+    )
+    assert out is None
+    assert Z[0, 0].item() in (1.0, 2.0)  # fast=1.0, slow=2.0
+
+
+def test_per_definition_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test different configs for different definitions."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
 
     trace_set = make_multi_def_trace_set()
 
@@ -667,7 +491,7 @@ def test_per_definition_on_miss_policy(tmp_path: Path, monkeypatch: pytest.Monke
     # Miss on "add" (M=99 not traced) - should use fallback
     out_add = runtime.dispatch(
         "add",
-        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
+        args=(torch.zeros(99, 2), torch.zeros(99, 2)),
         kwargs={},
         fallback=lambda *_: "add_fallback",
     )
@@ -676,33 +500,43 @@ def test_per_definition_on_miss_policy(tmp_path: Path, monkeypatch: pytest.Monke
     # Miss on "mul" (M=99 not traced) - should use def_best
     out_mul = runtime.dispatch(
         "mul",
-        args=(FakeTensor((99, 2)), FakeTensor((99, 2))),
+        args=(torch.zeros(99, 2), torch.zeros(99, 2)),
         kwargs={},
         fallback=lambda *_: "mul_fallback",
     )
-    assert out_mul == "mul_result"  # should use def_best, not fallback
+    assert out_mul == "mul_result"
 
 
-def test_runtime_with_config_registry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Test ApplyRuntime initialization with ApplyConfigRegistry."""
-    cache_dir = tmp_path / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("FIB_CACHE_PATH", str(cache_dir))
+def test_build_caching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test that repeated dispatches reuse cached Runnable instead of rebuilding."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
 
     _, trace_set = make_traces()
+    runtime = ApplyRuntime(trace_set, ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.0)))
 
-    # Initialize with registry
-    registry = ApplyConfigRegistry(default=ApplyConfig(aot_ratio=0.5))
-    runtime = ApplyRuntime(trace_set, registry)
+    # Clear registry cache to ensure fresh build
+    BuilderRegistry.get_instance()._cache.clear()
 
-    # Should work normally
-    out = runtime.dispatch(
-        "add",
-        args=(FakeTensor((2, 2)), FakeTensor((2, 2))),
-        kwargs={},
-        fallback=lambda *_: "fallback",
-    )
-    assert out == "fast"
+    build_count = {"n": 0}
+    orig_build = PythonBuilder.build
+
+    def counting_build(self, definition, solution):
+        build_count["n"] += 1
+        return orig_build(self, definition, solution)
+
+    PythonBuilder.build = counting_build
+    try:
+        # Two dispatches with same key should only build once
+        runtime.dispatch(
+            "add", args=(torch.zeros(2, 2), torch.zeros(2, 2)), kwargs={}, fallback=None
+        )
+        runtime.dispatch(
+            "add", args=(torch.zeros(2, 2), torch.zeros(2, 2)), kwargs={}, fallback=None
+        )
+        assert build_count["n"] == 1
+    finally:
+        PythonBuilder.build = orig_build
 
 
 if __name__ == "__main__":
