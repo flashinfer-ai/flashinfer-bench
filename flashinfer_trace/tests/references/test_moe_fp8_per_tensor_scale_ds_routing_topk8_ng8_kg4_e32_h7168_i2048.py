@@ -136,6 +136,10 @@ def run(
         silu_X2 = X2 / (1.0 + torch.exp(-X2))  # [Tk, I]
         C = silu_X2 * X1  # [Tk, I]
 
+        # Quantize-dequantize intermediate to match kernel behavior
+        # The kernel internally quantizes intermediate to FP8 before GEMM2
+        C = _quant_dequant_per_tensor_fp8(C)
+
         # GEMM2: [Tk, I] @ [I, H] = [Tk, H]
         O = C.matmul(W2_e.t())  # [Tk, H]
 
@@ -149,6 +153,29 @@ def run(
 # -----------------------------
 # Helpers: FP8 per-tensor quantization
 # -----------------------------
+def _quant_dequant_per_tensor_fp8(x: torch.Tensor):
+    """
+    FP8 per-tensor quantize-dequantize roundtrip.
+    This simulates what the kernel does internally with intermediate activations.
+    """
+    finfo = torch.finfo(torch.float8_e4m3fn)
+    max_fp8 = finfo.max  # 448
+
+    x_f32 = x.to(torch.float32)
+    amax = torch.amax(torch.abs(x_f32)).nan_to_num()
+
+    # Global scale factor (quant scale): 448 / amax
+    global_sf = (max_fp8 / amax) if amax > 0 else torch.tensor(1.0, device=x.device)
+
+    # Quantize to FP8
+    x_fp8 = (x_f32 * global_sf).to(torch.float8_e4m3fn)
+
+    # Dequantize back to float32
+    x_dequant = x_fp8.to(torch.float32) / global_sf
+
+    return x_dequant
+
+
 def _fp8_per_tensor_quant(x: torch.Tensor):
     """Quantize tensor to FP8 with per-tensor scale."""
     finfo = torch.finfo(torch.float8_e4m3fn)
@@ -396,7 +423,7 @@ def main():
     for T, off, use_bias in configs:
         try:
             ok = test_correctness_moe(
-                seq_len=T, local_expert_offset=off, use_bias=use_bias, percent=0.85
+                seq_len=T, local_expert_offset=off, use_bias=use_bias, percent=0.925
             )
             passed += int(ok)
         except Exception as e:
