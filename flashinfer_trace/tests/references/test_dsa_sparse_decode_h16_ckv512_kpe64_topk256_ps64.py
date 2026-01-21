@@ -1,5 +1,5 @@
 """
-Tests for NSA (Native Sparse Attention) sparse decode reference implementation.
+Tests for DSA (DeepSeek Sparse Attention) sparse decode reference implementation.
 Page size 64 variant.
 
 Ground truth sources:
@@ -7,7 +7,7 @@ Ground truth sources:
 2. SGLang FlashMLA sparse prefill: sgl_kernel.flash_mla.flash_mla_sparse_fwd (prefill)
 
 Note: FlashInfer's sparse.py provides BlockSparseAttentionWrapper which uses BSR format,
-different from DeepSeek's NSA token-level sparse attention.
+different from DeepSeek's DSA token-level sparse attention.
 """
 
 import math
@@ -25,7 +25,7 @@ try:
 except ImportError:
     SGLANG_AVAILABLE = False
 
-# FlashInfer sparse is BSR-based, different from NSA's token-level sparse
+# FlashInfer sparse is BSR-based, different from DSA's token-level sparse
 try:
     import flashinfer
 
@@ -45,7 +45,7 @@ TRACE_ROOT = Path(__file__).resolve().parents[2]
 
 @torch.no_grad()
 def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
-    """Reference implementation for NSA sparse decode attention with page_size=64."""
+    """Reference implementation for DSA sparse decode attention with page_size=64."""
     batch_size, num_qo_heads, head_dim_ckv = q_nope.shape
     head_dim_kpe = q_pe.shape[-1]
     num_pages, page_size, _ = ckv_cache.shape
@@ -120,7 +120,7 @@ def generate_random_inputs(
     topk=TOPK,
     device="cuda",
 ):
-    """Generate random inputs for NSA sparse attention testing with page_size=64."""
+    """Generate random inputs for DSA sparse attention testing with page_size=64."""
     # Generate random sequence lengths for each batch
     # Ensure seq_lens >= topk so we have enough tokens to select
     min_seq_len = max(topk, 256)
@@ -229,7 +229,7 @@ def check_hit_ratio(ref, gt, atol, rtol, required_percent=0.85):
 def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
     """Test that reference produces correct output shapes."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA decode ps64 output shape: batch_size={batch_size}, topk={topk}")
+    print(f"Testing DSA decode ps64 output shape: batch_size={batch_size}, topk={topk}")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -270,7 +270,7 @@ def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
 def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
     """Test that sparse attention with all tokens selected equals dense attention."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA decode ps64 sparse vs dense consistency")
+    print(f"Testing DSA decode ps64 sparse vs dense consistency")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -320,7 +320,7 @@ def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
 def test_padding_handling(batch_size=4, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA decode ps64 padding handling")
+    print(f"Testing DSA decode ps64 padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -379,7 +379,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
     For page_size=64, we flatten to token-level for comparison.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA decode ps64 correctness against SGLang FlashMLA")
+    print(f"Testing DSA decode ps64 correctness against SGLang FlashMLA")
     print(f"batch_size={batch_size}, max_seq_len={max_seq_len}")
     print(f"{'='*60}")
 
@@ -458,7 +458,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
         # indices: [s_q, h_kv=1, topk]
         indices_for_mla = sparse_indices.unsqueeze(1)  # [batch_size, 1, topk]
 
-        # Pad query heads to required multiple (64 or 128) as done in SGLang's nsa_backend.py
+        # Pad query heads to required multiple (64 or 128) as done in SGLang's dsa_backend.py
         need_padding = NUM_QO_HEADS % required_padding != 0
         if need_padding:
             assert (
@@ -523,7 +523,7 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
 
 def main():
     """Run comprehensive tests."""
-    print("Testing NSA (Native Sparse Attention) Sparse Decode Reference Implementation")
+    print("Testing DSA (DeepSeek Sparse Attention) Sparse Decode Reference Implementation")
     print("Page Size 64 Variant")
     print("=" * 70)
     print(

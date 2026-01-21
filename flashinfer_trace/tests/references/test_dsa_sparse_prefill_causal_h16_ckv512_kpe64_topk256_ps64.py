@@ -1,12 +1,12 @@
 """
-Tests for NSA (Native Sparse Attention) sparse decode reference implementation.
+Tests for DSA (DeepSeek Sparse Attention) sparse prefill reference implementation.
+Page size 64 variant.
 
 Ground truth sources:
-1. SGLang FlashMLA sparse kernel: sgl_kernel.flash_mla.flash_mla_with_kvcache (decode with indices)
-2. SGLang FlashMLA sparse prefill: sgl_kernel.flash_mla.flash_mla_sparse_fwd (prefill)
+1. SGLang FlashMLA sparse prefill: sgl_kernel.flash_mla.flash_mla_sparse_fwd
 
 Note: FlashInfer's sparse.py provides BlockSparseAttentionWrapper which uses BSR format,
-different from DeepSeek's NSA token-level sparse attention.
+different from DeepSeek's DSA token-level sparse attention.
 """
 
 import math
@@ -18,13 +18,12 @@ import torch
 
 # Ground truth imports with availability checks
 try:
-    from sgl_kernel.flash_mla import flash_mla_sparse_fwd, flash_mla_with_kvcache, get_mla_metadata
+    from sgl_kernel.flash_mla import flash_mla_sparse_fwd
 
     SGLANG_AVAILABLE = True
 except ImportError:
     SGLANG_AVAILABLE = False
 
-# FlashInfer sparse is BSR-based, different from NSA's token-level sparse
 try:
     import flashinfer
 
@@ -36,7 +35,7 @@ except ImportError:
 NUM_QO_HEADS = 16
 HEAD_DIM_CKV = 512
 HEAD_DIM_KPE = 64
-PAGE_SIZE = 1
+PAGE_SIZE = 64
 TOPK = 256
 
 TRACE_ROOT = Path(__file__).resolve().parents[2]
@@ -44,10 +43,10 @@ TRACE_ROOT = Path(__file__).resolve().parents[2]
 
 @torch.no_grad()
 def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
-    """Reference implementation for NSA sparse decode attention."""
-    batch_size, num_qo_heads, head_dim_ckv = q_nope.shape
+    """Reference implementation for DSA sparse prefill attention with page_size=64."""
+    total_num_tokens, num_qo_heads, head_dim_ckv = q_nope.shape
     head_dim_kpe = q_pe.shape[-1]
-    page_size = ckv_cache.shape[1]
+    num_pages, page_size, _ = ckv_cache.shape
     topk = sparse_indices.shape[-1]
 
     # Check constants
@@ -57,101 +56,94 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
     assert page_size == PAGE_SIZE
     assert topk == TOPK
 
+    # Check constraints
+    assert sparse_indices.shape[0] == total_num_tokens
+    assert sparse_indices.shape[-1] == topk
+    assert ckv_cache.shape[1] == page_size
+
     device = q_nope.device
 
-    # Squeeze page dimension (page_size=1)
-    Kc_all = ckv_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_ckv]
-    Kp_all = kpe_cache.squeeze(1).to(torch.float32)  # [num_pages, head_dim_kpe]
+    # Flatten paged KV cache to token-level: [num_pages, page_size, dim] -> [num_pages * page_size, dim]
+    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_ckv]
+    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(
+        torch.float32
+    )  # [total_kv_tokens, head_dim_kpe]
 
     output = torch.zeros(
-        (batch_size, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
+        (total_num_tokens, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device
     )
-    lse = torch.full((batch_size, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
+    lse = torch.full(
+        (total_num_tokens, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
+    )
 
-    for b in range(batch_size):
-        indices = sparse_indices[b]  # [topk]
+    for t in range(total_num_tokens):
+        indices = sparse_indices[t]  # [topk]
 
         # Handle padding: -1 indicates invalid indices
         valid_mask = indices != -1
         valid_indices = indices[valid_mask]
 
         if valid_indices.numel() == 0:
-            output[b].zero_()
+            output[t].zero_()
             continue
 
+        # For page_size=64, indices encode (page_idx * 64 + offset)
         tok_idx = valid_indices.to(torch.long)
 
         Kc = Kc_all[tok_idx]  # [num_valid, head_dim_ckv]
         Kp = Kp_all[tok_idx]  # [num_valid, head_dim_kpe]
-        qn = q_nope[b].to(torch.float32)  # [num_qo_heads, head_dim_ckv]
-        qp = q_pe[b].to(torch.float32)  # [num_qo_heads, head_dim_kpe]
+        qn = q_nope[t].to(torch.float32)  # [num_qo_heads, head_dim_ckv]
+        qp = q_pe[t].to(torch.float32)  # [num_qo_heads, head_dim_kpe]
 
         # Compute attention logits
         logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_qo_heads, num_valid]
         logits_scaled = logits * sm_scale
 
         # Compute 2-base LSE
-        lse[b] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)
+        lse[t] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)
 
         # Compute attention output
         attn = torch.softmax(logits_scaled, dim=-1)  # [num_qo_heads, num_valid]
         out = attn @ Kc  # [num_qo_heads, head_dim_ckv]
-        output[b] = out.to(torch.bfloat16)
+        output[t] = out.to(torch.bfloat16)
 
     return {"output": output, "lse": lse}
 
 
 def generate_random_inputs(
-    batch_size,
-    max_seq_len,
+    total_num_tokens,
     num_qo_heads=NUM_QO_HEADS,
     head_dim_ckv=HEAD_DIM_CKV,
     head_dim_kpe=HEAD_DIM_KPE,
     topk=TOPK,
     device="cuda",
 ):
-    """Generate random inputs for NSA sparse attention testing."""
-    # Generate random sequence lengths for each batch
-    # Ensure seq_lens >= topk so we have enough tokens to select
-    min_seq_len = max(topk, 256)
-    seq_lens = torch.randint(
-        min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device
+    """Generate random inputs for DSA sparse prefill attention testing with page_size=64."""
+    # Generate KV cache with enough pages
+    # Each page holds 64 tokens, so we need more pages to hold enough tokens
+    total_kv_tokens = max(total_num_tokens * 4, 2048)  # Ensure enough KV tokens
+    num_pages = (total_kv_tokens + PAGE_SIZE - 1) // PAGE_SIZE
+
+    # Generate sparse indices (top-K selection for each token)
+    # Indices encode global token position: page_idx * 64 + offset
+    total_tokens_in_cache = num_pages * PAGE_SIZE
+    sparse_indices = torch.randint(
+        0, total_tokens_in_cache, (total_num_tokens, topk), dtype=torch.int32, device=device
     )
-
-    # Calculate total pages needed
-    total_pages_needed = seq_lens.sum().item()
-
-    # Generate page table (mapping sequence positions to page indices)
-    # For simplicity, use consecutive pages
-    page_table = torch.zeros(batch_size, max_seq_len, dtype=torch.int32, device=device)
-    page_offset = 0
-    for b in range(batch_size):
-        seq_len = seq_lens[b].item()
-        page_table[b, :seq_len] = torch.arange(
-            page_offset, page_offset + seq_len, dtype=torch.int32, device=device
-        )
-        page_offset += seq_len
-
-    # Generate sparse indices (top-K selection for each batch element)
-    sparse_indices = torch.full((batch_size, topk), -1, dtype=torch.int32, device=device)
-    for b in range(batch_size):
-        seq_len = seq_lens[b].item()
-        actual_topk = min(topk, seq_len)
-        # Select random indices from available pages
-        perm = torch.randperm(seq_len, device=device)[:actual_topk]
-        selected_pages = page_table[b, perm]
-        sparse_indices[b, :actual_topk] = selected_pages.to(torch.int32)
 
     # Generate query tensors
     q_nope = torch.randn(
-        batch_size, num_qo_heads, head_dim_ckv, dtype=torch.bfloat16, device=device
+        total_num_tokens, num_qo_heads, head_dim_ckv, dtype=torch.bfloat16, device=device
     )
-    q_pe = torch.randn(batch_size, num_qo_heads, head_dim_kpe, dtype=torch.bfloat16, device=device)
+    q_pe = torch.randn(
+        total_num_tokens, num_qo_heads, head_dim_kpe, dtype=torch.bfloat16, device=device
+    )
 
-    # Generate compressed KV and positional caches
-    num_pages = total_pages_needed + 100  # Add extra pages
-    ckv_cache = torch.randn(num_pages, 1, head_dim_ckv, dtype=torch.bfloat16, device=device)
-    kpe_cache = torch.randn(num_pages, 1, head_dim_kpe, dtype=torch.bfloat16, device=device)
+    # Generate compressed KV and positional caches with page_size=64
+    ckv_cache = torch.randn(num_pages, PAGE_SIZE, head_dim_ckv, dtype=torch.bfloat16, device=device)
+    kpe_cache = torch.randn(num_pages, PAGE_SIZE, head_dim_kpe, dtype=torch.bfloat16, device=device)
 
     # Generate softmax scale
     # MLA uses head dimension before matrix absorption (128 + 64 = 192)
@@ -164,8 +156,6 @@ def generate_random_inputs(
         "kpe_cache": kpe_cache,
         "sparse_indices": sparse_indices,
         "sm_scale": torch.tensor(sm_scale, dtype=torch.float32, device=device),
-        "seq_lens": seq_lens,
-        "page_table": page_table,
         "num_pages": num_pages,
     }
 
@@ -214,17 +204,19 @@ def check_hit_ratio(ref, gt, atol, rtol, required_percent=0.85):
     return hit_ratio >= required_percent
 
 
-def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
+def test_output_shape(total_num_tokens=64, topk=TOPK):
     """Test that reference produces correct output shapes."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA output shape: batch_size={batch_size}, topk={topk}")
+    print(
+        f"Testing DSA prefill ps64 output shape: total_num_tokens={total_num_tokens}, topk={topk}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         print("WARNING: CUDA not available, using CPU")
 
-    inputs = generate_random_inputs(batch_size, max_seq_len, topk=topk, device=device)
+    inputs = generate_random_inputs(total_num_tokens, topk=topk, device=device)
 
     result = run(
         inputs["q_nope"],
@@ -238,8 +230,8 @@ def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
     output = result["output"]
     lse = result["lse"]
 
-    expected_output_shape = (batch_size, NUM_QO_HEADS, HEAD_DIM_CKV)
-    expected_lse_shape = (batch_size, NUM_QO_HEADS)
+    expected_output_shape = (total_num_tokens, NUM_QO_HEADS, HEAD_DIM_CKV)
+    expected_lse_shape = (total_num_tokens, NUM_QO_HEADS)
 
     output_shape_correct = output.shape == expected_output_shape
     lse_shape_correct = lse.shape == expected_lse_shape
@@ -255,84 +247,38 @@ def test_output_shape(batch_size=4, max_seq_len=512, topk=TOPK):
         return False
 
 
-def test_sparse_vs_dense_consistency(batch_size=4, topk=TOPK):
-    """Test that sparse attention with all tokens selected equals dense attention."""
-    print(f"\n{'='*60}")
-    print(f"Testing NSA sparse vs dense consistency")
-    print(f"{'='*60}")
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    if device == "cpu":
-        print("WARNING: CUDA not available, using CPU")
-
-    # Generate inputs where sparse_indices includes all tokens (no sparsity)
-    # Use a small sequence length equal to topk for full coverage
-    seq_len = topk
-    num_pages = seq_len + 10
-
-    q_nope = torch.randn(
-        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
-    )
-    q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
-    ckv_cache = torch.randn(num_pages, 1, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
-    kpe_cache = torch.randn(num_pages, 1, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
-    sm_scale = torch.tensor(1.0 / np.sqrt(128 + HEAD_DIM_KPE), dtype=torch.float32, device=device)
-
-    # All indices valid (0 to seq_len-1)
-    sparse_indices = (
-        torch.arange(seq_len, dtype=torch.int32, device=device)
-        .unsqueeze(0)
-        .expand(batch_size, -1)
-        .contiguous()
-    )
-
-    result = run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
-    output = result["output"]
-    lse = result["lse"]
-
-    # Check that output is not all zeros (actually computed)
-    output_nonzero = output.abs().sum() > 0
-    lse_finite = torch.all(torch.isfinite(lse))
-
-    print(f"Output non-zero: {output_nonzero}")
-    print(f"LSE finite: {lse_finite}")
-
-    if output_nonzero and lse_finite:
-        print("PASSED: Sparse attention produces valid outputs")
-        return True
-    else:
-        print("FAILED: Sparse attention produces invalid outputs")
-        return False
-
-
-def test_padding_handling(batch_size=4, topk=TOPK):
+def test_padding_handling(total_num_tokens=64, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA padding handling")
+    print(f"Testing DSA prefill ps64 padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         print("WARNING: CUDA not available, using CPU")
 
-    num_pages = 1000
+    num_pages = 64  # 64 pages * 64 tokens = 4096 total tokens
 
     q_nope = torch.randn(
-        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+        total_num_tokens, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
     )
-    q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
-    ckv_cache = torch.randn(num_pages, 1, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
-    kpe_cache = torch.randn(num_pages, 1, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
+    q_pe = torch.randn(
+        total_num_tokens, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device
+    )
+    ckv_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    kpe_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     sm_scale = torch.tensor(1.0 / np.sqrt(128 + HEAD_DIM_KPE), dtype=torch.float32, device=device)
 
-    # Create sparse indices with varying amounts of padding
-    sparse_indices = torch.full((batch_size, topk), -1, dtype=torch.int32, device=device)
-    valid_counts = [topk, topk // 2, topk // 4, 10]  # Different valid counts per batch
+    # Create sparse indices with varying amounts of padding per token
+    sparse_indices = torch.full((total_num_tokens, topk), -1, dtype=torch.int32, device=device)
+    total_tokens_in_cache = num_pages * PAGE_SIZE
 
-    for b in range(batch_size):
-        valid_count = valid_counts[b % len(valid_counts)]
-        sparse_indices[b, :valid_count] = torch.randint(
-            0, num_pages, (valid_count,), dtype=torch.int32, device=device
+    for t in range(total_num_tokens):
+        # Vary the number of valid indices
+        valid_count = (t % 4 + 1) * (topk // 4)  # 25%, 50%, 75%, 100%
+        valid_count = min(valid_count, topk)
+        sparse_indices[t, :valid_count] = torch.randint(
+            0, total_tokens_in_cache, (valid_count,), dtype=torch.int32, device=device
         )
 
     result = run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
@@ -341,7 +287,6 @@ def test_padding_handling(batch_size=4, topk=TOPK):
 
     # Verify outputs are valid
     output_valid = not torch.isnan(output).any() and not torch.isinf(output).any()
-    # LSE can be -inf for empty sequences, but should not be +inf or nan
     lse_valid = not torch.isnan(lse).any() and not torch.isinf(lse[lse > -float("inf")]).any()
 
     print(f"Output valid (no nan/inf): {output_valid}")
@@ -355,16 +300,19 @@ def test_padding_handling(batch_size=4, topk=TOPK):
         return False
 
 
-def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e-2):
+def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
     """
-    Test correctness against SGLang FlashMLA sparse kernel.
+    Test correctness against SGLang FlashMLA sparse prefill kernel.
 
     NOTE: This test requires SGLang sgl_kernel to be installed.
     If not available, the test will be skipped.
+
+    NOTE: FlashMLA sparse kernel operates at token-level (page_size=1).
+    For page_size=64, we flatten to token-level for comparison.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA correctness against SGLang FlashMLA")
-    print(f"batch_size={batch_size}, max_seq_len={max_seq_len}")
+    print(f"Testing DSA prefill ps64 correctness against SGLang FlashMLA")
+    print(f"total_num_tokens={total_num_tokens}")
     print(f"{'='*60}")
 
     if not SGLANG_AVAILABLE:
@@ -379,7 +327,8 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
     torch.manual_seed(42)
 
     # Test parameters
-    num_pages = 1024
+    num_pages = 32  # 32 pages * 64 tokens/page = 2048 total KV tokens
+    total_kv_tokens = num_pages * PAGE_SIZE
     head_dim = HEAD_DIM_CKV + HEAD_DIM_KPE  # Combined head dim = 576
 
     # Determine required head padding based on GPU architecture
@@ -390,29 +339,36 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
 
     # Generate query tensors
     q_nope = torch.randn(
-        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+        total_num_tokens, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
     )
-    q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
+    q_pe = torch.randn(
+        total_num_tokens, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device
+    )
 
     # Combined q for FlashMLA: [s_q, h_q, d_qk]
-    # Note: flash_mla_sparse_fwd expects [s_q, h_q, d_qk], not [batch, h, d]
-    q_all = torch.cat([q_nope, q_pe], dim=-1)  # [batch_size, num_qo_heads, head_dim]
+    q_all = torch.cat([q_nope, q_pe], dim=-1)  # [total_num_tokens, num_qo_heads, head_dim]
 
-    # KV cache (combined)
-    # flash_mla_sparse_fwd expects: kv [s_kv, h_kv, d_qk] where h_kv=1 for MLA
-    kv_cache = torch.randn(num_pages, head_dim, dtype=torch.bfloat16, device=device)
-    ckv_cache = kv_cache[:, :HEAD_DIM_CKV].unsqueeze(1)  # [num_pages, 1, ckv]
-    kpe_cache = kv_cache[:, HEAD_DIM_CKV:].unsqueeze(1)  # [num_pages, 1, kpe]
+    # KV cache with page_size=64
+    # Shape: [num_pages, page_size, head_dim]
+    kv_cache_paged = torch.randn(
+        num_pages, PAGE_SIZE, head_dim, dtype=torch.bfloat16, device=device
+    )
+    ckv_cache = kv_cache_paged[:, :, :HEAD_DIM_CKV]  # [num_pages, 64, ckv]
+    kpe_cache = kv_cache_paged[:, :, HEAD_DIM_CKV:]  # [num_pages, 64, kpe]
+
+    # Flatten for FlashMLA (token-level)
+    kv_cache_flat = kv_cache_paged.reshape(total_kv_tokens, head_dim)  # [total_kv_tokens, head_dim]
 
     sm_scale = 1.0 / np.sqrt(128 + HEAD_DIM_KPE)
 
-    # Generate sparse indices: [batch_size, topk] for reference
+    # Generate sparse indices as global token indices: [total_num_tokens, topk]
+    # Each index is in range [0, total_kv_tokens)
     sparse_indices = torch.randint(
-        0, num_pages, (batch_size, TOPK), dtype=torch.int32, device=device
+        0, total_kv_tokens, (total_num_tokens, TOPK), dtype=torch.int32, device=device
     )
 
-    # Run reference implementation
-    print("Running reference implementation...")
+    # Run reference implementation with page_size=64
+    print("Running reference implementation (page_size=64)...")
     ref_result = run(
         q_nope,
         q_pe,
@@ -424,25 +380,25 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
     ref_output = ref_result["output"]
     ref_lse = ref_result["lse"]
 
-    # Run FlashMLA sparse
+    # Run FlashMLA sparse prefill (token-level)
     # flash_mla_sparse_fwd expects:
     #   q: [s_q, h_q, d_qk] bfloat16 - h_q must be multiple of 64 (SM90) or 128 (SM100+)
     #   kv: [s_kv, h_kv, d_qk] bfloat16 (h_kv=1 for MLA)
     #   indices: [s_q, h_kv, topk] int32
-    print("Running SGLang FlashMLA sparse...")
+    print("Running SGLang FlashMLA sparse prefill (token-level)...")
     try:
-        kv_for_mla = kv_cache.unsqueeze(1)  # [s_kv, 1, d_qk]
+        kv_for_mla = kv_cache_flat.unsqueeze(1)  # [s_kv, 1, d_qk]
 
         # indices: [s_q, h_kv=1, topk]
-        indices_for_mla = sparse_indices.unsqueeze(1)  # [batch_size, 1, topk]
+        indices_for_mla = sparse_indices.unsqueeze(1)  # [total_num_tokens, 1, topk]
 
-        # Pad query heads to required multiple (64 or 128) as done in SGLang's nsa_backend.py
+        # Pad query heads to required multiple (64 or 128) as done in SGLang's dsa_backend.py
         need_padding = NUM_QO_HEADS % required_padding != 0
         if need_padding:
             assert (
                 required_padding % NUM_QO_HEADS == 0
             ), f"required_padding ({required_padding}) must be divisible by NUM_QO_HEADS ({NUM_QO_HEADS})"
-            q_padded = q_all.new_zeros((batch_size, required_padding, head_dim))
+            q_padded = q_all.new_zeros((total_num_tokens, required_padding, head_dim))
             q_padded[:, :NUM_QO_HEADS, :] = q_all
             q_input = q_padded
             print(f"Padded q from {NUM_QO_HEADS} to {required_padding} heads")
@@ -501,7 +457,8 @@ def test_correctness_vs_sglang(batch_size=4, max_seq_len=512, atol=1e-2, rtol=5e
 
 def main():
     """Run comprehensive tests."""
-    print("Testing NSA (Native Sparse Attention) Sparse Decode Reference Implementation")
+    print("Testing DSA (DeepSeek Sparse Attention) Sparse Prefill Reference Implementation")
+    print("Page Size 64 Variant")
     print("=" * 70)
     print(
         f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
@@ -514,16 +471,15 @@ def main():
 
     # Basic functionality tests
     test_results.append(("output_shape", test_output_shape()))
-    test_results.append(("sparse_vs_dense", test_sparse_vs_dense_consistency()))
     test_results.append(("padding_handling", test_padding_handling()))
 
     # Ground truth comparison tests
-    test_configs = [(1, 512), (4, 512), (8, 1024)]  # Single batch  # Small batch  # Medium batch
+    test_configs = [16, 64, 256]  # Small  # Medium  # Large
 
-    for batch_size, max_seq_len in test_configs:
-        name = f"sglang_bs{batch_size}_seq{max_seq_len}"
+    for total_num_tokens in test_configs:
+        name = f"sglang_tokens{total_num_tokens}"
         try:
-            result = test_correctness_vs_sglang(batch_size, max_seq_len)
+            result = test_correctness_vs_sglang(total_num_tokens)
             test_results.append((name, result))
         except Exception as e:
             print(f"\n✗ Test {name} crashed: {e}")
