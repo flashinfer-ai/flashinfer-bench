@@ -1,0 +1,148 @@
+{
+  "name": "mla_paged_prefill_causal_h16_ckv512_kpe64_ps64",
+  "description": "Batched Multi-head Latent Attention prefill with a paged KV cache (page_size=64). Causal mask is applied. Captured from DeepSeek-V3 during incremental prefill with tensor parallel size 8.",
+  "op_type": "mla_paged",
+  "tags": [
+    "stage:prefill",
+    "status:verified",
+    "model:deepseek-v3",
+    "model:deepseek-r1"
+  ],
+  "axes": {
+    "num_qo_heads": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of query heads after tensor parallel split (128/8=16)."
+    },
+    "head_dim_ckv": {
+      "type": "const",
+      "value": 512,
+      "description": "Dimension of compressed key-value representation."
+    },
+    "head_dim_kpe": {
+      "type": "const",
+      "value": 64,
+      "description": "Dimension of key positional encoding."
+    },
+    "page_size": {
+      "type": "const",
+      "value": 64,
+      "description": "Number of tokens stored per page."
+    },
+    "total_q": {
+      "type": "var",
+      "description": "Total number of query tokens."
+    },
+    "num_pages": {
+      "type": "var",
+      "description": "Total allocated pages in KV cache."
+    },
+    "len_indptr": {
+      "type": "var",
+      "description": "Length of indptr arrays (batch_size + 1)."
+    },
+    "num_kv_indices": {
+      "type": "var",
+      "description": "Total number of KV indices."
+    },
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences in the batch."
+    }
+  },
+  "constraints": [
+    "total_q == qo_indptr[-1].item()",
+    "num_kv_indices == kv_indptr[-1].item()"
+  ],
+  "inputs": {
+    "q_nope": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query tensor without positional encoding component."
+    },
+    "q_pe": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "head_dim_kpe"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query positional encoding component."
+    },
+    "ckv_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16",
+      "description": "Compressed key-value cache."
+    },
+    "kpe_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "head_dim_kpe"
+      ],
+      "dtype": "bfloat16",
+      "description": "Key positional encoding cache."
+    },
+    "qo_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32",
+      "description": "Query offsets for each sequence."
+    },
+    "kv_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32",
+      "description": "KV page offsets for each sequence."
+    },
+    "kv_indices": {
+      "shape": [
+        "num_kv_indices"
+      ],
+      "dtype": "int32",
+      "description": "Page indices for KV cache lookups."
+    },
+    "kv_last_page_len": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "int32",
+      "description": "Number of valid tokens in the last page for each sequence."
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale. Default is (1/sqrt(128 + 64) = 1/sqrt(192)), based on head dimensions before matrix absorption."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16",
+      "description": "Attention output tensor."
+    },
+    "lse": {
+      "shape": [
+        "total_q",
+        "num_qo_heads"
+      ],
+      "dtype": "float32",
+      "description": "The 2-based log-sum-exp of attention logits."
+    }
+  },
+  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len, sm_scale):\n    total_q, num_qo_heads, head_dim_ckv = q_nope.shape\n    head_dim_kpe = q_pe.shape[-1]\n    page_size = ckv_cache.shape[1]\n    len_indptr = qo_indptr.shape[0]\n    batch_size = len_indptr - 1\n    num_kv_indices = kv_indices.shape[0]\n\n    # Check constants\n    assert num_qo_heads == 16\n    assert head_dim_ckv == 512\n    assert head_dim_kpe == 64\n    assert page_size == 64\n\n    # Check constraints\n    assert total_q == qo_indptr[-1].item()\n    device = q_nope.device\n\n    ckv_cache_f32 = ckv_cache.to(torch.float32)  # [num_pages, page_size, head_dim_ckv]\n    kpe_cache_f32 = kpe_cache.to(torch.float32)  # [num_pages, page_size, head_dim_kpe]\n\n    output = torch.zeros(\n        (total_q, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (total_q, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    for b in range(batch_size):\n        q_start = int(qo_indptr[b].item())\n        q_end = int(qo_indptr[b + 1].item())\n\n        page_beg = int(kv_indptr[b].item())\n        page_end = int(kv_indptr[b + 1].item())\n        last_page_len = int(kv_last_page_len[b].item())\n\n        if q_start >= q_end or page_beg >= page_end:\n            continue\n\n        page_ids = kv_indices[page_beg:page_end].to(torch.long)\n        num_pages_for_seq = page_ids.shape[0]\n\n        # Calculate total KV tokens\n        num_full_pages = num_pages_for_seq - 1\n        kv_len = num_full_pages * page_size + last_page_len\n\n        # Gather Kc and Kp from pages\n        Kc = torch.zeros((kv_len, head_dim_ckv), dtype=torch.float32, device=device)\n        Kp = torch.zeros((kv_len, head_dim_kpe), dtype=torch.float32, device=device)\n\n        token_idx = 0\n        for p_idx, page_id in enumerate(page_ids):\n            if p_idx < num_full_pages:\n                Kc[token_idx:token_idx + page_size] = ckv_cache_f32[page_id]\n                Kp[token_idx:token_idx + page_size] = kpe_cache_f32[page_id]\n                token_idx += page_size\n            else:\n                Kc[token_idx:token_idx + last_page_len] = ckv_cache_f32[page_id, :last_page_len]\n                Kp[token_idx:token_idx + last_page_len] = kpe_cache_f32[page_id, :last_page_len]\n                token_idx += last_page_len\n\n        q_nope_batch = q_nope[q_start:q_end].to(torch.float32)  # [q_len, num_heads, head_dim_ckv]\n        q_pe_batch = q_pe[q_start:q_end].to(torch.float32)  # [q_len, num_heads, head_dim_kpe]\n\n        q_len = q_end - q_start\n\n        for i in range(q_len):\n            qn = q_nope_batch[i]  # [num_heads, head_dim_ckv]\n            qp = q_pe_batch[i]  # [num_heads, head_dim_kpe]\n\n            logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_heads, kv_len]\n            logits_scaled = logits * sm_scale\n\n            # Apply causal mask\n            prefix_len = kv_len - q_len  # Number of previously cached tokens\n            query_abs_pos = prefix_len + i  # Absolute position of current query\n            \n            causal_mask = torch.arange(kv_len, device=logits_scaled.device) > query_abs_pos\n            logits_scaled.masked_fill_(causal_mask.unsqueeze(0), -float(\"inf\"))\n\n            # Compute 2-base LSE\n            lse[q_start + i] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n            attn = torch.softmax(logits_scaled, dim=-1)  # [num_heads, L_tokens]\n            out = attn @ Kc  # [num_heads, head_dim_ckv]\n            output[q_start + i] = out.to(torch.bfloat16)\n\n    return output, lse"
+}
