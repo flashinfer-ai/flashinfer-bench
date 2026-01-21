@@ -1,9 +1,9 @@
 """Solution file handling utilities for LLM agents."""
 
+import json
 from pathlib import Path
 
-from flashinfer_bench import Solution, SourceFile, BuildSpec
-
+from flashinfer_bench.data import BuildSpec, Solution, SourceFile
 
 SOLUTION_METADATA_FILE = "SOLUTION.md"
 VALID_SOURCE_EXTENSIONS = {".py", ".cu", ".cuh", ".cpp", ".c", ".h", ".hpp"}
@@ -11,7 +11,6 @@ VALID_SOURCE_EXTENSIONS = {".py", ".cu", ".cuh", ".cpp", ".c", ".h", ".hpp"}
 
 def _generate_metadata_md(solution: Solution) -> str:
     """Generate markdown content for solution metadata."""
-    spec = solution.spec
     lines = [
         f"# {solution.name}",
         "",
@@ -24,21 +23,13 @@ def _generate_metadata_md(solution: Solution) -> str:
         "",
         "## Build Specification",
         "",
-        f"- **Type:** {spec.type}",
-        f"- **Language:** {spec.lang}",
-    ]
-
-    if spec.entry:
-        lines.append(f"- **Entry:** {spec.entry}")
-
-    if spec.compile_options:
-        lines.append(f"- **Compile Options:** `{' '.join(spec.compile_options)}`")
-
-    lines.extend([
+        "```json",
+        json.dumps(solution.spec.model_dump(), indent=2),
+        "```",
         "",
         "## Source Files",
         "",
-    ])
+    ]
 
     for source in solution.sources:
         lines.append(f"- `{source.path}`")
@@ -90,12 +81,7 @@ def extract_solution_to_files(solution: Solution, base_path: str) -> str:
 
 
 def pack_solution_from_files(
-    path: str,
-    spec: BuildSpec,
-    name: str,
-    definition: str,
-    author: str,
-    description: str = "",
+    path: str, spec: BuildSpec, name: str, definition: str, author: str, description: str = ""
 ) -> Solution:
     """Pack a directory of files into a Solution object.
 

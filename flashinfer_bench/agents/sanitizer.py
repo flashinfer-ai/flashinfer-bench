@@ -26,11 +26,7 @@ def _build_sanitizer_command(
     trace_set_path: Optional[Path],
     sanitizer_path: str,
 ) -> List[str]:
-    cmd = [
-        sanitizer_path,
-        "--tool",
-        sanitizer_type,
-    ]
+    cmd = [sanitizer_path, "--tool", sanitizer_type]
 
     runner_cmd = [
         sys.executable,
@@ -76,7 +72,7 @@ def flashinfer_bench_run_sanitizer(
     tmpdir: Optional[str] = None,
     max_lines: Optional[int] = None,
 ) -> str:
-    """Run compute-sanitizer checks on a solution with a specific workload: 
+    """Run compute-sanitizer checks on a solution with a specific workload:
     memcheck, racecheck, initcheck, synccheck.
 
     Parameters
