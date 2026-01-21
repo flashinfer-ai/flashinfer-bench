@@ -92,12 +92,18 @@ def test_trtllm_mla_sparse_vs_definition_reference():
     total_tokens = num_pages * PAGE_SIZE
 
     # Generate inputs matching definition schema
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     ckv_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
     kpe_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
-    sparse_indices = torch.randint(0, total_tokens, (batch_size, TOPK), dtype=torch.int32, device=device)
-    sm_scale = torch.tensor(1.0 / math.sqrt(QK_NOPE_HEAD_DIM + QK_ROPE_HEAD_DIM), dtype=torch.float32, device=device)
+    sparse_indices = torch.randint(
+        0, total_tokens, (batch_size, TOPK), dtype=torch.int32, device=device
+    )
+    sm_scale = torch.tensor(
+        1.0 / math.sqrt(QK_NOPE_HEAD_DIM + QK_ROPE_HEAD_DIM), dtype=torch.float32, device=device
+    )
 
     # Run definition reference
     print("\nRunning definition reference...")
@@ -174,9 +180,13 @@ def kv_cache_cast_to_fp8(x: torch.Tensor) -> torch.Tensor:
     x_amax = x.abs().float().amax(dim=3, keepdim=True).clamp(1e-4)
     sf = x_amax / 448.0
     x_scaled = (x * (1.0 / sf)).to(torch.float8_e4m3fn)
-    x_fp8 = torch.empty((num_blocks, block_size * (head_dim + 4)), device=x.device, dtype=torch.uint8)
-    x_fp8[:, :block_size * head_dim] = x_scaled.view(num_blocks, block_size * head_dim).view(dtype=torch.uint8)
-    x_fp8[:, block_size * head_dim:] = sf.view(num_blocks, block_size).view(dtype=torch.uint8)
+    x_fp8 = torch.empty(
+        (num_blocks, block_size * (head_dim + 4)), device=x.device, dtype=torch.uint8
+    )
+    x_fp8[:, : block_size * head_dim] = x_scaled.view(num_blocks, block_size * head_dim).view(
+        dtype=torch.uint8
+    )
+    x_fp8[:, block_size * head_dim :] = sf.view(num_blocks, block_size).view(dtype=torch.uint8)
     # Return as int8 to match definition schema (bit pattern is identical)
     return x_fp8.view(num_blocks, block_size, num_heads, head_dim + 4).view(torch.int8)
 
@@ -207,8 +217,12 @@ def test_topk_indexer_fp8_vs_definition_reference():
     num_pages = batch_size * max_num_pages + 10
 
     # Generate random data in bf16, then quantize to FP8
-    q_bf16 = torch.randn(batch_size, FP8_NUM_INDEX_HEADS, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device)
-    k_bf16 = torch.randn(num_pages, PAGE_SIZE, 1, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device)
+    q_bf16 = torch.randn(
+        batch_size, FP8_NUM_INDEX_HEADS, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
+    k_bf16 = torch.randn(
+        num_pages, PAGE_SIZE, 1, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
 
     # Quantize to FP8
     q_index_fp8 = q_bf16.to(torch.float8_e4m3fn)
@@ -219,7 +233,9 @@ def test_topk_indexer_fp8_vs_definition_reference():
 
     # Sequence lengths and block table
     min_len = TOPK
-    seq_lens = torch.randint(min_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
+    seq_lens = torch.randint(
+        min_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device
+    )
 
     block_table = torch.zeros(batch_size, max_num_pages, dtype=torch.int32, device=device)
     page_offset = 0
@@ -246,12 +262,20 @@ def test_topk_indexer_fp8_vs_definition_reference():
     num_sms = torch.cuda.get_device_properties(device).multi_processor_count
     schedule_meta = deep_gemm.get_paged_mqa_logits_metadata(seq_lens, PAGE_SIZE, num_sms)
     logits = deep_gemm.fp8_paged_mqa_logits(
-        q_index_fp8_4d, k_index_cache_uint8, weights, seq_lens, block_table,
-        schedule_meta, max_context_len, clean_logits=False
+        q_index_fp8_4d,
+        k_index_cache_uint8,
+        weights,
+        seq_lens,
+        block_table,
+        schedule_meta,
+        max_context_len,
+        clean_logits=False,
     )
 
     # Build token-level page table for FlashInfer
-    token_page_table = torch.zeros(batch_size, max_num_pages * PAGE_SIZE, dtype=torch.int32, device=device)
+    token_page_table = torch.zeros(
+        batch_size, max_num_pages * PAGE_SIZE, dtype=torch.int32, device=device
+    )
     for b in range(batch_size):
         seq_len = int(seq_lens[b].item())
         num_pages_for_seq = (seq_len + PAGE_SIZE - 1) // PAGE_SIZE
@@ -265,10 +289,7 @@ def test_topk_indexer_fp8_vs_definition_reference():
     # Run FlashInfer top_k_page_table_transform
     print("Running FlashInfer top_k_page_table_transform...")
     fi_indices = flashinfer.top_k_page_table_transform(
-        input=logits.to(torch.float16),
-        src_page_table=token_page_table,
-        lengths=seq_lens,
-        k=TOPK,
+        input=logits.to(torch.float16), src_page_table=token_page_table, lengths=seq_lens, k=TOPK
     )
 
     # Compare indices (order may differ, compare as sets)
@@ -319,12 +340,18 @@ def test_trtllm_mla_sparse_various_configs(batch_size, max_seq_len):
     num_pages = batch_size * max_num_pages
     total_tokens = num_pages * PAGE_SIZE
 
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
     ckv_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
     kpe_cache = torch.randn(num_pages, PAGE_SIZE, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
-    sparse_indices = torch.randint(0, total_tokens, (batch_size, TOPK), dtype=torch.int32, device=device)
-    sm_scale = torch.tensor(1.0 / math.sqrt(QK_NOPE_HEAD_DIM + QK_ROPE_HEAD_DIM), dtype=torch.float32, device=device)
+    sparse_indices = torch.randint(
+        0, total_tokens, (batch_size, TOPK), dtype=torch.int32, device=device
+    )
+    sm_scale = torch.tensor(
+        1.0 / math.sqrt(QK_NOPE_HEAD_DIM + QK_ROPE_HEAD_DIM), dtype=torch.float32, device=device
+    )
 
     ref_result = reference(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
     ref_output = ref_result["output"]
@@ -377,8 +404,12 @@ def test_topk_indexer_fp8_various_configs(batch_size, max_seq_len):
     max_num_pages = (max_seq_len + PAGE_SIZE - 1) // PAGE_SIZE
     num_pages = batch_size * max_num_pages + 10
 
-    q_bf16 = torch.randn(batch_size, FP8_NUM_INDEX_HEADS, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device)
-    k_bf16 = torch.randn(num_pages, PAGE_SIZE, 1, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device)
+    q_bf16 = torch.randn(
+        batch_size, FP8_NUM_INDEX_HEADS, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
+    k_bf16 = torch.randn(
+        num_pages, PAGE_SIZE, 1, FP8_INDEX_HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
 
     q_index_fp8 = q_bf16.to(torch.float8_e4m3fn)
     k_index_cache_fp8 = kv_cache_cast_to_fp8(k_bf16)
@@ -386,7 +417,9 @@ def test_topk_indexer_fp8_various_configs(batch_size, max_seq_len):
     weights = torch.randn(batch_size, FP8_NUM_INDEX_HEADS, dtype=torch.float32, device=device)
 
     min_len = TOPK
-    seq_lens = torch.randint(min_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
+    seq_lens = torch.randint(
+        min_len, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device
+    )
 
     block_table = torch.zeros(batch_size, max_num_pages, dtype=torch.int32, device=device)
     page_offset = 0
@@ -407,11 +440,19 @@ def test_topk_indexer_fp8_various_configs(batch_size, max_seq_len):
     num_sms = torch.cuda.get_device_properties(device).multi_processor_count
     schedule_meta = deep_gemm.get_paged_mqa_logits_metadata(seq_lens, PAGE_SIZE, num_sms)
     logits = deep_gemm.fp8_paged_mqa_logits(
-        q_index_fp8_4d, k_index_cache_uint8, weights, seq_lens, block_table,
-        schedule_meta, max_context_len, clean_logits=False
+        q_index_fp8_4d,
+        k_index_cache_uint8,
+        weights,
+        seq_lens,
+        block_table,
+        schedule_meta,
+        max_context_len,
+        clean_logits=False,
     )
 
-    token_page_table = torch.zeros(batch_size, max_num_pages * PAGE_SIZE, dtype=torch.int32, device=device)
+    token_page_table = torch.zeros(
+        batch_size, max_num_pages * PAGE_SIZE, dtype=torch.int32, device=device
+    )
     for b in range(batch_size):
         seq_len = int(seq_lens[b].item())
         num_pages_for_seq = (seq_len + PAGE_SIZE - 1) // PAGE_SIZE
@@ -423,10 +464,7 @@ def test_topk_indexer_fp8_various_configs(batch_size, max_seq_len):
                     token_page_table[b, token_idx] = page_idx * PAGE_SIZE + t
 
     fi_indices = flashinfer.top_k_page_table_transform(
-        input=logits.to(torch.float16),
-        src_page_table=token_page_table,
-        lengths=seq_lens,
-        k=TOPK,
+        input=logits.to(torch.float16), src_page_table=token_page_table, lengths=seq_lens, k=TOPK
     )
 
     total_match = 0
@@ -468,7 +506,10 @@ def main():
         return
 
     tests = [
-        ("trtllm MLA sparse vs definition reference", test_trtllm_mla_sparse_vs_definition_reference),
+        (
+            "trtllm MLA sparse vs definition reference",
+            test_trtllm_mla_sparse_vs_definition_reference,
+        ),
         ("FP8 topk indexer vs definition reference", test_topk_indexer_fp8_vs_definition_reference),
     ]
 
@@ -483,6 +524,7 @@ def main():
         except Exception as e:
             print(f"\n  FAILED: {e}")
             import traceback
+
             traceback.print_exc()
             results.append((name, False))
 
