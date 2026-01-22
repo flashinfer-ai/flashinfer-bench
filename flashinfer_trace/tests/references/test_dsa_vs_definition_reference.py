@@ -79,7 +79,7 @@ def test_trtllm_mla_sparse_vs_definition_reference():
     device = "cuda"
 
     # Load definition and build reference
-    definition = load_definition("dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps64")
+    definition = load_definition("dsa_sparse_attention_h16_ckv512_kpe64_topk256_ps64")
     reference = build_reference_runnable(definition)
 
     print(f"\nLoaded definition: {definition.name}")
@@ -333,7 +333,7 @@ def test_trtllm_mla_sparse_various_configs(batch_size, max_seq_len):
     torch.manual_seed(42)
     device = "cuda"
 
-    definition = load_definition("dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps64")
+    definition = load_definition("dsa_sparse_attention_h16_ckv512_kpe64_topk256_ps64")
     reference = build_reference_runnable(definition)
 
     max_num_pages = (max_seq_len + PAGE_SIZE - 1) // PAGE_SIZE
