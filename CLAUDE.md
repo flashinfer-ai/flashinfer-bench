@@ -76,6 +76,7 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | `gqa_ragged` | Group Query Attention (ragged) | `gqa_ragged_prefill_causal_h32_kv8_d128` |
 | `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
 | `mla_paged` | Multi-Head Linear Attention | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
+| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk16_v32_d128_k_last` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
 | `sampling` | Sampling operations | - |
 
@@ -167,6 +168,7 @@ Associate each module with corresponding Definitions:
 - **Attention layers**:
   - GQA: `gqa_paged_decode_h{num_heads}_kv{kv_heads}_d{head_dim}_ps1`
   - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
+  - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
 - **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
 
@@ -282,6 +284,24 @@ self_attn
 ├── attn_mla → mla_paged_decode/prefill
 └── o_proj → gemm
 ```
+
+### GDN Architecture (e.g., Qwen3 Next)
+
+Linear attention layers using Gated Delta Net:
+```
+self_attn
+├── q_proj → gemm
+├── k_proj → gemm
+├── v_proj → gemm
+├── gating_proj → gemm (produces a, b for gating)
+├── attn_gdn → gdn_prefill/gdn_decode
+└── o_proj → gemm
+```
+
+Where GDN maintains a recurrent state [B, H, K, V] and uses:
+- `A_log`: learnable log decay parameter
+- `a`: input-dependent decay (combined with dt_bias)
+- `b`: update gate input (transformed via sigmoid)
 
 ## Extension and Contributing
 

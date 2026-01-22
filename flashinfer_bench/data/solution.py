@@ -3,9 +3,9 @@
 import hashlib
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, PrivateAttr, model_validator
 
 from .utils import BaseModelWithDocstrings, NonEmptyString
 
@@ -110,6 +110,12 @@ class Solution(BaseModelWithDocstrings):
     benchmarking the implementation.
     """
 
+    model_config = ConfigDict(use_attribute_docstrings=True, frozen=True)
+    """Treat Solution as immutable to safely memoize derived fields."""
+
+    _hash_cache: str = PrivateAttr()
+    """Memoized hash of the solution content."""
+
     name: NonEmptyString
     """A unique, human-readable name for this specific solution (e.g., 'rmsnorm_triton_v1_h100')."""
     definition: NonEmptyString
@@ -187,22 +193,12 @@ class Solution(BaseModelWithDocstrings):
                 return source
         return None
 
-    def hash(self) -> str:
-        """Compute a deterministic hash of the solution content.
+    def model_post_init(self, __context: Any) -> None:
+        # Precompute hash once since the model is frozen/immutable.
+        object.__setattr__(self, "_hash_cache", self._compute_hash())
 
-        The hash is computed from all fields that affect the solution's behavior:
-        name, definition, language, entry point, dependencies, and all source file
-        paths and contents. This ensures that any meaningful change to the solution
-        results in a different hash.
-
-        The hash is used for caching build artifacts. Solutions with the same hash
-        can reuse the same cached build result.
-
-        Returns
-        -------
-        str
-            A SHA1 hash (40 hex characters) uniquely identifying this solution's content.
-        """
+    def _compute_hash(self) -> str:
+        """Compute a deterministic hash of the solution content."""
         h = hashlib.sha1()
         for s in (
             self.name,
@@ -215,3 +211,30 @@ class Solution(BaseModelWithDocstrings):
             h.update(s.encode())
 
         return h.hexdigest()
+
+    def hash(self) -> str:
+        """Return the memoized deterministic hash of the solution content.
+
+        This hash is computed from all fields that affect the solution's behavior:
+        name, definition, language, entry point, dependencies, and all source file
+        paths and contents. This ensures that any meaningful change to the solution
+        results in a different hash.
+
+        The hash is used for caching build artifacts, allowing solutions with the same
+        hash to reuse the same cached build result.
+
+        Returns
+        -------
+        str
+            A SHA1 hash (40 hex characters) uniquely identifying this solution's content.
+        """
+        return self._hash_cache
+
+    def __hash__(self) -> int:  # pragma: no cover - trivial wrapper
+        # Use the memoized content hash for fast hashing in dict/set keys.
+        return hash(self._hash_cache)
+
+    def __eq__(self, other: object) -> bool:  # pragma: no cover - trivial wrapper
+        if not isinstance(other, Solution):
+            return NotImplemented
+        return self._hash_cache == other._hash_cache

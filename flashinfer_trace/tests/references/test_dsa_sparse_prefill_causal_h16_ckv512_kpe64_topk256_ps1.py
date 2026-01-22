@@ -1,11 +1,11 @@
 """
-Tests for NSA (Native Sparse Attention) sparse prefill reference implementation.
+Tests for DSA (DeepSeek Sparse Attention) sparse prefill reference implementation.
 
 Ground truth sources:
 1. SGLang FlashMLA sparse prefill: sgl_kernel.flash_mla.flash_mla_sparse_fwd
 
 Note: FlashInfer's sparse.py provides BlockSparseAttentionWrapper which uses BSR format,
-different from DeepSeek's NSA token-level sparse attention.
+different from DeepSeek's DSA token-level sparse attention.
 """
 
 import math
@@ -42,7 +42,7 @@ TRACE_ROOT = Path(__file__).resolve().parents[2]
 
 @torch.no_grad()
 def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):
-    """Reference implementation for NSA sparse prefill attention."""
+    """Reference implementation for DSA sparse prefill attention."""
     total_num_tokens, num_qo_heads, head_dim_ckv = q_nope.shape
     head_dim_kpe = q_pe.shape[-1]
     page_size = ckv_cache.shape[1]
@@ -114,7 +114,7 @@ def generate_random_inputs(
     topk=TOPK,
     device="cuda",
 ):
-    """Generate random inputs for NSA sparse prefill attention testing."""
+    """Generate random inputs for DSA sparse prefill attention testing."""
     # Generate KV cache with enough pages
     num_pages = max(total_num_tokens * 2, 1024)
 
@@ -197,7 +197,7 @@ def check_hit_ratio(ref, gt, atol, rtol, required_percent=0.85):
 def test_output_shape(total_num_tokens=64, topk=TOPK):
     """Test that reference produces correct output shapes."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill output shape: total_num_tokens={total_num_tokens}, topk={topk}")
+    print(f"Testing DSA prefill output shape: total_num_tokens={total_num_tokens}, topk={topk}")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -238,7 +238,7 @@ def test_output_shape(total_num_tokens=64, topk=TOPK):
 def test_padding_handling(total_num_tokens=64, topk=TOPK):
     """Test that padding (-1 indices) are handled correctly."""
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill padding handling")
+    print(f"Testing DSA prefill padding handling")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -295,7 +295,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
     If not available, the test will be skipped.
     """
     print(f"\n{'='*60}")
-    print(f"Testing NSA prefill correctness against SGLang FlashMLA")
+    print(f"Testing DSA prefill correctness against SGLang FlashMLA")
     print(f"total_num_tokens={total_num_tokens}")
     print(f"{'='*60}")
 
@@ -369,7 +369,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
         # indices: [s_q, h_kv=1, topk]
         indices_for_mla = sparse_indices.unsqueeze(1)  # [total_num_tokens, 1, topk]
 
-        # Pad query heads to required multiple (64 or 128) as done in SGLang's nsa_backend.py
+        # Pad query heads to required multiple (64 or 128) as done in SGLang's dsa_backend.py
         need_padding = NUM_QO_HEADS % required_padding != 0
         if need_padding:
             assert (
@@ -434,7 +434,7 @@ def test_correctness_vs_sglang(total_num_tokens=64, atol=1e-2, rtol=5e-2):
 
 def main():
     """Run comprehensive tests."""
-    print("Testing NSA (Native Sparse Attention) Sparse Prefill Reference Implementation")
+    print("Testing DSA (DeepSeek Sparse Attention) Sparse Prefill Reference Implementation")
     print("=" * 70)
     print(
         f"Constants: h={NUM_QO_HEADS}, ckv={HEAD_DIM_CKV}, kpe={HEAD_DIM_KPE}, ps={PAGE_SIZE}, topk={TOPK}"
