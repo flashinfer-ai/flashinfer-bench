@@ -22,13 +22,11 @@ def get_cuda_capability():
 
 
 requires_sm90 = pytest.mark.skipif(
-    get_cuda_capability()[0] < 9,
-    reason="GDN prefill kernel requires SM90 (Hopper) or later",
+    get_cuda_capability()[0] < 9, reason="GDN prefill kernel requires SM90 (Hopper) or later"
 )
 
 requires_cuda = pytest.mark.skipif(
-    torch.cuda.device_count() == 0,
-    reason="CUDA devices not available",
+    torch.cuda.device_count() == 0, reason="CUDA devices not available"
 )
 
 
@@ -115,8 +113,8 @@ def reference_gdn_prefill(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scal
             old_state_HKV = g_H11 * state_HKV
             old_v_H1V = matmul(k_H1K, old_state_HKV)
             new_v_H1V = beta_H11 * v_H1V + (1 - beta_H11) * old_v_H1V
-            state_remove = torch.einsum('hkl,hlv->hkv', k_H1K.transpose(-1, -2), old_v_H1V)
-            state_update = torch.einsum('hkl,hlv->hkv', k_H1K.transpose(-1, -2), new_v_H1V)
+            state_remove = torch.einsum("hkl,hlv->hkv", k_H1K.transpose(-1, -2), old_v_H1V)
+            state_update = torch.einsum("hkl,hlv->hkv", k_H1K.transpose(-1, -2), new_v_H1V)
             state_HKV = old_state_HKV - state_remove + state_update
 
             o_H1V = scale * matmul(q_H1K, state_HKV)
@@ -171,7 +169,12 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
     # FlashInfer uses pre-computed g/beta
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
-        q=q, k=k, v=v, g=g, beta=beta, scale=scale,
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
         initial_state=None,
         output_final_state=True,
         cu_seqlens=cu_seqlens,
@@ -229,10 +232,12 @@ def test_gdn_prefill_with_initial_state():
     )
 
     # Non-zero initial state (k-last layout [N, H, V, K])
-    state = torch.randn(
-        batch_size, num_sab_heads, head_size, head_size,
-        dtype=torch.float32, device=device
-    ) * 0.1
+    state = (
+        torch.randn(
+            batch_size, num_sab_heads, head_size, head_size, dtype=torch.float32, device=device
+        )
+        * 0.1
+    )
 
     scale = 1.0 / math.sqrt(head_size)
 
@@ -242,7 +247,12 @@ def test_gdn_prefill_with_initial_state():
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
-        q=q, k=k, v=v, g=g, beta=beta, scale=scale,
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
         initial_state=state,
         output_final_state=True,
         cu_seqlens=cu_seqlens,
@@ -305,7 +315,12 @@ def test_gdn_prefill_variable_seqlen():
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
-        q=q, k=k, v=v, g=g, beta=beta, scale=scale,
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
         initial_state=None,
         output_final_state=True,
         cu_seqlens=cu_seqlens,
@@ -332,7 +347,12 @@ def test_gdn_prefill_definition_reference():
     """Test that the definition JSON reference implementation matches the kernel."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
 
-    definition_path = Path(__file__).parent.parent.parent / "definitions" / "gdn" / "gdn_prefill_qk16_v32_d128_k_last.json"
+    definition_path = (
+        Path(__file__).parent.parent.parent
+        / "definitions"
+        / "gdn"
+        / "gdn_prefill_qk16_v32_d128_k_last.json"
+    )
 
     if not definition_path.exists():
         pytest.skip(f"Definition file not found: {definition_path}")
@@ -376,7 +396,12 @@ def test_gdn_prefill_definition_reference():
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
-        q=q, k=k, v=v, g=g, beta=beta, scale=scale,
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        scale=scale,
         initial_state=None,
         output_final_state=True,
         cu_seqlens=cu_seqlens,
