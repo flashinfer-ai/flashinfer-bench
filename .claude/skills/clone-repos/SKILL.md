@@ -10,9 +10,10 @@ Clone SGLang, FlashInfer repositories from GitHub to the `tmp/` directory.
 ## Description
 
 This skill sets up the required repositories for kernel extraction and testing workflows. It:
-1. Clones SGLang and FlashInfer repositories to `tmp/` directory (if not already present)
-2. Updates repositories by pulling latest changes from remote (if repos already exist)
-3. Installs both packages from source in the current environment
+1. Clones SGLang and FlashInfer repositories to `tmp/` directory (if not already present) with all submodules
+2. Updates repositories by pulling latest changes from remote and updating submodules (if repos already exist)
+3. Checks out the `main` branch by default (or specified branch)
+4. Installs both packages from source in the current environment
 
 **Repositories:**
 - **SGLang**: Inference engine with model implementations and kernel calls
@@ -45,8 +46,8 @@ mkdir -p tmp
 
 ### Step 2: Clone/Update SGLang Repository
 
-1. **If repository doesn't exist**: Clone from `https://github.com/sgl-project/sglang.git`
-2. **If repository exists**: Pull latest changes from remote origin
+1. **If repository doesn't exist**: Clone from `https://github.com/sgl-project/sglang.git` with all submodules
+2. **If repository exists**: Pull latest changes from remote origin and update submodules
 3. Checkout specified branch (default: main)
 4. Install from source: `pip install -e tmp/sglang`
 5. Key directories for kernel extraction:
@@ -57,8 +58,8 @@ mkdir -p tmp
 
 ### Step 3: Clone/Update FlashInfer Repository
 
-1. **If repository doesn't exist**: Clone from `https://github.com/flashinfer-ai/flashinfer.git`
-2. **If repository exists**: Pull latest changes from remote origin
+1. **If repository doesn't exist**: Clone from `https://github.com/flashinfer-ai/flashinfer.git` with all submodules
+2. **If repository exists**: Pull latest changes from remote origin and update submodules
 3. Checkout specified branch (default: main)
 4. Install from source: `pip install -e tmp/flashinfer/python`
 5. Key directories for ground truth:
@@ -89,10 +90,11 @@ When executing this skill:
    # Check if repo exists
    if [ -d "tmp/sglang/.git" ]; then
        echo "SGLang exists, pulling latest changes..."
-       cd tmp/sglang && git fetch origin && git pull origin main && cd ../..
+       cd tmp/sglang && git fetch origin && git pull origin main && git submodule update --init --recursive && cd ../..
    else
-       echo "Cloning SGLang..."
-       git clone https://github.com/sgl-project/sglang.git tmp/sglang
+       echo "Cloning SGLang with submodules..."
+       git clone --recurse-submodules https://github.com/sgl-project/sglang.git tmp/sglang
+       cd tmp/sglang && git checkout main && cd ../..
    fi
    ```
 
@@ -101,10 +103,11 @@ When executing this skill:
    # Check if repo exists
    if [ -d "tmp/flashinfer/.git" ]; then
        echo "FlashInfer exists, pulling latest changes..."
-       cd tmp/flashinfer && git fetch origin && git pull origin main && cd ../..
+       cd tmp/flashinfer && git fetch origin && git pull origin main && git submodule update --init --recursive && cd ../..
    else
-       echo "Cloning FlashInfer..."
-       git clone https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
+       echo "Cloning FlashInfer with submodules..."
+       git clone --recurse-submodules https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
+       cd tmp/flashinfer && git checkout main && cd ../..
    fi
    ```
 
@@ -162,9 +165,11 @@ flashinfer-bench/
 
 ## Requirements
 
-- Git
-- Network access to GitHub (for sglang, flashinfer)
-- Sufficient disk space (~4GB total)
+- Git (with submodule support)
+- Network access to GitHub (for sglang, flashinfer, and their submodules)
+- Sufficient disk space (~5GB total including submodules)
+- Python development environment for building from source
+- CUDA toolkit (for FlashInfer CUDA kernels)
 
 ## Error Handling
 
@@ -172,13 +177,17 @@ flashinfer-bench/
 - **Error**: Cannot reach GitHub
 - **Handling**: Retry with exponential backoff, report specific endpoint failure
 
+### Submodule Errors
+- **Error**: Submodule initialization fails
+- **Handling**: Retry `git submodule update --init --recursive`, check network connectivity
+
 ### Disk Space Errors
 - **Error**: Insufficient disk space
-- **Handling**: Report space requirements, suggest cleanup
+- **Handling**: Report space requirements (~5GB including submodules), suggest cleanup
 
 ### Installation Errors
 - **Error**: pip install fails for SGLang or FlashInfer
-- **Handling**: Check Python version compatibility, report missing dependencies, suggest manual installation steps
+- **Handling**: Check Python version compatibility, verify submodules are initialized, check for CUDA toolkit, report missing dependencies, suggest manual installation steps
 
 ## Integration with Other Skills
 
@@ -203,9 +212,12 @@ Example workflow:
 ## Notes
 
 - Always pulls latest changes if repositories already exist to keep dependencies up-to-date
+- Clones all git submodules recursively to ensure complete dependencies for building from source
 - Installs both packages in editable mode (`pip install -e`) for development convenience
 - SGLang and FlashInfer are actively developed; use branch parameters to pin specific versions
 - Repositories are stored in `tmp/` which can be added to `.gitignore`
+- Performs full clones (not shallow) to allow checking out any branch or tag
+- Defaults to `main` branch for both repositories
 
 ## Maintaining This Document
 
