@@ -39,14 +39,14 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `third_party/` directory with SGLang and FlashInfer. The `flashinfer_trace/` directory is already included in this project.
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer (the `flashinfer_trace/` directory is already part of this repository).
 
 ## What This Skill Does
 
 ### Phase 1: Model Analysis
 
 1. **Locate Model Implementation**:
-   - Search `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+   - Search `tmp/sglang/python/sglang/srt/models/{model_name}.py`
    - Identify model class (e.g., `DeepseekV3ForCausalLM`, `LlamaForCausalLM`)
    - Parse model architecture from config
 
@@ -218,9 +218,10 @@ Add constraints for input validation:
    - Data types (float16, bfloat16, float8_e4m3fn, etc.)
 
 4. **Write Reference Implementation**:
-   - Plain PyTorch implementation
-   - Step-by-step computation (no high-level APIs)
-   - Serves as mathematical specification
+   - **ALWAYS prioritize FlashInfer tests** (`tmp/flashinfer/tests/`) for reference implementations
+   - Look for vanilla PyTorch reference functions (e.g., `ref_attention()`, `ref_rmsnorm()`)
+   - Only use SGLang vanilla implementation when FlashInfer doesn't have the kernel
+   - Plain PyTorch implementation with step-by-step computation
    - See "Reference Implementation Sources" section below
 
 ### Phase 5: Save Definitions
@@ -384,7 +385,7 @@ When executing this skill:
 
 1. **Locate model file**:
    ```bash
-   ls third_party/sglang/python/sglang/srt/models/ | grep -i {model_name}
+   ls tmp/sglang/python/sglang/srt/models/ | grep -i {model_name}
    ```
 
 2. **Read model implementation**:
@@ -443,7 +444,7 @@ self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
 When extracting kernel definitions, use different sources for different purposes:
 
 ### For Model Constants: SGLang Model Config (Required)
-- **Location**: `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+- **Location**: `tmp/sglang/python/sglang/srt/models/{model_name}.py`
 - **Use for**: Extracting model-specific constant values
 - **Examples**:
   - `num_attention_heads`, `num_key_value_heads`, `head_dim`
@@ -452,9 +453,9 @@ When extracting kernel definitions, use different sources for different purposes
   - `page_size` (from SGLang's paged attention configuration)
 - **Important**: Always align constants with SGLang's model config to ensure compatibility
 
-### For Reference `run()` Implementation: FlashInfer Unit Tests (Primary)
-- **When**: FlashInfer has a kernel implementation and corresponding unit test
-- **Location**: `third_party/flashinfer/tests/`
+### For Reference `run()` Implementation: FlashInfer Unit Tests (PRIMARY - ALWAYS CHECK FIRST)
+- **When**: FlashInfer has a kernel implementation and corresponding unit test **(CHECK THIS FIRST)**
+- **Location**: `tmp/flashinfer/tests/`
 - **Why**: FlashInfer tests contain vanilla PyTorch implementations that serve as ground truth
 - **Examples**:
   ```
@@ -465,20 +466,22 @@ When extracting kernel definitions, use different sources for different purposes
   ```
 - **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, `ref_mla()`, etc.
 - **Use for**: Writing the `reference` field in Definition JSON
+- **IMPORTANT**: Always search FlashInfer tests directory FIRST before falling back to SGLang
 
-### For Reference `run()` Implementation: SGLang Vanilla (Fallback Only)
+### For Reference `run()` Implementation: SGLang Vanilla (FALLBACK ONLY)
 - **When**: FlashInfer does NOT have the kernel (e.g., some MoE variants, custom ops)
-- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Location**: `tmp/sglang/python/sglang/srt/layers/`
 - **Examples**:
   ```
   layers/moe/fused_moe.py         # MoE vanilla forward (when FlashInfer MoE not available)
   layers/attention/triton_ops/    # Custom attention implementations
   ```
 - **Important**: Only use SGLang vanilla implementation when FlashInfer doesn't have the kernel
+- **How to verify**: Check `tmp/flashinfer/tests/` first to confirm kernel is not available
 
 ### For API Signature: FlashInfer Python API
 - **When**: Determining input/output tensor specifications
-- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Location**: `tmp/flashinfer/python/flashinfer/`
 - **Examples**:
   - `flashinfer.attention.batch_decode_with_paged_kv_cache`
   - `flashinfer.norm.rmsnorm`
@@ -489,14 +492,14 @@ When extracting kernel definitions, use different sources for different purposes
 
 The `reference` field in Definition JSON contains a `run()` function. **Always prioritize FlashInfer unit tests over SGLang implementations.**
 
-### Primary Source: FlashInfer Unit Tests (REQUIRED when available)
-- **Location**: `third_party/flashinfer/tests/`
+### Primary Source: FlashInfer Unit Tests (REQUIRED - CHECK THIS FIRST)
+- **Location**: `tmp/flashinfer/tests/`
 - **Why**: FlashInfer tests contain ground-truth vanilla PyTorch implementations
 - **How to find**: Search for reference functions in test files
   ```bash
   # Search for reference implementations
-  grep -r "def ref_" third_party/flashinfer/tests/
-  grep -r "def reference" third_party/flashinfer/tests/
+  grep -r "def ref_" tmp/flashinfer/tests/
+  grep -r "def reference" tmp/flashinfer/tests/
   ```
 - **Kernel type to test file mapping**:
   | Kernel Type | Test File | Reference Function |
@@ -511,7 +514,7 @@ The `reference` field in Definition JSON contains a `run()` function. **Always p
 
 ### Fallback Source: SGLang Vanilla Implementation (ONLY when FlashInfer unavailable)
 - **When to use**: ONLY when FlashInfer does NOT have a unit test for this kernel
-- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Location**: `tmp/sglang/python/sglang/srt/layers/`
 - **Common cases requiring SGLang fallback**:
   - Custom MoE implementations: `layers/moe/fused_moe.py`
   - Model-specific attention variants not in FlashInfer
@@ -519,10 +522,10 @@ The `reference` field in Definition JSON contains a `run()` function. **Always p
 - **How to check if FlashInfer has the kernel**:
   ```bash
   # Check if FlashInfer has a test for this kernel type
-  ls third_party/flashinfer/tests/test_*.py | xargs grep -l "your_kernel_name"
+  ls tmp/flashinfer/tests/test_*.py | xargs grep -l "your_kernel_name"
 
   # Check if FlashInfer has the API
-  grep -r "def your_kernel" third_party/flashinfer/python/flashinfer/
+  grep -r "def your_kernel" tmp/flashinfer/python/flashinfer/
   ```
 
 ### Reference Implementation Guidelines
