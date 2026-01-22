@@ -1,10 +1,11 @@
 """
-Tests for GDN (Gated Delta Net) prefill kernel.
+Test GDN prefill k-last reference implementation against FlashInfer kernel.
 
-Compares reference implementation against FlashInfer's chunk_gated_delta_rule kernel.
+Run with:
+    pytest test_gdn_prefill_qk16_v32_d128_k_last.py -v
+    python test_gdn_prefill_qk16_v32_d128_k_last.py
 """
 
-import json
 import math
 import sys
 from pathlib import Path
@@ -12,6 +13,28 @@ from pathlib import Path
 import pytest
 import torch
 import torch.nn.functional as F
+
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
+
+
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
+
+
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math, "F": F}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def get_cuda_capability():
@@ -30,16 +53,6 @@ requires_cuda = pytest.mark.skipif(
 )
 
 
-def load_reference_impl(definition_path: Path):
-    """Load reference implementation from definition JSON."""
-    with open(definition_path, "r") as f:
-        definition = json.load(f)
-    ref_code = definition["reference"]
-    namespace = {}
-    exec(ref_code, namespace)
-    return namespace["run"]
-
-
 def compute_gates(A_log, a, dt_bias, b):
     """Compute g and beta from raw parameters.
 
@@ -52,77 +65,9 @@ def compute_gates(A_log, a, dt_bias, b):
     return g, beta
 
 
-def matmul(a: torch.Tensor, b: torch.Tensor):
-    """Float32 matmul for numerical stability."""
-    return a.float() @ b.float()
-
-
-@torch.no_grad()
-def reference_gdn_prefill(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale):
-    """
-    Gated Delta Net reference implementation (k-last layout).
-
-    State layout: [H, V, K] (k-last, K dimension at the end)
-    """
-    total_seq_len, num_q_heads, head_size = q.shape
-    num_v_heads = v.shape[1]
-    num_k_heads = k.shape[1]
-    num_sab_heads = max(num_q_heads, num_v_heads)
-    num_seqs = cu_seqlens.size(0) - 1
-    device = q.device
-
-    if scale is None or scale == 0.0:
-        scale = 1.0 / math.sqrt(head_size)
-
-    # Compute g and beta from raw parameters
-    g, beta = compute_gates(A_log, a, dt_bias, b)
-
-    q_exp = q.repeat_interleave(num_v_heads // num_q_heads, dim=1)
-    k_exp = k.repeat_interleave(num_v_heads // num_k_heads, dim=1)
-
-    output = torch.zeros(
-        (total_seq_len, num_sab_heads, head_size), dtype=torch.bfloat16, device=device
-    )
-    new_state = torch.zeros(
-        (num_seqs, num_sab_heads, head_size, head_size), dtype=torch.float32, device=device
-    )
-
-    for seq_idx in range(num_seqs):
-        seq_start = int(cu_seqlens[seq_idx].item())
-        seq_end = int(cu_seqlens[seq_idx + 1].item())
-        seq_len = seq_end - seq_start
-
-        if seq_len <= 0:
-            continue
-
-        if state is not None:
-            state_HKV = state[seq_idx].clone().float().transpose(-1, -2)  # [H,V,K] -> [H,K,V]
-        else:
-            state_HKV = torch.zeros(
-                (num_sab_heads, head_size, head_size), dtype=torch.float32, device=device
-            )
-
-        for i in range(seq_len):
-            t = seq_start + i
-            q_H1K = q_exp[t].unsqueeze(1).float()
-            k_H1K = k_exp[t].unsqueeze(1).float()
-            v_H1V = v[t].unsqueeze(1).float()
-            g_H11 = g[t].unsqueeze(1).unsqueeze(2)
-            beta_H11 = beta[t].unsqueeze(1).unsqueeze(2)
-
-            old_state_HKV = g_H11 * state_HKV
-            old_v_H1V = matmul(k_H1K, old_state_HKV)
-            new_v_H1V = beta_H11 * v_H1V + (1 - beta_H11) * old_v_H1V
-            state_remove = torch.einsum("hkl,hlv->hkv", k_H1K.transpose(-1, -2), old_v_H1V)
-            state_update = torch.einsum("hkl,hlv->hkv", k_H1K.transpose(-1, -2), new_v_H1V)
-            state_HKV = old_state_HKV - state_remove + state_update
-
-            o_H1V = scale * matmul(q_H1K, state_HKV)
-            output[t] = o_H1V.squeeze(1).to(torch.bfloat16)
-
-        new_state[seq_idx] = state_HKV.transpose(-1, -2)  # [H,K,V] -> [H,V,K]
-
-    return {"output": output, "new_state": new_state}
+# Load definition and compile reference
+definition = load_definition("gdn_prefill_qk16_v32_d128_k_last")
+reference_gdn_prefill = compile_reference(definition.reference)
 
 
 @requires_cuda
@@ -161,7 +106,7 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
     scale = 1.0 / math.sqrt(head_size)
 
-    # Reference uses raw params
+    # Reference from definition
     ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
     ref_output = ref_result["output"]
     ref_new_state = ref_result["new_state"]
@@ -333,87 +278,6 @@ def test_gdn_prefill_variable_seqlen():
     state_max_err = state_diff.max().item()
 
     print(f"\nVariable seqlens={seq_lens}:")
-    print(f"  Output max_err={output_max_err:.6f}")
-    print(f"  State max_err={state_max_err:.6f}")
-
-    atol = 0.1
-    assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
-    assert state_max_err < atol, f"State max error {state_max_err} exceeds tolerance"
-
-
-@requires_cuda
-@requires_sm90
-def test_gdn_prefill_definition_reference():
-    """Test that the definition JSON reference implementation matches the kernel."""
-    from flashinfer.gdn_prefill import chunk_gated_delta_rule
-
-    definition_path = (
-        Path(__file__).parent.parent.parent
-        / "definitions"
-        / "gdn"
-        / "gdn_prefill_qk16_v32_d128_k_last.json"
-    )
-
-    if not definition_path.exists():
-        pytest.skip(f"Definition file not found: {definition_path}")
-
-    ref_run = load_reference_impl(definition_path)
-
-    device = torch.device("cuda")
-    dtype = torch.bfloat16
-
-    num_q_heads = 16
-    num_k_heads = 16
-    num_v_heads = 32
-    head_size = 128
-    num_sab_heads = max(num_q_heads, num_v_heads)
-
-    batch_size = 2
-    seq_len = 32
-    total_seq_len = batch_size * seq_len
-
-    q = torch.randn(total_seq_len, num_q_heads, head_size, dtype=dtype, device=device)
-    k = torch.randn(total_seq_len, num_k_heads, head_size, dtype=dtype, device=device)
-    k = torch.nn.functional.normalize(k, p=2.0, dim=-1)
-    v = torch.randn(total_seq_len, num_v_heads, head_size, dtype=dtype, device=device)
-
-    # Raw gate parameters
-    A_log = torch.randn(num_sab_heads, dtype=torch.float32, device=device) * 0.1
-    a = torch.randn(total_seq_len, num_sab_heads, dtype=dtype, device=device)
-    dt_bias = torch.randn(num_sab_heads, dtype=torch.float32, device=device) * 0.1
-    b = torch.randn(total_seq_len, num_sab_heads, dtype=dtype, device=device)
-
-    cu_seqlens = torch.arange(
-        0, batch_size * seq_len + 1, seq_len, dtype=torch.int64, device=device
-    )
-
-    scale = 1.0 / math.sqrt(head_size)
-
-    # Definition reference uses: state, A_log, a, dt_bias, b, cu_seqlens, scale
-    ref_result = ref_run(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
-
-    g, beta = compute_gates(A_log, a, dt_bias, b)
-    fi_output, fi_new_state = chunk_gated_delta_rule(
-        q=q,
-        k=k,
-        v=v,
-        g=g,
-        beta=beta,
-        scale=scale,
-        initial_state=None,
-        output_final_state=True,
-        cu_seqlens=cu_seqlens,
-    )
-
-    output_diff = (ref_output.float() - fi_output.float()).abs()
-    output_max_err = output_diff.max().item()
-
-    state_diff = (ref_new_state - fi_new_state).abs()
-    state_max_err = state_diff.max().item()
-
-    print(f"\nDefinition reference test:")
     print(f"  Output max_err={output_max_err:.6f}")
     print(f"  State max_err={state_max_err:.6f}")
 
