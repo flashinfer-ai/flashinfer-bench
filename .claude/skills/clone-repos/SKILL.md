@@ -90,7 +90,7 @@ When executing this skill:
    # Check if repo exists
    if [ -d "tmp/sglang/.git" ]; then
        echo "SGLang exists, pulling latest changes..."
-       cd tmp/sglang && git fetch origin && git pull origin main && git submodule update --init --recursive && cd ../..
+       cd tmp/sglang && git fetch origin && git checkout main && git reset --hard origin/main && git submodule update --init --recursive && cd ../..
    else
        echo "Cloning SGLang with submodules..."
        git clone --recurse-submodules https://github.com/sgl-project/sglang.git tmp/sglang
