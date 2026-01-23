@@ -65,7 +65,7 @@ When executing this skill:
    # Check if repo exists
    if [ -d "tmp/flashinfer/.git" ]; then
        echo "FlashInfer exists, pulling latest changes..."
-       (cd tmp/flashinfer && git fetch origin && git checkout main && git reset --hard origin/main && git submodule update --init --recursive)
+       (cd tmp/flashinfer && git fetch origin && git checkout "${flashinfer_branch:-main}" && git reset --hard "origin/${flashinfer_branch:-main}" && git submodule update --init --recursive)
    else
        echo "Cloning FlashInfer with submodules..."
        git clone --recurse-submodules https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
