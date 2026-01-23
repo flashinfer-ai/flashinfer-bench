@@ -198,7 +198,9 @@ def test_correctness(batch_size=4, atol=7e-2, rtol=7e-2):
     mean_abs_diff_s = abs_diff_s.mean().item()
     mean_rel_diff_s = rel_diff_s.mean().item()
 
-    cos_sim_s = F.cosine_similarity(ref_new_state.flatten(), kernel_new_state.flatten(), dim=0).item()
+    cos_sim_s = F.cosine_similarity(
+        ref_new_state.flatten(), kernel_new_state.flatten(), dim=0
+    ).item()
     mse_s = ((ref_new_state - kernel_new_state) ** 2).mean().item()
 
     print("State comparison:")
