@@ -11,7 +11,6 @@ from pathlib import Path
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
 from safetensors.torch import load_file
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition

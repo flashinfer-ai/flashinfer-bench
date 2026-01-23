@@ -7,7 +7,6 @@ matches the FlashInfer kernel implementation.
 
 import flashinfer
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementations from definitions
@@ -43,10 +42,7 @@ def test_correctness(batch_size=8, atol=8e-3, rtol=1e-2):
 
     # Run reference implementation from definition
     print("\nRunning reference implementation from definition...")
-    ref_output = run_rmsnorm(
-        inputs["hidden_states"].clone(),
-        inputs["weight"],
-    )
+    ref_output = run_rmsnorm(inputs["hidden_states"].clone(), inputs["weight"])
 
     # Run FlashInfer implementation
     print("Running FlashInfer implementation...")

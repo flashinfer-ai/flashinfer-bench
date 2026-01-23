@@ -7,7 +7,6 @@ matches the FlashInfer kernel implementation in terms of distribution.
 
 import flashinfer
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition (use v128256 as default)

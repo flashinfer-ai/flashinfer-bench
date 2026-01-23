@@ -8,7 +8,6 @@ produces correct output shapes and handles padding correctly.
 import numpy as np
 import pytest
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -87,11 +86,13 @@ def test_padding_handling(num_tokens=64, topk=TOPK):
     # Create sparse indices with varying amounts of padding per token
     sparse_indices = torch.full((num_tokens, topk), -1, dtype=torch.int32, device=device)
 
+    total_tokens_in_cache = num_pages * PAGE_SIZE
+
     for t in range(num_tokens):
         valid_count = (t % 4 + 1) * (topk // 4)
         valid_count = min(valid_count, topk)
         sparse_indices[t, :valid_count] = torch.randint(
-            0, num_pages, (valid_count,), dtype=torch.int32, device=device
+            0, total_tokens_in_cache, (valid_count,), dtype=torch.int32, device=device
         )
 
     result = run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)

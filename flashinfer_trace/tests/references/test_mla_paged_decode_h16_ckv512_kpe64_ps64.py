@@ -5,10 +5,9 @@ This test validates that the reference implementation from the definition
 matches the FlashInfer kernel implementation.
 """
 
-import numpy as np
 import flashinfer
+import numpy as np
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -35,7 +34,9 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
     kv_len_arr = seq_lens.clone()
     kv_last_page_len = ((seq_lens - 1) % PAGE_SIZE) + 1
 
-    q_nope = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device)
+    q_nope = torch.randn(
+        batch_size, NUM_QO_HEADS, HEAD_DIM_CKV, dtype=torch.bfloat16, device=device
+    )
     q_pe = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM_KPE, dtype=torch.bfloat16, device=device)
 
     num_pages = total_pages_needed + 100
@@ -48,11 +49,17 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
     qo_indptr = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device)
 
     return {
-        "q_nope": q_nope, "q_pe": q_pe,
-        "ckv_cache": ckv_cache, "kpe_cache": kpe_cache,
-        "kv_indptr": kv_indptr, "kv_indices": kv_indices,
-        "kv_len_arr": kv_len_arr, "kv_last_page_len": kv_last_page_len,
-        "sm_scale": sm_scale, "qo_indptr": qo_indptr, "seq_lens": seq_lens,
+        "q_nope": q_nope,
+        "q_pe": q_pe,
+        "ckv_cache": ckv_cache,
+        "kpe_cache": kpe_cache,
+        "kv_indptr": kv_indptr,
+        "kv_indices": kv_indices,
+        "kv_len_arr": kv_len_arr,
+        "kv_last_page_len": kv_last_page_len,
+        "sm_scale": sm_scale,
+        "qo_indptr": qo_indptr,
+        "seq_lens": seq_lens,
     }
 
 
@@ -74,10 +81,14 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
 
     print("\nRunning reference implementation from definition...")
     ref_o, ref_lse = run(
-        inputs["q_nope"], inputs["q_pe"],
-        inputs["ckv_cache"], inputs["kpe_cache"],
-        inputs["kv_indptr"], inputs["kv_indices"],
-        inputs["kv_last_page_len"], inputs["sm_scale"],
+        inputs["q_nope"],
+        inputs["q_pe"],
+        inputs["ckv_cache"],
+        inputs["kpe_cache"],
+        inputs["kv_indptr"],
+        inputs["kv_indices"],
+        inputs["kv_last_page_len"],
+        inputs["sm_scale"],
     )
 
     print("\nSetting up FlashInfer...")
@@ -85,11 +96,18 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
     mla_wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(workspace_buffer, backend="auto")
 
     mla_wrapper.plan(
-        qo_indptr=inputs["qo_indptr"], kv_indptr=inputs["kv_indptr"],
-        kv_indices=inputs["kv_indices"], kv_len_arr=inputs["kv_len_arr"],
-        num_heads=NUM_QO_HEADS, head_dim_ckv=HEAD_DIM_CKV, head_dim_kpe=HEAD_DIM_KPE,
-        page_size=PAGE_SIZE, causal=False, sm_scale=inputs["sm_scale"].item(),
-        q_data_type=torch.bfloat16, kv_data_type=torch.bfloat16,
+        qo_indptr=inputs["qo_indptr"],
+        kv_indptr=inputs["kv_indptr"],
+        kv_indices=inputs["kv_indices"],
+        kv_len_arr=inputs["kv_len_arr"],
+        num_heads=NUM_QO_HEADS,
+        head_dim_ckv=HEAD_DIM_CKV,
+        head_dim_kpe=HEAD_DIM_KPE,
+        page_size=PAGE_SIZE,
+        causal=False,
+        sm_scale=inputs["sm_scale"].item(),
+        q_data_type=torch.bfloat16,
+        kv_data_type=torch.bfloat16,
     )
 
     print("Running FlashInfer...")
@@ -108,7 +126,9 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
     print(f"Max absolute difference: {max_abs_diff:.6e}")
     print(f"Mean absolute difference: {mean_abs_diff:.6e}")
 
-    cos_sim = torch.nn.functional.cosine_similarity(ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0).item()
+    cos_sim = torch.nn.functional.cosine_similarity(
+        ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0
+    ).item()
     print(f"Cosine similarity: {cos_sim:.6f}")
 
     output_close = torch.allclose(ref_o_f32, fi_output_f32, atol=atol, rtol=rtol)

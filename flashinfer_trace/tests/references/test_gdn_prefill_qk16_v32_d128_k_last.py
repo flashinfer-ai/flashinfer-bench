@@ -12,12 +12,7 @@ import sys
 import pytest
 import torch
 import torch.nn.functional as F
-
-from test_utils import (
-    compare_tensors,
-    get_reference_run,
-    print_comparison_metrics,
-)
+from test_utils import compare_tensors, get_reference_run, print_comparison_metrics
 
 
 def get_cuda_capability():
@@ -117,8 +112,12 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
     state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
     print_comparison_metrics(state_metrics, tensor_name="State tensor")
 
-    assert output_metrics.max_abs_diff < atol, f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
-    assert state_metrics.max_abs_diff < atol, f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 @requires_cuda
@@ -191,8 +190,12 @@ def test_gdn_prefill_with_initial_state():
     state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
     print_comparison_metrics(state_metrics, tensor_name="State tensor")
 
-    assert output_metrics.max_abs_diff < atol, f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
-    assert state_metrics.max_abs_diff < atol, f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 @requires_cuda
@@ -257,8 +260,12 @@ def test_gdn_prefill_variable_seqlen():
     state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
     print_comparison_metrics(state_metrics, tensor_name="State tensor")
 
-    assert output_metrics.max_abs_diff < atol, f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
-    assert state_metrics.max_abs_diff < atol, f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 if __name__ == "__main__":

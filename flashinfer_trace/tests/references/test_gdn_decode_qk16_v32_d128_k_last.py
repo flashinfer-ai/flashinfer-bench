@@ -13,12 +13,7 @@ import torch
 import torch.nn.functional as F
 from flashinfer.gdn_decode import gated_delta_rule_decode_pretranspose
 from flashinfer.utils import get_compute_capability
-
-from test_utils import (
-    compare_tensors,
-    get_reference_run,
-    print_comparison_metrics,
-)
+from test_utils import compare_tensors, get_reference_run, print_comparison_metrics
 
 
 def _skip_if_not_sm90_or_later():

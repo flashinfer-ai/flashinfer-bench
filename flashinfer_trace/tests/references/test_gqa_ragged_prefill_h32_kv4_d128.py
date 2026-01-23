@@ -9,7 +9,6 @@ import math
 
 import flashinfer
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -46,18 +45,26 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, causal=True, devic
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
 
     return {
-        "q": q, "k": k, "v": v,
-        "qo_indptr": qo_indptr, "kv_indptr": kv_indptr,
-        "q_lens": q_lens, "kv_lens": kv_lens,
-        "total_q": total_q, "total_kv": total_kv,
-        "sm_scale": sm_scale, "causal": causal,
+        "q": q,
+        "k": k,
+        "v": v,
+        "qo_indptr": qo_indptr,
+        "kv_indptr": kv_indptr,
+        "q_lens": q_lens,
+        "kv_lens": kv_lens,
+        "total_q": total_q,
+        "total_kv": total_kv,
+        "sm_scale": sm_scale,
+        "causal": causal,
     }
 
 
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, atol=1e-2, rtol=5e-2):
     """Test correctness of ragged prefill reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing GQA Ragged Prefill batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}")
+    print(
+        f"Testing GQA Ragged Prefill batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,20 +79,31 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
 
     print("\nRunning reference implementation from definition...")
     ref_o, ref_lse = run(
-        inputs["q"], inputs["k"], inputs["v"],
-        inputs["qo_indptr"], inputs["kv_indptr"], inputs["sm_scale"],
+        inputs["q"],
+        inputs["k"],
+        inputs["v"],
+        inputs["qo_indptr"],
+        inputs["kv_indptr"],
+        inputs["sm_scale"],
     )
 
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
-    prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(workspace_buffer, kv_layout="NHD")
+    prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(
+        workspace_buffer, kv_layout="NHD"
+    )
 
     prefill_wrapper.plan(
-        qo_indptr=inputs["qo_indptr"], kv_indptr=inputs["kv_indptr"],
-        num_qo_heads=NUM_QO_HEADS, num_kv_heads=NUM_KV_HEADS,
-        head_dim_qk=HEAD_DIM, head_dim_vo=HEAD_DIM,
-        causal=inputs["causal"], sm_scale=inputs["sm_scale"].item(),
-        q_data_type=torch.bfloat16, kv_data_type=torch.bfloat16,
+        qo_indptr=inputs["qo_indptr"],
+        kv_indptr=inputs["kv_indptr"],
+        num_qo_heads=NUM_QO_HEADS,
+        num_kv_heads=NUM_KV_HEADS,
+        head_dim_qk=HEAD_DIM,
+        head_dim_vo=HEAD_DIM,
+        causal=inputs["causal"],
+        sm_scale=inputs["sm_scale"].item(),
+        q_data_type=torch.bfloat16,
+        kv_data_type=torch.bfloat16,
     )
 
     print("Running FlashInfer...")
@@ -102,7 +120,9 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
     print(f"Max absolute difference: {max_abs_diff:.6e}")
     print(f"Mean absolute difference: {mean_abs_diff:.6e}")
 
-    cos_sim = torch.nn.functional.cosine_similarity(ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0).item()
+    cos_sim = torch.nn.functional.cosine_similarity(
+        ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0
+    ).item()
     print(f"Cosine similarity: {cos_sim:.6f}")
 
     output_close = torch.allclose(ref_o_f32, fi_output_f32, atol=atol, rtol=rtol)

@@ -5,10 +5,9 @@ This test validates that the reference implementation from the definition
 matches the FlashInfer kernel implementation.
 """
 
-import numpy as np
 import flashinfer
+import numpy as np
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -193,6 +192,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

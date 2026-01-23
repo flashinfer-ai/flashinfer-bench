@@ -11,7 +11,6 @@ which tests against FlashInfer's trtllm_batch_decode_with_kv_cache_mla.
 import numpy as np
 import pytest
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -27,10 +26,13 @@ TOPK = 256
 
 def generate_random_inputs(num_tokens, topk=TOPK, device="cuda"):
     """Generate random inputs for DSA sparse attention testing."""
-    num_pages = max(num_tokens * 2, 1024)
+    total_kv_tokens = max(num_tokens * 4, 2048)
+    num_pages = (total_kv_tokens + PAGE_SIZE - 1) // PAGE_SIZE
+
+    total_tokens_in_cache = num_pages * PAGE_SIZE
 
     sparse_indices = torch.randint(
-        0, num_pages, (num_tokens, topk), dtype=torch.int32, device=device
+        0, total_tokens_in_cache, (num_tokens, topk), dtype=torch.int32, device=device
     )
 
     q_nope = torch.randn(

@@ -5,10 +5,9 @@ This test validates that the reference implementation from the definition
 matches the FlashInfer kernel implementation.
 """
 
-import numpy as np
 import flashinfer
+import numpy as np
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -56,19 +55,29 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, causal=True, devic
     sm_scale = torch.tensor(sm_scale, dtype=torch.float32, device=device)
 
     return {
-        "q_nope": q_nope, "q_pe": q_pe,
-        "ckv_cache": ckv_cache, "kpe_cache": kpe_cache,
-        "qo_indptr": qo_indptr, "kv_indptr": kv_indptr, "kv_indices": kv_indices,
-        "kv_len_arr": kv_len_arr, "last_page_len": last_page_len,
-        "q_lens": q_lens, "kv_lens": kv_lens,
-        "total_q": total_q, "sm_scale": sm_scale, "causal": causal,
+        "q_nope": q_nope,
+        "q_pe": q_pe,
+        "ckv_cache": ckv_cache,
+        "kpe_cache": kpe_cache,
+        "qo_indptr": qo_indptr,
+        "kv_indptr": kv_indptr,
+        "kv_indices": kv_indices,
+        "kv_len_arr": kv_len_arr,
+        "last_page_len": last_page_len,
+        "q_lens": q_lens,
+        "kv_lens": kv_lens,
+        "total_q": total_q,
+        "sm_scale": sm_scale,
+        "causal": causal,
     }
 
 
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=256, causal=True, atol=1e-2, rtol=5e-2):
     """Test correctness of MLA prefill reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing MLA Paged Prefill (ps64) batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}")
+    print(
+        f"Testing MLA Paged Prefill (ps64) batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -84,10 +93,15 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=256, causal=True, at
 
     print("\nRunning reference implementation from definition...")
     ref_o, ref_lse = run(
-        inputs["q_nope"], inputs["q_pe"],
-        inputs["ckv_cache"], inputs["kpe_cache"],
-        inputs["qo_indptr"], inputs["kv_indptr"], inputs["kv_indices"],
-        inputs["last_page_len"], inputs["sm_scale"],
+        inputs["q_nope"],
+        inputs["q_pe"],
+        inputs["ckv_cache"],
+        inputs["kpe_cache"],
+        inputs["qo_indptr"],
+        inputs["kv_indptr"],
+        inputs["kv_indices"],
+        inputs["last_page_len"],
+        inputs["sm_scale"],
     )
 
     print("\nSetting up FlashInfer...")
@@ -95,11 +109,18 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=256, causal=True, at
     mla_wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(workspace_buffer, backend="auto")
 
     mla_wrapper.plan(
-        qo_indptr=inputs["qo_indptr"], kv_indptr=inputs["kv_indptr"],
-        kv_indices=inputs["kv_indices"], kv_len_arr=inputs["kv_len_arr"],
-        num_heads=NUM_QO_HEADS, head_dim_ckv=HEAD_DIM_CKV, head_dim_kpe=HEAD_DIM_KPE,
-        page_size=PAGE_SIZE, causal=inputs["causal"], sm_scale=inputs["sm_scale"].item(),
-        q_data_type=torch.bfloat16, kv_data_type=torch.bfloat16,
+        qo_indptr=inputs["qo_indptr"],
+        kv_indptr=inputs["kv_indptr"],
+        kv_indices=inputs["kv_indices"],
+        kv_len_arr=inputs["kv_len_arr"],
+        num_heads=NUM_QO_HEADS,
+        head_dim_ckv=HEAD_DIM_CKV,
+        head_dim_kpe=HEAD_DIM_KPE,
+        page_size=PAGE_SIZE,
+        causal=inputs["causal"],
+        sm_scale=inputs["sm_scale"].item(),
+        q_data_type=torch.bfloat16,
+        kv_data_type=torch.bfloat16,
     )
 
     print("Running FlashInfer...")
@@ -118,7 +139,9 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=256, causal=True, at
     print(f"Max absolute difference: {max_abs_diff:.6e}")
     print(f"Mean absolute difference: {mean_abs_diff:.6e}")
 
-    cos_sim = torch.nn.functional.cosine_similarity(ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0).item()
+    cos_sim = torch.nn.functional.cosine_similarity(
+        ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0
+    ).item()
     print(f"Cosine similarity: {cos_sim:.6f}")
 
     output_close = torch.allclose(ref_o_f32, fi_output_f32, atol=atol, rtol=rtol)
@@ -134,7 +157,9 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=256, causal=True, at
 
 
 def main():
-    print("Testing Batch MLA Paged Prefill Reference Implementation (page_size=64, from definition)")
+    print(
+        "Testing Batch MLA Paged Prefill Reference Implementation (page_size=64, from definition)"
+    )
     test_configs = [(1, 16, 64, True), (4, 32, 128, True), (8, 64, 256, True)]
     passed = sum(1 for cfg in test_configs if test_correctness(*cfg))
     print(f"\n{'='*60}\nSummary: {passed}/{len(test_configs)} tests passed\n{'='*60}")

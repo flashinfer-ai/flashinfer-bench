@@ -5,10 +5,9 @@ This test validates that the reference implementation from the definition
 matches the FlashInfer kernel implementation.
 """
 
-import numpy as np
 import flashinfer
+import numpy as np
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -104,9 +103,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
 
-    mla_wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(
-        workspace_buffer, backend="auto"
-    )
+    mla_wrapper = flashinfer.mla.BatchMLAPagedAttentionWrapper(workspace_buffer, backend="auto")
 
     # Plan the attention computation
     mla_wrapper.plan(
@@ -199,6 +196,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

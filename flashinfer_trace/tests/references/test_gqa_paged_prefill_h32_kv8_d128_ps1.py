@@ -9,7 +9,6 @@ import math
 
 import flashinfer
 import torch
-
 from test_utils import get_reference_run
 
 # Load reference implementation from definition
@@ -23,12 +22,7 @@ PAGE_SIZE = 1
 
 
 def generate_random_inputs(
-    batch_size,
-    max_q_len,
-    max_kv_len,
-    max_pages,
-    causal=True,
-    device="cuda",
+    batch_size, max_q_len, max_kv_len, max_pages, causal=True, device="cuda"
 ):
     """Generate random inputs for paged prefill testing."""
 
@@ -117,14 +111,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
     max_pages = max_kv_len * batch_size * 2
 
     # Generate inputs
-    inputs = generate_random_inputs(
-        batch_size,
-        max_q_len,
-        max_kv_len,
-        max_pages,
-        causal,
-        device,
-    )
+    inputs = generate_random_inputs(batch_size, max_q_len, max_kv_len, max_pages, causal, device)
 
     print(f"Generated query lengths: {inputs['q_lens'].cpu().numpy()}")
     print(f"Generated KV lengths: {inputs['kv_lens'].cpu().numpy()}")
@@ -230,12 +217,7 @@ def main():
     """Run comprehensive tests."""
     print("Testing Batch GQA Paged Prefill Reference Implementation (from definition)")
 
-    test_configs = [
-        (1, 8, 16, True),
-        (4, 16, 32, True),
-        (8, 32, 64, True),
-        (16, 64, 128, True),
-    ]
+    test_configs = [(1, 8, 16, True), (4, 16, 32, True), (8, 32, 64, True), (16, 64, 128, True)]
 
     passed = 0
     total = len(test_configs)
@@ -247,6 +229,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")
