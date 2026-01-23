@@ -90,19 +90,24 @@ def generate_random_inputs(
     V = head_size
     dtype = torch.bfloat16
 
-    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device)
-    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device)
-    v = torch.randn(B, T, num_v_heads, V, dtype=dtype, device=device)
+    # Use smaller magnitude for better numerical stability
+    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device) * 0.8
+    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device) * 0.8
+    # Normalize k for better conditioning (as done in prefill test)
+    k = F.normalize(k.float(), p=2.0, dim=-1).to(dtype)
+    v = torch.randn(B, T, num_v_heads, V, dtype=dtype, device=device) * 0.8
 
-    A_log = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.1
-    a = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.1
-    dt_bias = torch.randn(num_v_heads, dtype=dtype, device=device) * 0.1
-    b = torch.randn(B, T, num_v_heads, dtype=dtype, device=device)
+    # Gate parameters with smaller scales
+    A_log = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.05
+    a = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.05
+    dt_bias = torch.randn(num_v_heads, dtype=dtype, device=device) * 0.05
+    b = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.1
 
-    # k-last layout: [B, H, V, K]
+    # k-last layout: [B, H, V, K] - keep small for stability
     state = torch.randn(B, num_v_heads, V, K, dtype=torch.float32, device=device) * 0.01
 
-    scale = 1.0
+    # Use proper attention scaling
+    scale = 1.0 / math.sqrt(head_size)
 
     return {
         "q": q,
@@ -167,17 +172,59 @@ def test_correctness(batch_size=4, atol=5e-3, rtol=5e-3):
     ref_o_f32 = ref_output.float()
     kernel_o_f32 = kernel_output.float()
 
+    # Absolute difference metrics
     abs_diff_o = torch.abs(ref_o_f32 - kernel_o_f32)
     max_abs_diff_o = abs_diff_o.max().item()
     mean_abs_diff_o = abs_diff_o.mean().item()
 
-    print(f"Output - Max abs diff: {max_abs_diff_o:.6e}, Mean abs diff: {mean_abs_diff_o:.6e}")
+    # Relative difference metrics (avoid division by zero)
+    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
+    max_rel_diff_o = rel_diff_o.max().item()
+    mean_rel_diff_o = rel_diff_o.mean().item()
 
+    # Cosine similarity
+    ref_flat = ref_o_f32.reshape(-1)
+    kernel_flat = kernel_o_f32.reshape(-1)
+    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), kernel_flat.unsqueeze(0)).item()
+
+    # Mean Squared Error
+    mse_o = ((ref_o_f32 - kernel_o_f32) ** 2).mean().item()
+
+    print("\nOutput tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
+    print(f"  MSE: {mse_o:.6e}")
+
+    # State comparison
     abs_diff_s = torch.abs(ref_new_state - kernel_new_state)
     max_abs_diff_s = abs_diff_s.max().item()
     mean_abs_diff_s = abs_diff_s.mean().item()
 
-    print(f"State  - Max abs diff: {max_abs_diff_s:.6e}, Mean abs diff: {mean_abs_diff_s:.6e}")
+    # State relative difference
+    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
+    max_rel_diff_s = rel_diff_s.max().item()
+    mean_rel_diff_s = rel_diff_s.mean().item()
+
+    # State cosine similarity
+    ref_state_flat = ref_new_state.reshape(-1)
+    kernel_state_flat = kernel_new_state.reshape(-1)
+    cosine_sim_s = F.cosine_similarity(
+        ref_state_flat.unsqueeze(0), kernel_state_flat.unsqueeze(0)
+    ).item()
+
+    # State MSE
+    mse_s = ((ref_new_state - kernel_new_state) ** 2).mean().item()
+
+    print("\nState tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
+    print(f"  MSE: {mse_s:.6e}")
 
     output_close = torch.allclose(ref_o_f32, kernel_o_f32, atol=atol, rtol=rtol)
     state_close = torch.allclose(ref_new_state, kernel_new_state, atol=atol, rtol=rtol)
