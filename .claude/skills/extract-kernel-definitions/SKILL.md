@@ -611,4 +611,3 @@ Update this file when adding new op_types, changing Definition JSON schema, or m
 
 - [clone-repos](../clone-repos/SKILL.md)
 - [add-reference-tests](../add-reference-tests/SKILL.md)
-- [workflow](../workflow.md)
