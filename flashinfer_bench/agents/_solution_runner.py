@@ -1,4 +1,11 @@
-"""Solution runner - standalone script for profiling solutions."""
+"""Solution runner - standalone script for profiling solutions.
+
+This module is used by profiling tools (NCU, compute-sanitizer, etc.).
+It builds and executes a solution so the external tool can observe it.
+
+Invocation:
+    python -m flashinfer_bench.agents._solution_runner --data-dir <dir> --device <device>
+"""
 
 import argparse
 from pathlib import Path
@@ -12,9 +19,9 @@ from flashinfer_bench.data import Definition, Solution, Workload
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run a solution for NCU profiling")
+    parser = argparse.ArgumentParser(description="Run solution for profiling")
     parser.add_argument("--data-dir", required=True, help="Path to data directory")
-    parser.add_argument("--device", required=True, help="CUDA device to run on")
+    parser.add_argument("--device", default="cuda:0", help="CUDA device to run on")
     parser.add_argument("--trace-set-path", help="Path to trace set")
     args = parser.parse_args()
 
@@ -52,6 +59,9 @@ def main():
         with torch.no_grad():
             runnable.call_destination_passing(*inputs, *outputs)
         torch.cuda.synchronize()
+
+    # Cleanup
+    runnable.cleanup()
 
 
 if __name__ == "__main__":
