@@ -1,28 +1,30 @@
 ---
 name: clone-repos
-description: Clone SGLang, FlashInfer repositories from GitHub to third_party/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
+description: Clone SGLang, FlashInfer repositories from GitHub to tmp/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
 ---
 
 # Clone Repositories
 
-Clone SGLang, FlashInfer repositories from GitHub to the `third_party/` directory.
+Clone SGLang, FlashInfer repositories from GitHub to the `tmp/` directory.
 
 ## Description
 
-This skill sets up the required repositories for kernel extraction and testing workflows. It clones two repositories:
+This skill sets up the required repositories for kernel extraction and testing workflows. It:
+1. Clones SGLang and FlashInfer repositories to `tmp/` directory (if not already present)
+2. Updates repositories by pulling latest changes from remote (if repos already exist)
+3. Installs both packages from source in the current environment
+
+**Repositories:**
 - **SGLang**: Inference engine with model implementations and kernel calls
 - **FlashInfer**: GPU kernel library with optimized implementations (ground truth)
 
-**Note**: The `flashinfer_trace` directory containing definitions, workloads, and tests is already included in the flashinfer-bench project at `./flashinfer_trace/`. No cloning required.
+**Note**: The `flashinfer_trace/` directory is part of this repository and requires no cloning.
 
 ## Usage
 
 ```bash
-# Clone all repos to ./third_party directory
+# Clone all repos to ./tmp directory, update if exists, and install from source
 /clone-repos
-
-# Force update if repos already exist
-/clone-repos --force-update
 
 # Clone specific branches
 /clone-repos --sglang-branch v0.4.0 --flashinfer-branch v0.2.0
@@ -30,23 +32,24 @@ This skill sets up the required repositories for kernel extraction and testing w
 
 ## Parameters
 
-- `force_update` (optional): Force pull latest changes if repos exist (default: false)
 - `sglang_branch` (optional): SGLang branch to checkout (default: "main")
 - `flashinfer_branch` (optional): FlashInfer branch to checkout (default: "main")
 
 ## What This Skill Does
 
-### Step 1: Create third_party Directory
+### Step 1: Create tmp Directory
 
 ```bash
-mkdir -p third_party
+mkdir -p tmp
 ```
 
 ### Step 2: Clone/Update SGLang Repository
 
-1. Clone from `https://github.com/sgl-project/sglang.git`
-2. Checkout specified branch
-3. Key directories for kernel extraction:
+1. **If repository doesn't exist**: Clone from `https://github.com/sgl-project/sglang.git`
+2. **If repository exists**: Pull latest changes from remote origin
+3. Checkout specified branch (default: main)
+4. Install from source: `pip install -e tmp/sglang`
+5. Key directories for kernel extraction:
    - `python/sglang/srt/models/` - Model implementations
    - `python/sglang/srt/layers/` - Layer implementations (attention, MLP, norms)
    - `python/sglang/srt/layers/moe/` - MoE kernel implementations
@@ -54,50 +57,71 @@ mkdir -p third_party
 
 ### Step 3: Clone/Update FlashInfer Repository
 
-1. Clone from `https://github.com/flashinfer-ai/flashinfer.git`
-2. Checkout specified branch
-3. Key directories for ground truth:
+1. **If repository doesn't exist**: Clone from `https://github.com/flashinfer-ai/flashinfer.git`
+2. **If repository exists**: Pull latest changes from remote origin
+3. Checkout specified branch (default: main)
+4. Install from source: `pip install -e tmp/flashinfer/python`
+5. Key directories for ground truth:
    - `python/flashinfer/` - Python bindings
    - `include/flashinfer/` - C++ headers with kernel implementations
    - `csrc/` - CUDA source files
-   - `tests/` - Test implementations
+   - `tests/` - Test implementations with reference functions
 
 ### Step 4: Verification
 
-1. Verify all repositories cloned successfully
+1. Verify all repositories cloned/updated successfully
 2. Check required directories exist
-3. Verify local `flashinfer_trace/` directory exists with definitions and tests
-4. Report repository status
+3. Verify packages installed correctly
+4. Verify local `flashinfer_trace/` directory exists with definitions and tests
+5. Report repository status
 
 ## Implementation Steps
 
 When executing this skill:
 
-1. **Check if third_party exists and has repos**:
+1. **Create tmp directory if needed**:
    ```bash
-   ls -la third_party/
+   mkdir -p tmp
    ```
 
-2. **Clone SGLang** (if not exists):
+2. **Handle SGLang repository**:
    ```bash
-   git clone --depth 1 https://github.com/sgl-project/sglang.git third_party/sglang
+   # Check if repo exists
+   if [ -d "tmp/sglang/.git" ]; then
+       echo "SGLang exists, pulling latest changes..."
+       cd tmp/sglang && git fetch origin && git pull origin main && cd ../..
+   else
+       echo "Cloning SGLang..."
+       git clone https://github.com/sgl-project/sglang.git tmp/sglang
+   fi
    ```
 
-3. **Clone FlashInfer** (if not exists):
+3. **Handle FlashInfer repository**:
    ```bash
-   git clone --depth 1 https://github.com/flashinfer-ai/flashinfer.git third_party/flashinfer
+   # Check if repo exists
+   if [ -d "tmp/flashinfer/.git" ]; then
+       echo "FlashInfer exists, pulling latest changes..."
+       cd tmp/flashinfer && git fetch origin && git pull origin main && cd ../..
+   else
+       echo "Cloning FlashInfer..."
+       git clone https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
+   fi
    ```
 
-4. **Update if force_update=true**:
+4. **Install packages from source**:
    ```bash
-   cd third_party/sglang && git fetch origin && git pull origin main
-   cd third_party/flashinfer && git fetch origin && git pull origin main
+   # Install SGLang
+   pip install -e tmp/sglang
+
+   # Install FlashInfer
+   pip install -e tmp/flashinfer/python
    ```
 
 5. **Verify structure**:
    ```bash
-   ls third_party/sglang/python/sglang/srt/models/
-   ls third_party/flashinfer/python/flashinfer/
+   ls tmp/sglang/python/sglang/srt/models/
+   ls tmp/flashinfer/python/flashinfer/
+   ls tmp/flashinfer/tests/
    ls flashinfer_trace/definitions/
    ls flashinfer_trace/tests/references/
    ```
@@ -116,8 +140,8 @@ flashinfer-bench/
 │   ├── workloads/                    # Workload configurations
 │   └── tests/
 │       └── references/               # Reference tests
-└── third_party/                      # Cloned repositories
-    ├── sglang/                       # SGLang repository
+└── tmp/                              # Cloned repositories (auto-updated)
+    ├── sglang/                       # SGLang repository (installed in current env)
     │   └── python/sglang/srt/
     │       ├── models/               # Model implementations
     │       │   ├── llama.py
@@ -128,12 +152,12 @@ flashinfer-bench/
     │           ├── attention/
     │           ├── moe/
     │           └── layernorm.py
-    └── flashinfer/                   # FlashInfer repository
+    └── flashinfer/                   # FlashInfer repository (installed in current env)
         ├── python/flashinfer/        # Python bindings (ground truth)
         │   ├── attention/
         │   ├── norm/
         │   └── moe/
-        └── tests/                    # Reference tests
+        └── tests/                    # Reference tests with vanilla implementations
 ```
 
 ## Requirements
@@ -152,9 +176,9 @@ flashinfer-bench/
 - **Error**: Insufficient disk space
 - **Handling**: Report space requirements, suggest cleanup
 
-### Missing Local flashinfer_trace
-- **Error**: `flashinfer_trace/` directory not found in project root
-- **Handling**: Report error - this directory should be part of the flashinfer-bench repository
+### Installation Errors
+- **Error**: pip install fails for SGLang or FlashInfer
+- **Handling**: Check Python version compatibility, report missing dependencies, suggest manual installation steps
 
 ## Integration with Other Skills
 
@@ -178,10 +202,10 @@ Example workflow:
 
 ## Notes
 
-- Uses shallow clones (--depth 1) by default to save disk space
-- SGLang and FlashInfer are actively developed; pin versions for reproducibility
-- The `flashinfer_trace/` directory is part of this repository; no external cloning needed
-- All output paths are relative to project root
+- Always pulls latest changes if repositories already exist to keep dependencies up-to-date
+- Installs both packages in editable mode (`pip install -e`) for development convenience
+- SGLang and FlashInfer are actively developed; use branch parameters to pin specific versions
+- Repositories are stored in `tmp/` which can be added to `.gitignore`
 
 ## Maintaining This Document
 
