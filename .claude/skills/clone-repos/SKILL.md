@@ -69,7 +69,7 @@ When executing this skill:
    else
        echo "Cloning FlashInfer with submodules..."
        git clone --recurse-submodules https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
-       (cd tmp/flashinfer && git checkout main)
+       (cd tmp/flashinfer && git checkout "${flashinfer_branch:-main}")
    fi
    ```
 
