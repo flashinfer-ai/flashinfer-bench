@@ -96,7 +96,7 @@ def generate_random_inputs(
 
     A_log = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.1
     a = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.1
-    dt_bias = torch.randn(num_v_heads, dtype=dtype, device=device) * 0.1
+    dt_bias = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.1
     b = torch.randn(B, T, num_v_heads, dtype=dtype, device=device)
 
     # k-last layout: [B, H, V, K]

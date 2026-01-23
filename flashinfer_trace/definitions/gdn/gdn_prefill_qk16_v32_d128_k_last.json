@@ -45,48 +45,77 @@
   ],
   "inputs": {
     "q": {
-      "shape": ["total_seq_len", "num_q_heads", "head_size"],
+      "shape": [
+        "total_seq_len",
+        "num_q_heads",
+        "head_size"
+      ],
       "dtype": "bfloat16",
       "description": "Query tensor."
     },
     "k": {
-      "shape": ["total_seq_len", "num_k_heads", "head_size"],
+      "shape": [
+        "total_seq_len",
+        "num_k_heads",
+        "head_size"
+      ],
       "dtype": "bfloat16",
       "description": "Key tensor."
     },
     "v": {
-      "shape": ["total_seq_len", "num_v_heads", "head_size"],
+      "shape": [
+        "total_seq_len",
+        "num_v_heads",
+        "head_size"
+      ],
       "dtype": "bfloat16",
       "description": "Value tensor."
     },
     "state": {
-      "shape": ["num_seqs", "num_v_heads", "head_size", "head_size"],
+      "shape": [
+        "num_seqs",
+        "num_v_heads",
+        "head_size",
+        "head_size"
+      ],
       "dtype": "float32",
       "description": "Recurrent state in k-last layout [N, H, V, K].",
       "optional": true
     },
     "A_log": {
-      "shape": ["num_v_heads"],
+      "shape": [
+        "num_v_heads"
+      ],
       "dtype": "float32",
       "description": "Log decay parameter (learnable). Used to compute g = exp(-exp(A_log) * softplus(a + dt_bias))."
     },
     "a": {
-      "shape": ["total_seq_len", "num_v_heads"],
+      "shape": [
+        "total_seq_len",
+        "num_v_heads"
+      ],
       "dtype": "bfloat16",
       "description": "Input-dependent decay from projection."
     },
     "dt_bias": {
-      "shape": ["num_v_heads"],
+      "shape": [
+        "num_v_heads"
+      ],
       "dtype": "float32",
       "description": "Decay bias (learnable). Added to 'a' before softplus."
     },
     "b": {
-      "shape": ["total_seq_len", "num_v_heads"],
+      "shape": [
+        "total_seq_len",
+        "num_v_heads"
+      ],
       "dtype": "bfloat16",
       "description": "Update gate input from projection. beta = sigmoid(b)."
     },
     "cu_seqlens": {
-      "shape": ["len_cu_seqlens"],
+      "shape": [
+        "len_cu_seqlens"
+      ],
       "dtype": "int64",
       "description": "Cumulative sequence lengths for variable-length batching."
     },
@@ -98,15 +127,24 @@
   },
   "outputs": {
     "output": {
-      "shape": ["total_seq_len", "num_v_heads", "head_size"],
+      "shape": [
+        "total_seq_len",
+        "num_v_heads",
+        "head_size"
+      ],
       "dtype": "bfloat16",
       "description": "Attention output. Shape follows num_v_heads in GVA mode."
     },
     "new_state": {
-      "shape": ["num_seqs", "num_v_heads", "head_size", "head_size"],
+      "shape": [
+        "num_seqs",
+        "num_v_heads",
+        "head_size",
+        "head_size"
+      ],
       "dtype": "float32",
       "description": "Updated recurrent state in k-last layout [N, H, V, K]."
     }
   },
-  "reference": "import math\nimport torch\nimport torch.nn.functional as F\n\n\ndef matmul(a: torch.Tensor, b: torch.Tensor):\n    \"\"\"Float32 matmul for numerical stability.\"\"\"\n    return a.float() @ b.float()\n\n\n@torch.no_grad()\ndef run(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale):\n    \"\"\"\n    Gated Delta Net prefill reference implementation (k-last layout).\n    \n    State layout: [H, V, K] (k-last, K dimension at the end)\n    \n    Gate computation:\n    g = exp(-exp(A_log) * softplus(a + dt_bias))\n    beta = sigmoid(b)\n    \n    Delta rule update:\n    state_new = g * state_old + k^T @ (beta * v + (1-beta) * k @ state_old) - k^T @ (k @ state_old)\n    output = scale * q @ state_new\n    \"\"\"\n    total_seq_len, num_q_heads, head_size = q.shape\n    num_v_heads = v.shape[1]\n    num_k_heads = k.shape[1]\n    num_sab_heads = max(num_q_heads, num_v_heads)\n    num_seqs = cu_seqlens.size(0) - 1\n    device = q.device\n\n    assert num_q_heads == 16\n    assert num_k_heads == 16\n    assert num_v_heads == 32\n    assert head_size == 128\n\n    if scale is None or scale == 0.0:\n        scale = 1.0 / math.sqrt(head_size)\n\n    # Compute g and beta from raw parameters\n    x = a.float() + dt_bias.float()  # [total_seq_len, HV]\n    g = torch.exp(-torch.exp(A_log.float()) * F.softplus(x))  # [total_seq_len, HV]\n    beta = torch.sigmoid(b.float())  # [total_seq_len, HV]\n\n    q_exp = q.repeat_interleave(num_v_heads // num_q_heads, dim=1)\n    k_exp = k.repeat_interleave(num_v_heads // num_k_heads, dim=1)\n\n    output = torch.zeros(\n        (total_seq_len, num_sab_heads, head_size), dtype=torch.bfloat16, device=device\n    )\n    new_state = torch.zeros(\n        (num_seqs, num_sab_heads, head_size, head_size), dtype=torch.float32, device=device\n    )\n\n    for seq_idx in range(num_seqs):\n        seq_start = int(cu_seqlens[seq_idx].item())\n        seq_end = int(cu_seqlens[seq_idx + 1].item())\n        seq_len = seq_end - seq_start\n\n        if seq_len <= 0:\n            continue\n\n        if state is not None:\n            state_HKV = state[seq_idx].clone().float().transpose(-1, -2)  # [H,V,K] -> [H,K,V]\n        else:\n            state_HKV = torch.zeros(\n                (num_sab_heads, head_size, head_size), dtype=torch.float32, device=device\n            )\n\n        for i in range(seq_len):\n            t = seq_start + i\n            q_H1K = q_exp[t].unsqueeze(1).float()\n            k_H1K = k_exp[t].unsqueeze(1).float()\n            v_H1V = v[t].unsqueeze(1).float()\n            g_H11 = g[t].unsqueeze(1).unsqueeze(2)\n            beta_H11 = beta[t].unsqueeze(1).unsqueeze(2)\n\n            old_state_HKV = g_H11 * state_HKV\n            old_v_H1V = matmul(k_H1K, old_state_HKV)\n            new_v_H1V = beta_H11 * v_H1V + (1 - beta_H11) * old_v_H1V\n            state_remove = torch.einsum('hkl,hlv->hkv', k_H1K.transpose(-1, -2), old_v_H1V)\n            state_update = torch.einsum('hkl,hlv->hkv', k_H1K.transpose(-1, -2), new_v_H1V)\n            state_HKV = old_state_HKV - state_remove + state_update\n\n            o_H1V = scale * matmul(q_H1K, state_HKV)\n            output[t] = o_H1V.squeeze(1).to(torch.bfloat16)\n\n        new_state[seq_idx] = state_HKV.transpose(-1, -2)  # [H,K,V] -> [H,V,K]\n\n    return {\"output\": output, \"new_state\": new_state}"
+  "reference": "import math\nimport torch\nimport torch.nn.functional as F\n\n\n@torch.no_grad()\ndef run(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale):\n    \"\"\"\n    Gated Delta Net prefill reference implementation matching FlashInfer kernel.\n    \n    State layout: [N, H, V, K] (k-last, V before K)\n    \n    Gate computation:\n    g_log = -exp(A_log) * softplus(a + dt_bias)\n    beta = sigmoid(b)\n    \n    Delta rule update (following FlashInfer kernel exactly):\n    1. Apply L2 normalization to q and k\n    2. h *= exp(g_log)                # Apply decay to state\n    3. v_new = v - k @ h              # Delta rule\n    4. v_new *= beta                  # Apply update gate\n    5. h += k^T @ v_new               # Update state (outer product)\n    6. o = q @ h                      # Compute output\n    \"\"\"\n    total_seq_len, num_q_heads, head_size = q.shape\n    num_v_heads = v.shape[1]\n    num_k_heads = k.shape[1]\n    num_sab_heads = max(num_q_heads, num_v_heads)\n    num_seqs = cu_seqlens.size(0) - 1\n    device = q.device\n    dtype = torch.float32\n\n    assert num_q_heads == 16\n    assert num_k_heads == 16\n    assert num_v_heads == 32\n    assert head_size == 128\n\n    if scale is None or scale == 0.0:\n        scale = 1.0 / math.sqrt(head_size)\n\n    # Convert to float32 for computation\n    A_log = A_log.to(dtype).to(device)\n    a = a.to(dtype).to(device)\n    dt_bias = dt_bias.to(dtype).to(device)\n    b = b.to(dtype).to(device)\n\n    # Compute gating values\n    x = a + dt_bias  # [total_seq_len, HV]\n    softplus_x = F.softplus(x)\n    g = -torch.exp(A_log) * softplus_x  # [total_seq_len, HV]\n    \n    # beta = sigmoid(b)\n    beta = torch.sigmoid(b)  # [total_seq_len, HV]\n\n    # Expand heads for GVA\n    q_exp = q.float().repeat_interleave(num_v_heads // num_q_heads, dim=1)\n    k_exp = k.float().repeat_interleave(num_v_heads // num_k_heads, dim=1)\n    v_f32 = v.float()\n\n    # Apply L2 normalization (matching FlashInfer kernel)\n    q_exp = F.normalize(q_exp, p=2.0, dim=-1)\n    k_exp = F.normalize(k_exp, p=2.0, dim=-1)\n    \n    # Apply scale to q\n    q_exp = q_exp * scale\n\n    output = torch.zeros(\n        (total_seq_len, num_sab_heads, head_size), dtype=torch.bfloat16, device=device\n    )\n    new_state = torch.zeros(\n        (num_seqs, num_sab_heads, head_size, head_size), dtype=dtype, device=device\n    )\n\n    for seq_idx in range(num_seqs):\n        seq_start = int(cu_seqlens[seq_idx].item())\n        seq_end = int(cu_seqlens[seq_idx + 1].item())\n        seq_len = seq_end - seq_start\n\n        if seq_len <= 0:\n            continue\n\n        # Initialize state for this sequence [H, V, K]\n        if state is not None:\n            state_f32 = state[seq_idx].float()  # [H, V, K]\n        else:\n            state_f32 = torch.zeros(\n                (num_sab_heads, head_size, head_size), dtype=dtype, device=device\n            )\n\n        # Process each token in sequence\n        for i in range(seq_len):\n            t = seq_start + i\n            \n            # Get per-head inputs [num_sab_heads, head_size]\n            q_h = q_exp[t]  # [H, K]\n            k_h = k_exp[t]  # [H, K]\n            v_h = v_f32[t]  # [H, V]\n            g_h = g[t]  # [H]\n            beta_h = beta[t]  # [H]\n            \n            # Process each head independently\n            for h_idx in range(num_sab_heads):\n                # Extract state [V, K] and transpose to [K, V] for computation\n                h_state = state_f32[h_idx].transpose(-1, -2)  # [V, K] -> [K, V]\n                \n                # 1. Apply decay: h *= exp(g_log)\n                h_state = h_state * torch.exp(g_h[h_idx])\n                \n                # 2. Delta rule: v_new = v - k @ h\n                #    k is [K], h is [K, V], result is [V]\n                v_new = v_h[h_idx] - (k_h[h_idx] @ h_state)\n                \n                # 3. Apply update gate: v_new *= beta\n                v_new = v_new * beta_h[h_idx]\n                \n                # 4. Update state: h += k^T @ v_new (outer product)\n                #    k.unsqueeze(1) is [K, 1], v_new.unsqueeze(0) is [1, V]\n                #    Result is [K, V]\n                h_state = h_state + k_h[h_idx].unsqueeze(1) @ v_new.unsqueeze(0)\n                \n                # 5. Compute output: o = q @ h\n                #    q is [K], h is [K, V], result is [V]\n                output[t, h_idx] = (q_h[h_idx] @ h_state).to(torch.bfloat16)\n                \n                # Store updated state (transpose back to [V, K])\n                state_f32[h_idx] = h_state.transpose(-1, -2)\n        \n        # Save final state for this sequence\n        new_state[seq_idx] = state_f32\n\n    return {\"output\": output, \"new_state\": new_state}\n"
 }
