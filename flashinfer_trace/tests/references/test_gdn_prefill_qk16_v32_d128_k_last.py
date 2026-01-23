@@ -44,8 +44,9 @@ def get_cuda_capability():
     return torch.cuda.get_device_capability(0)
 
 
-requires_sm90 = pytest.mark.skipif(
-    get_cuda_capability()[0] < 9, reason="GDN prefill kernel requires SM90 (Hopper) or later"
+requires_sm90_only = pytest.mark.skipif(
+    get_cuda_capability()[0] != 9,
+    reason="GDN prefill kernel only supports SM90 (Hopper), not SM80 or SM100+",
 )
 
 requires_cuda = pytest.mark.skipif(
@@ -71,7 +72,7 @@ reference_gdn_prefill = compile_reference(definition.reference)
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
 @pytest.mark.parametrize("seq_len", [16, 64, 128])
 def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
@@ -108,8 +109,7 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
     # Reference from definition
     ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     # FlashInfer uses pre-computed g/beta
     g, beta = compute_gates(A_log, a, dt_bias, b)
@@ -143,7 +143,7 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 def test_gdn_prefill_with_initial_state():
     """Test GDN prefill kernel with non-zero initial state."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
@@ -187,8 +187,7 @@ def test_gdn_prefill_with_initial_state():
     scale = 1.0 / math.sqrt(head_size)
 
     ref_result = reference_gdn_prefill(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
@@ -219,7 +218,7 @@ def test_gdn_prefill_with_initial_state():
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 def test_gdn_prefill_variable_seqlen():
     """Test GDN prefill kernel with variable sequence lengths."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
@@ -255,8 +254,7 @@ def test_gdn_prefill_variable_seqlen():
     scale = 1.0 / math.sqrt(head_size)
 
     ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
