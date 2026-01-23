@@ -91,11 +91,11 @@ def generate_random_inputs(
     dtype = torch.bfloat16
 
     # Use smaller magnitude for better numerical stability
-    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device) * 0.1
-    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device) * 0.1
+    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device) * 0.8
+    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device) * 0.8
     # Normalize k for better conditioning (as done in prefill test)
     k = F.normalize(k.float(), p=2.0, dim=-1).to(dtype)
-    v = torch.randn(B, T, num_v_heads, V, dtype=dtype, device=device) * 0.1
+    v = torch.randn(B, T, num_v_heads, V, dtype=dtype, device=device) * 0.8
 
     # Gate parameters with smaller scales
     A_log = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.05
@@ -104,7 +104,7 @@ def generate_random_inputs(
     b = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.1
 
     # k-last layout: [B, H, V, K] - keep small for stability
-    state = torch.randn(B, num_v_heads, V, K, dtype=torch.float32, device=device) * 0.001
+    state = torch.randn(B, num_v_heads, V, K, dtype=torch.float32, device=device) * 0.01
 
     # Use proper attention scaling
     scale = 1.0 / math.sqrt(head_size)
