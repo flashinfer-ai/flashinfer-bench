@@ -11,8 +11,8 @@ Add tests to validate reference implementations in `./flashinfer_trace/`. Ground
 
 This skill creates test cases under `./flashinfer_trace/tests/references/` to validate that reference implementations in Definition JSON files produce correct outputs. The ground truth comes from:
 
-1. **FlashInfer repository** (preferred): Official optimized GPU kernels in `third_party/flashinfer/`
-2. **SGLang repository** (fallback): When FlashInfer doesn't have the kernel, use `third_party/sglang/`
+1. **FlashInfer repository** (preferred): Official optimized GPU kernels in `tmp/flashinfer/`
+2. **SGLang repository** (fallback): When FlashInfer doesn't have the kernel, use `tmp/sglang/`
 
 ## Usage
 
@@ -43,7 +43,7 @@ This skill creates test cases under `./flashinfer_trace/tests/references/` to va
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `third_party/` directory with SGLang and FlashInfer repositories. The `flashinfer_trace/` directory is already included in this project.
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer (the `flashinfer_trace/` directory is already part of this repository).
 
 ## What This Skill Does
 
@@ -68,7 +68,7 @@ Run `/clone-repos` first to set up the `third_party/` directory with SGLang and 
 For each definition, locate ground truth implementation using this priority order:
 
 #### For Model Constants: SGLang Model Config (Required)
-- **Location**: `third_party/sglang/python/sglang/srt/models/{model_name}.py`
+- **Location**: `tmp/sglang/python/sglang/srt/models/{model_name}.py`
 - **Use for**: Extracting and validating model-specific constant values
 - **Examples**:
   - `num_attention_heads`, `num_key_value_heads`, `head_dim`
@@ -78,7 +78,7 @@ For each definition, locate ground truth implementation using this priority orde
 
 #### For Ground Truth Execution: FlashInfer API (Primary)
 - **When**: FlashInfer has the kernel implementation (MOST kernels)
-- **Location**: `third_party/flashinfer/python/flashinfer/`
+- **Location**: `tmp/flashinfer/python/flashinfer/`
 - **Use for**: Running optimized GPU kernel as ground truth
 - **Examples**:
   ```python
@@ -96,7 +96,7 @@ For each definition, locate ground truth implementation using this priority orde
 
 #### For Ground Truth Execution: SGLang (Fallback ONLY)
 - **When**: FlashInfer does NOT have the kernel (e.g., some MoE variants)
-- **Location**: `third_party/sglang/python/sglang/srt/layers/`
+- **Location**: `tmp/sglang/python/sglang/srt/layers/`
 - **Use for**: Ground truth when FlashInfer unavailable
 - **Examples**:
   ```
@@ -119,36 +119,11 @@ For each definition, locate ground truth implementation using this priority orde
 
 #### Reference `run()` Function Sources
 
-The reference implementation in Definition JSON should be sourced from FlashInfer unit tests. **SGLang should only be used as a fallback when FlashInfer doesn't have the kernel.**
+**Note**: For detailed guidance on sourcing reference implementations, see the [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md) skill's "Reference Implementation Sources" section.
 
-1. **FlashInfer Unit Tests (REQUIRED - Primary Source)**:
-   - **Location**: `third_party/flashinfer/tests/`
-   - **Why**: Contains ground-truth vanilla PyTorch implementations
-   - **How to find**:
-     ```bash
-     # Search for reference implementations
-     grep -r "def ref_" third_party/flashinfer/tests/
-     ```
-   - **Kernel to test file mapping**:
-     | Kernel Type | Test File | Reference Function |
-     |-------------|-----------|-------------------|
-     | GQA decode | `test_batch_decode.py` | `ref_attention()` |
-     | GQA prefill | `test_batch_prefill.py` | `ref_attention()` |
-     | MLA | `test_mla.py` | `ref_mla()` |
-     | RMSNorm | `test_norm.py` | `ref_rmsnorm()` |
-   - **Important**: Adapt FlashInfer's reference to use constants from SGLang model config
-
-2. **SGLang Vanilla Implementation (FALLBACK ONLY)**:
-   - **When to use**: ONLY when FlashInfer does NOT have a unit test for the kernel
-   - **Location**: `third_party/sglang/python/sglang/srt/layers/`
-   - **Common fallback cases**:
-     - MoE kernels: `layers/moe/fused_moe.py`
-     - Custom quantized kernels not in FlashInfer
-   - **Check before using**:
-     ```bash
-     # First verify FlashInfer doesn't have a test
-     ls third_party/flashinfer/tests/ | grep -i "kernel_name"
-     ```
+**Quick Reference**:
+- **Primary**: FlashInfer unit tests at `tmp/flashinfer/tests/` (e.g., `test_batch_decode.py`, `test_norm.py`)
+- **Fallback**: SGLang vanilla implementations at `tmp/sglang/python/sglang/srt/layers/` (only when FlashInfer unavailable)
 
 ### Phase 3: Test Generation
 
@@ -879,4 +854,3 @@ Update this file when changing ground truth sources, test patterns, tolerance va
 
 - [clone-repos](../clone-repos/SKILL.md)
 - [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
-- [workflow](../workflow.md)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, List, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, List, Literal, Union, get_args, get_origin, get_type_hints
 
 import docstring_parser
 from pydantic import BaseModel
@@ -28,6 +28,10 @@ def _python_type_to_json_schema(python_type: Any) -> dict:
 
     origin = get_origin(python_type)
     args = get_args(python_type)
+
+    # Handle Literal types -> enum
+    if origin is Literal:
+        return {"type": "string", "enum": list(args)}
 
     # Handle Optional[X] which is Union[X, None]
     if origin is Union:
@@ -169,12 +173,18 @@ def get_all_tool_schemas() -> List[dict]:
     ...     print(s["name"])
     flashinfer_bench_list_ncu_options
     flashinfer_bench_run_ncu
+    flashinfer_bench_run_sanitizer
     """
     from flashinfer_bench.agents.ncu import (
         flashinfer_bench_list_ncu_options,
         flashinfer_bench_run_ncu,
     )
+    from flashinfer_bench.agents.sanitizer import flashinfer_bench_run_sanitizer
 
-    tools = [flashinfer_bench_list_ncu_options, flashinfer_bench_run_ncu]
+    tools = [
+        flashinfer_bench_list_ncu_options,
+        flashinfer_bench_run_ncu,
+        flashinfer_bench_run_sanitizer,
+    ]
 
     return [function_to_schema(func) for func in tools]
