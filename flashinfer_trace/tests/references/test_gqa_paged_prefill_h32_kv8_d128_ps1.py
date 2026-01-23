@@ -9,7 +9,7 @@ import math
 
 import flashinfer
 import torch
-from test_utils import get_reference_run
+from test_utils import compare_tensors, get_reference_run, print_comparison_metrics
 
 # Load reference implementation from definition
 run = get_reference_run("gqa_paged_prefill_causal_h32_kv8_d128_ps1")
@@ -162,48 +162,13 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
 
     # Compare outputs
     print("\nComparing outputs...")
+    output_metrics = compare_tensors(ref_o, fi_output, atol=atol, rtol=rtol)
+    print_comparison_metrics(output_metrics, tensor_name="Output tensor")
 
-    ref_o_f32 = ref_o.float()
-    fi_output_f32 = fi_output.float()
+    lse_metrics = compare_tensors(ref_lse, fi_lse, atol=atol, rtol=rtol)
+    print_comparison_metrics(lse_metrics, tensor_name="LSE tensor")
 
-    abs_diff = torch.abs(ref_o_f32 - fi_output_f32)
-    rel_diff = abs_diff / (torch.abs(fi_output_f32) + 1e-8)
-
-    max_abs_diff = abs_diff.max().item()
-    max_rel_diff = rel_diff.max().item()
-    mean_abs_diff = abs_diff.mean().item()
-    mean_rel_diff = rel_diff.mean().item()
-
-    print(f"\nOutput tensor comparison:")
-    print(f"Max absolute difference: {max_abs_diff:.6e}")
-    print(f"Max relative difference: {max_rel_diff:.6e}")
-    print(f"Mean absolute difference: {mean_abs_diff:.6e}")
-    print(f"Mean relative difference: {mean_rel_diff:.6e}")
-
-    cos_sim = torch.nn.functional.cosine_similarity(
-        ref_o_f32.flatten(), fi_output_f32.flatten(), dim=0
-    ).item()
-    mse = torch.mean((ref_o_f32 - fi_output_f32) ** 2).item()
-    print(f"Cosine similarity: {cos_sim:.6f}")
-    print(f"MSE: {mse:.6e}")
-
-    lse_abs_diff = torch.abs(ref_lse - fi_lse)
-    lse_rel_diff = lse_abs_diff / (torch.abs(fi_lse) + 1e-8)
-
-    lse_max_abs_diff = lse_abs_diff.max().item()
-    lse_max_rel_diff = lse_rel_diff.max().item()
-    lse_mean_abs_diff = lse_abs_diff.mean().item()
-    lse_mean_rel_diff = lse_rel_diff.mean().item()
-
-    print(f"\nLSE comparison:")
-    print(f"Max absolute difference: {lse_max_abs_diff:.6e}")
-    print(f"Max relative difference: {lse_max_rel_diff:.6e}")
-    print(f"Mean absolute difference: {lse_mean_abs_diff:.6e}")
-    print(f"Mean relative difference: {lse_mean_rel_diff:.6e}")
-
-    output_close = torch.allclose(ref_o_f32, fi_output_f32, atol=atol, rtol=rtol)
-    lse_close = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
-    all_close = output_close and lse_close
+    all_close = output_metrics.all_close and lse_metrics.all_close
 
     if all_close:
         print(f"\n✓ PASSED: Outputs and LSE match within tolerance (atol={atol}, rtol={rtol})")
