@@ -6,7 +6,7 @@ from pathlib import Path
 from flashinfer_bench.data import BuildSpec, Solution, SourceFile
 
 SOLUTION_METADATA_FILE = "SOLUTION.md"
-VALID_SOURCE_EXTENSIONS = {".py", ".cu", ".cuh", ".cpp", ".c", ".h", ".hpp"}
+VALID_SOURCE_EXTENSIONS = {".py", ".cu", ".cuh", ".cpp", ".c", ".h", ".hpp", ".cc", ".cxx"}
 
 
 def _generate_metadata_md(solution: Solution) -> str:
