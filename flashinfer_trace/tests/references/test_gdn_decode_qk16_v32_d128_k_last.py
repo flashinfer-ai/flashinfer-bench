@@ -7,7 +7,6 @@ Run with:
 """
 
 import math
-from pathlib import Path
 
 import pytest
 import torch
@@ -15,27 +14,11 @@ import torch.nn.functional as F
 from flashinfer.gdn_decode import gated_delta_rule_decode_pretranspose
 from flashinfer.utils import get_compute_capability
 
-from flashinfer_bench.data import Definition, load_json_file
-
-# Paths
-DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
-
-
-def load_definition(name: str) -> Definition:
-    """Load a definition by name from definitions directory."""
-    for op_dir in DEFINITIONS_DIR.iterdir():
-        if op_dir.is_dir():
-            def_file = op_dir / f"{name}.json"
-            if def_file.exists():
-                return load_json_file(Definition, def_file)
-    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
-
-
-def compile_reference(reference_code: str):
-    """Compile reference implementation to callable function."""
-    namespace = {"torch": torch, "math": math, "F": F}
-    exec(reference_code, namespace)
-    return namespace["run"]
+from test_utils import (
+    compare_tensors,
+    get_reference_run,
+    print_comparison_metrics,
+)
 
 
 def _skip_if_not_sm90_or_later():
@@ -48,10 +31,9 @@ def _skip_if_not_sm90_or_later():
 def run_kernel(q, k, v, state, A_log, a, dt_bias, b, scale):
     """Run FlashInfer kernel (pretranspose version uses k-last layout)."""
     B, T, num_q_heads, K = q.shape
-    num_v_heads = v.shape[2]
 
     # Pre-allocate output
-    output = torch.empty(B, T, num_v_heads, K, dtype=q.dtype, device=q.device)
+    output = torch.empty(B, T, v.shape[2], K, dtype=q.dtype, device=q.device)
 
     # Call kernel
     out, new_state = gated_delta_rule_decode_pretranspose(
@@ -130,9 +112,8 @@ def test_correctness(batch_size=4, atol=5e-3, rtol=5e-3):
     print(f"Testing GDN decode k-last, batch_size={batch_size}")
     print(f"{'='*60}")
 
-    # Load definition and compile reference
-    definition = load_definition("gdn_decode_qk16_v32_d128_k_last")
-    run = compile_reference(definition.reference)
+    # Load reference from definition
+    run = get_reference_run("gdn_decode_qk16_v32_d128_k_last")
 
     device = "cuda"
     inputs = generate_random_inputs(batch_size=batch_size, device=device)
@@ -166,70 +147,15 @@ def test_correctness(batch_size=4, atol=5e-3, rtol=5e-3):
         inputs["scale"],
     )
 
-    # Compare outputs
+    # Compare outputs using test_utils
     print("\nComparing outputs...")
+    output_metrics = compare_tensors(ref_output, kernel_output, atol=atol, rtol=rtol)
+    print_comparison_metrics(output_metrics, tensor_name="Output tensor")
 
-    ref_o_f32 = ref_output.float()
-    kernel_o_f32 = kernel_output.float()
+    state_metrics = compare_tensors(ref_new_state, kernel_new_state, atol=atol, rtol=rtol)
+    print_comparison_metrics(state_metrics, tensor_name="State tensor")
 
-    # Absolute difference metrics
-    abs_diff_o = torch.abs(ref_o_f32 - kernel_o_f32)
-    max_abs_diff_o = abs_diff_o.max().item()
-    mean_abs_diff_o = abs_diff_o.mean().item()
-
-    # Relative difference metrics (avoid division by zero)
-    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
-    max_rel_diff_o = rel_diff_o.max().item()
-    mean_rel_diff_o = rel_diff_o.mean().item()
-
-    # Cosine similarity
-    ref_flat = ref_o_f32.reshape(-1)
-    kernel_flat = kernel_o_f32.reshape(-1)
-    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), kernel_flat.unsqueeze(0)).item()
-
-    # Mean Squared Error
-    mse_o = ((ref_o_f32 - kernel_o_f32) ** 2).mean().item()
-
-    print("\nOutput tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
-    print(f"  MSE: {mse_o:.6e}")
-
-    # State comparison
-    abs_diff_s = torch.abs(ref_new_state - kernel_new_state)
-    max_abs_diff_s = abs_diff_s.max().item()
-    mean_abs_diff_s = abs_diff_s.mean().item()
-
-    # State relative difference
-    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
-    max_rel_diff_s = rel_diff_s.max().item()
-    mean_rel_diff_s = rel_diff_s.mean().item()
-
-    # State cosine similarity
-    ref_state_flat = ref_new_state.reshape(-1)
-    kernel_state_flat = kernel_new_state.reshape(-1)
-    cosine_sim_s = F.cosine_similarity(
-        ref_state_flat.unsqueeze(0), kernel_state_flat.unsqueeze(0)
-    ).item()
-
-    # State MSE
-    mse_s = ((ref_new_state - kernel_new_state) ** 2).mean().item()
-
-    print("\nState tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
-    print(f"  MSE: {mse_s:.6e}")
-
-    output_close = torch.allclose(ref_o_f32, kernel_o_f32, atol=atol, rtol=rtol)
-    state_close = torch.allclose(ref_new_state, kernel_new_state, atol=atol, rtol=rtol)
-
-    if output_close and state_close:
+    if output_metrics.all_close and state_metrics.all_close:
         print(f"\n✓ PASSED (atol={atol}, rtol={rtol})")
         return True
     else:
@@ -242,9 +168,8 @@ def test_gdn_decode_k_last(batch_size: int):
     """Pytest parametrized test for various batch sizes."""
     _skip_if_not_sm90_or_later()
 
-    # Load definition and compile reference
-    definition = load_definition("gdn_decode_qk16_v32_d128_k_last")
-    run = compile_reference(definition.reference)
+    # Load reference from definition
+    run = get_reference_run("gdn_decode_qk16_v32_d128_k_last")
 
     device = "cuda"
     inputs = generate_random_inputs(batch_size=batch_size, device=device)
