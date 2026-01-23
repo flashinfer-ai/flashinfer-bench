@@ -54,7 +54,7 @@ When executing this skill:
    else
        echo "Cloning SGLang with submodules..."
        git clone --recurse-submodules https://github.com/sgl-project/sglang.git tmp/sglang
-       (cd tmp/sglang && git checkout main)
+       (cd tmp/sglang && git checkout "${sglang_branch:-main}")
    fi
    ```
 
