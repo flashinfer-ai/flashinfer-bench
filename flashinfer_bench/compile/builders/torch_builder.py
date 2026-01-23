@@ -12,7 +12,7 @@ from typing import Callable, ClassVar, Dict, List, Optional, Tuple
 from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 from flashinfer_bench.compile.utils import write_sources_to_path
-from flashinfer_bench.data import Definition, Solution, SupportedLanguages
+from flashinfer_bench.data import Definition, Solution, SupportedBindings, SupportedLanguages
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +54,24 @@ class TorchBuilder(Builder):
         return torch.cuda.is_available()
 
     def can_build(self, solution: Solution) -> bool:
-        """Check if this builder can handle the given solution."""
-        return (
+        """Check if this builder can handle the given solution. The solution should be CUDA or
+        C++ source code with torch binding.
+
+        Parameters
+        ----------
+        solution : Solution
+            Solution to check
+
+        Returns
+        -------
+        bool
+            True if solution language is CUDA or C++ and binding is torch
+        """
+        is_cpp_or_cuda = (
             solution.spec.language == SupportedLanguages.CUDA
             or solution.spec.language == SupportedLanguages.CPP
         )
+        return is_cpp_or_cuda and solution.spec.binding == SupportedBindings.TORCH
 
     def _filter_sources(self, source_paths: List[Path]) -> List[str]:
         """Filter source files to include only C/C++/CUDA files.

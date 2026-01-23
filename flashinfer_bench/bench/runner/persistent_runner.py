@@ -54,7 +54,7 @@ class SolutionFailureRecord:
 
 
 class PersistentSubprocessWorker:
-    def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(self, device: str, log_dir: str) -> None:
         """Per device persistent subprocess worker
 
         Parameters

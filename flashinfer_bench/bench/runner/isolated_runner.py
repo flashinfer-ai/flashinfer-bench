@@ -23,7 +23,7 @@ from flashinfer_bench.utils import redirect_stdio_to_file
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
-LOGGER = get_logger("MPRunner")
+logger = logging.getLogger(__name__)
 
 
 class SubprocessWorker:
@@ -167,13 +167,13 @@ class SubprocessWorker:
                     break
 
                 else:
-                    LOGGER.warning("Unknown worker command: %s", cmd)
+                    logger.warning("Unknown worker command: %s", cmd)
                     continue
 
         except EOFError as e:
-            LOGGER.error("Worker crashed (EOF) running %s: %s", solution.name, e)
+            logger.error("Worker crashed (EOF) running %s: %s", solution.name, e)
         except Exception:
-            LOGGER.error("Unknown error running %s", solution.name, exc_info=True)
+            logger.error("Unknown error running %s", solution.name, exc_info=True)
         finally:
             try:
                 parent_conn.close()
@@ -296,17 +296,14 @@ def _solution_worker_main(
 
 
 class IsolatedRunner(Runner):
-    def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(self, log_dir: str) -> None:
         """Initialize the isolated runner with per device workers.
 
         Parameters
         ----------
-        logger : logging.Logger
-            Logger instance for output.
         log_dir : str, optional
             Directory for log files, by default "/tmp/flashinfer_bench".
         """
-        self._logger = logger
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
@@ -315,11 +312,12 @@ class IsolatedRunner(Runner):
         self._available_devices = fib_utils.list_cuda_devices()
         self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
         self._curr_worker_idx = 0
+        self._log_dir = log_dir
 
         if len(self._workers) == 0:
             raise RuntimeError("No CUDA devices available")
 
-        self._logger.info(
+        logger.info(
             f"Initialized benchmark multi-process on {len(self._available_devices)} CUDA devices "
             f"and {len(self._workers)} workers"
         )
@@ -358,7 +356,7 @@ class IsolatedRunner(Runner):
         SubprocessWorker
             New worker instance for the device.
         """
-        self._logger.info(f"Relaunching worker for device {device}")
+        logger.info(f"Relaunching worker for device {device}")
         return SubprocessWorker(device, self._log_dir)
 
     def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
@@ -381,17 +379,17 @@ class IsolatedRunner(Runner):
                 try:
                     new_worker = self._relaunch_worker(device)
                     workers_to_add.append(new_worker)
-                    self._logger.info(f"Successfully relaunched worker for device {device} ")
+                    logger.info(f"Successfully relaunched worker for device {device} ")
                 except Exception:
-                    self._logger.error(f"Failed to relaunch worker for device {device} ")
+                    logger.error(f"Failed to relaunch worker for device {device} ")
                     if retry_count + 1 >= self._worker_max_retries:
                         workers_to_remove.append(failed_worker)
-                        self._logger.warning(
+                        logger.warning(
                             f"Removing device {device} after {self._worker_max_retries} failed attempts"
                         )
             else:
                 workers_to_remove.append(failed_worker)
-                self._logger.warning(
+                logger.warning(
                     f"Removing device {device} after {self._worker_max_retries} failed attempts"
                 )
         if workers_to_remove:
@@ -462,7 +460,7 @@ class IsolatedRunner(Runner):
                     baselines[r] = h
                 except Exception as e:
                     failed_workers.append(r)
-                    self._logger.error(
+                    logger.error(
                         f"Runner {r._device} failed while running reference for "
                         f"def={definition.name} workload={workload.uuid}: {e}"
                     )

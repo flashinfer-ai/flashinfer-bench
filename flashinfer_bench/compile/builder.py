@@ -153,20 +153,36 @@ class Builder(ABC):
         except (ValueError, TypeError):
             return
 
+        # Count parameters, handling variadic arguments:
+        # - **kwargs (VAR_KEYWORD): ignored, allows extra keyword arguments
+        # - *args (VAR_POSITIONAL): enables range matching (num_params <= expected)
+        params = signature.parameters.values()
+        has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+        num_params = sum(
+            p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for p in params
+        )
+
         if solution.spec.destination_passing_style:
-            if len(signature.parameters) != len(definition.inputs) + len(definition.outputs):
-                raise BuildError(
-                    "Destination-passing style callable has incorrect number of "
-                    f"parameters: {len(signature.parameters)} != "
-                    f"{len(definition.inputs) + len(definition.outputs)}"
-                )
+            expected = len(definition.inputs) + len(definition.outputs)
+            style = "Destination-passing"
         else:
-            if len(signature.parameters) != len(definition.inputs):
+            expected = len(definition.inputs)
+            style = "Value-returning"
+
+        if has_var_positional:
+            if num_params > expected:
                 raise BuildError(
-                    "Value-returning style callable has incorrect number of "
-                    f"parameters: {len(signature.parameters)} != {len(definition.inputs)}"
+                    f"{style} style callable: expected {expected} parameters, "
+                    f"but got at least {num_params}"
                 )
-            # Check return annotation
+        elif num_params != expected:
+            raise BuildError(
+                f"{style} style callable: expected {expected} parameters, " f"but got {num_params}"
+            )
+
+        # Check return annotation (only for value-returning style)
+        if not solution.spec.destination_passing_style:
             num_outputs = len(definition.outputs)
             ret_ann = signature.return_annotation
             if ret_ann is not inspect.Signature.empty:

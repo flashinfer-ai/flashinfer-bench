@@ -195,7 +195,7 @@ def run(args: argparse.Namespace):
             timeout_seconds=args.timeout,
         )
         benchmark = Benchmark(trace_set, config)
-        logger.info(f"Running benchmark for: {path}")
+        logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
         resume = getattr(args, "resume", False)
         if resume:
             logger.info("Resume mode enabled: will skip already evaluated solutions")
