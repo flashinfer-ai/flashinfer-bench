@@ -15,6 +15,12 @@ This package also provides JSON Schema version of the tools by calling {py:func}
 
 .. autofunction:: flashinfer_bench_list_ncu_options
 
+.. autofunction:: flashinfer_bench_run_sanitizer
+
+.. autofunction:: extract_solution_to_files
+
+.. autofunction:: pack_solution_from_files
+
 .. autofunction:: function_to_schema
 
 .. autofunction:: get_all_tool_schemas
