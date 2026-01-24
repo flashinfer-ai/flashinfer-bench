@@ -8,33 +8,11 @@ Run with:
 
 import math
 import sys
-from pathlib import Path
 
 import pytest
 import torch
 import torch.nn.functional as F
-
-from flashinfer_bench.data import Definition, load_json_file
-
-# Paths
-DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
-
-
-def load_definition(name: str) -> Definition:
-    """Load a definition by name from definitions directory."""
-    for op_dir in DEFINITIONS_DIR.iterdir():
-        if op_dir.is_dir():
-            def_file = op_dir / f"{name}.json"
-            if def_file.exists():
-                return load_json_file(Definition, def_file)
-    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
-
-
-def compile_reference(reference_code: str):
-    """Compile reference implementation to callable function."""
-    namespace = {"torch": torch, "math": math, "F": F}
-    exec(reference_code, namespace)
-    return namespace["run"]
+from test_utils import compare_tensors, get_reference_run, print_comparison_metrics
 
 
 def get_cuda_capability():
@@ -66,9 +44,8 @@ def compute_gates(A_log, a, dt_bias, b):
     return g, beta
 
 
-# Load definition and compile reference
-definition = load_definition("gdn_prefill_qk16_v32_d128_k_last")
-reference_gdn_prefill = compile_reference(definition.reference)
+# Load reference from definition
+reference_gdn_prefill = get_reference_run("gdn_prefill_qk16_v32_d128_k_last")
 
 
 @requires_cuda
@@ -125,64 +102,22 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
         cu_seqlens=cu_seqlens,
     )
 
-    # Output comparison metrics
-    ref_o_f32 = ref_output.float()
-    fi_o_f32 = fi_output.float()
-
-    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
-    max_abs_diff_o = abs_diff_o.max().item()
-    mean_abs_diff_o = abs_diff_o.mean().item()
-
-    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
-    max_rel_diff_o = rel_diff_o.max().item()
-    mean_rel_diff_o = rel_diff_o.mean().item()
-
-    ref_flat = ref_o_f32.reshape(-1)
-    fi_flat = fi_o_f32.reshape(-1)
-    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
-
-    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
-
-    # State comparison metrics
-    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
-    max_abs_diff_s = abs_diff_s.max().item()
-    mean_abs_diff_s = abs_diff_s.mean().item()
-
-    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
-    max_rel_diff_s = rel_diff_s.max().item()
-    mean_rel_diff_s = rel_diff_s.mean().item()
-
-    ref_state_flat = ref_new_state.reshape(-1)
-    fi_state_flat = fi_new_state.reshape(-1)
-    cosine_sim_s = F.cosine_similarity(
-        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
-    ).item()
-
-    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
-
-    print(f"\nBatch={batch_size}, SeqLen={seq_len}")
-    print("\nOutput tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
-    print(f"  MSE: {mse_o:.6e}")
-
-    print("\nState tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
-    print(f"  MSE: {mse_s:.6e}")
-
-    output_max_err = max_abs_diff_o
-    state_max_err = max_abs_diff_s
-
+    # Compare using test_utils
     atol = 0.1
-    assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
-    assert state_max_err < atol, f"State max error {state_max_err} exceeds tolerance"
+    print(f"\nBatch={batch_size}, SeqLen={seq_len}")
+
+    output_metrics = compare_tensors(ref_output, fi_output, atol=atol, rtol=atol)
+    print_comparison_metrics(output_metrics, tensor_name="Output tensor")
+
+    state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
+    print_comparison_metrics(state_metrics, tensor_name="State tensor")
+
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 @requires_cuda
@@ -245,64 +180,22 @@ def test_gdn_prefill_with_initial_state():
         cu_seqlens=cu_seqlens,
     )
 
-    # Output comparison metrics
-    ref_o_f32 = ref_output.float()
-    fi_o_f32 = fi_output.float()
-
-    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
-    max_abs_diff_o = abs_diff_o.max().item()
-    mean_abs_diff_o = abs_diff_o.mean().item()
-
-    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
-    max_rel_diff_o = rel_diff_o.max().item()
-    mean_rel_diff_o = rel_diff_o.mean().item()
-
-    ref_flat = ref_o_f32.reshape(-1)
-    fi_flat = fi_o_f32.reshape(-1)
-    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
-
-    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
-
-    # State comparison metrics
-    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
-    max_abs_diff_s = abs_diff_s.max().item()
-    mean_abs_diff_s = abs_diff_s.mean().item()
-
-    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
-    max_rel_diff_s = rel_diff_s.max().item()
-    mean_rel_diff_s = rel_diff_s.mean().item()
-
-    ref_state_flat = ref_new_state.reshape(-1)
-    fi_state_flat = fi_new_state.reshape(-1)
-    cosine_sim_s = F.cosine_similarity(
-        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
-    ).item()
-
-    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
-
-    print(f"\nWith initial state:")
-    print("\nOutput tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
-    print(f"  MSE: {mse_o:.6e}")
-
-    print("\nState tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
-    print(f"  MSE: {mse_s:.6e}")
-
-    output_max_err = max_abs_diff_o
-    state_max_err = max_abs_diff_s
-
+    # Compare using test_utils
     atol = 0.1
-    assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
-    assert state_max_err < atol, f"State max error {state_max_err} exceeds tolerance"
+    print("\nWith initial state:")
+
+    output_metrics = compare_tensors(ref_output, fi_output, atol=atol, rtol=atol)
+    print_comparison_metrics(output_metrics, tensor_name="Output tensor")
+
+    state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
+    print_comparison_metrics(state_metrics, tensor_name="State tensor")
+
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 @requires_cuda
@@ -357,64 +250,22 @@ def test_gdn_prefill_variable_seqlen():
         cu_seqlens=cu_seqlens,
     )
 
-    # Output comparison metrics
-    ref_o_f32 = ref_output.float()
-    fi_o_f32 = fi_output.float()
-
-    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
-    max_abs_diff_o = abs_diff_o.max().item()
-    mean_abs_diff_o = abs_diff_o.mean().item()
-
-    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
-    max_rel_diff_o = rel_diff_o.max().item()
-    mean_rel_diff_o = rel_diff_o.mean().item()
-
-    ref_flat = ref_o_f32.reshape(-1)
-    fi_flat = fi_o_f32.reshape(-1)
-    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
-
-    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
-
-    # State comparison metrics
-    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
-    max_abs_diff_s = abs_diff_s.max().item()
-    mean_abs_diff_s = abs_diff_s.mean().item()
-
-    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
-    max_rel_diff_s = rel_diff_s.max().item()
-    mean_rel_diff_s = rel_diff_s.mean().item()
-
-    ref_state_flat = ref_new_state.reshape(-1)
-    fi_state_flat = fi_new_state.reshape(-1)
-    cosine_sim_s = F.cosine_similarity(
-        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
-    ).item()
-
-    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
-
-    print(f"\nVariable seqlens={seq_lens}:")
-    print("\nOutput tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
-    print(f"  MSE: {mse_o:.6e}")
-
-    print("\nState tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
-    print(f"  MSE: {mse_s:.6e}")
-
-    output_max_err = max_abs_diff_o
-    state_max_err = max_abs_diff_s
-
+    # Compare using test_utils
     atol = 0.1
-    assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
-    assert state_max_err < atol, f"State max error {state_max_err} exceeds tolerance"
+    print(f"\nVariable seqlens={seq_lens}:")
+
+    output_metrics = compare_tensors(ref_output, fi_output, atol=atol, rtol=atol)
+    print_comparison_metrics(output_metrics, tensor_name="Output tensor")
+
+    state_metrics = compare_tensors(ref_new_state, fi_new_state, atol=atol, rtol=atol)
+    print_comparison_metrics(state_metrics, tensor_name="State tensor")
+
+    assert (
+        output_metrics.max_abs_diff < atol
+    ), f"Output max error {output_metrics.max_abs_diff} exceeds tolerance"
+    assert (
+        state_metrics.max_abs_diff < atol
+    ), f"State max error {state_metrics.max_abs_diff} exceeds tolerance"
 
 
 if __name__ == "__main__":
