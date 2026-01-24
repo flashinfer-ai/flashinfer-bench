@@ -6,7 +6,7 @@ import os
 import platform
 import sys
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     import torch
@@ -95,11 +95,14 @@ def is_dtype_integer(dtype: torch.dtype) -> bool:
     return dtype in _get_integer_dtypes()
 
 
-def is_cuda_available() -> bool:
-    """Check if CUDA is available."""
-    import torch
+def is_torch_cuda_available() -> bool:
+    """Check if CUDA is available from PyTorch."""
+    try:
+        import torch
 
-    return torch.cuda.is_available()
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
 
 
 def list_cuda_devices() -> List[str]:

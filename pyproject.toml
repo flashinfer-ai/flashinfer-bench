@@ -74,7 +74,7 @@ profile = "black"
 line_length = 100
 
 [tool.ruff]
-include = ["flashinfer_bench/**/*.py", "tests/**/*.py"]
+include = ["flashinfer_bench/**/*.py", "tests/**/*.py", "flashinfer_trace/**/*.py", "docs/**/*.py"]
 line-length = 100
 target-version = "py310"
 
@@ -85,7 +85,6 @@ ignore = ["C901", "E501", "E741", "F402", "F823", "E731"]
 select = ["C", "E", "F", "W", "TID252"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
 "tests/*" = ["E741"]
 "flashinfer_bench/compile/builders/triton_builder.py" = ["F401"]
 
@@ -97,8 +96,7 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-rA --durations=0 --ignore=3rdparty"
-markers = ["requires_torch_cuda: tests that require torch and CUDA available"]
+addopts = "-rA --durations=0 --ignore=3rdparty --ignore=flashinfer_trace"
 log_cli = true
 log_cli_level = "INFO"
 

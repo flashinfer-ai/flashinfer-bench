@@ -48,6 +48,12 @@ repos:
       - id: isort
         args: ["--profile=black"]
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.6
+    hooks:
+      - id: ruff
+        args: ["--fix", "--select=F401"]
+
   - repo: https://github.com/google/yamlfmt
     rev: v0.16.0
     hooks:
