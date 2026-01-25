@@ -55,7 +55,7 @@ def apply(
     number of arguments:
     - If len(args) == len(inputs): value-returning style, solution returns outputs
     - If len(args) == len(inputs) + len(outputs): destination-passing style, outputs are
-      pre-allocated and passed as arguments
+    pre-allocated and passed as arguments
 
     Parameters
     ----------

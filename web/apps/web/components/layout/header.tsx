@@ -2,6 +2,7 @@ import { SiteHeader } from "@flashinfer-bench/ui"
 import { docsBasePath } from "@flashinfer-bench/config"
 
 const NAV_ITEMS = [
+  { href: "https://github.com/flashinfer-ai/flashinfer-bench", label: "Github", external: true },
   { href: docsBasePath, label: "Docs", external: true },
   { href: "/viewer", label: "Viewer" },
 ]

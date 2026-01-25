@@ -16,13 +16,13 @@ from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 
-def _def_name_resolver(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
-    return f"gqa_paged_decode_h{q.shape[1]}_kv{k_cache.shape[2]}_d{q.shape[2]}_ps1"
+def _def_name_resolver(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale, page_size):
+    return f"gqa_paged_decode_h{q.shape[1]}_kv{k_cache.shape[2]}_d{q.shape[2]}_ps{page_size}"
 
 
 class GQAPagedDecodeAdapter:
     """Adapter for flashinfer BatchDecodeWithPagedKVCacheWrapper(plan+run).
-    Covers page_size=1 only.
+    Covers page_size=1 and 64 only for now.
     """
 
     def __init__(self) -> None:
@@ -83,7 +83,8 @@ class GQAPagedDecodeAdapter:
                 lse_buf = bound.get("lse", None)
 
                 # Compatibility checks
-                if ctx.get("page_size", None) != 1:
+                page_size = ctx.get("page_size", None)
+                if page_size not in (1, 64):
                     return orig(inst, *args, **kwargs)
 
                 num_qo_heads = ctx.get("num_qo_heads", None)
@@ -112,6 +113,7 @@ class GQAPagedDecodeAdapter:
                     "kv_indptr": ctx["kv_indptr"],
                     "kv_indices": ctx["kv_indices"],
                     "sm_scale": sm_scale,
+                    "page_size": page_size,
                 }
 
                 def _fallback(**_rk):
