@@ -1,0 +1,34 @@
+{
+  "name": "softmax_d201088",
+  "op_type": "softmax",
+  "description": "Softmax over vocabulary dimension (201088). Used in gpt-oss-120b for logit normalization.",
+  "tags": [
+    "status:verified",
+    "model:gpt-oss-120b"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 201088
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "vocab_size"],
+      "dtype": "float32",
+      "description": "Logits tensor"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "vocab_size"],
+      "dtype": "float32",
+      "description": "Probability distribution"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input):\n    batch_size, vocab_size = input.shape\n    \n    # Check constants\n    assert vocab_size == 201088\n    \n    output = torch.softmax(input, dim=-1)\n    return output"
+}

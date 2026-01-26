@@ -1,0 +1,35 @@
+{
+  "name": "rmsnorm_h8192",
+  "op_type": "rmsnorm",
+  "description": "Root Mean Square Normalization with hidden_size=8192. Captured from Llama-3.1-70B. Epsilon is fixed at 1e-5.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-70b"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 8192
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "bfloat16"
+    },
+    "weight": {
+      "shape": ["hidden_size"],
+      "dtype": "bfloat16"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, weight):\n    batch_size, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 8192\n\n    EPS = 1e-5\n\n    x = hidden_states.to(torch.float32)\n    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    y = (x * inv_rms) * weight.to(torch.float32)\n    return y.to(hidden_states.dtype)"
+}

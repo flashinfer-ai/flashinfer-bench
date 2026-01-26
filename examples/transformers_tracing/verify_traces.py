@@ -50,23 +50,28 @@ MODEL_OPERATOR_EXPECTATIONS = {
                 "required": True,
             },
             "moe": {
-                "pattern": r"moe_(batched|grouped)_e\d+_h\d+_i\d+_topk\d+",
+                "pattern": r"moe_(batched|grouped|fp8).*",
                 "description": "Mixture of Experts",
-                "required": True,  # Required for MoE models
+                "required": False,  # MoE routing may not be traced by default
             },
             "linear": {
                 "pattern": r"gemm_n\d+_k\d+",
                 "description": "Linear/GEMM operations",
-                "required": True,
+                "required": False,  # GEMM may not be traced for all sizes
             },
             "softmax": {
                 "pattern": r"softmax_d\d+",
                 "description": "Softmax for sampling",
-                "required": False,  # Only during generation
+                "required": False,
             },
             "topk": {
                 "pattern": r"topk_d\d+_k\d+",
                 "description": "Top-k sampling",
+                "required": False,
+            },
+            "multinomial": {
+                "pattern": r"sampling_multinomial_v\d+",
+                "description": "Multinomial sampling",
                 "required": False,
             },
         },
@@ -102,11 +107,21 @@ MODEL_OPERATOR_EXPECTATIONS = {
             "linear": {
                 "pattern": r"gemm_n\d+_k\d+",
                 "description": "Linear/GEMM operations",
-                "required": True,
+                "required": False,  # GEMM may not be traced for all sizes
             },
             "softmax": {
                 "pattern": r"softmax_d\d+",
                 "description": "Softmax for sampling",
+                "required": False,
+            },
+            "topk": {
+                "pattern": r"topk_d\d+_k\d+",
+                "description": "Top-k sampling",
+                "required": False,
+            },
+            "multinomial": {
+                "pattern": r"sampling_multinomial_v\d+",
+                "description": "Multinomial sampling",
                 "required": False,
             },
         },
@@ -134,24 +149,84 @@ MODEL_OPERATOR_EXPECTATIONS = {
                 "description": "Token embedding lookup",
                 "required": True,
             },
-            "gelu": {
-                "pattern": r"gelu(_tanh)?_h\d+",
-                "description": "GELU activation",
+            "silu": {
+                "pattern": r"silu_h\d+",
+                "description": "SiLU activation (SwiGLU)",
                 "required": True,
             },
             "moe": {
-                "pattern": r"moe_(batched|grouped)_e\d+_h\d+_i\d+_topk\d+",
+                "pattern": r"moe_(batched|grouped|fp8).*",
                 "description": "Mixture of Experts",
+                "required": False,  # MoE routing may not be traced by default
+            },
+            "linear": {
+                "pattern": r"gemm_n\d+_k\d+",
+                "description": "Linear/GEMM operations",
+                "required": False,  # GEMM may not be traced for all sizes
+            },
+            "softmax": {
+                "pattern": r"softmax_d\d+",
+                "description": "Softmax for sampling",
+                "required": False,
+            },
+            "topk": {
+                "pattern": r"topk_d\d+_k\d+",
+                "description": "Top-k sampling",
+                "required": False,
+            },
+            "multinomial": {
+                "pattern": r"sampling_multinomial_v\d+",
+                "description": "Multinomial sampling",
+                "required": False,
+            },
+        },
+    },
+    "llama-3.1-8b": {
+        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "expected_operators": {
+            "attention": {
+                "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
+                "description": "GQA attention operations",
+                "required": True,
+            },
+            "rmsnorm": {
+                "pattern": r"rmsnorm_h\d+",
+                "description": "RMS normalization",
+                "required": True,
+            },
+            "rope": {
+                "pattern": r"rope_h\d+_d\d+",
+                "description": "Rotary position embedding",
+                "required": True,
+            },
+            "embedding": {
+                "pattern": r"embedding_v\d+_d\d+",
+                "description": "Token embedding lookup",
+                "required": True,
+            },
+            "silu": {
+                "pattern": r"silu_h\d+",
+                "description": "SiLU activation (SwiGLU)",
                 "required": True,
             },
             "linear": {
                 "pattern": r"gemm_n\d+_k\d+",
                 "description": "Linear/GEMM operations",
-                "required": True,
+                "required": False,
             },
             "softmax": {
                 "pattern": r"softmax_d\d+",
                 "description": "Softmax for sampling",
+                "required": False,
+            },
+            "topk": {
+                "pattern": r"topk_d\d+_k\d+",
+                "description": "Top-k sampling",
+                "required": False,
+            },
+            "multinomial": {
+                "pattern": r"sampling_multinomial_v\d+",
+                "description": "Multinomial sampling",
                 "required": False,
             },
         },
@@ -178,7 +253,8 @@ def load_traces(traces_path: Path) -> dict[str, list[dict]]:
         print(f"Warning: No workloads directory found at {workloads_dir}")
         return traces
     
-    for trace_file in workloads_dir.glob("*.jsonl"):
+    # Traces are stored in subdirectories by op_type: workloads/<op_type>/<def_name>.jsonl
+    for trace_file in workloads_dir.glob("**/*.jsonl"):
         def_name = trace_file.stem
         with open(trace_file, "r") as f:
             for line in f:

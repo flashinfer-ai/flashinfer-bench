@@ -15,25 +15,36 @@ The flashinfer-bench tracing system requires **pre-existing definitions** to mat
 
 The `flashinfer_trace/` dataset in this repository includes definitions for:
 
+| Operator | Definition Pattern | Supported Sizes |
+|----------|-------------------|-----------------|
+| **Attention (GQA)** | `gqa_ragged_prefill_causal_h{H}_kv{KV}_d{D}` | h32_kv4_d128, h32_kv8_d128, h64_kv8_d128, h64_kv8_d64 |
+| **RMSNorm** | `rmsnorm_h{H}` | h128, h512, h1536, h2048, h2880, h4096, h7168, h8192 |
+| **Fused Add+RMSNorm** | `fused_add_rmsnorm_h{H}` | h2048, h2880, h4096, h7168, h8192 |
+| **Embedding** | `embedding_v{V}_d{D}` | v128256_d4096, v128256_d8192, v151936_d2048, v201088_d2880 |
+| **RoPE** | `rope_h{H}_d{D}` | h32_d128, h64_d128, h64_d64 |
+| **SiLU** | `silu_h{H}` | h768, h2880, h14336, h28672 |
+| **Softmax** | `softmax_d{D}` | d128256, d151936, d201088 |
+| **Top-K** | `topk_d{D}_k{K}` | d128256_k50, d151936_k50, d201088_k50 |
+| **Multinomial** | `sampling_multinomial_v{V}` | v128256, v151936, v201088 |
+| **Linear/GEMM** | `gemm_n{N}_k{K}` | various sizes |
+| **MoE** | `moe_*` | various configurations |
+| **MLA** | `mla_paged_*` | various configurations |
+
+### Model Coverage
+
+| Model | Operators Covered |
+|-------|-------------------|
+| **LLaMA-3.1-8B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
+| **LLaMA-3.1-70B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
+| **Qwen3-30B-A3B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
+| **gpt-oss-120b** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
+
+The following operators are **intercepted** but may need additional definitions for specific model configurations:
+
 | Operator | Definition Pattern | Status |
 |----------|-------------------|--------|
-| Attention (GQA) | `gqa_ragged_prefill_causal_h{H}_kv{KV}_d{D}` | ✓ Supported |
-| RMSNorm | `rmsnorm_h{H}` | ✓ Supported (h128, h512, h1536, h2048, h4096, h7168) |
-| Linear/GEMM | `gemm_n{N}_k{K}` | ✓ Supported (various sizes) |
-| Sampling | `top_k_sampling_from_probs_v{V}` | ✓ Supported |
-| MoE | `moe_*` | ✓ Supported |
-| MLA | `mla_paged_*` | ✓ Supported |
-
-The following operators are **intercepted** but don't have definitions yet:
-
-| Operator | Definition Pattern | Status |
-|----------|-------------------|--------|
-| Embedding | `embedding_v{V}_d{D}` | ⚠ Needs definitions |
-| RoPE | `rope_h{H}_d{D}` | ⚠ Needs definitions |
-| SiLU | `silu_h{H}` | ⚠ Needs definitions |
-| GELU | `gelu_h{H}` | ⚠ Needs definitions |
-| Softmax | `softmax_d{D}` | ⚠ Needs definitions |
-| Top-K | `topk_d{D}_k{K}` | ⚠ Needs definitions |
+| GELU | `gelu_h{H}` | ⚠ Add definitions as needed |
+| GELU (tanh) | `gelu_tanh_h{H}` | ⚠ Add definitions as needed |
 
 ## Quick Start
 

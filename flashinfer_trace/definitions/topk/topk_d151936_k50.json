@@ -1,0 +1,48 @@
+{
+  "name": "topk_d151936_k50",
+  "op_type": "topk",
+  "description": "Top-k selection over vocabulary (151936) with k=50. Used in Qwen3 models for sampling.",
+  "tags": [
+    "status:verified",
+    "model:qwen3"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 151936
+    },
+    "k": {
+      "type": "const",
+      "value": 50
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "vocab_size"],
+      "dtype": "float32",
+      "description": "Logits or probabilities tensor"
+    },
+    "k": {
+      "shape": null,
+      "dtype": "int64",
+      "description": "Number of top elements to select"
+    }
+  },
+  "outputs": {
+    "values": {
+      "shape": ["batch_size", "k"],
+      "dtype": "float32",
+      "description": "Top-k values"
+    },
+    "indices": {
+      "shape": ["batch_size", "k"],
+      "dtype": "int64",
+      "description": "Top-k indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input, k):\n    batch_size, vocab_size = input.shape\n    \n    # Check constants\n    assert vocab_size == 151936\n    assert k == 50\n    \n    values, indices = torch.topk(input, k, dim=-1)\n    return values, indices"
+}

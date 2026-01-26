@@ -1,0 +1,43 @@
+{
+  "name": "embedding_v201088_d2880",
+  "op_type": "embedding",
+  "description": "Token embedding lookup with vocab_size=201088, embedding_dim=2880. Captured from gpt-oss-120b.",
+  "tags": [
+    "status:verified",
+    "model:gpt-oss-120b"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Number of input tokens"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 201088
+    },
+    "embedding_dim": {
+      "type": "const",
+      "value": 2880
+    }
+  },
+  "inputs": {
+    "input_ids": {
+      "shape": ["batch_size"],
+      "dtype": "int64",
+      "description": "Token indices to look up"
+    },
+    "weight": {
+      "shape": ["vocab_size", "embedding_dim"],
+      "dtype": "bfloat16",
+      "description": "Embedding weight matrix"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "embedding_dim"],
+      "dtype": "bfloat16",
+      "description": "Embedded token representations"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input_ids, weight):\n    batch_size = input_ids.shape[0]\n    vocab_size, embedding_dim = weight.shape\n    \n    # Check constants\n    assert vocab_size == 201088\n    assert embedding_dim == 2880\n    \n    output = weight[input_ids]\n    return output"
+}
