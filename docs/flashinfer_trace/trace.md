@@ -2,7 +2,14 @@
 
 This document describes the JSON schema for a **Trace**.
 
-A `Trace` is an atomic, immutable record of a **single benchmark run**. It links a specific `Solution` to a specific `Definition`, details the exact `workload` configuration used for the run (i.e., shapes and input data), and records the complete `evaluation` result. The collection of all Trace files forms the database of benchmark results.
+A `Trace` describes a benchmark result of a [Solution](solution.md) on a [Definition](definition.md) with a specific [Workload](workload.md). The collection of all Trace files forms the database of benchmark results.
+
+In a `Trace` object, `solution` and `evaluation` are optional. If they are not provided, it describes
+a workload entry in the dataset.
+
+In a `Trace` object, the `definition` and `solution` are externally linked through their names;
+`workload` and `evaluation` are embedded in the `Trace` object. This is because `definition` and
+`solution` are relatively large objects and will be used repeatedly in the dataset.
 
 ## JSON Schema Description
 
@@ -11,41 +18,9 @@ A `Trace` is an atomic, immutable record of a **single benchmark run**. It links
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
 | `definition` | string | Yes | The `name` of the `Definition` used in this run. |
-| `solution` | string | Yes | The `name` of the `Solution` tested in this run. |
-| `workload` | object | Yes | An object describing the specific input configuration for this run.  |
-| `evaluation` | object | Yes | An object containing the detailed results of this run. |
-
-### `workload` : Input Shapes and Data
-
-This object provides the concrete data required to instantiate a `Definition`. This data includes the variable dimensions of inputs and outputs and, for cases where latency is correlated with the input distribution, the specific input values themselves.
-
-| **Field** | **Type** | **Required** | **Description** |
-| --- | --- | --- | --- |
-| `uuid` | string | Yes | A randomly generated UUID for this workload entry. |
-| `axes` | object | Yes | An object mapping `var` axis names from the `Definition` to their concrete integer values. |
-| `inputs` | object | Yes | An object describing the location and format of the required input tensor data files. |
-
-### `inputs` : Input Descriptor Objects
-
-This object maps **input names** (e.g., `"A"`, `"weight"`, `"mask"`) to **input descriptors** that explain **where the data comes from** and (when necessary) **how it should be generated or loaded**.
-
-Each descriptor **must** contain at least the `type` field. Additional fields become **required or optional** depending on the chosen `type`.
-
-| **Field** | **Type** | **Required** | **Description** |
-| --- | --- | --- | --- |
-| `type` | string | **Yes** | Data source type. Could be `random`, `scalar`, or `safetensors`. |
-
-Additional fields for type `scalar`:
-| **Field** | **Type** | **Required** | **Description** |
-| --- | --- | --- | --- |
-| `value` | int, float, bool | **Yes** | The concrete value of the input. |
-
-Additional fields for type `safetensors`:
-
-| **Field** | **Type** | **Required** | **Description** |
-| --- | --- | --- | --- |
-| `path` | string | **Yes** | Relative path or URI of the `.safetensors` file. |
-| `tensor_key` | string | **Yes** | The key inside the safetensors container that holds this tensor. |
+| `workload` | object | Yes | An object describing the specific input configuration for this run. See [Workload](workload.md). |
+| `solution` | string | No | The `name` of the `Solution` tested in this run. |
+| `evaluation` | object | No | An object containing the detailed results of this run. |
 
 ### `evaluation` : Benchmark Statistics Summary
 

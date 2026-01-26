@@ -10,9 +10,10 @@ Clone SGLang, FlashInfer repositories from GitHub to the `tmp/` directory.
 ## Description
 
 This skill sets up the required repositories for kernel extraction and testing workflows. It:
-1. Clones SGLang and FlashInfer repositories to `tmp/` directory (if not already present)
-2. Updates repositories by pulling latest changes from remote (if repos already exist)
-3. Installs both packages from source in the current environment
+1. Clones SGLang and FlashInfer repositories to `tmp/` directory (if not already present) with all submodules
+2. Updates repositories by pulling latest changes from remote and updating submodules (if repos already exist)
+3. Checks out the `main` branch by default (or specified branch)
+4. Installs both packages from source in the current environment
 
 **Repositories:**
 - **SGLang**: Inference engine with model implementations and kernel calls
@@ -35,46 +36,6 @@ This skill sets up the required repositories for kernel extraction and testing w
 - `sglang_branch` (optional): SGLang branch to checkout (default: "main")
 - `flashinfer_branch` (optional): FlashInfer branch to checkout (default: "main")
 
-## What This Skill Does
-
-### Step 1: Create tmp Directory
-
-```bash
-mkdir -p tmp
-```
-
-### Step 2: Clone/Update SGLang Repository
-
-1. **If repository doesn't exist**: Clone from `https://github.com/sgl-project/sglang.git`
-2. **If repository exists**: Pull latest changes from remote origin
-3. Checkout specified branch (default: main)
-4. Install from source: `pip install -e tmp/sglang`
-5. Key directories for kernel extraction:
-   - `python/sglang/srt/models/` - Model implementations
-   - `python/sglang/srt/layers/` - Layer implementations (attention, MLP, norms)
-   - `python/sglang/srt/layers/moe/` - MoE kernel implementations
-   - `python/sglang/srt/layers/attention/` - Attention kernel implementations
-
-### Step 3: Clone/Update FlashInfer Repository
-
-1. **If repository doesn't exist**: Clone from `https://github.com/flashinfer-ai/flashinfer.git`
-2. **If repository exists**: Pull latest changes from remote origin
-3. Checkout specified branch (default: main)
-4. Install from source: `pip install -e tmp/flashinfer/python`
-5. Key directories for ground truth:
-   - `python/flashinfer/` - Python bindings
-   - `include/flashinfer/` - C++ headers with kernel implementations
-   - `csrc/` - CUDA source files
-   - `tests/` - Test implementations with reference functions
-
-### Step 4: Verification
-
-1. Verify all repositories cloned/updated successfully
-2. Check required directories exist
-3. Verify packages installed correctly
-4. Verify local `flashinfer_trace/` directory exists with definitions and tests
-5. Report repository status
-
 ## Implementation Steps
 
 When executing this skill:
@@ -89,41 +50,58 @@ When executing this skill:
    # Check if repo exists
    if [ -d "tmp/sglang/.git" ]; then
        echo "SGLang exists, pulling latest changes..."
-       cd tmp/sglang && git fetch origin && git pull origin main && cd ../..
+       (cd tmp/sglang && git fetch origin && git checkout "${sglang_branch:-main}" && git reset --hard "origin/${sglang_branch:-main}" && git submodule update --init --recursive)
    else
-       echo "Cloning SGLang..."
-       git clone https://github.com/sgl-project/sglang.git tmp/sglang
+       echo "Cloning SGLang with submodules..."
+       git clone --recurse-submodules https://github.com/sgl-project/sglang.git tmp/sglang
+       (cd tmp/sglang && git checkout "${sglang_branch:-main}")
    fi
    ```
+
+   **Note**: Using `(cd ...)` subshell syntax ensures directory changes are isolated and don't affect subsequent commands.
 
 3. **Handle FlashInfer repository**:
    ```bash
    # Check if repo exists
    if [ -d "tmp/flashinfer/.git" ]; then
        echo "FlashInfer exists, pulling latest changes..."
-       cd tmp/flashinfer && git fetch origin && git pull origin main && cd ../..
+       (cd tmp/flashinfer && git fetch origin && git checkout "${flashinfer_branch:-main}" && git reset --hard "origin/${flashinfer_branch:-main}" && git submodule update --init --recursive)
    else
-       echo "Cloning FlashInfer..."
-       git clone https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
+       echo "Cloning FlashInfer with submodules..."
+       git clone --recurse-submodules https://github.com/flashinfer-ai/flashinfer.git tmp/flashinfer
+       (cd tmp/flashinfer && git checkout "${flashinfer_branch:-main}")
    fi
    ```
 
+   **Note**: Using `(cd ...)` subshell syntax ensures directory changes are isolated and don't affect subsequent commands.
+
 4. **Install packages from source**:
    ```bash
-   # Install SGLang
-   pip install -e tmp/sglang
+   # Upgrade pip once
+   pip install --upgrade pip
 
-   # Install FlashInfer
-   pip install -e tmp/flashinfer/python
+   # Install FlashInfer (pyproject.toml in repo root)
+   (cd tmp/flashinfer && python -m pip install --no-build-isolation -e . -v)
+
+   # Install SGLang (pyproject.toml in python/ subdirectory)
+   (cd tmp/sglang && pip install -e "python")
    ```
 
-5. **Verify structure**:
+   **Note**: Subshell syntax `(cd ... && command)` keeps working directory unchanged.
+
+
+
+5. **Verify installations**:
    ```bash
+   # Test imports
+   python -c "import sglang; print(f'SGLang: {sglang.__version__}')"
+   python -c "import flashinfer; print(f'FlashInfer: {flashinfer.__version__}')"
+
+   # Verify directory structure
    ls tmp/sglang/python/sglang/srt/models/
-   ls tmp/flashinfer/python/flashinfer/
+   ls tmp/flashinfer/flashinfer/
    ls tmp/flashinfer/tests/
    ls flashinfer_trace/definitions/
-   ls flashinfer_trace/tests/references/
    ```
 
 ## Output Directory Structure
@@ -153,32 +131,30 @@ flashinfer-bench/
     │           ├── moe/
     │           └── layernorm.py
     └── flashinfer/                   # FlashInfer repository (installed in current env)
-        ├── python/flashinfer/        # Python bindings (ground truth)
-        │   ├── attention/
-        │   ├── norm/
-        │   └── moe/
-        └── tests/                    # Reference tests with vanilla implementations
+        ├── flashinfer/               # Python package in root (not python/ subdir!)
+        │   ├── attention.py
+        │   ├── norm.py
+        │   ├── moe.py
+        │   └── ...
+        ├── tests/                    # Reference tests with vanilla implementations
+        ├── csrc/                     # CUDA source files
+        └── include/                  # C++ headers with kernel implementations
 ```
 
 ## Requirements
 
-- Git
-- Network access to GitHub (for sglang, flashinfer)
-- Sufficient disk space (~4GB total)
+- Git (with submodule support)
+- Network access to GitHub (for sglang, flashinfer, and their submodules)
+- Sufficient disk space (~5GB total including submodules)
+- Python development environment for building from source
+- CUDA toolkit (for FlashInfer CUDA kernels)
 
-## Error Handling
+## Common Issues
 
-### Network Errors
-- **Error**: Cannot reach GitHub
-- **Handling**: Retry with exponential backoff, report specific endpoint failure
-
-### Disk Space Errors
-- **Error**: Insufficient disk space
-- **Handling**: Report space requirements, suggest cleanup
-
-### Installation Errors
-- **Error**: pip install fails for SGLang or FlashInfer
-- **Handling**: Check Python version compatibility, report missing dependencies, suggest manual installation steps
+- **Network errors**: Check GitHub connectivity; repositories with submodules require stable connection
+- **Submodule failures**: Retry `git submodule update --init --recursive`
+- **Disk space**: Requires ~5GB total for both repositories with submodules
+- **Installation failures**: Verify Python ≥3.8, CUDA toolkit installed, and submodules initialized
 
 ## Integration with Other Skills
 
@@ -202,10 +178,9 @@ Example workflow:
 
 ## Notes
 
-- Always pulls latest changes if repositories already exist to keep dependencies up-to-date
-- Installs both packages in editable mode (`pip install -e`) for development convenience
-- SGLang and FlashInfer are actively developed; use branch parameters to pin specific versions
-- Repositories are stored in `tmp/` which can be added to `.gitignore`
+- Updates existing repos or performs full clones with submodules
+- Editable installs (`pip install -e`) for development
+- FlashInfer package location: `tmp/flashinfer/flashinfer/` (not in `python/` subdirectory)
 
 ## Maintaining This Document
 
@@ -215,4 +190,3 @@ Update this file when changing repository URLs, directory structure, or adding n
 
 - [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
 - [add-reference-tests](../add-reference-tests/SKILL.md)
-- [workflow](../workflow.md)

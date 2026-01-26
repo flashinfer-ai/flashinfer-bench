@@ -79,7 +79,7 @@ def test_trtllm_mla_sparse_vs_definition_reference():
     device = "cuda"
 
     # Load definition and build reference
-    definition = load_definition("dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps64")
+    definition = load_definition("dsa_sparse_attention_h16_ckv512_kpe64_topk256_ps64")
     reference = build_reference_runnable(definition)
 
     print(f"\nLoaded definition: {definition.name}")
@@ -107,8 +107,7 @@ def test_trtllm_mla_sparse_vs_definition_reference():
 
     # Run definition reference
     print("\nRunning definition reference...")
-    ref_result = reference(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
-    ref_output = ref_result["output"]
+    ref_output, ref_lse = reference(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
 
     # Prepare FlashInfer inputs (trtllm-gen format)
     query = torch.cat([q_nope, q_pe], dim=-1).unsqueeze(1)  # [batch, 1, heads, 576]
@@ -250,7 +249,7 @@ def test_topk_indexer_fp8_vs_definition_reference():
     # Run definition reference
     print("\nRunning definition reference...")
     ref_result = reference(q_index_fp8, k_index_cache_fp8, weights, seq_lens, block_table)
-    ref_indices = ref_result["topk_indices"]
+    ref_indices = ref_result
 
     # Run deep_gemm to compute FP8 scores (deep_gemm expects uint8)
     # deep_gemm expects q shape: [batch, next_n, heads, head_dim]
@@ -333,7 +332,7 @@ def test_trtllm_mla_sparse_various_configs(batch_size, max_seq_len):
     torch.manual_seed(42)
     device = "cuda"
 
-    definition = load_definition("dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps64")
+    definition = load_definition("dsa_sparse_attention_h16_ckv512_kpe64_topk256_ps64")
     reference = build_reference_runnable(definition)
 
     max_num_pages = (max_seq_len + PAGE_SIZE - 1) // PAGE_SIZE
@@ -353,8 +352,7 @@ def test_trtllm_mla_sparse_various_configs(batch_size, max_seq_len):
         1.0 / math.sqrt(QK_NOPE_HEAD_DIM + QK_ROPE_HEAD_DIM), dtype=torch.float32, device=device
     )
 
-    ref_result = reference(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
-    ref_output = ref_result["output"]
+    ref_output, ref_lse = reference(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale)
 
     query = torch.cat([q_nope, q_pe], dim=-1).unsqueeze(1)
     kv_cache = torch.cat([ckv_cache, kpe_cache], dim=-1)
@@ -432,7 +430,7 @@ def test_topk_indexer_fp8_various_configs(batch_size, max_seq_len):
         page_offset += num_pages_for_seq
 
     ref_result = reference(q_index_fp8, k_index_cache_fp8, weights, seq_lens, block_table)
-    ref_indices = ref_result["topk_indices"]
+    ref_indices = ref_result
 
     q_index_fp8_4d = q_index_fp8.unsqueeze(1)
     k_index_cache_uint8 = k_index_cache_fp8.view(torch.uint8)

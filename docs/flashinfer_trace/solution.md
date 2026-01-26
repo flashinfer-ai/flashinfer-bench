@@ -4,7 +4,7 @@
 
 This document describes the schema for a workload **Solution**.
 
-The `Solution` provides a concrete, high-performance implementation for a given `Definition`. Each `Solution` is a self-contained entry submitted by community members or autonomous agents, encapsulating the source code and all metadata required for building, interfacing, and benchmarking. The `Solution` is automatically benchmarked to collect evaluation statistics, which is included in a `Trace`.
+The `Solution` provides a concrete, high-performance implementation for a given [Definition](definition.md). Each `Solution` is a self-contained entry submitted by community members or autonomous agents, encapsulating the source code and all metadata required for building, interfacing, and benchmarking. The `Solution` will be benchmarked to collect evaluation statistics to be stored in a [Trace object](trace.md).
 
 ## JSON Schema Description
 

@@ -854,4 +854,3 @@ Update this file when changing ground truth sources, test patterns, tolerance va
 
 - [clone-repos](../clone-repos/SKILL.md)
 - [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
-- [workflow](../workflow.md)

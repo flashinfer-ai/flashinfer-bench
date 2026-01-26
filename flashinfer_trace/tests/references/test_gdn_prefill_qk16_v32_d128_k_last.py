@@ -44,8 +44,9 @@ def get_cuda_capability():
     return torch.cuda.get_device_capability(0)
 
 
-requires_sm90 = pytest.mark.skipif(
-    get_cuda_capability()[0] < 9, reason="GDN prefill kernel requires SM90 (Hopper) or later"
+requires_sm90_only = pytest.mark.skipif(
+    get_cuda_capability()[0] != 9,
+    reason="GDN prefill kernel only supports SM90 (Hopper), not SM80 or SM100+",
 )
 
 requires_cuda = pytest.mark.skipif(
@@ -71,7 +72,7 @@ reference_gdn_prefill = compile_reference(definition.reference)
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
 @pytest.mark.parametrize("seq_len", [16, 64, 128])
 def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
@@ -108,8 +109,7 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
     # Reference from definition
     ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     # FlashInfer uses pre-computed g/beta
     g, beta = compute_gates(A_log, a, dt_bias, b)
@@ -125,17 +125,60 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
         cu_seqlens=cu_seqlens,
     )
 
-    output_diff = (ref_output.float() - fi_output.float()).abs()
-    output_max_err = output_diff.max().item()
-    output_mean_err = output_diff.mean().item()
+    # Output comparison metrics
+    ref_o_f32 = ref_output.float()
+    fi_o_f32 = fi_output.float()
 
-    state_diff = (ref_new_state - fi_new_state).abs()
-    state_max_err = state_diff.max().item()
-    state_mean_err = state_diff.mean().item()
+    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
+    max_abs_diff_o = abs_diff_o.max().item()
+    mean_abs_diff_o = abs_diff_o.mean().item()
+
+    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
+    max_rel_diff_o = rel_diff_o.max().item()
+    mean_rel_diff_o = rel_diff_o.mean().item()
+
+    ref_flat = ref_o_f32.reshape(-1)
+    fi_flat = fi_o_f32.reshape(-1)
+    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
+
+    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
+
+    # State comparison metrics
+    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
+    max_abs_diff_s = abs_diff_s.max().item()
+    mean_abs_diff_s = abs_diff_s.mean().item()
+
+    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
+    max_rel_diff_s = rel_diff_s.max().item()
+    mean_rel_diff_s = rel_diff_s.mean().item()
+
+    ref_state_flat = ref_new_state.reshape(-1)
+    fi_state_flat = fi_new_state.reshape(-1)
+    cosine_sim_s = F.cosine_similarity(
+        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
+    ).item()
+
+    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
 
     print(f"\nBatch={batch_size}, SeqLen={seq_len}")
-    print(f"  Output: max_err={output_max_err:.6f}, mean_err={output_mean_err:.6f}")
-    print(f"  State:  max_err={state_max_err:.6f}, mean_err={state_mean_err:.6f}")
+    print("\nOutput tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
+    print(f"  MSE: {mse_o:.6e}")
+
+    print("\nState tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
+    print(f"  MSE: {mse_s:.6e}")
+
+    output_max_err = max_abs_diff_o
+    state_max_err = max_abs_diff_s
 
     atol = 0.1
     assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
@@ -143,7 +186,7 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 def test_gdn_prefill_with_initial_state():
     """Test GDN prefill kernel with non-zero initial state."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
@@ -187,8 +230,7 @@ def test_gdn_prefill_with_initial_state():
     scale = 1.0 / math.sqrt(head_size)
 
     ref_result = reference_gdn_prefill(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
@@ -203,15 +245,60 @@ def test_gdn_prefill_with_initial_state():
         cu_seqlens=cu_seqlens,
     )
 
-    output_diff = (ref_output.float() - fi_output.float()).abs()
-    output_max_err = output_diff.max().item()
+    # Output comparison metrics
+    ref_o_f32 = ref_output.float()
+    fi_o_f32 = fi_output.float()
 
-    state_diff = (ref_new_state - fi_new_state).abs()
-    state_max_err = state_diff.max().item()
+    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
+    max_abs_diff_o = abs_diff_o.max().item()
+    mean_abs_diff_o = abs_diff_o.mean().item()
+
+    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
+    max_rel_diff_o = rel_diff_o.max().item()
+    mean_rel_diff_o = rel_diff_o.mean().item()
+
+    ref_flat = ref_o_f32.reshape(-1)
+    fi_flat = fi_o_f32.reshape(-1)
+    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
+
+    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
+
+    # State comparison metrics
+    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
+    max_abs_diff_s = abs_diff_s.max().item()
+    mean_abs_diff_s = abs_diff_s.mean().item()
+
+    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
+    max_rel_diff_s = rel_diff_s.max().item()
+    mean_rel_diff_s = rel_diff_s.mean().item()
+
+    ref_state_flat = ref_new_state.reshape(-1)
+    fi_state_flat = fi_new_state.reshape(-1)
+    cosine_sim_s = F.cosine_similarity(
+        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
+    ).item()
+
+    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
 
     print(f"\nWith initial state:")
-    print(f"  Output max_err={output_max_err:.6f}")
-    print(f"  State max_err={state_max_err:.6f}")
+    print("\nOutput tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
+    print(f"  MSE: {mse_o:.6e}")
+
+    print("\nState tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
+    print(f"  MSE: {mse_s:.6e}")
+
+    output_max_err = max_abs_diff_o
+    state_max_err = max_abs_diff_s
 
     atol = 0.1
     assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"
@@ -219,7 +306,7 @@ def test_gdn_prefill_with_initial_state():
 
 
 @requires_cuda
-@requires_sm90
+@requires_sm90_only
 def test_gdn_prefill_variable_seqlen():
     """Test GDN prefill kernel with variable sequence lengths."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
@@ -255,8 +342,7 @@ def test_gdn_prefill_variable_seqlen():
     scale = 1.0 / math.sqrt(head_size)
 
     ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
-    ref_output = ref_result["output"]
-    ref_new_state = ref_result["new_state"]
+    ref_output, ref_new_state = ref_result
 
     g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
@@ -271,15 +357,60 @@ def test_gdn_prefill_variable_seqlen():
         cu_seqlens=cu_seqlens,
     )
 
-    output_diff = (ref_output.float() - fi_output.float()).abs()
-    output_max_err = output_diff.max().item()
+    # Output comparison metrics
+    ref_o_f32 = ref_output.float()
+    fi_o_f32 = fi_output.float()
 
-    state_diff = (ref_new_state - fi_new_state).abs()
-    state_max_err = state_diff.max().item()
+    abs_diff_o = torch.abs(ref_o_f32 - fi_o_f32)
+    max_abs_diff_o = abs_diff_o.max().item()
+    mean_abs_diff_o = abs_diff_o.mean().item()
+
+    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
+    max_rel_diff_o = rel_diff_o.max().item()
+    mean_rel_diff_o = rel_diff_o.mean().item()
+
+    ref_flat = ref_o_f32.reshape(-1)
+    fi_flat = fi_o_f32.reshape(-1)
+    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), fi_flat.unsqueeze(0)).item()
+
+    mse_o = ((ref_o_f32 - fi_o_f32) ** 2).mean().item()
+
+    # State comparison metrics
+    abs_diff_s = torch.abs(ref_new_state - fi_new_state)
+    max_abs_diff_s = abs_diff_s.max().item()
+    mean_abs_diff_s = abs_diff_s.mean().item()
+
+    rel_diff_s = abs_diff_s / (torch.abs(ref_new_state) + 1e-10)
+    max_rel_diff_s = rel_diff_s.max().item()
+    mean_rel_diff_s = rel_diff_s.mean().item()
+
+    ref_state_flat = ref_new_state.reshape(-1)
+    fi_state_flat = fi_new_state.reshape(-1)
+    cosine_sim_s = F.cosine_similarity(
+        ref_state_flat.unsqueeze(0), fi_state_flat.unsqueeze(0)
+    ).item()
+
+    mse_s = ((ref_new_state - fi_new_state) ** 2).mean().item()
 
     print(f"\nVariable seqlens={seq_lens}:")
-    print(f"  Output max_err={output_max_err:.6f}")
-    print(f"  State max_err={state_max_err:.6f}")
+    print("\nOutput tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
+    print(f"  MSE: {mse_o:.6e}")
+
+    print("\nState tensor comparison:")
+    print(f"  Max absolute difference: {max_abs_diff_s:.6e}")
+    print(f"  Max relative difference: {max_rel_diff_s:.6e}")
+    print(f"  Mean absolute difference: {mean_abs_diff_s:.6e}")
+    print(f"  Mean relative difference: {mean_rel_diff_s:.6e}")
+    print(f"  Cosine similarity: {cosine_sim_s:.6f}")
+    print(f"  MSE: {mse_s:.6e}")
+
+    output_max_err = max_abs_diff_o
+    state_max_err = max_abs_diff_s
 
     atol = 0.1
     assert output_max_err < atol, f"Output max error {output_max_err} exceeds tolerance"

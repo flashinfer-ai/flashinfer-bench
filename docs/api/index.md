@@ -8,9 +8,9 @@ FlashInfer-Bench is a comprehensive benchmark and infrastructure designed to cre
 :maxdepth: 2
 :caption: API Reference
 
-rst/schema
-rst/apply
-rst/tracing
-rst/compile
 rst/agents
+rst/apply
+rst/compile
+rst/data
+rst/tracing
 ```
