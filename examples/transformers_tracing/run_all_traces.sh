@@ -16,7 +16,12 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATASET_PATH="${SCRIPT_DIR}/../../flashinfer_trace"
+# Original dataset with definitions (read-only, not modified by tests)
+SOURCE_DATASET_PATH="${SCRIPT_DIR}/../../flashinfer_trace"
+# Test output directory (where traces are written during testing)
+TEST_OUTPUT_DIR="${SCRIPT_DIR}/../../flashinfer_trace_test"
+# By default, use the test output directory to avoid polluting git status
+DATASET_PATH="${TEST_OUTPUT_DIR}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-16}"
 
 # Colors for output
@@ -47,6 +52,7 @@ usage() {
     echo "  --verify-only                Only run verification (skip tracing)"
     echo "  --trace-only                 Only run tracing (skip verification)"
     echo "  --clean                      Clean workloads directory before tracing"
+    echo "  --use-source                 Write traces to source flashinfer_trace/ instead of test dir"
     echo "  --list                       List available models and exit"
     echo "  --max-tokens N               Max new tokens to generate (default: 16)"
     echo "  --help                       Show this help message"
@@ -92,6 +98,7 @@ log_header() {
 DO_TRACE=true
 DO_VERIFY=true
 DO_CLEAN=false
+USE_SOURCE=false
 SELECTED_MODELS=()
 
 while [[ $# -gt 0 ]]; do
@@ -110,6 +117,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             DO_CLEAN=true
+            shift
+            ;;
+        --use-source)
+            USE_SOURCE=true
+            DATASET_PATH="${SOURCE_DATASET_PATH}"
             shift
             ;;
         --list)
@@ -150,6 +162,29 @@ for model_key in "${SELECTED_MODELS[@]}"; do
     fi
 done
 
+# Helper function to set up the test output directory
+# Copies definitions from source dataset to test directory
+setup_test_directory() {
+    log_info "Setting up test output directory: ${DATASET_PATH}"
+    
+    # Create the test directory if it doesn't exist
+    mkdir -p "${DATASET_PATH}"
+    
+    # Copy definitions from source (these are the ground truth definitions)
+    if [ -d "${SOURCE_DATASET_PATH}/definitions" ]; then
+        rm -rf "${DATASET_PATH}/definitions"
+        cp -r "${SOURCE_DATASET_PATH}/definitions" "${DATASET_PATH}/definitions"
+        log_info "Copied definitions from ${SOURCE_DATASET_PATH}/definitions"
+    else
+        log_error "Source definitions not found at ${SOURCE_DATASET_PATH}/definitions"
+        exit 1
+    fi
+    
+    # Create empty workloads and blob directories
+    mkdir -p "${DATASET_PATH}/workloads"
+    mkdir -p "${DATASET_PATH}/blob"
+}
+
 # Helper function to clean workloads
 clean_workloads() {
     if [ -d "${DATASET_PATH}/workloads" ]; then
@@ -177,12 +212,23 @@ declare -A VERIFY_RESULTS
 # Each model gets a clean workload directory to ensure isolated verification
 if [ "$DO_TRACE" = true ]; then
     log_header "Tracing and Verifying Models"
+    
+    # Set up the test output directory with definitions (unless using source)
+    if [ "$USE_SOURCE" = false ]; then
+        setup_test_directory
+        log_info "NOTE: Traces are written to a test directory (${DATASET_PATH})"
+        log_info "      to avoid modifying the source flashinfer_trace/ directory."
+    else
+        log_warning "Using source directory: ${DATASET_PATH}"
+        log_warning "This will modify files tracked by git!"
+    fi
+    
     log_info "Dataset path: ${DATASET_PATH}"
     log_info "Max new tokens: ${MAX_NEW_TOKENS}"
     log_info "Models to trace: ${SELECTED_MODELS[*]}"
     log_info ""
-    log_info "NOTE: Workloads are cleaned between each model to ensure"
-    log_info "      verification only checks traces from that specific model."
+    log_info "Workloads are cleaned between each model to ensure"
+    log_info "verification only checks traces from that specific model."
     echo ""
 
     for model_key in "${SELECTED_MODELS[@]}"; do
@@ -225,6 +271,15 @@ if [ "$DO_TRACE" = true ]; then
 elif [ "$DO_VERIFY" = true ]; then
     # Verify-only mode: verify existing traces (no per-model isolation)
     log_header "Verifying Existing Traces"
+    
+    # Check if test directory exists
+    if [ ! -d "${DATASET_PATH}/workloads" ]; then
+        log_warning "Test output directory not found. Using source dataset."
+        log_warning "Run tracing first to populate the test directory."
+        DATASET_PATH="${SOURCE_DATASET_PATH}"
+    fi
+    
+    log_info "Dataset path: ${DATASET_PATH}"
     log_warning "Note: In verify-only mode, traces from all previously traced models are checked."
     log_warning "      For per-model verification, use tracing mode (which cleans between models)."
     
