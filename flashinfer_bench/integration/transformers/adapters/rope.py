@@ -8,6 +8,7 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.transformers.common import SUPPORTED_ACTIVATION_DTYPES
 
 
 def _infer_rope_def_name(q: torch.Tensor) -> str:
@@ -90,7 +91,7 @@ class RoPEAdapter:
             if not q.is_cuda:
                 return orig(q, k, cos, sin, unsqueeze_dim)
 
-            if q.dtype not in (torch.float16, torch.bfloat16):
+            if q.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(q, k, cos, sin, unsqueeze_dim)
 
             # Validate tensor dimensions (expect 4D: batch, heads, seq, head_dim)

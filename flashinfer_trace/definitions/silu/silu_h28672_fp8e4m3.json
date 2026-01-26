@@ -1,0 +1,35 @@
+{
+  "name": "silu_h28672_fp8e4m3",
+  "op_type": "silu",
+  "description": "SiLU (Swish) activation with hidden_size=28672 using FP8 E4M3 inputs. For FP8-quantized LLaMA-70B models.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-70b-fp8",
+    "dtype:fp8"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size (typically batch * seq_len)"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 28672
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float8_e4m3fn",
+      "description": "Input tensor in FP8"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float8_e4m3fn",
+      "description": "SiLU activation output in FP8"
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\n@torch.no_grad()\ndef run(input):\n    batch_size, hidden_size = input.shape\n    \n    assert hidden_size == 28672\n    \n    x = input.to(torch.float16)\n    output = F.silu(x)\n    return output.to(input.dtype)"
+}

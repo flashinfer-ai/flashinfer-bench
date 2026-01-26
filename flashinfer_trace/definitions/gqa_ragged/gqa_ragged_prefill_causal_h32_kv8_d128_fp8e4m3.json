@@ -1,0 +1,76 @@
+{
+  "name": "gqa_ragged_prefill_causal_h32_kv8_d128_fp8e4m3",
+  "op_type": "gqa_ragged",
+  "description": "GQA ragged prefill causal attention with 32 query heads, 8 KV heads, and head_dim=128 using FP8 E4M3. For FP8-quantized LLaMA-8B models.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-8b-fp8",
+    "dtype:fp8"
+  ],
+  "axes": {
+    "total_q": {
+      "type": "var",
+      "description": "Total number of query tokens across all sequences"
+    },
+    "total_kv": {
+      "type": "var",
+      "description": "Total number of key/value tokens across all sequences"
+    },
+    "len_indptr": {
+      "type": "var",
+      "description": "Length of indptr array (batch_size + 1)"
+    },
+    "num_q_heads": {
+      "type": "const",
+      "value": 32
+    },
+    "num_kv_heads": {
+      "type": "const",
+      "value": 8
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128
+    }
+  },
+  "inputs": {
+    "q": {
+      "shape": ["total_q", "num_q_heads", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Query tensor in ragged format"
+    },
+    "k": {
+      "shape": ["total_kv", "num_kv_heads", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Key tensor in ragged format"
+    },
+    "v": {
+      "shape": ["total_kv", "num_kv_heads", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Value tensor in ragged format"
+    },
+    "qo_indptr": {
+      "shape": ["len_indptr"],
+      "dtype": "int32",
+      "description": "Query/output indptr for ragged batching"
+    },
+    "kv_indptr": {
+      "shape": ["len_indptr"],
+      "dtype": "int32",
+      "description": "Key/value indptr for ragged batching"
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale factor"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["total_q", "num_q_heads", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Attention output in ragged format"
+    }
+  },
+  "reference": "import torch\nimport math\n\n@torch.no_grad()\ndef run(q, k, v, qo_indptr, kv_indptr, sm_scale):\n    total_q, num_q_heads, head_dim = q.shape\n    total_kv, num_kv_heads, _ = k.shape\n    batch_size = len(qo_indptr) - 1\n    \n    assert num_q_heads == 32\n    assert num_kv_heads == 8\n    assert head_dim == 128\n    \n    # Convert to float for computation\n    q_float = q.to(torch.float16)\n    k_float = k.to(torch.float16)\n    v_float = v.to(torch.float16)\n    \n    outputs = []\n    for i in range(batch_size):\n        q_start, q_end = qo_indptr[i].item(), qo_indptr[i+1].item()\n        kv_start, kv_end = kv_indptr[i].item(), kv_indptr[i+1].item()\n        \n        q_seq = q_float[q_start:q_end]\n        k_seq = k_float[kv_start:kv_end]\n        v_seq = v_float[kv_start:kv_end]\n        \n        # GQA: repeat KV heads\n        gqa_ratio = num_q_heads // num_kv_heads\n        k_seq = k_seq.repeat_interleave(gqa_ratio, dim=1)\n        v_seq = v_seq.repeat_interleave(gqa_ratio, dim=1)\n        \n        attn = torch.einsum('qhd,khd->hqk', q_seq, k_seq) * sm_scale\n        \n        seq_len_q = q_seq.shape[0]\n        seq_len_kv = k_seq.shape[0]\n        causal_mask = torch.triu(torch.ones(seq_len_q, seq_len_kv, device=q.device), diagonal=seq_len_kv - seq_len_q + 1).bool()\n        attn.masked_fill_(causal_mask, float('-inf'))\n        \n        attn = torch.softmax(attn, dim=-1)\n        out = torch.einsum('hqk,khd->qhd', attn, v_seq)\n        outputs.append(out)\n    \n    return torch.cat(outputs, dim=0).to(q.dtype)"
+}

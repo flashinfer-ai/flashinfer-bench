@@ -8,6 +8,7 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.transformers.common import SUPPORTED_ACTIVATION_DTYPES
 
 
 def _infer_silu_def_name(input_tensor: torch.Tensor) -> str:
@@ -71,7 +72,7 @@ class ActivationAdapter:
             if not input.is_cuda:
                 return orig(input, inplace)
 
-            if input.dtype not in (torch.float16, torch.bfloat16):
+            if input.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(input, inplace)
 
             def_name = _infer_silu_def_name(input)
@@ -109,7 +110,7 @@ class ActivationAdapter:
             if not input.is_cuda:
                 return orig(input, approximate)
 
-            if input.dtype not in (torch.float16, torch.bfloat16):
+            if input.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(input, approximate)
 
             def_name = _infer_gelu_def_name(input, approximate)

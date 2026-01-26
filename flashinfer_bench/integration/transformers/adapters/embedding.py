@@ -8,12 +8,17 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.transformers.common import (
+    SUPPORTED_WEIGHT_DTYPES,
+    get_dtype_suffix,
+)
 
 
 def _infer_embedding_def_name(weight: torch.Tensor) -> str:
     """Infer definition name for embedding operation."""
     num_embeddings, embedding_dim = weight.shape
-    return f"embedding_v{num_embeddings}_d{embedding_dim}"
+    dtype_suffix = get_dtype_suffix(weight.dtype)
+    return f"embedding_v{num_embeddings}_d{embedding_dim}{dtype_suffix}"
 
 
 class EmbeddingAdapter:
@@ -54,7 +59,7 @@ class EmbeddingAdapter:
             if not weight.is_cuda:
                 return orig(input, weight, padding_idx, max_norm, norm_type, scale_grad_by_freq, sparse)
 
-            if weight.dtype not in (torch.float16, torch.bfloat16):
+            if weight.dtype not in SUPPORTED_WEIGHT_DTYPES:
                 return orig(input, weight, padding_idx, max_norm, norm_type, scale_grad_by_freq, sparse)
 
             def_name = _infer_embedding_def_name(weight)

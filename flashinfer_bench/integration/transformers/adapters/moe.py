@@ -8,17 +8,10 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
-
-
-def _infer_moe_def_name(
-    num_experts: int,
-    hidden_dim: int,
-    intermediate_dim: int,
-    top_k: int,
-    implementation: str = "batched",
-) -> str:
-    """Infer definition name for MoE operation."""
-    return f"moe_{implementation}_e{num_experts}_h{hidden_dim}_i{intermediate_dim}_topk{top_k}"
+from flashinfer_bench.integration.transformers.common import (
+    SUPPORTED_ACTIVATION_DTYPES,
+    infer_moe_def_name as _infer_moe_def_name,
+)
 
 
 class MoEAdapter:
@@ -66,7 +59,7 @@ class MoEAdapter:
             if not hidden_states.is_cuda:
                 return orig(self_module, hidden_states, top_k_index, top_k_weights)
 
-            if hidden_states.dtype not in (torch.float16, torch.bfloat16):
+            if hidden_states.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(self_module, hidden_states, top_k_index, top_k_weights)
 
             # Extract dimensions from the module
@@ -86,7 +79,7 @@ class MoEAdapter:
             top_k = top_k_index.size(-1)
 
             def_name = _infer_moe_def_name(
-                num_experts, hidden_dim, intermediate_dim, top_k, implementation
+                num_experts, hidden_dim, intermediate_dim, top_k, implementation, hidden_states.dtype
             )
 
             rk: Dict[str, Any] = {

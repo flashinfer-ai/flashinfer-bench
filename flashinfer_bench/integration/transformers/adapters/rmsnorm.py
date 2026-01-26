@@ -8,7 +8,10 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
-from flashinfer_bench.integration.transformers.common import infer_rmsnorm_def_name
+from flashinfer_bench.integration.transformers.common import (
+    SUPPORTED_ACTIVATION_DTYPES,
+    infer_rmsnorm_def_name,
+)
 
 
 class RMSNormAdapter:
@@ -47,7 +50,7 @@ class RMSNormAdapter:
                 return orig(input, normalized_shape, weight, eps)
 
             # Check for supported dtypes
-            if input.dtype not in (torch.float16, torch.bfloat16):
+            if input.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(input, normalized_shape, weight, eps)
 
             # Check weight shape compatibility
@@ -60,7 +63,7 @@ class RMSNormAdapter:
             if input.shape[-1] != hidden_size:
                 return orig(input, normalized_shape, weight, eps)
 
-            def_name = infer_rmsnorm_def_name(weight)
+            def_name = infer_rmsnorm_def_name(weight, input.dtype)
 
             # Reshape input to 2D for the trace: [batch * seq_len, hidden_size]
             original_shape = input.shape

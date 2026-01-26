@@ -8,6 +8,7 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
+from flashinfer_bench.integration.transformers.common import SUPPORTED_FLOAT_DTYPES
 
 
 def _infer_sampling_def_name(vocab_size: int, method: str = "multinomial") -> str:
@@ -89,7 +90,7 @@ class SamplingAdapter:
             if not input.is_cuda:
                 return orig(input, num_samples, replacement, generator=generator, out=out)
 
-            if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+            if input.dtype not in SUPPORTED_FLOAT_DTYPES:
                 return orig(input, num_samples, replacement, generator=generator, out=out)
 
             vocab_size = input.shape[-1]
@@ -133,7 +134,7 @@ class SamplingAdapter:
             if not input.is_cuda:
                 return orig(input, dim, _stacklevel, dtype)
 
-            if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+            if input.dtype not in SUPPORTED_FLOAT_DTYPES:
                 return orig(input, dim, _stacklevel, dtype)
 
             # Only trace softmax over the last dimension (vocabulary)
@@ -185,7 +186,7 @@ class SamplingAdapter:
             if not input.is_cuda:
                 return orig(input, k, dim, largest, sorted, out=out)
 
-            if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+            if input.dtype not in SUPPORTED_FLOAT_DTYPES:
                 return orig(input, k, dim, largest, sorted, out=out)
 
             # Only trace top-k over the last dimension

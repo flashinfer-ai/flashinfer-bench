@@ -8,7 +8,10 @@ import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
-from flashinfer_bench.integration.transformers.common import infer_attention_def_name
+from flashinfer_bench.integration.transformers.common import (
+    SUPPORTED_ACTIVATION_DTYPES,
+    infer_attention_def_name,
+)
 
 
 class AttentionAdapter:
@@ -65,7 +68,7 @@ class AttentionAdapter:
                 )
 
             # Check for supported dtypes
-            if query.dtype not in (torch.float16, torch.bfloat16):
+            if query.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(
                     module, query, key, value, attention_mask, dropout, scaling, is_causal, **kwargs
                 )

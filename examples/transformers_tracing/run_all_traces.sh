@@ -150,17 +150,22 @@ for model_key in "${SELECTED_MODELS[@]}"; do
     fi
 done
 
-# Clean workloads if requested
-if [ "$DO_CLEAN" = true ]; then
-    log_header "Cleaning Workloads Directory"
+# Helper function to clean workloads
+clean_workloads() {
     if [ -d "${DATASET_PATH}/workloads" ]; then
-        log_info "Removing ${DATASET_PATH}/workloads/*"
         rm -rf "${DATASET_PATH}/workloads"/*
     fi
     if [ -d "${DATASET_PATH}/blob" ]; then
-        log_info "Removing ${DATASET_PATH}/blob/*"
         rm -rf "${DATASET_PATH}/blob"/*
     fi
+}
+
+# Clean workloads if requested (initial clean before any tracing)
+if [ "$DO_CLEAN" = true ]; then
+    log_header "Cleaning Workloads Directory"
+    log_info "Removing ${DATASET_PATH}/workloads/*"
+    log_info "Removing ${DATASET_PATH}/blob/*"
+    clean_workloads
     log_success "Workloads cleaned"
 fi
 
@@ -168,12 +173,16 @@ fi
 declare -A TRACE_RESULTS
 declare -A VERIFY_RESULTS
 
-# Run tracing
+# Run tracing and verification for each model
+# Each model gets a clean workload directory to ensure isolated verification
 if [ "$DO_TRACE" = true ]; then
-    log_header "Tracing Models"
+    log_header "Tracing and Verifying Models"
     log_info "Dataset path: ${DATASET_PATH}"
     log_info "Max new tokens: ${MAX_NEW_TOKENS}"
     log_info "Models to trace: ${SELECTED_MODELS[*]}"
+    log_info ""
+    log_info "NOTE: Workloads are cleaned between each model to ensure"
+    log_info "      verification only checks traces from that specific model."
     echo ""
 
     for model_key in "${SELECTED_MODELS[@]}"; do
@@ -181,27 +190,45 @@ if [ "$DO_TRACE" = true ]; then
         
         echo ""
         log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        log_info "Tracing: ${model_key} (${model_id})"
+        log_info "Model: ${model_key} (${model_id})"
         log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         
+        # Step 1: Clean workloads before tracing this model
+        log_info "Step 1: Cleaning workloads directory..."
+        clean_workloads
+        
+        # Step 2: Trace the model
+        log_info "Step 2: Tracing model..."
         if python "${SCRIPT_DIR}/trace_models.py" \
             --model "${model_id}" \
             --dataset "${DATASET_PATH}" \
             --max-new-tokens "${MAX_NEW_TOKENS}"; then
             TRACE_RESULTS[$model_key]="success"
             log_success "Tracing completed for ${model_key}"
+            
+            # Step 3: Verify immediately after tracing (while workloads only contain this model's traces)
+            log_info "Step 3: Verifying traces for ${model_key}..."
+            if python "${SCRIPT_DIR}/verify_traces.py" \
+                --traces "${DATASET_PATH}" \
+                --model "${verify_key}" \
+                --verbose; then
+                VERIFY_RESULTS[$model_key]="success"
+            else
+                VERIFY_RESULTS[$model_key]="failed"
+            fi
         else
             TRACE_RESULTS[$model_key]="failed"
+            VERIFY_RESULTS[$model_key]="skipped"
             log_error "Tracing failed for ${model_key}"
         fi
     done
-fi
-
-# Run verification
-if [ "$DO_VERIFY" = true ]; then
-    log_header "Verifying Traces"
+elif [ "$DO_VERIFY" = true ]; then
+    # Verify-only mode: verify existing traces (no per-model isolation)
+    log_header "Verifying Existing Traces"
+    log_warning "Note: In verify-only mode, traces from all previously traced models are checked."
+    log_warning "      For per-model verification, use tracing mode (which cleans between models)."
     
-    # First, list all traces
+    # List all traces
     log_info "Listing all traced operators:"
     echo ""
     python "${SCRIPT_DIR}/verify_traces.py" --traces "${DATASET_PATH}" --list
@@ -248,7 +275,8 @@ if [ "$DO_TRACE" = true ]; then
     echo ""
 fi
 
-if [ "$DO_VERIFY" = true ]; then
+# Show verification results (from tracing mode or verify-only mode)
+if [ "$DO_TRACE" = true ] || [ "$DO_VERIFY" = true ]; then
     echo "Verification Results:"
     for model_key in "${SELECTED_MODELS[@]}"; do
         result="${VERIFY_RESULTS[$model_key]:-skipped}"
