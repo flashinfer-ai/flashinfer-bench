@@ -99,7 +99,7 @@ MODEL_OPERATOR_EXPECTATIONS = {
     "gpt-oss-120b": {
         "model_id": "openai/gpt-oss-120b",
         # gpt-oss-120b uses custom GLU activation (not SiLU/GELU), so we don't check for activation
-        # It has MoE with 128 experts, top-4
+        # It has MoE with 128 experts, top-4 (uses placeholder tensors for MXFP4 quantized experts)
         "expected_operators": _make_operator_expectations(has_moe=True, activation="none"),
     },
     "llama-3.1-8b": {

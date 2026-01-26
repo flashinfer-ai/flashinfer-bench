@@ -47,6 +47,17 @@ class MoEAdapter:
             "transformers.models.mixtral.modeling_mixtral.MixtralSparseMoeBlock",
         ]
         
+        # Also patch the MXFP4 mlp_forward function which replaces GptOssMLP.forward
+        # for quantized models
+        specs.append(
+            PatchSpec(
+                path="transformers.integrations.mxfp4.mlp_forward",
+                kind="function",
+                name="mlp_forward",
+                ctx_key="moe_mxfp4_mlp",
+            )
+        )
+        
         for path in moe_mlp_paths:
             model_name = path.split(".")[-1]
             specs.append(
@@ -66,6 +77,9 @@ class MoEAdapter:
         """Create a wrapper function that traces MoE calls."""
         
         if spec.kind == "function":
+            if spec.ctx_key == "moe_mxfp4_mlp":
+                # mlp_forward takes (self, hidden_states) like a method
+                return self._make_moe_mlp_wrapper(spec, orig)
             return self._make_experts_forward_wrapper(spec, orig)
         else:
             return self._make_moe_mlp_wrapper(spec, orig)
@@ -182,6 +196,38 @@ class MoEAdapter:
                 # Get top_k from router
                 router = getattr(self_module, "router", None)
                 top_k = getattr(router, "top_k", 4) if router else 4
+            
+            elif hasattr(experts, "gate_up_proj_blocks"):
+                # Mxfp4GptOssExperts with old-style blocks: create placeholder tensors with correct shapes
+                # We don't need actual weight values for tracing, just the shapes for axis inference
+                num_experts = getattr(experts, "num_experts", 128)
+                intermediate_dim = getattr(experts, "intermediate_size", None)
+                expert_hidden_size = getattr(experts, "hidden_size", hidden_dim)
+                
+                if intermediate_dim is None:
+                    return orig(self_module, hidden_states)
+                
+                # Create placeholder tensors with the correct shapes for tracing
+                # gate_up_proj: (num_experts, hidden_size, 2 * intermediate_dim)
+                # down_proj: (num_experts, intermediate_dim, hidden_size)
+                gate_up_proj = torch.empty(
+                    num_experts,
+                    expert_hidden_size,
+                    2 * intermediate_dim,
+                    device=hidden_states.device,
+                    dtype=hidden_states.dtype
+                )
+                down_proj = torch.empty(
+                    num_experts,
+                    intermediate_dim,
+                    expert_hidden_size,
+                    device=hidden_states.device,
+                    dtype=hidden_states.dtype
+                )
+                
+                # Get top_k from router
+                router = getattr(self_module, "router", None)
+                top_k = getattr(router, "top_k", 4) if router else 4
                 
             elif hasattr(experts, "__len__") and len(experts) > 0:
                 # Qwen3-style: experts is a ModuleList of MLP modules
@@ -191,15 +237,49 @@ class MoEAdapter:
                 # Get intermediate_dim from first expert
                 first_expert = experts[0]
                 # Qwen3MoeMLP has gate_proj, up_proj, down_proj attributes
-                gate_proj = getattr(first_expert, "gate_proj", None)
-                up_proj = getattr(first_expert, "up_proj", None)
-                if gate_proj is not None and hasattr(gate_proj, "out_features"):
-                    intermediate_dim = gate_proj.out_features
-                elif up_proj is not None and hasattr(up_proj, "out_features"):
-                    intermediate_dim = up_proj.out_features
+                first_gate_proj = getattr(first_expert, "gate_proj", None)
+                first_up_proj = getattr(first_expert, "up_proj", None)
+                first_down_proj = getattr(first_expert, "down_proj", None)
+                
+                if first_gate_proj is not None and hasattr(first_gate_proj, "out_features"):
+                    intermediate_dim = first_gate_proj.out_features
+                elif first_up_proj is not None and hasattr(first_up_proj, "out_features"):
+                    intermediate_dim = first_up_proj.out_features
                 else:
                     # Fallback to hidden_dim
                     intermediate_dim = hidden_dim
+                
+                # Stack expert weights to create gate_up_proj and down_proj tensors
+                # Each expert has gate_proj, up_proj, down_proj as nn.Linear modules
+                # gate_proj.weight shape: (intermediate_dim, hidden_dim) - e.g., (768, 2048)
+                # down_proj.weight shape: (hidden_dim, intermediate_dim) - e.g., (2048, 768)
+                # 
+                # For the definition, we need:
+                # gate_up_proj: (num_experts, intermediate_dim, hidden_dim)
+                # down_proj: (num_experts, hidden_dim, intermediate_dim)
+                if first_gate_proj is not None and first_down_proj is not None:
+                    try:
+                        # Extract and stack weights from all experts
+                        gate_weights = []
+                        down_weights = []
+                        for expert in experts:
+                            gate_p = getattr(expert, "gate_proj", None)
+                            down_p = getattr(expert, "down_proj", None)
+                            if gate_p is not None and down_p is not None:
+                                # gate_proj.weight: (intermediate_dim, hidden_dim)
+                                # down_proj.weight: (hidden_dim, intermediate_dim)
+                                gate_weights.append(gate_p.weight)
+                                down_weights.append(down_p.weight)
+                        
+                        if len(gate_weights) == num_experts:
+                            # Stack to create (num_experts, intermediate_dim, hidden_dim)
+                            gate_up_proj = torch.stack(gate_weights, dim=0)
+                            # Stack down_proj: (num_experts, hidden_dim, intermediate_dim)
+                            down_proj = torch.stack(down_weights, dim=0)
+                    except Exception as e:
+                        # If stacking fails, log and continue without expert weights
+                        import logging
+                        logging.getLogger(__name__).debug(f"Failed to stack Qwen3 expert weights: {e}")
             else:
                 return orig(self_module, hidden_states)
             

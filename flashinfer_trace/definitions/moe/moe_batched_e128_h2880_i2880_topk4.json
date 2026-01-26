@@ -23,6 +23,11 @@
       "type": "const",
       "value": 2880
     },
+    "gate_up_dim": {
+      "type": "const",
+      "value": 5760,
+      "description": "Combined gate and up projection dimension (2 * intermediate_dim)"
+    },
     "top_k": {
       "type": "const",
       "value": 4
@@ -35,9 +40,9 @@
       "description": "Input hidden states"
     },
     "gate_up_proj": {
-      "shape": ["num_experts", "hidden_dim", "intermediate_dim"],
+      "shape": ["num_experts", "hidden_dim", "gate_up_dim"],
       "dtype": "bfloat16",
-      "description": "Gate and up projection weights (transposed)"
+      "description": "Gate and up projection weights (transposed), gate_up_dim = 2 * intermediate_dim"
     },
     "down_proj": {
       "shape": ["num_experts", "intermediate_dim", "hidden_dim"],
