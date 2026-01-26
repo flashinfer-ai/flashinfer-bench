@@ -151,45 +151,77 @@ class MoEAdapter:
             if hidden_states.dtype not in SUPPORTED_ACTIVATION_DTYPES:
                 return orig(self_module, hidden_states)
 
-            # Try to extract MoE config from the module
-            # GptOssMLP has: router, experts
-            # Qwen3MoeSparseMoeBlock has: gate, experts
+            # Extract MoE config from the module
+            # Different models have different structures:
+            # - GptOssMLP has: router (with top_k), experts (GptOssExperts with gate_up_proj)
+            # - Qwen3MoeSparseMoeBlock has: gate (nn.Linear), experts (nn.ModuleList), num_experts, top_k
+            
             experts = getattr(self_module, "experts", None)
             if experts is None:
                 return orig(self_module, hidden_states)
             
-            # Get number of experts and dimensions
-            num_experts = getattr(experts, "num_experts", None)
-            if num_experts is None:
-                # Try to infer from gate_up_proj shape
-                gate_up_proj = getattr(experts, "gate_up_proj", None)
-                if gate_up_proj is not None:
-                    num_experts = gate_up_proj.size(0)
-                else:
-                    return orig(self_module, hidden_states)
-            
             hidden_dim = hidden_states.size(-1)
-            intermediate_dim = getattr(experts, "intermediate_size", hidden_dim)
+            num_experts = None
+            intermediate_dim = None
+            top_k = None
+            gate_up_proj = None
+            down_proj = None
             
-            # Get top_k from router/gate
-            router = getattr(self_module, "router", None) or getattr(self_module, "gate", None)
-            top_k = getattr(router, "top_k", 4) if router else 4
+            # Check if experts is a GptOssExperts-style object (has gate_up_proj directly)
+            if hasattr(experts, "gate_up_proj"):
+                # GptOssExperts: gate_up_proj shape is (num_experts, hidden_size, 2*intermediate_dim)
+                gate_up_proj = experts.gate_up_proj
+                down_proj = getattr(experts, "down_proj", None)
+                num_experts = getattr(experts, "num_experts", gate_up_proj.size(0))
+                # For GptOssExperts, intermediate_dim is stored directly
+                intermediate_dim = getattr(experts, "intermediate_size", None)
+                if intermediate_dim is None:
+                    # Infer from gate_up_proj shape: (num_experts, hidden_size, 2*intermediate_dim)
+                    intermediate_dim = gate_up_proj.size(2) // 2
+                
+                # Get top_k from router
+                router = getattr(self_module, "router", None)
+                top_k = getattr(router, "top_k", 4) if router else 4
+                
+            elif hasattr(experts, "__len__") and len(experts) > 0:
+                # Qwen3-style: experts is a ModuleList of MLP modules
+                num_experts = getattr(self_module, "num_experts", len(experts))
+                top_k = getattr(self_module, "top_k", 8)
+                
+                # Get intermediate_dim from first expert
+                first_expert = experts[0]
+                # Qwen3MoeMLP has gate_proj, up_proj, down_proj attributes
+                gate_proj = getattr(first_expert, "gate_proj", None)
+                up_proj = getattr(first_expert, "up_proj", None)
+                if gate_proj is not None and hasattr(gate_proj, "out_features"):
+                    intermediate_dim = gate_proj.out_features
+                elif up_proj is not None and hasattr(up_proj, "out_features"):
+                    intermediate_dim = up_proj.out_features
+                else:
+                    # Fallback to hidden_dim
+                    intermediate_dim = hidden_dim
+            else:
+                return orig(self_module, hidden_states)
+            
+            if num_experts is None:
+                return orig(self_module, hidden_states)
             
             def_name = _infer_moe_def_name(
                 num_experts, hidden_dim, intermediate_dim, top_k, "batched", hidden_states.dtype
             )
 
             # Reshape for tracing
-            batch_size, seq_len, _ = hidden_states.shape
-            hidden_flat = hidden_states.reshape(-1, hidden_dim)
+            if hidden_states.dim() == 3:
+                batch_size, seq_len, _ = hidden_states.shape
+                hidden_flat = hidden_states.reshape(-1, hidden_dim)
+            else:
+                hidden_flat = hidden_states
 
             rk: Dict[str, Any] = {
                 "hidden_states": hidden_flat,
             }
             
-            # Add expert weights if available
-            gate_up_proj = getattr(experts, "gate_up_proj", None)
-            down_proj = getattr(experts, "down_proj", None)
+            # Add expert weights if available (GptOssExperts style)
             if gate_up_proj is not None:
                 rk["gate_up_proj"] = gate_up_proj
             if down_proj is not None:

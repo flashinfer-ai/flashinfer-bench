@@ -21,10 +21,11 @@ class AttentionAdapter:
     - transformers.integrations.sdpa_attention.sdpa_attention_forward
     - transformers.integrations.flash_attention.flash_attention_forward
     - transformers.integrations.flex_attention.flex_attention_forward
+    - Model-specific eager attention functions (for models that default to eager)
     """
 
     def targets(self) -> List[PatchSpec]:
-        return [
+        specs = [
             PatchSpec(
                 path="transformers.integrations.sdpa_attention.sdpa_attention_forward",
                 kind="function",
@@ -44,11 +45,42 @@ class AttentionAdapter:
                 ctx_key="transformers_flex",
             ),
         ]
+        
+        # Add model-specific eager attention functions
+        # These are used by default when no attn_implementation is specified
+        eager_paths = [
+            "transformers.models.gpt_oss.modeling_gpt_oss.eager_attention_forward",
+            "transformers.models.llama.modeling_llama.eager_attention_forward",
+            "transformers.models.qwen3_moe.modeling_qwen3_moe.eager_attention_forward",
+            "transformers.models.qwen2.modeling_qwen2.eager_attention_forward",
+        ]
+        for path in eager_paths:
+            model_name = path.split(".")[2]  # e.g., "gpt_oss"
+            specs.append(
+                PatchSpec(
+                    path=path,
+                    kind="function",
+                    name="eager_attention_forward",
+                    ctx_key=f"transformers_eager_{model_name}",
+                )
+            )
+        
+        return specs
 
     def make_wrapper(
         self, spec: PatchSpec, orig: Callable[..., Any]
     ) -> Callable[..., Any]:
         """Create a wrapper function that traces attention calls."""
+
+        if spec.name == "eager_attention_forward":
+            return self._make_eager_attention_wrapper(orig)
+        else:
+            return self._make_standard_attention_wrapper(orig)
+
+    def _make_standard_attention_wrapper(
+        self, orig: Callable[..., Any]
+    ) -> Callable[..., Any]:
+        """Wrapper for standard attention functions (sdpa, flash, flex)."""
 
         def wrapper(
             module: torch.nn.Module,
@@ -128,6 +160,91 @@ class AttentionAdapter:
             if isinstance(ret, torch.Tensor):
                 # Reshape from [total_tokens, num_q_heads, head_dim] to [batch, seq_len, num_q_heads * head_dim]
                 # and return as (attn_output, attn_weights)
+                attn_output = ret.reshape(batch_size, seq_len_q, num_q_heads, head_dim)
+                attn_output = attn_output.reshape(batch_size, seq_len_q, -1).contiguous()
+                return attn_output, None
+
+            return ret
+
+        return wrapper
+
+    def _make_eager_attention_wrapper(
+        self, orig: Callable[..., Any]
+    ) -> Callable[..., Any]:
+        """Wrapper for eager attention functions (model-specific implementations).
+        
+        Note: eager_attention_forward has a different signature with scaling before dropout.
+        """
+
+        def wrapper(
+            module: torch.nn.Module,
+            query: torch.Tensor,
+            key: torch.Tensor,
+            value: torch.Tensor,
+            attention_mask: torch.Tensor | None,
+            scaling: float,  # Required in eager, comes before dropout
+            dropout: float = 0.0,
+            **kwargs,
+        ) -> Any:
+            # Validate tensor dimensions
+            if query.dim() != 4 or key.dim() != 4 or value.dim() != 4:
+                return orig(
+                    module, query, key, value, attention_mask, scaling, dropout, **kwargs
+                )
+
+            # Check for supported dtypes
+            if query.dtype not in SUPPORTED_ACTIVATION_DTYPES:
+                return orig(
+                    module, query, key, value, attention_mask, scaling, dropout, **kwargs
+                )
+
+            # Infer is_causal from module
+            effective_is_causal = getattr(module, "is_causal", True)
+
+            # Build runtime kwargs for tracing
+            def_name = infer_attention_def_name(query, key, effective_is_causal)
+
+            # Prepare runtime kwargs matching expected definition inputs
+            batch_size = query.shape[0]
+            num_q_heads = query.shape[1]
+            seq_len_q = query.shape[2]
+            head_dim = query.shape[3]
+            num_kv_heads = key.shape[1]
+            seq_len_kv = key.shape[2]
+
+            # Create indptr for ragged format
+            qo_indptr = torch.arange(
+                0, (batch_size + 1) * seq_len_q, seq_len_q,
+                dtype=torch.int32, device=query.device
+            )
+            kv_indptr = torch.arange(
+                0, (batch_size + 1) * seq_len_kv, seq_len_kv,
+                dtype=torch.int32, device=key.device
+            )
+
+            # Reshape tensors to ragged format
+            q_ragged = query.transpose(1, 2).reshape(-1, num_q_heads, head_dim)
+            k_ragged = key.transpose(1, 2).reshape(-1, num_kv_heads, head_dim)
+            v_ragged = value.transpose(1, 2).reshape(-1, num_kv_heads, head_dim)
+
+            rk: Dict[str, Any] = {
+                "q": q_ragged,
+                "k": k_ragged,
+                "v": v_ragged,
+                "qo_indptr": qo_indptr,
+                "kv_indptr": kv_indptr,
+                "sm_scale": scaling,
+            }
+
+            def _fallback(**_rk):
+                return orig(
+                    module, query, key, value, attention_mask, scaling, dropout, **kwargs
+                )
+
+            ret = apply(def_name, kwargs=rk, fallback=_fallback)
+
+            # If apply returned a tensor result, reshape it back to expected format
+            if isinstance(ret, torch.Tensor):
                 attn_output = ret.reshape(batch_size, seq_len_q, num_q_heads, head_dim)
                 attn_output = attn_output.reshape(batch_size, seq_len_q, -1).contiguous()
                 return attn_output, None

@@ -36,8 +36,8 @@ The `flashinfer_trace/` dataset in this repository includes definitions for:
 |-------|-------------------|
 | **LLaMA-3.1-8B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
 | **LLaMA-3.1-70B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
-| **Qwen3-30B-A3B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
-| **gpt-oss-120b** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm |
+| **Qwen3-30B-A3B** | embedding, rope, silu, softmax, topk, multinomial, attention, rmsnorm, moe |
+| **gpt-oss-120b** | embedding, rope, softmax, topk, multinomial, attention, rmsnorm, moe (uses custom GLU activation) |
 
 The following operators are **intercepted** but may need additional definitions for specific model configurations:
 

@@ -22,7 +22,15 @@ from typing import Any
 # Base operator configurations - all operators are required
 # (Linear/GEMM is excluded as it's not currently traced)
 def _make_operator_expectations(has_moe: bool = False, activation: str = "silu"):
-    """Create operator expectations for a model."""
+    """Create operator expectations for a model.
+    
+    Parameters
+    ----------
+    has_moe : bool
+        Whether the model uses MoE (Mixture of Experts)
+    activation : str
+        Activation type: "silu", "gelu", or "none" (for custom activations)
+    """
     ops = {
         "attention": {
             "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
@@ -55,6 +63,7 @@ def _make_operator_expectations(has_moe: bool = False, activation: str = "silu")
     }
     
     # Add activation based on model type
+    # "none" means model uses custom activation not traced by standard adapters
     if activation == "silu":
         ops["silu"] = {
             "pattern": r"silu_h\d+",
@@ -65,6 +74,7 @@ def _make_operator_expectations(has_moe: bool = False, activation: str = "silu")
             "pattern": r"gelu(_tanh)?_h\d+",
             "description": "GELU activation",
         }
+    # "none" - don't add any activation requirement
     
     # Add MoE for MoE models
     if has_moe:
@@ -88,8 +98,9 @@ MODEL_OPERATOR_EXPECTATIONS = {
     },
     "gpt-oss-120b": {
         "model_id": "openai/gpt-oss-120b",
-        # gpt-oss-120b uses SiLU activation with MoE (128 experts, top-4)
-        "expected_operators": _make_operator_expectations(has_moe=True, activation="silu"),
+        # gpt-oss-120b uses custom GLU activation (not SiLU/GELU), so we don't check for activation
+        # It has MoE with 128 experts, top-4
+        "expected_operators": _make_operator_expectations(has_moe=True, activation="none"),
     },
     "llama-3.1-8b": {
         "model_id": "meta-llama/Llama-3.1-8B-Instruct",

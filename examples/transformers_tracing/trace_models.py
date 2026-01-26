@@ -325,8 +325,8 @@ MODEL_CONFIGS = {
     },
     "gpt-oss-120b": {
         "model_id": "openai/gpt-oss-120b",
-        "description": "GPT-OSS 120B MoE model",
-        "expected_ops": ["attention", "rmsnorm", "rope", "embedding", "gelu", "moe", "linear", "softmax"],
+        "description": "GPT-OSS 120B MoE model (uses custom GLU activation, not SiLU/GELU)",
+        "expected_ops": ["attention", "rmsnorm", "rope", "embedding", "moe", "linear", "softmax"],
     },
 }
 
