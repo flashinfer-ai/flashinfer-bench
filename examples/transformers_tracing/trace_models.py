@@ -9,14 +9,18 @@ flashinfer-bench transformers integration. It supports:
 - GPT-OSS-120B
 
 Usage:
-    # Trace a specific model
-    python trace_models.py --model meta-llama/Llama-3.1-70B-Instruct --output ./traces
+    # Trace a specific model (uses default dataset path with definitions)
+    python trace_models.py --model meta-llama/Llama-3.1-8B-Instruct
 
-    # Trace with FP8 quantization
-    python trace_models.py --model RedHatAI/Meta-Llama-3.1-70B-Instruct-FP8 --output ./traces
+    # Specify a custom dataset path (must contain definitions/)
+    python trace_models.py --model meta-llama/Llama-3.1-8B-Instruct --dataset /path/to/flashinfer_trace
 
     # Use environment variables (alternative)
-    FIB_ENABLE_TRACING=1 FIB_DATASET_PATH=./traces python your_script.py
+    FIB_ENABLE_TRACING=1 FIB_DATASET_PATH=/path/to/flashinfer_trace python your_script.py
+
+IMPORTANT: The dataset path must contain a `definitions/` subdirectory with JSON
+definition files. Use the `flashinfer_trace/` directory from the flashinfer-bench
+repository as the dataset path.
 
 Requirements:
     - transformers
@@ -34,19 +38,70 @@ from pathlib import Path
 import torch
 
 
-def setup_tracing(output_path: str):
-    """Setup flashinfer-bench tracing."""
+def get_default_dataset_path() -> Path:
+    """Get the default dataset path.
+    
+    Looks for:
+    1. FIB_DATASET_PATH environment variable
+    2. flashinfer_trace/ directory relative to this script
+    3. flashinfer_trace/ directory relative to flashinfer-bench repo root
+    """
+    # Check environment variable first
+    env_path = os.environ.get("FIB_DATASET_PATH")
+    if env_path:
+        return Path(env_path).expanduser()
+    
+    # Look for flashinfer_trace relative to this script
+    script_dir = Path(__file__).parent
+    repo_root = script_dir.parent.parent  # examples/transformers_tracing -> repo root
+    
+    candidate_paths = [
+        repo_root / "flashinfer_trace",
+        script_dir / "flashinfer_trace",
+        Path.cwd() / "flashinfer_trace",
+    ]
+    
+    for path in candidate_paths:
+        if path.exists() and (path / "definitions").exists():
+            return path
+    
+    # Fall back to default cache path
+    return Path.home() / ".cache" / "flashinfer_bench" / "dataset"
+
+
+def setup_tracing(dataset_path: str | None = None):
+    """Setup flashinfer-bench tracing.
+    
+    Parameters
+    ----------
+    dataset_path : str, optional
+        Path to the dataset directory containing definitions.
+        If None, uses the default dataset path.
+    """
     from flashinfer_bench.tracing import enable_tracing
     
-    # Create output directory if needed
-    Path(output_path).mkdir(parents=True, exist_ok=True)
+    if dataset_path is None:
+        dataset_path = str(get_default_dataset_path())
     
-    return enable_tracing(output_path)
+    path = Path(dataset_path)
+    
+    # Validate dataset path has definitions
+    definitions_path = path / "definitions"
+    if not definitions_path.exists():
+        print(f"WARNING: No definitions/ directory found at {path}")
+        print("Tracing requires pre-existing definitions to match workloads against.")
+        print("Use the flashinfer_trace/ directory from the flashinfer-bench repository.")
+        print()
+    else:
+        num_defs = len(list(definitions_path.rglob("*.json")))
+        print(f"Found {num_defs} definitions in {definitions_path}")
+    
+    return enable_tracing(dataset_path)
 
 
 def trace_model(
     model_id: str,
-    output_path: str,
+    dataset_path: str | None = None,
     prompts: list[str] | None = None,
     max_new_tokens: int = 50,
     device: str = "auto",
@@ -59,8 +114,9 @@ def trace_model(
     ----------
     model_id : str
         HuggingFace model ID (e.g., "meta-llama/Llama-3.1-70B-Instruct")
-    output_path : str
-        Path to save traces
+    dataset_path : str, optional
+        Path to the flashinfer-bench dataset directory containing definitions.
+        If None, uses the default dataset path (flashinfer_trace/ in the repo).
     prompts : list[str], optional
         List of prompts to run inference on. Defaults to sample prompts.
     max_new_tokens : int
@@ -82,8 +138,14 @@ def trace_model(
             "Summarize the main benefits of renewable energy.",
         ]
     
+    # Resolve dataset path
+    if dataset_path is None:
+        resolved_path = get_default_dataset_path()
+    else:
+        resolved_path = Path(dataset_path)
+    
     print(f"Loading model: {model_id}")
-    print(f"Output path: {output_path}")
+    print(f"Dataset path: {resolved_path}")
     print(f"Device: {device}")
     print(f"Torch dtype: {torch_dtype}")
     print("-" * 50)
@@ -111,7 +173,7 @@ def trace_model(
     }
     
     # Enable tracing and load model
-    with setup_tracing(output_path):
+    with setup_tracing(str(resolved_path)):
         print("Loading model (this may take a while for large models)...")
         model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
         
@@ -142,12 +204,35 @@ def trace_model(
         print("\n" + "=" * 50)
         print("Tracing complete! Traces will be flushed to disk.")
     
-    print(f"\nTraces saved to: {output_path}")
+    # Show where workload traces are stored
+    workloads_path = resolved_path / "workloads"
+    if workloads_path.exists():
+        num_traces = len(list(workloads_path.rglob("*.jsonl")))
+        print(f"\nWorkload traces saved to: {workloads_path}")
+        print(f"Total trace files: {num_traces}")
+    else:
+        print(f"\nNo workload traces were saved. This may indicate that no")
+        print("operations matched existing definitions in the dataset.")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Trace transformers models with flashinfer-bench"
+        description="Trace transformers models with flashinfer-bench",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # Trace with default dataset path (uses flashinfer_trace/ from repo)
+    python trace_models.py --model meta-llama/Llama-3.1-8B-Instruct
+
+    # Specify custom dataset path
+    python trace_models.py --model meta-llama/Llama-3.1-8B-Instruct --dataset /path/to/flashinfer_trace
+
+    # Use environment variable
+    FIB_DATASET_PATH=/path/to/flashinfer_trace python trace_models.py --model meta-llama/Llama-3.1-8B-Instruct
+
+Note: The dataset path must contain a definitions/ directory with JSON definition files.
+Workload traces will be saved to the workloads/ subdirectory of the dataset path.
+""",
     )
     parser.add_argument(
         "--model",
@@ -156,10 +241,11 @@ def main():
         help="HuggingFace model ID to trace",
     )
     parser.add_argument(
-        "--output",
+        "--dataset",
         type=str,
-        default="./traces",
-        help="Output directory for traces",
+        default=None,
+        help="Path to flashinfer-bench dataset directory (containing definitions/). "
+             "Defaults to flashinfer_trace/ in the repo or FIB_DATASET_PATH env var.",
     )
     parser.add_argument(
         "--max-new-tokens",
@@ -193,7 +279,7 @@ def main():
     
     trace_model(
         model_id=args.model,
-        output_path=args.output,
+        dataset_path=args.dataset,
         prompts=args.prompts,
         max_new_tokens=args.max_new_tokens,
         device=args.device,
