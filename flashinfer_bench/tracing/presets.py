@@ -164,7 +164,11 @@ class KeepFirstKByAxesPolicy:
 
 @PolicyRegistry.register_filter_policy("attention")
 class AttentionFilterPolicy:
-    """Deduplicate by average sequence length computed from indptr tensors."""
+    """Deduplicate by average sequence length computed from indptr tensors.
+
+    Supports both paged attention (with num_pages, num_kv_indices) and
+    ragged attention (with total_q, total_kv) formats.
+    """
 
     def __init__(self, k: int = 1):
         if k <= 0:
@@ -174,25 +178,50 @@ class AttentionFilterPolicy:
         self.entries: List[WorkloadEntry] = []
 
     def _get_axes_key(self, entry: WorkloadEntry) -> Optional[Tuple]:
-        """Convert axes to a hashable key with computed avg lengths."""
+        """Convert axes to a hashable key with computed avg lengths.
+
+        Handles two attention formats:
+        1. Paged attention: uses num_pages, len_indptr, num_kv_indices
+        2. Ragged attention: uses len_indptr, total_q, total_kv
+        """
         axes = entry.axes.copy()
-        num_pages = axes.pop("num_pages", None)
-        total_q = axes.pop("total_q", None)
+
+        # Extract common axis
         len_indptr = axes.pop("len_indptr", None)
+        if len_indptr is None:
+            logger.error(f"No len_indptr found in workload entry for {entry.def_name}")
+            return None
+
+        # Extract paged attention axes
+        num_pages = axes.pop("num_pages", None)
         num_kv_indices = axes.pop("num_kv_indices", None)
 
-        if num_pages is None or len_indptr is None or num_kv_indices is None:
+        # Extract ragged attention axes
+        total_q = axes.pop("total_q", None)
+        total_kv = axes.pop("total_kv", None)
+
+        batch_size = len_indptr - 1 if len_indptr > 1 else 1
+
+        # Compute avg_kv_len based on format
+        if num_kv_indices is not None:
+            # Paged attention format
+            avg_kv_len = int(round(num_kv_indices / batch_size))
+        elif total_kv is not None:
+            # Ragged attention format
+            avg_kv_len = int(round(total_kv / batch_size))
+        else:
             logger.error(
-                f"No num_pages or len_indptr or num_kv_indices found in workload entry for {entry.def_name}"
+                f"No num_kv_indices or total_kv found in workload entry for {entry.def_name}"
             )
             return None
 
-        avg_kv_len = int(round(num_kv_indices / (len_indptr - 1))) if len_indptr > 1 else 0
         axes["avg_kv_len"] = avg_kv_len
 
+        # Compute avg_q_len
         if total_q is not None:
-            axes["avg_q_len"] = int(round(total_q / (len_indptr - 1))) if len_indptr > 1 else 0
+            axes["avg_q_len"] = int(round(total_q / batch_size))
         else:
+            # Decode case: 1 query per batch element
             axes["avg_q_len"] = 1
 
         return tuple(sorted(axes.items()))

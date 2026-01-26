@@ -204,12 +204,26 @@ def trace_model(
         print("\n" + "=" * 50)
         print("Tracing complete! Traces will be flushed to disk.")
     
-    # Show where workload traces are stored
+    # Show where workload traces are stored and count new traces
     workloads_path = resolved_path / "workloads"
     if workloads_path.exists():
-        num_traces = len(list(workloads_path.rglob("*.jsonl")))
-        print(f"\nWorkload traces saved to: {workloads_path}")
-        print(f"Total trace files: {num_traces}")
+        trace_files = list(workloads_path.rglob("*.jsonl"))
+        num_total = len(trace_files)
+        
+        # Count lines in trace files to get approximate trace count
+        total_lines = 0
+        for tf in trace_files:
+            try:
+                with open(tf, 'r') as f:
+                    total_lines += sum(1 for _ in f)
+            except Exception:
+                pass
+        
+        print(f"\nWorkload traces directory: {workloads_path}")
+        print(f"Total trace files: {num_total} (containing {total_lines} total workload entries)")
+        print("\nNote: 'Definition X not found' messages are expected for operators")
+        print("that don't have pre-existing definitions in the dataset.")
+        print("Only operations with matching definitions can be traced.")
     else:
         print(f"\nNo workload traces were saved. This may indicate that no")
         print("operations matched existing definitions in the dataset.")

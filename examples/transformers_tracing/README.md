@@ -134,6 +134,21 @@ Each definition specifies:
 - `outputs`: Expected output tensors
 - `reference`: Python reference implementation for validation
 
+## What to Expect
+
+After running tracing, you should see:
+
+1. **"Tracing 'definition_name'" messages** - Operations being traced
+2. **"Definition X not found" messages** - Expected for operators without definitions
+3. **"Flush done. N entries selected"** - How many workloads were actually saved
+
+**Important**: The "Total trace files: N" count includes pre-existing traces in the workloads directory. New traces are **appended** to existing JSONL files, so the file count may not change. Check the line count in JSONL files to see new entries:
+
+```bash
+# Count total workload entries
+wc -l flashinfer_trace/workloads/*/*.jsonl
+```
+
 ## Troubleshooting
 
 ### No traces being saved
@@ -147,6 +162,10 @@ Each definition specifies:
    - Example: `rmsnorm_h4096` only matches hidden_size=4096
    - LLaMA-8B uses hidden_size=4096 ✓
    - Different models may need different definitions
+
+3. **Check the flush output**: Look for "Flush done. N entries selected" in the log.
+   - If N=0, no workloads matched the filter criteria
+   - The filter policy deduplicates by average sequence length to avoid redundant traces
 
 ### PyTorch version issues
 
