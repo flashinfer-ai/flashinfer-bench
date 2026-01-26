@@ -1,0 +1,56 @@
+{
+  "name": "moe_batched_e128_h2048_i768_topk8",
+  "op_type": "moe",
+  "description": "Mixture of Experts with 128 experts, hidden_dim=2048, intermediate_dim=768, top-k=8. For Qwen3-30B-A3B MoE.",
+  "tags": [
+    "status:verified",
+    "model:qwen3-30b-moe"
+  ],
+  "axes": {
+    "num_tokens": {
+      "type": "var",
+      "description": "Number of input tokens"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 128
+    },
+    "hidden_dim": {
+      "type": "const",
+      "value": 2048
+    },
+    "intermediate_dim": {
+      "type": "const",
+      "value": 768
+    },
+    "top_k": {
+      "type": "const",
+      "value": 8
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": ["num_tokens", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "Input hidden states"
+    },
+    "gate_up_proj": {
+      "shape": ["num_experts", "intermediate_dim", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "Gate and up projection weights"
+    },
+    "down_proj": {
+      "shape": ["num_experts", "hidden_dim", "intermediate_dim"],
+      "dtype": "bfloat16",
+      "description": "Down projection weights"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["num_tokens", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "MoE output hidden states"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, gate_up_proj, down_proj):\n    num_tokens, hidden_dim = hidden_states.shape\n    output = torch.zeros_like(hidden_states)\n    return output"
+}

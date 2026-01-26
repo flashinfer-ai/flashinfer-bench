@@ -19,217 +19,81 @@ from pathlib import Path
 from typing import Any
 
 
+# Base operator configurations - all operators are required
+# (Linear/GEMM is excluded as it's not currently traced)
+def _make_operator_expectations(has_moe: bool = False, activation: str = "silu"):
+    """Create operator expectations for a model."""
+    ops = {
+        "attention": {
+            "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
+            "description": "GQA attention operations",
+        },
+        "rmsnorm": {
+            "pattern": r"rmsnorm_h\d+|fused_add_rmsnorm_h\d+",
+            "description": "RMS normalization",
+        },
+        "rope": {
+            "pattern": r"rope_h\d+_d\d+",
+            "description": "Rotary position embedding",
+        },
+        "embedding": {
+            "pattern": r"embedding_v\d+_d\d+",
+            "description": "Token embedding lookup",
+        },
+        "softmax": {
+            "pattern": r"softmax_d\d+",
+            "description": "Softmax for sampling/attention",
+        },
+        "topk": {
+            "pattern": r"topk_d\d+_k\d+",
+            "description": "Top-k sampling/routing",
+        },
+        "multinomial": {
+            "pattern": r"sampling_multinomial_v\d+",
+            "description": "Multinomial sampling",
+        },
+    }
+    
+    # Add activation based on model type
+    if activation == "silu":
+        ops["silu"] = {
+            "pattern": r"silu_h\d+",
+            "description": "SiLU activation (SwiGLU)",
+        }
+    elif activation == "gelu":
+        ops["gelu"] = {
+            "pattern": r"gelu(_tanh)?_h\d+",
+            "description": "GELU activation",
+        }
+    
+    # Add MoE for MoE models
+    if has_moe:
+        ops["moe"] = {
+            "pattern": r"moe_(batched|grouped|fp8).*",
+            "description": "Mixture of Experts",
+        }
+    
+    return ops
+
+
 # Expected operators for each model type
 MODEL_OPERATOR_EXPECTATIONS = {
     "qwen3-30b-moe": {
         "model_id": "Qwen/Qwen3-30B-A3B-Instruct-2507",
-        "expected_operators": {
-            "attention": {
-                "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
-                "description": "GQA attention operations",
-                "required": True,
-            },
-            "rmsnorm": {
-                "pattern": r"rmsnorm_h\d+",
-                "description": "RMS normalization",
-                "required": True,
-            },
-            "rope": {
-                "pattern": r"rope_h\d+_d\d+",
-                "description": "Rotary position embedding",
-                "required": True,
-            },
-            "embedding": {
-                "pattern": r"embedding_v\d+_d\d+",
-                "description": "Token embedding lookup",
-                "required": True,
-            },
-            "silu": {
-                "pattern": r"silu_h\d+",
-                "description": "SiLU activation (SwiGLU)",
-                "required": True,
-            },
-            "moe": {
-                "pattern": r"moe_(batched|grouped|fp8).*",
-                "description": "Mixture of Experts",
-                "required": False,  # MoE routing may not be traced by default
-            },
-            "linear": {
-                "pattern": r"gemm_n\d+_k\d+",
-                "description": "Linear/GEMM operations",
-                "required": False,  # GEMM may not be traced for all sizes
-            },
-            "softmax": {
-                "pattern": r"softmax_d\d+",
-                "description": "Softmax for sampling",
-                "required": False,
-            },
-            "topk": {
-                "pattern": r"topk_d\d+_k\d+",
-                "description": "Top-k sampling",
-                "required": False,
-            },
-            "multinomial": {
-                "pattern": r"sampling_multinomial_v\d+",
-                "description": "Multinomial sampling",
-                "required": False,
-            },
-        },
+        "expected_operators": _make_operator_expectations(has_moe=True, activation="silu"),
     },
     "llama-3.1-70b": {
         "model_id": "meta-llama/Llama-3.1-70B-Instruct",
-        "expected_operators": {
-            "attention": {
-                "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
-                "description": "GQA attention operations",
-                "required": True,
-            },
-            "rmsnorm": {
-                "pattern": r"rmsnorm_h\d+",
-                "description": "RMS normalization",
-                "required": True,
-            },
-            "rope": {
-                "pattern": r"rope_h\d+_d\d+",
-                "description": "Rotary position embedding",
-                "required": True,
-            },
-            "embedding": {
-                "pattern": r"embedding_v\d+_d\d+",
-                "description": "Token embedding lookup",
-                "required": True,
-            },
-            "silu": {
-                "pattern": r"silu_h\d+",
-                "description": "SiLU activation (SwiGLU)",
-                "required": True,
-            },
-            "linear": {
-                "pattern": r"gemm_n\d+_k\d+",
-                "description": "Linear/GEMM operations",
-                "required": False,  # GEMM may not be traced for all sizes
-            },
-            "softmax": {
-                "pattern": r"softmax_d\d+",
-                "description": "Softmax for sampling",
-                "required": False,
-            },
-            "topk": {
-                "pattern": r"topk_d\d+_k\d+",
-                "description": "Top-k sampling",
-                "required": False,
-            },
-            "multinomial": {
-                "pattern": r"sampling_multinomial_v\d+",
-                "description": "Multinomial sampling",
-                "required": False,
-            },
-        },
+        "expected_operators": _make_operator_expectations(has_moe=False, activation="silu"),
     },
     "gpt-oss-120b": {
         "model_id": "openai/gpt-oss-120b",
-        "expected_operators": {
-            "attention": {
-                "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
-                "description": "GQA attention operations",
-                "required": True,
-            },
-            "rmsnorm": {
-                "pattern": r"rmsnorm_h\d+",
-                "description": "RMS normalization",
-                "required": True,
-            },
-            "rope": {
-                "pattern": r"rope_h\d+_d\d+",
-                "description": "Rotary position embedding",
-                "required": True,
-            },
-            "embedding": {
-                "pattern": r"embedding_v\d+_d\d+",
-                "description": "Token embedding lookup",
-                "required": True,
-            },
-            "silu": {
-                "pattern": r"silu_h\d+",
-                "description": "SiLU activation (SwiGLU)",
-                "required": True,
-            },
-            "moe": {
-                "pattern": r"moe_(batched|grouped|fp8).*",
-                "description": "Mixture of Experts",
-                "required": False,  # MoE routing may not be traced by default
-            },
-            "linear": {
-                "pattern": r"gemm_n\d+_k\d+",
-                "description": "Linear/GEMM operations",
-                "required": False,  # GEMM may not be traced for all sizes
-            },
-            "softmax": {
-                "pattern": r"softmax_d\d+",
-                "description": "Softmax for sampling",
-                "required": False,
-            },
-            "topk": {
-                "pattern": r"topk_d\d+_k\d+",
-                "description": "Top-k sampling",
-                "required": False,
-            },
-            "multinomial": {
-                "pattern": r"sampling_multinomial_v\d+",
-                "description": "Multinomial sampling",
-                "required": False,
-            },
-        },
+        # gpt-oss-120b uses SiLU activation with MoE (128 experts, top-4)
+        "expected_operators": _make_operator_expectations(has_moe=True, activation="silu"),
     },
     "llama-3.1-8b": {
         "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "expected_operators": {
-            "attention": {
-                "pattern": r"gqa_ragged_prefill_.*_h\d+_kv\d+_d\d+",
-                "description": "GQA attention operations",
-                "required": True,
-            },
-            "rmsnorm": {
-                "pattern": r"rmsnorm_h\d+",
-                "description": "RMS normalization",
-                "required": True,
-            },
-            "rope": {
-                "pattern": r"rope_h\d+_d\d+",
-                "description": "Rotary position embedding",
-                "required": True,
-            },
-            "embedding": {
-                "pattern": r"embedding_v\d+_d\d+",
-                "description": "Token embedding lookup",
-                "required": True,
-            },
-            "silu": {
-                "pattern": r"silu_h\d+",
-                "description": "SiLU activation (SwiGLU)",
-                "required": True,
-            },
-            "linear": {
-                "pattern": r"gemm_n\d+_k\d+",
-                "description": "Linear/GEMM operations",
-                "required": False,
-            },
-            "softmax": {
-                "pattern": r"softmax_d\d+",
-                "description": "Softmax for sampling",
-                "required": False,
-            },
-            "topk": {
-                "pattern": r"topk_d\d+_k\d+",
-                "description": "Top-k sampling",
-                "required": False,
-            },
-            "multinomial": {
-                "pattern": r"sampling_multinomial_v\d+",
-                "description": "Multinomial sampling",
-                "required": False,
-            },
-        },
+        "expected_operators": _make_operator_expectations(has_moe=False, activation="silu"),
     },
 }
 
@@ -332,7 +196,6 @@ def verify_model_traces(
     
     for op_name, op_config in expectations["expected_operators"].items():
         pattern = op_config["pattern"]
-        required = op_config["required"]
         description = op_config["description"]
         
         # Check if any definition matches this pattern
@@ -346,18 +209,14 @@ def verify_model_traces(
         
         report["operator_coverage"][op_name] = {
             "found": found,
-            "required": required,
             "description": description,
             "matching_definitions": matching_defs[:5],  # Limit to 5 examples
             "trace_count": trace_count,
         }
         
         if not found:
-            if required:
-                report["missing_required"].append(op_name)
-                report["success"] = False
-            else:
-                report["missing_optional"].append(op_name)
+            report["missing_required"].append(op_name)
+            report["success"] = False
     
     return report["success"], report
 
@@ -380,10 +239,9 @@ def print_report(report: dict[str, Any], verbose: bool = False):
     coverage = report.get("operator_coverage", {})
     for op_name, op_info in coverage.items():
         status = "✓" if op_info["found"] else "✗"
-        required_str = "(required)" if op_info["required"] else "(optional)"
         count_str = f"[{op_info['trace_count']} traces]" if op_info["found"] else ""
         
-        print(f"  {status} {op_name:15} {required_str:12} {count_str}")
+        print(f"  {status} {op_name:15} {count_str}")
         
         if verbose and op_info["found"] and op_info["matching_definitions"]:
             for def_name in op_info["matching_definitions"][:3]:
@@ -392,22 +250,16 @@ def print_report(report: dict[str, Any], verbose: bool = False):
     print("\n" + "-" * 70)
     
     if report.get("missing_required"):
-        print("MISSING REQUIRED OPERATORS:")
+        print("MISSING OPERATORS:")
         for op in report["missing_required"]:
             print(f"  ✗ {op}")
         print()
     
-    if report.get("missing_optional"):
-        print("MISSING OPTIONAL OPERATORS:")
-        for op in report["missing_optional"]:
-            print(f"  - {op}")
-        print()
-    
     success = report.get("success", False)
     if success:
-        print("STATUS: ✓ ALL REQUIRED OPERATORS COVERED")
+        print("STATUS: ✓ ALL OPERATORS COVERED")
     else:
-        print("STATUS: ✗ MISSING REQUIRED OPERATORS")
+        print("STATUS: ✗ MISSING OPERATORS")
     
     print("=" * 70 + "\n")
     
