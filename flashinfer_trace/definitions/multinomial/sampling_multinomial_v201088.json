@@ -30,7 +30,7 @@
   },
   "outputs": {
     "output": {
-      "shape": ["batch_size", 1],
+      "shape": ["batch_size", "1"],
       "dtype": "int64",
       "description": "Sampled token indices"
     }
