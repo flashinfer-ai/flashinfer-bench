@@ -40,12 +40,12 @@
       "description": "Key tensor"
     },
     "cos": {
-      "shape": ["seq_len", "head_dim"],
+      "shape": ["batch_size", "seq_len", "head_dim"],
       "dtype": "bfloat16",
       "description": "Cosine positional encoding"
     },
     "sin": {
-      "shape": ["seq_len", "head_dim"],
+      "shape": ["batch_size", "seq_len", "head_dim"],
       "dtype": "bfloat16",
       "description": "Sine positional encoding"
     }
@@ -62,5 +62,5 @@
       "description": "Key with rotary embedding applied"
     }
   },
-  "reference": "import torch\n\n@torch.no_grad()\ndef run(q, k, cos, sin):\n    batch_size, num_q_heads, seq_len, head_dim = q.shape\n    num_k_heads = k.shape[1]\n    \n    # Check constants\n    assert num_q_heads == 64\n    assert head_dim == 64\n    \n    def rotate_half(x):\n        x1 = x[..., : x.shape[-1] // 2]\n        x2 = x[..., x.shape[-1] // 2 :]\n        return torch.cat((-x2, x1), dim=-1)\n    \n    # Expand cos and sin for broadcasting\n    cos = cos.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len, head_dim]\n    sin = sin.unsqueeze(0).unsqueeze(0)  # [1, 1, seq_len, head_dim]\n    \n    q_embed = (q * cos) + (rotate_half(q) * sin)\n    k_embed = (k * cos) + (rotate_half(k) * sin)\n    \n    return q_embed.to(q.dtype), k_embed.to(k.dtype)"
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(q, k, cos, sin):\n    batch_size, num_q_heads, seq_len, head_dim = q.shape\n    num_k_heads = k.shape[1]\n    \n    # Check constants\n    assert num_q_heads == 64\n    assert head_dim == 64\n    \n    def rotate_half(x):\n        x1 = x[..., : x.shape[-1] // 2]\n        x2 = x[..., x.shape[-1] // 2 :]\n        return torch.cat((-x2, x1), dim=-1)\n    \n    # Expand cos and sin for broadcasting: [batch, seq, dim] -> [batch, 1, seq, dim]\n    cos = cos.unsqueeze(1)\n    sin = sin.unsqueeze(1)\n    \n    q_embed = (q * cos) + (rotate_half(q) * sin)\n    k_embed = (k * cos) + (rotate_half(k) * sin)\n    \n    return q_embed.to(q.dtype), k_embed.to(k.dtype)"
 }
