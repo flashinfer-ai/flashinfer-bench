@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const DOCS_ORIGIN =
   process.env.DOCS_ORIGIN ??
-  'https://flashinfer-bench.mintlify.app'
+  'https://flashinfer-bench.mintlify.dev'
 
 const nextConfig: NextConfig = {
   transpilePackages: [
@@ -15,8 +15,8 @@ const nextConfig: NextConfig = {
       // Sphinx documentation
       { source: '/docs/api/python',         destination: '/docs/api/python/index.html' },
       // Mintlify documentation
-      { source: '/docs', destination: `${DOCS_ORIGIN}/` },
-      { source: '/docs/:path*', destination: `${DOCS_ORIGIN}/:path*` },
+      { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },
+      { source: '/docs/:match*', destination: `${DOCS_ORIGIN}/docs/:match*` },
       // // Mintlify assets
       { source: '/mintlify-assets/:path*', destination: `${DOCS_ORIGIN}/mintlify-assets/:path*` },
       { source: '/_mintlify/:path*', destination: `${DOCS_ORIGIN}/_mintlify/:path*` },
