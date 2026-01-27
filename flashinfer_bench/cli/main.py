@@ -10,6 +10,22 @@ from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
 from flashinfer_bench.logging import configure_logging, get_logger
 
 logger = get_logger("CLI")
+pkg_name = __name__.split(".")[0]
+
+
+def cli_config_logging(args: argparse.Namespace):
+    """Configure logging for the CLI. Now we have two set of loggers:
+    - package logger: obtained by logging.getLogger(__name__)
+    - custom logger: obtained by get_logger("ModuleName")
+
+    In the future we will deprecate the custom logger and use the package logger only.
+    Now we need to configure both loggers to the same level.
+    """
+    log_level = getattr(args, "log_level", "WARNING")
+    pkg_logger = logging.getLogger(pkg_name)
+    pkg_logger.setLevel(log_level)
+    pkg_logger.addHandler(logging.StreamHandler())
+    configure_logging(level=log_level)
 
 
 def best(args: argparse.Namespace):
@@ -359,8 +375,9 @@ def cli():
     visualize_parser.set_defaults(func=visualize)
 
     args = parser.parse_args()
-    formatter = logging.Formatter("%(message)s")
-    configure_logging(level=getattr(args, "log_level", "INFO"), formatter=formatter)
+
+    cli_config_logging(args)
+
     if hasattr(args, "func"):
         args.func(args)
     else:

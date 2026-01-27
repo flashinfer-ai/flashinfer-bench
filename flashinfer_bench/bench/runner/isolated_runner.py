@@ -233,7 +233,7 @@ def _solution_worker_main(
     log_path : str
         Path to log file.
     """
-    redirect_stdio_to_file(log_path)
+    original_stdout_fd, original_stderr_fd = redirect_stdio_to_file(log_path)
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = BuilderRegistry.get_instance()

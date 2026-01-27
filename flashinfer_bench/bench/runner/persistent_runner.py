@@ -20,12 +20,11 @@ from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
 from flashinfer_bench.compile import BuilderRegistry, BuildError
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
-from flashinfer_bench.logging import get_logger
 from flashinfer_bench.utils import redirect_stdio_to_file
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
-LOGGER = get_logger("PersistentRunner")
+logger = logging.getLogger(__name__)
 
 
 class WorkerCommand(Enum):
@@ -95,7 +94,7 @@ class PersistentSubprocessWorker:
         try:
             msg = self._parent_conn.recv()
             if msg.get("cmd") == WorkerResponse.READY.value:
-                LOGGER.info(f"Persistent worker started for device {self._device}")
+                logger.info(f"Persistent worker started for device {self._device}")
             else:
                 raise RunnerFatalError(f"Worker failed to start: {msg}")
         except Exception as e:
@@ -141,7 +140,7 @@ class PersistentSubprocessWorker:
 
         # Check if connection is closed
         if self._parent_conn.closed:
-            LOGGER.warning(f"Connection is closed for device {self._device}")
+            logger.warning(f"Connection is closed for device {self._device}")
             return False
 
         try:
@@ -154,16 +153,16 @@ class PersistentSubprocessWorker:
                     if msg.get("cmd") == WorkerResponse.HEALTHY.value:
                         return True
                     elif msg.get("cmd") == WorkerResponse.CORRUPTED.value:
-                        LOGGER.warning(f"GPU context corrupted on device {self._device}")
+                        logger.warning(f"GPU context corrupted on device {self._device}")
                         return False
                     else:
-                        LOGGER.warning(
+                        logger.warning(
                             f"Unexpected health check response on device {self._device}: {msg}"
                         )
                         return False
 
                 except (EOFError, ConnectionResetError, OSError) as e:
-                    LOGGER.warning(
+                    logger.warning(
                         f"Connection error during health check on device {self._device}: {e}"
                     )
                     return False
@@ -174,23 +173,23 @@ class PersistentSubprocessWorker:
                         or "pickle" in error_str
                         or "unpickling" in error_str
                     ):
-                        LOGGER.warning(
+                        logger.warning(
                             f"Connection closed or corrupted during health check on device {self._device}: {e}"
                         )
                     else:
-                        LOGGER.warning(
+                        logger.warning(
                             f"Failed to decode health check response on device {self._device}: {e}"
                         )
                     return False
             else:
-                LOGGER.warning(f"Health check timeout on device {self._device}")
+                logger.warning(f"Health check timeout on device {self._device}")
                 return False
 
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
-            LOGGER.warning(f"Connection broken during health check on device {self._device}: {e}")
+            logger.warning(f"Connection broken during health check on device {self._device}: {e}")
             return False
         except Exception as e:
-            LOGGER.warning(f"Health check failed on device {self._device}: {e}")
+            logger.warning(f"Health check failed on device {self._device}: {e}")
             return False
 
     def restart(self) -> bool:
@@ -202,17 +201,17 @@ class PersistentSubprocessWorker:
             True if restart was successful, False otherwise.
         """
         try:
-            LOGGER.info(f"Restarting worker for device {self._device}")
+            logger.info(f"Restarting worker for device {self._device}")
 
             self._baselines.clear()
             self._shutdown_worker()
             self._start_worker()
 
-            LOGGER.info(f"Successfully restarted worker for device {self._device}")
+            logger.info(f"Successfully restarted worker for device {self._device}")
             return True
 
         except Exception as e:
-            LOGGER.error(f"Failed to restart worker for device {self._device}: {e}")
+            logger.error(f"Failed to restart worker for device {self._device}: {e}")
             return False
 
     def _should_skip_solution(self, solution_name: str) -> Optional[SolutionFailureRecord]:
@@ -274,7 +273,7 @@ class PersistentSubprocessWorker:
         solution_name = solution.name
         failure_record = self._should_skip_solution(solution_name)
         if failure_record is not None:
-            LOGGER.info(
+            logger.info(
                 f"Skipping solution {solution.name} due to {failure_record.failure_count} consecutive failures"
             )
             return make_eval(
@@ -411,7 +410,7 @@ class PersistentSubprocessWorker:
 
 
 class PersistentRunner(Runner):
-    def __init__(self, logger: logging.Logger, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(self, log_dir) -> None:
         """Initialize the persistent runner with multiple workers.
 
         Parameters
@@ -421,7 +420,6 @@ class PersistentRunner(Runner):
         log_dir : str, optional
             Directory for log files, by default "/tmp/flashinfer_bench".
         """
-        self._logger = logger
         self._log_dir = log_dir
 
         # Track retry attempts for each device
@@ -436,7 +434,7 @@ class PersistentRunner(Runner):
         if len(self._workers) == 0:
             raise RuntimeError("No CUDA devices available")
 
-        self._logger.info(
+        logger.info(
             f"Initialized benchmark persistent runner on {len(self._available_devices)} CUDA devices "
             f"and {len(self._workers)} workers"
         )
@@ -477,19 +475,17 @@ class PersistentRunner(Runner):
                     new_retry_count = retry_count
 
                 if failed_worker.restart():
-                    self._logger.info(
-                        f"Successfully restarted persistent worker for device {device}"
-                    )
+                    logger.info(f"Successfully restarted persistent worker for device {device}")
                 else:
-                    self._logger.error(f"Failed to restart persistent worker for device {device}")
+                    logger.error(f"Failed to restart persistent worker for device {device}")
                     if new_retry_count >= self._worker_max_retries:
                         workers_to_remove.append(failed_worker)
-                        self._logger.warning(
+                        logger.warning(
                             f"Removing device {device} after {self._worker_max_retries} failed attempts"
                         )
             else:
                 workers_to_remove.append(failed_worker)
-                self._logger.warning(
+                logger.warning(
                     f"Removing device {device} after {self._worker_max_retries} failed attempts"
                 )
 
@@ -557,7 +553,7 @@ class PersistentRunner(Runner):
                     baselines[r] = h
                 except Exception as e:
                     failed_workers.append(r)
-                    self._logger.error(
+                    logger.error(
                         f"Persistent worker {r._device} failed while running reference for "
                         f"definition={definition.name} workload={workload.uuid}: {e}"
                     )
@@ -577,7 +573,7 @@ class PersistentRunner(Runner):
         ) -> Evaluation:
             try:
                 if not worker.is_healthy():
-                    LOGGER.warning(
+                    logger.warning(
                         f"Worker on device {worker._device} is unhealthy, attempting restart"
                     )
                     if worker.restart():
@@ -585,9 +581,9 @@ class PersistentRunner(Runner):
                             new_baseline = worker.run_ref(definition, workload, config, root)
                             worker.release(baseline_handle)
                             baseline_handle = new_baseline
-                            LOGGER.info(f"Rebuilt baseline for worker on device {worker._device}")
+                            logger.info(f"Rebuilt baseline for worker on device {worker._device}")
                         except Exception as e:
-                            LOGGER.error(
+                            logger.error(
                                 f"Failed to rebuild baseline after restart for device {worker._device}: {e}"
                             )
                             return make_eval(
@@ -599,7 +595,7 @@ class PersistentRunner(Runner):
                                 extra_msg=f"Failed to rebuild baseline after restart: {e}",
                             )
                     else:
-                        LOGGER.error(f"Failed to restart worker on device {worker._device}")
+                        logger.error(f"Failed to restart worker on device {worker._device}")
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=worker._device,
@@ -613,7 +609,7 @@ class PersistentRunner(Runner):
                 return worker.run_solution(solution, baseline_handle, config)
 
             except Exception as e:
-                LOGGER.error(f"Unexpected error in solution execution for {solution.name}: {e}")
+                logger.error(f"Unexpected error in solution execution for {solution.name}: {e}")
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=worker._device,
@@ -643,7 +639,7 @@ class PersistentRunner(Runner):
                     try:
                         r.release(baselines[r])
                     except Exception as e:
-                        LOGGER.warning(f"Failed to release baseline for device {r._device}: {e}")
+                        logger.warning(f"Failed to release baseline for device {r._device}: {e}")
 
         return results
 
