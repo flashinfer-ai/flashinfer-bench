@@ -7,9 +7,9 @@
     "light": "#FCD1EF",
     "dark": "#B61483"
   },
-  "favicon": "/docs/logo/fib_mark.png",
+  "favicon": "logo/fib_mark.png",
   "styles": {
-    "global": "/docs/styles.css"
+    "global": "styles.css"
   },
   "navigation": {
     "tabs": [
@@ -19,37 +19,37 @@
           {
             "group": "Getting started",
             "pages": [
-              "docs/index",
-              "docs/start/installation",
-              "docs/start/quickstart"
+              "index",
+              "start/installation",
+              "start/quickstart"
             ]
           },
           {
             "group": "Tutorials",
             "pages": [
-              "docs/tutorials/bring_your_own_kernel"
+              "tutorials/bring_your_own_kernel"
             ]
           },
           {
             "group": "FlashInfer Trace",
             "pages": [
-              "docs/flashinfer-trace/index",
-              "docs/flashinfer-trace/definition",
-              "docs/flashinfer-trace/workload",
-              "docs/flashinfer-trace/solution",
-              "docs/flashinfer-trace/trace"
+              "flashinfer-trace/index",
+              "flashinfer-trace/definition",
+              "flashinfer-trace/workload",
+              "flashinfer-trace/solution",
+              "flashinfer-trace/trace"
             ]
           },
           {
             "group": "Op Types",
             "pages": [
-              "docs/op-types/gemm",
-              "docs/op-types/gqa-paged",
-              "docs/op-types/gqa-ragged",
-              "docs/op-types/mla-paged",
-              "docs/op-types/rmsnorm",
-              "docs/op-types/sampling",
-              "docs/op-types/moe"
+              "op-types/gemm",
+              "op-types/gqa-paged",
+              "op-types/gqa-ragged",
+              "op-types/mla-paged",
+              "op-types/rmsnorm",
+              "op-types/sampling",
+              "op-types/moe"
             ]
           }
         ]
@@ -76,8 +76,8 @@
     }
   },
   "logo": {
-    "light": "/docs/logo/fib-black-bg.png",
-    "dark": "/docs/logo/fib-white-bg.png"
+    "light": "logo/fib-black-bg.png",
+    "dark": "logo/fib-white-bg.png"
   },
   "navbar": {},
   "contextual": {
