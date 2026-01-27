@@ -17,32 +17,6 @@ const nextConfig: NextConfig = {
       // Mintlify documentation
       { source: '/docs', destination: `${DOCS_ORIGIN}/docs` },
       { source: '/docs/:match*', destination: `${DOCS_ORIGIN}/docs/:match*` },
-      // // // Mintlify assets
-      // { source: '/mintlify-assets/:path*', destination: `${DOCS_ORIGIN}/mintlify-assets/:path*` },
-      // { source: '/_mintlify/:path*', destination: `${DOCS_ORIGIN}/_mintlify/:path*` },
-      // // // Mintlify next assets
-      // {
-      //   source: '/_next/static/:path*',
-      //   has: [
-      //     {
-      //       type: 'header',
-      //       key: 'referer',
-      //       value: 'https?://[^/]+/docs(?:/.*)?',
-      //     },
-      //   ],
-      //   destination: `${DOCS_ORIGIN}/_next/static/:path*`,
-      // },
-      // {
-      //   source: '/_next/image/:path*',
-      //   has: [
-      //     {
-      //       type: 'header',
-      //       key: 'referer',
-      //       value: 'https?://[^/]+/docs(?:/.*)?',
-      //     },
-      //   ],
-      //   destination: `${DOCS_ORIGIN}/_next/image/:path*`,
-      // },
     ]
   },
   async headers() {
