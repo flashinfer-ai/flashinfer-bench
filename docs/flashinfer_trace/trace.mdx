@@ -1,8 +1,10 @@
-# Trace
+---
+title: "Trace"
+---
 
 This document describes the JSON schema for a **Trace**.
 
-A `Trace` describes a benchmark result of a [Solution](solution.md) on a [Definition](definition.md) with a specific [Workload](workload.md). The collection of all Trace files forms the database of benchmark results.
+A `Trace` describes a benchmark result of a [Solution](/docs/flashinfer-trace/solution) on a [Definition](/docs/flashinfer-trace/definition) with a specific [Workload](/docs/flashinfer-trace/workload). The collection of all Trace files forms the database of benchmark results.
 
 In a `Trace` object, `solution` and `evaluation` are optional. If they are not provided, it describes
 a workload entry in the dataset.
@@ -18,7 +20,7 @@ In a `Trace` object, the `definition` and `solution` are externally linked throu
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
 | `definition` | string | Yes | The `name` of the `Definition` used in this run. |
-| `workload` | object | Yes | An object describing the specific input configuration for this run. See [Workload](workload.md). |
+| `workload` | object | Yes | An object describing the specific input configuration for this run. See [Workload](/docs/flashinfer-trace/workload). |
 | `solution` | string | No | The `name` of the `Solution` tested in this run. |
 | `evaluation` | object | No | An object containing the detailed results of this run. |
 

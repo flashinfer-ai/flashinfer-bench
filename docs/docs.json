@@ -1,0 +1,97 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "FlashInfer-Bench",
+  "colors": {
+    "primary": "#F21AAF",
+    "light": "#FCD1EF",
+    "dark": "#B61483"
+  },
+  "favicon": "/docs/logo/fib_mark.png",
+  "styles": {
+    "global": "/docs/styles.css"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "docs/index",
+              "docs/start/installation",
+              "docs/start/quickstart"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "docs/tutorials/bring_your_own_kernel"
+            ]
+          },
+          {
+            "group": "FlashInfer Trace",
+            "pages": [
+              "docs/flashinfer-trace/index",
+              "docs/flashinfer-trace/definition",
+              "docs/flashinfer-trace/workload",
+              "docs/flashinfer-trace/solution",
+              "docs/flashinfer-trace/trace"
+            ]
+          },
+          {
+            "group": "Op Types",
+            "pages": [
+              "docs/op-types/gemm",
+              "docs/op-types/gqa-paged",
+              "docs/op-types/gqa-ragged",
+              "docs/op-types/mla-paged",
+              "docs/op-types/rmsnorm",
+              "docs/op-types/sampling",
+              "docs/op-types/moe"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "icon": "code",
+        "href": "https://bench.flashinfer.ai/docs/api/python"
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "FlashInfer-Bench",
+          "href": "https://bench.flashinfer.ai/",
+          "icon": "rocket"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/flashinfer-ai/flashinfer-bench",
+          "icon": "github"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/docs/logo/fib-black-bg.png",
+    "dark": "/docs/logo/fib-white-bg.png"
+  },
+  "navbar": {},
+  "contextual": {
+    "options": [
+     "copy",
+     "chatgpt",
+     "mcp",
+     "cursor",
+     "vscode"
+   ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/flashinfer-ai/flashinfer-bench"
+    }
+  }
+}
