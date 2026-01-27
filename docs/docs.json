@@ -76,8 +76,8 @@
     }
   },
   "logo": {
-    "light": "logo/fib-white-bg.png",
-    "dark": "logo/fib-black-bg.png"
+    "light": "/logo/fib-white-bg.png",
+    "dark": "/logo/fib-black-bg.png"
   },
   "navbar": {},
   "contextual": {
