@@ -7,9 +7,9 @@
     "light": "#FCD1EF",
     "dark": "#B61483"
   },
-  "favicon": "logo/fib_mark.png",
+  "favicon": "/logo/fib_mark.png",
   "styles": {
-    "global": "styles.css"
+    "global": "/styles.css"
   },
   "navigation": {
     "tabs": [
@@ -27,7 +27,7 @@
           {
             "group": "Tutorials",
             "pages": [
-              "tutorials/bring_your_own_kernel"
+              "tutorials/bring-your-own-kernel"
             ]
           },
           {
@@ -76,8 +76,8 @@
     }
   },
   "logo": {
-    "light": "logo/fib-black-bg.png",
-    "dark": "logo/fib-white-bg.png"
+    "light": "logo/fib-white-bg.png",
+    "dark": "logo/fib-black-bg.png"
   },
   "navbar": {},
   "contextual": {
