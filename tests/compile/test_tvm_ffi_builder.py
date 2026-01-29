@@ -17,6 +17,7 @@ from flashinfer_bench.data import (
     SupportedLanguages,
     TensorSpec,
 )
+from flashinfer_bench.testing import requires_torch_cuda
 
 ADD_ONE_DEFINITION = Definition(
     name="add_one",
@@ -125,7 +126,7 @@ def test_cpu_add_one() -> None:
     torch.testing.assert_close(output_tensor, expected, rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.requires_torch_cuda
+@requires_torch_cuda
 def test_cuda_add_one() -> None:
     """Test building and running a simple CUDA kernel."""
     solution = Solution(
