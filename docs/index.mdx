@@ -1,27 +1,52 @@
 ---
-title: FlashInfer Bench
-description: Benchmarking and infrastructure for GPU kernel optimization.
+title: "Introduction"
+description: "Welcome to FlashInfer-Bench, the AI-for-AI infrastructure that makes LLM serving self-improving."
 ---
 
-# FlashInfer Bench
+## Try it out
 
-FlashInfer-Bench is a comprehensive benchmark and infrastructure designed to create a "virtuous cycle" where AI can automatically optimize and improve the core GPU kernels of the AI systems it runs on. It provides a systematic framework to identify performance bottlenecks, generate solutions, and deploy them immediately into production.
+Evaluate your kernel implementation using FlashInfer-Bench in minutes.
 
-- Standardized Schema: Introduces "FlashInfer Trace," a standardized format to describe GPU kernel workloads, solutions, and results.
-- Real-World Benchmarks: Datasets are curated from production-grade LLM serving traffic.
-- Seamless Deployment: Enables immediate integration of high-performance kernels into live LLM engines.
-- Performance Tracking: A public leaderboard visualizes and ranks kernel performance.
+<Card
+  title="Start here"
+  icon="rocket"
+  href="/start/quickstart"
+  horizontal
+>
+  Follow our quickstart guide.
+</Card>
 
-Useful links:
+## Concepts
 
-- FlashInfer Blog: https://flashinfer.ai/
-- GitHub: https://github.com/flashinfer-ai/flashinfer-bench/
-- Join Slack (#flashinfer-bench channel): https://join.slack.com/t/flashinfer/shared_invite/zt-379wct3hc-D5jR~1ZKQcU00WHsXhgvtA
+Key components of FlashInfer-Bench.
 
-## Next Steps
-
-- Get Started: ./start/quick_start
-- Installation: ./start/installation
-- Schema (FlashInfer Trace): ./flashinfer_trace/flashinfer_trace
-- Tutorials: ./tutorials/bring_your_own_kernel
-- API Reference: ./api/reference
+<Columns cols={2}>
+  <Card
+    title="FlashInfer Trace"
+    icon="brackets-curly"
+    href="/flashinfer-trace"
+  >
+    The standard schema for defining and benchmarking kernels. Learn about how we integrate fastest kernels into production on day-0.
+  </Card>
+  <Card
+    title="Bring your own kernel"
+    icon="puzzle-piece"
+    href="/tutorials/bring-your-own-kernel"
+  >
+    How to integrate your kernel into FlashInfer-Bench.
+  </Card>
+  <Card
+    title="Op Types"
+    icon="layer-group"
+    href="/op-types/gemm"
+  >
+    Check out the list of our supported op types.
+  </Card>
+  <Card
+    title="Read the blog post"
+    icon="stars"
+    href="https://flashinfer.ai/2025/10/21/flashinfer-bench.html"
+  >
+    Get to know more about our vision and design choices.
+  </Card>
+</Columns>
