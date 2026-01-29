@@ -1,0 +1,67 @@
+{
+  "name": "rope_h32_d128_fp8e4m3",
+  "op_type": "rope",
+  "description": "Rotary Position Embedding with 32 heads and head_dim=128 using FP8 E4M3. For FP8-quantized LLaMA-8B models.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-8b-fp8",
+    "dtype:fp8"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "num_q_heads": {
+      "type": "const",
+      "value": 32
+    },
+    "num_k_heads": {
+      "type": "var",
+      "description": "Number of key heads (may differ from query heads in GQA)"
+    },
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length"
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128
+    }
+  },
+  "inputs": {
+    "q": {
+      "shape": ["batch_size", "num_q_heads", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Query tensor in FP8"
+    },
+    "k": {
+      "shape": ["batch_size", "num_k_heads", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Key tensor in FP8"
+    },
+    "cos": {
+      "shape": ["batch_size", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Cosine positional encoding in FP8"
+    },
+    "sin": {
+      "shape": ["batch_size", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Sine positional encoding in FP8"
+    }
+  },
+  "outputs": {
+    "q_embed": {
+      "shape": ["batch_size", "num_q_heads", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Query with rotary embedding applied"
+    },
+    "k_embed": {
+      "shape": ["batch_size", "num_k_heads", "seq_len", "head_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Key with rotary embedding applied"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(q, k, cos, sin):\n    batch_size, num_q_heads, seq_len, head_dim = q.shape\n    num_k_heads = k.shape[1]\n    \n    assert num_q_heads == 32\n    assert head_dim == 128\n    \n    # Convert to float for computation\n    q_float = q.to(torch.float16)\n    k_float = k.to(torch.float16)\n    cos_float = cos.to(torch.float16)\n    sin_float = sin.to(torch.float16)\n    \n    def rotate_half(x):\n        x1 = x[..., : x.shape[-1] // 2]\n        x2 = x[..., x.shape[-1] // 2 :]\n        return torch.cat((-x2, x1), dim=-1)\n    \n    cos_float = cos_float.unsqueeze(1)\n    sin_float = sin_float.unsqueeze(1)\n    \n    q_embed = (q_float * cos_float) + (rotate_half(q_float) * sin_float)\n    k_embed = (k_float * cos_float) + (rotate_half(k_float) * sin_float)\n    \n    return q_embed.to(q.dtype), k_embed.to(k.dtype)"
+}
