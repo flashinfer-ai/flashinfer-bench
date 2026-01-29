@@ -3,7 +3,7 @@
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/logo/fib-white-bg.png">
   <source media="(prefers-color-scheme: dark)" srcset="docs/logo/fib-black-bg.png">
-  <img src="docs/logo/fib-white-bg.png" alt="logo" width="400">
+  <img src="docs/logo/fib-white-bg.png" alt="FlashInfer-Bench logo" width="400">
 </picture>
 
 
