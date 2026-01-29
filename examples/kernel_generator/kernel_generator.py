@@ -22,6 +22,59 @@ from flashinfer_bench import (
 )
 
 
+def __parse_hex_float(hex_str: str) -> float:
+
+    hex_str = hex_str.strip()
+
+    # hex float pattern: 0x[mantissa]p[exponent]
+    pattern = r"^0[xX]([0-9a-fA-F]*\.?[0-9a-fA-F]+)[pP]([+-]?\d+)$"
+    match = re.match(pattern, hex_str)
+
+    if not match:
+        raise ValueError(f"Invalid hex format: {hex_str}")
+
+    mantissa_str, exponent_str = match.groups()
+
+    if "." in mantissa_str:
+        integer_part, fractional_part = mantissa_str.split(".")
+    else:
+        integer_part = mantissa_str
+        fractional_part = ""
+
+    if integer_part:
+        mantissa_value = float(int(integer_part, 16))
+    else:
+        mantissa_value = 0.0
+
+    if fractional_part:
+        frac_value = 0.0
+        for i, digit in enumerate(fractional_part, 1):
+            frac_value += int(digit, 16) / (16**i)
+        mantissa_value += frac_value
+
+    exponent = int(exponent_str)
+
+    result = mantissa_value * (2**exponent)
+
+    return result
+
+
+def _replace_hex_floats_in_code(code: str) -> str:
+
+    hex_float_pattern = r"0[xX][0-9a-fA-F]*\.?[0-9a-fA-F]+[pP][+-]?\d+"
+
+    def replace_match(match):
+        hex_str = match.group(0)
+        try:
+            decimal_value = __parse_hex_float(hex_str)
+            return f"{decimal_value:.17g}"
+        except Exception as e:
+            print(f"Warning: Could not convert hex float {hex_str}: {e}")
+            return hex_str
+
+    return re.sub(hex_float_pattern, replace_match, code)
+
+
 class KernelGenerator:
     def __init__(
         self,
@@ -32,6 +85,7 @@ class KernelGenerator:
         base_url: Optional[str] = None,
         reasoning_effort: str = "high",  # only used for openai reasoning models
         use_ffi: bool = True,
+        destination_passing_style: bool = True,
     ):
         """
         Args:
@@ -42,12 +96,14 @@ class KernelGenerator:
             base_url: Base URL for the API (need to provide for non-openai api models)
             reasoning_effort: Reasoning effort for OpenAI reasoning models ("low", "medium", "high", default: "medium")
             use_ffi: Use FFI bindings when generating CUDA kernels.
+            destination_passing_style: Generate kernels in destination-passing style. Value-returning style if false.
         """
         self.model_name = model_name
         self.language = language
         self.target_gpu = target_gpu
         self.reasoning_effort = reasoning_effort
         self.use_ffi = use_ffi
+        self.destination_passing_style = destination_passing_style
 
         if api_key is None:
             api_key = os.getenv("LLM_API_KEY")
@@ -119,7 +175,9 @@ class KernelGenerator:
     async def _sequential_generate_async(
         self, trace_set: TraceSet, definition: Definition, selected_workload, gen_rounds: int
     ) -> Solution:
-        prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
+        prompt = get_prompt(
+            self.language, definition, self.target_gpu, self.use_ffi, self.destination_passing_style
+        )
         code_result = await self._generate_code_from_prompt(prompt)
         current_code = code_result["cleaned"]
         current_raw_code = code_result["raw"]
@@ -163,10 +221,15 @@ class KernelGenerator:
                         current_raw_code,
                         self.target_gpu,
                         self.use_ffi,
+                        self.destination_passing_style,
                     )
                 else:
                     optimization_prompt = get_prompt(
-                        self.language, definition, self.target_gpu, self.use_ffi
+                        self.language,
+                        definition,
+                        self.target_gpu,
+                        self.use_ffi,
+                        self.destination_passing_style,
                     )
 
                 print(f"Generating code for round {round_num + 1}...")
@@ -201,7 +264,9 @@ class KernelGenerator:
     ) -> Solution:
         passing_solutions: List[Tuple[Solution, Trace]] = []
 
-        prompt = get_prompt(self.language, definition, self.target_gpu, self.use_ffi)
+        prompt = get_prompt(
+            self.language, definition, self.target_gpu, self.use_ffi, self.destination_passing_style
+        )
 
         print(f"\nBeam Level 0: Generating {beam_width} initial candidates...")
         code_results = await asyncio.gather(
@@ -263,6 +328,7 @@ class KernelGenerator:
                     beam_item["raw_code"],
                     self.target_gpu,
                     self.use_ffi,
+                    self.destination_passing_style,
                 )
                 for beam_item in beam
             ]
@@ -393,43 +459,62 @@ class KernelGenerator:
 
         return files
 
+    def _extract_code_from_markdown(self, text: str) -> str:
+        code_block_pattern = r"```(?:python|triton|py|cuda|cpp|c\+\+)?\s*\n(.*?)```"
+
+        matches = re.findall(code_block_pattern, text, re.DOTALL | re.IGNORECASE)
+
+        if matches:
+            extracted_code = "\n\n".join(match.strip() for match in matches)
+            return extracted_code
+
+        # detect raw code in case no markdown
+        stripped = text.strip()
+        python_start_patterns = [
+            r"^import\s",
+            r"^from\s+\w+\s+import",
+            r"^#.*\n",
+            r'^"""',
+            r"^'''",
+            r"^@",
+            r"^def\s",
+            r"^class\s",
+        ]
+
+        for pattern in python_start_patterns:
+            if re.match(pattern, stripped):
+                return stripped
+
+        code_start_indicators = ["\nimport ", "\nfrom ", "\n@triton", "\ndef ", "\nclass "]
+
+        for indicator in code_start_indicators:
+            idx = text.find(indicator)
+            if idx != -1:
+                potential_code = text[idx + 1 :].strip()
+                if not potential_code.endswith((".", "!", "?")):
+                    return potential_code
+
+        return stripped
+
     def _clean_generated_code(self, code: str) -> str:
         if self.language.lower() == "cuda":
             return self._parse_xml_files(code)
 
+        code = self._extract_code_from_markdown(code)
+
         if "```" in code:
-            if code.startswith("```"):
-                lines = code.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                code = "\n".join(lines)
+            lines = code.split("\n")
+            cleaned_lines = []
+            for line in lines:
+                stripped = line.strip()
+                # Skip lines that are just code block markers
+                if stripped == "```" or re.match(r"^```\w*$", stripped):
+                    continue
+                cleaned_lines.append(line)
+            code = "\n".join(cleaned_lines)
 
-            if code.endswith("```"):
-                lines = code.split("\n")
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                code = "\n".join(lines)
-
-            code = code.replace("```", "")
-
-        hex_float_pattern = r"0x[0-9a-fA-F]*\.[0-9a-fA-F]*p[-+]?\d+"
-        hex_floats = re.findall(hex_float_pattern, code)
-
-        for hex_float in hex_floats:
-            try:
-                if hex_float == "0x1.62e42fefa39efp-1":
-                    decimal_val = "0.6931471805599453"
-                elif hex_float == "0x1.71547652b82fep0":
-                    decimal_val = "2.718281828459045"
-                elif hex_float == "0x1.921fb54442d18p1":
-                    decimal_val = "3.141592653589793"
-                else:
-                    decimal_val = "1.0"
-
-                code = code.replace(hex_float, decimal_val)
-            except Exception as e:
-                print(f"Warning: Could not convert hex float {hex_float}: {e}")
-                code = code.replace(hex_float, "1.0")
+        # Convert hexadecimal float literals to decimal (Triton/Python don't support them)
+        code = _replace_hex_floats_in_code(code)
 
         return code
 
@@ -486,6 +571,7 @@ class KernelGenerator:
                 language=self._get_supported_language(),
                 target_hardware=[self.target_gpu],
                 entry_point=entry_point,
+                destination_passing_style=self.destination_passing_style,
             ),
             sources=sources,
             description=solution_description,
