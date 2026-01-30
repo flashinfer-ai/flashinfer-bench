@@ -1,12 +1,14 @@
-# Workload
+---
+title: "Workload"
+---
 
 ## Overview
 
 This document describes the JSON schema for a **Workload**.
 
-A `Workload` defines a concrete, executable instance of a [Definition](definition.md) by binding specific values to all variable axes and specifying the data source for all inputs. It represents the exact configuration under which a `Solution` is benchmarked.
+A `Workload` defines a concrete, executable instance of a [Definition](/docs/flashinfer-trace/definition) by binding specific values to all variable axes and specifying the data source for all inputs. It represents the exact configuration under which a `Solution` is benchmarked.
 
-**Storage Format:** In the FlashInfer-Bench dataset, a standalone Workload is stored using the [Trace](trace.md) data structure with only the `definition` and `workload` fields populated, while `solution` and `evaluation` are set to `null`.
+**Storage Format:** In the FlashInfer-Bench dataset, a standalone Workload is stored using the [Trace](/docs/flashinfer-trace/trace) data structure with only the `definition` and `workload` fields populated, while `solution` and `evaluation` are set to `null`.
 
 In FlashInfer Trace dataset, all workloads of the same definition are stored in a single JSONL file where each line is a `Workload` object.
 

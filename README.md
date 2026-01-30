@@ -1,6 +1,11 @@
 <div align="center" id="top">
 
-<img src="web/packages/ui/src/brand/fib_logo.png" alt="logo" width="400" margin="10px"></img>
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/logo/fib-white-bg.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo/fib-black-bg.png">
+  <img src="docs/logo/fib-white-bg.png" alt="FlashInfer-Bench logo" width="400">
+</picture>
+
 
 [![Documentation](https://img.shields.io/badge/docs-latest-green)](https://bench.flashinfer.ai/docs/)
 [![License](https://img.shields.io/badge/license-apache_2-blue)](https://github.com/flashinfer-ai/flashinfer-bench/blob/main/LICENCE)
