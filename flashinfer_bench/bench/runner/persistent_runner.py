@@ -643,6 +643,15 @@ class PersistentRunner(Runner):
 
         return results
 
+    def close(self) -> None:
+        """Release all resources and terminate all worker processes."""
+        for worker in self._workers:
+            try:
+                worker.close()
+            except Exception as e:
+                logger.warning(f"Failed to close worker for device {worker._device}: {e}")
+        self._workers.clear()
+
 
 def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir: str) -> None:
     """Long-lived worker process that handles solution evaluations.
