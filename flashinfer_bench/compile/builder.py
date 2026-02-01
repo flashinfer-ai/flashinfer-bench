@@ -163,22 +163,23 @@ class Builder(ABC):
             for p in params
         )
 
-        if solution.spec.destination_passing_style:
-            expected = len(definition.inputs) + len(definition.outputs)
-            style = "Destination-passing"
-        else:
-            expected = len(definition.inputs)
-            style = "Value-returning"
+        dps = solution.spec.destination_passing_style
+        expected_nparam = (
+            len(definition.inputs) + len(definition.outputs) if dps else len(definition.inputs)
+        )
 
         if has_var_positional:
-            if num_params > expected:
+            if num_params > expected_nparam:
+                style = "Destination-passing" if dps else "Value-returning"
                 raise BuildError(
-                    f"{style} style callable: expected {expected} parameters, "
+                    f"{style} style callable: expected {expected_nparam} parameters, "
                     f"but got at least {num_params}"
                 )
-        elif num_params != expected:
+        elif num_params != expected_nparam:
+            style = "Destination-passing" if dps else "Value-returning"
             raise BuildError(
-                f"{style} style callable: expected {expected} parameters, " f"but got {num_params}"
+                f"{style} style callable: expected {expected_nparam} parameters, but got "
+                f"{num_params}"
             )
 
         # Check return annotation (only for value-returning style)
