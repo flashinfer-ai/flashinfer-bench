@@ -215,11 +215,15 @@ def run(args: argparse.Namespace):
         resume = getattr(args, "resume", False)
         if resume:
             logger.info("Resume mode enabled: will skip already evaluated solutions")
-            if not args.save_results:
-                logger.warning(
-                    "Resume mode is enabled but --save-results is False. New results will not be saved!"
-                )
-        benchmark.run_all(args.save_results, resume=resume)
+
+        try:
+            benchmark.run_all(args.save_results, resume=resume)
+        except Exception:
+            logger.exception("Benchmark run failed")
+            raise
+        finally:
+            benchmark.close()
+
         message = "Benchmark run complete."
         if args.save_results:
             message += " Results saved."

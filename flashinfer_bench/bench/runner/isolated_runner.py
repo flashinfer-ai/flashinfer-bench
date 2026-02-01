@@ -496,3 +496,9 @@ class IsolatedRunner(Runner):
                     r.release(baselines[r])
 
         return results
+
+    def close(self) -> None:
+        """Release all resources and terminate worker processes."""
+        for worker in self._workers:
+            worker.close()
+        self._workers.clear()
