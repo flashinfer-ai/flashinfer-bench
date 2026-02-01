@@ -154,6 +154,10 @@ For `cpp` and `cuda` languages, the source code must be compiled. Use the `bindi
   "spec": {
     "language": "triton",
     "target_hardware": ["NVIDIA_H100"],
+    "dependencies": [
+      "triton >= 2.3",
+      "torch"
+    ],
     "entry_point": "main.py::run",
     "destination_passing_style": false
   },
