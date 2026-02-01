@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import shutil
 import sys
 from pathlib import Path
@@ -13,8 +12,6 @@ from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 from flashinfer_bench.compile.utils import write_sources_to_path
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
-
-logger = logging.getLogger(__name__)
 
 
 class PythonBuilder(Builder):
