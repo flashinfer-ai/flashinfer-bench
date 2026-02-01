@@ -43,12 +43,13 @@ This object details the build requirements and properties of the source code.
 | `entry_point` | string | Yes | The exact path to the function to be called. Format: `{file_path}::{function_name}` (e.g. `main.py::run`). |
 | `destination_passing_style` | bool | No | If `true` (default), outputs are passed as last arguments. If `false`, outputs are returned. See [Destination Passing Style](#destination-passing-style-dps). |
 | `binding` | string | No | Binding type for C++/CUDA solutions: `tvm-ffi` (default) or `torch`. Ignored for Python/Triton. See [Language-Specific Guidelines](#language-specific-guidelines). |
-| `dependencies` | array | No | *(Not functional yet)* A list of required libraries or toolchains. |
+| `dependencies` | array | No | A list of required libraries or toolchains. |
 
-<!--
+
 ### Dependencies Handling
 
-> **Note:** This feature is not yet implemented. The `dependencies` field is currently ignored.
+> **Note:** The `dependencies` field is currently only for semantic purposes and is not enforced.
+The support for dependencies is coming soon.
 
 The `dependencies` field is an array of strings declaring third-party packages needed to build/run the solution. In particular, we're handling the third-party CUDA libs and Python packages:
 
@@ -64,7 +65,7 @@ The `dependencies` field is an array of strings declaring third-party packages n
   Example: `torch`, `triton >= 2.3` → the builder validates the current environment for these packages and versions.
 
 This field is optional. In all other cases, we proceed the solution building best-effort.
--->
+
 
 ## Destination Passing Style (DPS)
 
