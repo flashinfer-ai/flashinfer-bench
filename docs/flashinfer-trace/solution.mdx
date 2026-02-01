@@ -92,7 +92,7 @@ def run(input, weight):
 
 **When to use which:**
 - **DPS (`true`)**: Preferred for performance-critical code. Avoids output allocation overhead.
-- **Value-returning (`false`)**: Simpler to write. Useful when output shape depends on computation.
+- **Value-returning (`false`)**: Simpler to write and don't need to manually allocate outputs.
 
 ## Language-Specific Guidelines
 
