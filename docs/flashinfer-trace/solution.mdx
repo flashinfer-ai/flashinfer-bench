@@ -57,14 +57,9 @@ The `dependencies` field is an array of strings declaring third-party packages n
 
   Example: `CUTLASS_3_7` → the builder injects CUTLASS 3.7 headers paths during compilation.
 
-  Supported dependencies:
-  (TODO)
-
-- Python libs: You may list package specifiers, but we do not manage Python package installs currently. We only validate against the current environment. If a listed lib/version isn't satisfied, the build fails fast with a compile error.
+- Python libs: You may list package specifiers, but we do not manage Python package installs currently. We only validate against the current environment. If a listed lib/version isn't satisfied, the build fails fast with a validation error.
 
   Example: `torch`, `triton >= 2.3` → the builder validates the current environment for these packages and versions.
-
-This field is optional. In all other cases, we proceed the solution building best-effort.
 
 
 ## Destination Passing Style (DPS)
@@ -92,7 +87,7 @@ def run(input, weight):
 
 **When to use which:**
 - **DPS (`true`)**: Preferred for performance-critical code. Avoids output allocation overhead.
-- **Value-returning (`false`)**: Simpler to write and don't need to manually allocate outputs.
+- **Value-returning (`false`)**: Simpler to write and doesn't need to manually allocate outputs.
 
 ## Language-Specific Guidelines
 
@@ -102,11 +97,11 @@ For `python` and `triton` languages, the entry point is a Python function.
 
 **Signature requirements:**
 - Parameter names must exactly match the keys in `Definition.inputs` (and `Definition.outputs` for DPS).
-- The function is called with **keyword arguments**.
+- The function is called with **positional arguments**.
 
 **Parameter handling:**
-- `**kwargs`: Ignored in signature validation. Allows receiving extra keyword arguments.
-- `*args`: Enables range matching (required params ≤ expected). Useful for flexible signatures.
+- `*args`: Useful for flexible number of parameters. It requires (required params ≤ expected).
+- `**kwargs`: Ignored in signature validation.
 
 **Example (Triton with value-returning):**
 
