@@ -69,7 +69,7 @@ For each definition, locate ground truth implementation using this priority orde
 
 #### For Model Constants: HuggingFace + SGLang (Required)
 
-**Note**: See [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md#for-model-constants-huggingface-model-page--sglang-model-config-required) for detailed guidance on sourcing model constants from HuggingFace and SGLang.
+**Note**: See [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md#for-model-constants-huggingface--sglang-required) for detailed guidance on sourcing model constants from HuggingFace and SGLang.
 
 #### For Ground Truth Execution: FlashInfer API (Primary)
 - **When**: FlashInfer has the kernel implementation (MOST kernels)
