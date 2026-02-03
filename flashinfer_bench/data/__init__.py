@@ -8,7 +8,7 @@ from .json_utils import (
     save_json_file,
     save_jsonl_file,
 )
-from .solution import BuildSpec, Solution, SourceFile, SupportedLanguages
+from .solution import BuildSpec, Solution, SourceFile, SupportedBindings, SupportedLanguages
 from .trace import Correctness, Environment, Evaluation, EvaluationStatus, Performance, Trace
 from .trace_set import TraceSet
 from .workload import InputSpec, RandomInput, SafetensorsInput, ScalarInput, Workload
@@ -23,6 +23,7 @@ __all__ = [
     # Solution types
     "SourceFile",
     "BuildSpec",
+    "SupportedBindings",
     "SupportedLanguages",
     "Solution",
     # Workload types

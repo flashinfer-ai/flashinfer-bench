@@ -10,6 +10,22 @@ from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
 from flashinfer_bench.logging import configure_logging, get_logger
 
 logger = get_logger("CLI")
+pkg_name = __name__.split(".")[0]
+
+
+def cli_config_logging(args: argparse.Namespace):
+    """Configure logging for the CLI. Now we have two set of loggers:
+    - package logger: obtained by logging.getLogger(__name__)
+    - custom logger: obtained by get_logger("ModuleName")
+
+    In the future we will deprecate the custom logger and use the package logger only.
+    Now we need to configure both loggers to the same level.
+    """
+    log_level = getattr(args, "log_level", "WARNING")
+    pkg_logger = logging.getLogger(pkg_name)
+    pkg_logger.setLevel(log_level)
+    pkg_logger.addHandler(logging.StreamHandler())
+    configure_logging(level=log_level)
 
 
 def best(args: argparse.Namespace):
@@ -193,17 +209,22 @@ def run(args: argparse.Namespace):
             definitions=args.definitions,
             solutions=args.solutions,
             timeout_seconds=args.timeout,
+            required_matched_ratio=args.required_matched_ratio,
         )
         benchmark = Benchmark(trace_set, config)
-        logger.info(f"Running benchmark for: {path}")
+        logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
         resume = getattr(args, "resume", False)
         if resume:
             logger.info("Resume mode enabled: will skip already evaluated solutions")
-            if not args.save_results:
-                logger.warning(
-                    "Resume mode is enabled but --save-results is False. New results will not be saved!"
-                )
-        benchmark.run_all(args.save_results, resume=resume)
+
+        try:
+            benchmark.run_all(args.save_results, resume=resume)
+        except Exception:
+            logger.exception("Benchmark run failed")
+            raise
+        finally:
+            benchmark.close()
+
         message = "Benchmark run complete."
         if args.save_results:
             message += " Results saved."
@@ -251,6 +272,12 @@ def cli():
     )
     run_parser.add_argument(
         "--atol", type=float, default=1e-2, help="Absolute tolerance for correctness checks"
+    )
+    run_parser.add_argument(
+        "--required-matched-ratio",
+        type=float,
+        default=None,
+        help="Required ratio of elements within tolerance. Overrides evaluator default (0.95 for low-bit).",
     )
     run_parser.add_argument(
         "--log-level",
@@ -359,8 +386,9 @@ def cli():
     visualize_parser.set_defaults(func=visualize)
 
     args = parser.parse_args()
-    formatter = logging.Formatter("%(message)s")
-    configure_logging(level=getattr(args, "log_level", "INFO"), formatter=formatter)
+
+    cli_config_logging(args)
+
     if hasattr(args, "func"):
         args.func(args)
     else:

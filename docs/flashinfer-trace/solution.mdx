@@ -8,6 +8,8 @@ This document describes the schema for a workload **Solution**.
 
 The `Solution` provides a concrete, high-performance implementation for a given [Definition](/docs/flashinfer-trace/definition). Each `Solution` is a self-contained entry submitted by community members or autonomous agents, encapsulating the source code and all metadata required for building, interfacing, and benchmarking. The `Solution` will be benchmarked to collect evaluation statistics to be stored in a [Trace object](/docs/flashinfer-trace/trace).
 
+> **Tip:** Visit [FlashInfer Bench Viewer](https://bench.flashinfer.ai/viewer) to see formatted code and visualized JSON for existing solutions.
+
 ## JSON Schema Description
 
 ### Top-Level Object Structure
@@ -30,18 +32,24 @@ The `sources` array contains any number of file objects, where each object repre
 | `path` | string | Yes | The relative path of the file, including its name and extension (e.g., `src/kernel.cu`, `main.py`). |
 | `content` | string | Yes | The complete text content of the source file. |
 
-### `spec` : Technical Specifications
+### `spec` : Build Specification
 
-This object details the technical requirements and properties of the source code.
+This object details the build requirements and properties of the source code.
 
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
-| `language` | string | Yes | The primary programming language (e.g.,`Triton`,`CUDA`). The source code should always launched from Python. |
-| `target_hardware` | array | Yes | A list of hardware architectures this is compatible with (e.g.,`NVIDIA_H100`, `NVIDIA_B200`). |
+| `language` | string | Yes | The primary programming language: `python`, `triton`, `cpp`, or `cuda`. |
+| `target_hardware` | array | Yes | A list of hardware architectures this is compatible with (e.g., `NVIDIA_H100`, `NVIDIA_B200`). |
+| `entry_point` | string | Yes | The exact path to the function to be called. Format: `{file_path}::{function_name}` (e.g. `main.py::run`). |
+| `destination_passing_style` | bool | No | If `true` (default), outputs are passed as last arguments. If `false`, outputs are returned. See [Destination Passing Style](#destination-passing-style-dps). |
+| `binding` | string | No | Binding type for C++/CUDA solutions: `tvm-ffi` (default) or `torch`. Ignored for Python/Triton. See [Language-Specific Guidelines](#language-specific-guidelines). |
 | `dependencies` | array | No | A list of required libraries or toolchains. |
-| `entry_point` | string | Yes | The exact path to the function to be called. Format should be `{file_path}::{function_name}` (e.g. `main.py::run`). |
+
 
 ### Dependencies Handling
+
+> **Note:** The `dependencies` field is currently only for semantic purposes and is not enforced.
+The support for dependencies is coming soon.
 
 The `dependencies` field is an array of strings declaring third-party packages needed to build/run the solution. In particular, we're handling the third-party CUDA libs and Python packages:
 
@@ -49,22 +57,86 @@ The `dependencies` field is an array of strings declaring third-party packages n
 
   Example: `CUTLASS_3_7` → the builder injects CUTLASS 3.7 headers paths during compilation.
 
-  Supported dependencies:
-  (TODO)
-
-- Python libs: You may list package specifiers, but we do not manage Python package installs currently. We only validate against the current environment. If a listed lib/version isn’t satisfied, the build fails fast with a compile error.
+- Python libs: You may list package specifiers, but we do not manage Python package installs currently. We only validate against the current environment. If a listed lib/version isn't satisfied, the build fails fast with a validation error.
 
   Example: `torch`, `triton >= 2.3` → the builder validates the current environment for these packages and versions.
 
-This field is optional. In all other cases, we proceed the solution building best-effort.
 
-### Signature and Naming Convention
+## Destination Passing Style (DPS)
 
-The schema enforces a strict naming convention to eliminate ambiguity. The function specified in `spec.entry_point` **must accept arguments whose names exactly match the keys in the `inputs` and `outputs` objects of the corresponding `Definition`**.
+The `destination_passing_style` field controls how outputs are handled:
 
-- **For JIT-compiled languages like Triton**, the `source` code should provide a Python launcher function as the `entry_point`. This launcher function must have a signature that strictly matches the workload's defined names and will be called using keyword arguments.
-- **For AOT-compiled languages like CUDA**, the `source` should ideally include a C++ host-side launcher function and be provided through `entry_point` with the required named-argument signature.
-- CUDA solutions must provide a C/CUDA symbol as `entry_point`. If user prefer providing their own Python wrapper, set language to `python` and ensure compilation and binding are properly handled.
+| Style | `destination_passing_style` | Signature | Description |
+| --- | --- | --- | --- |
+| **DPS** | `true` (default) | `run(input1, input2, ..., output1, output2, ...)` | Outputs are pre-allocated and passed as the last arguments. The function writes results in-place. |
+| **Value-returning** | `false` | `run(input1, input2, ...) -> output` | The function allocates and returns the output tensor(s). |
+
+**Example comparison:**
+
+```python
+# DPS (destination_passing_style: true)
+def run(input, weight, output):
+    # output is pre-allocated, write results in-place
+    output[:] = normalize(input, weight)
+
+# Value-returning (destination_passing_style: false)
+def run(input, weight):
+    # allocate and return the result
+    return normalize(input, weight)
+```
+
+**When to use which:**
+- **DPS (`true`)**: Preferred for performance-critical code. Avoids output allocation overhead.
+- **Value-returning (`false`)**: Simpler to write and doesn't need to manually allocate outputs.
+
+## Language-Specific Guidelines
+
+### Python / Triton
+
+For `python` and `triton` languages, the entry point is a Python function.
+
+**Signature requirements:**
+- Parameter names must exactly match the keys in `Definition.inputs` (and `Definition.outputs` for DPS).
+- The function is called with **positional arguments**.
+
+**Parameter handling:**
+- `*args`: Useful for flexible number of parameters. It requires (required params ≤ expected).
+- `**kwargs`: Ignored in signature validation.
+
+**Example (Triton with value-returning):**
+
+```python
+def run(input, weight, **kwargs):
+    # **kwargs is allowed and ignored in validation
+    output = torch.empty_like(input)
+    _triton_kernel[grid](input, weight, output, ...)
+    return output
+```
+
+### C++ / CUDA
+
+For `cpp` and `cuda` languages, the source code must be compiled. Use the `binding` field to specify how to interface with Python:
+
+| Binding | Description | Use Case |
+| --- | --- | --- |
+| `tvm-ffi` | TVM-FFI binding with DLPack interop. Framework-agnostic. | **Preferred** for most C++/CUDA solutions. |
+| `torch` | PyTorch C++/CUDA extension via `torch.utils.cpp_extension`. | When PyTorch-specific features are needed. |
+
+**Entry point:** The `entry_point` should reference a C/C++ function symbol that will be exposed to Python.
+
+**Example spec for CUDA:**
+
+```json
+{
+  "language": "cuda",
+  "target_hardware": ["NVIDIA_H100"],
+  "entry_point": "kernel.cu::my_kernel",
+  "binding": "tvm-ffi",
+  "destination_passing_style": true
+}
+```
+
+## Examples
 
 ### Example: Triton Implementation for GEMM
 
@@ -72,23 +144,22 @@ The schema enforces a strict naming convention to eliminate ambiguity. The funct
 {
   "name": "gemm_triton_h100_v1",
   "definition": "gemm",
-  "description": "A high-performance GEMM implementation (C = A @ B.T) using Triton. Generated by one-shot inquiry with Gemini-2.5-Pro.",
+  "description": "A high-performance GEMM implementation (C = A @ B.T) using Triton.",
   "author": "gemini-2.5-pro-mystery-agent",
   "spec": {
     "language": "triton",
-    "target_hardware": [
-      "NVIDIA_H100"
-    ],
+    "target_hardware": ["NVIDIA_H100"],
     "dependencies": [
       "triton >= 2.3",
       "torch"
     ],
-    "entry_point": "main.py::run"
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
   },
   "sources": [
     {
       "path": "main.py",
-      "content": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.autotune(\n    configs=[\n        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),\n        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8)\n    ],\n    key=['M', 'N', 'K'],\n)\n@triton.jit\ndef _gemm_kernel(\n    A, B, C, M, N, K, stride_am, stride_ak, stride_bn, stride_bk, stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr\n):\n    # ... (Triton kernel logic as before)\n    pid = tl.program_id(axis=0)\n    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)\n    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)\n    num_pid_in_group = GROUP_SIZE_M * num_pid_n\n    group_id = pid // num_pid_in_group\n    first_pid_m = group_id * GROUP_SIZE_M\n    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)\n    pid_m = first_pid_m + (pid % group_size_m)\n    pid_n = (pid % num_pid_in_group) // group_size_m\n\n    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]\n    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = A + (offs_am * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = B + (offs_bn * stride_bn + offs_k[:, None] * stride_bk)\n\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):\n        a = tl.load(a_ptrs)\n        b = tl.load(b_ptrs)\n        accumulator += tl.dot(a, b)\n        a_ptrs += BLOCK_SIZE_K * stride_ak\n        b_ptrs += BLOCK_SIZE_K * stride_bk\n    c = accumulator.to(C.dtype.element_ty)\n\n    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)\n    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]\n    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)\n    tl.store(c_ptrs, c, mask=c_mask)\n\ndef run(A, B):\n    M, K = A.shape\n    N, _ = B.shape\n    C = torch.empty((M, N), device=A.device, dtype=A.dtype)\n    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )\n    _gemm_kernel[grid](A, B, C, M, N, K, A.stride(0), A.stride(1), B.stride(0), B.stride(1), C.stride(0), C.stride(1))\n    return C"
+      "content": "import torch\nimport triton\nimport triton.language as tl\n\n@triton.autotune(\n    configs=[\n        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),\n        triton.Config({'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8)\n    ],\n    key=['M', 'N', 'K'],\n)\n@triton.jit\ndef _gemm_kernel(\n    A, B, C, M, N, K, stride_am, stride_ak, stride_bn, stride_bk, stride_cm, stride_cn, BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr\n):\n    pid = tl.program_id(axis=0)\n    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)\n    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)\n    num_pid_in_group = GROUP_SIZE_M * num_pid_n\n    group_id = pid // num_pid_in_group\n    first_pid_m = group_id * GROUP_SIZE_M\n    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)\n    pid_m = first_pid_m + (pid % group_size_m)\n    pid_n = (pid % num_pid_in_group) // group_size_m\n\n    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]\n    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]\n    offs_k = tl.arange(0, BLOCK_SIZE_K)\n    a_ptrs = A + (offs_am * stride_am + offs_k[None, :] * stride_ak)\n    b_ptrs = B + (offs_bn * stride_bn + offs_k[:, None] * stride_bk)\n\n    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)\n    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):\n        a = tl.load(a_ptrs)\n        b = tl.load(b_ptrs)\n        accumulator += tl.dot(a, b)\n        a_ptrs += BLOCK_SIZE_K * stride_ak\n        b_ptrs += BLOCK_SIZE_K * stride_bk\n    c = accumulator.to(C.dtype.element_ty)\n\n    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)\n    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)\n    c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]\n    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)\n    tl.store(c_ptrs, c, mask=c_mask)\n\ndef run(A, B):\n    M, K = A.shape\n    N, _ = B.shape\n    C = torch.empty((M, N), device=A.device, dtype=A.dtype)\n    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )\n    _gemm_kernel[grid](A, B, C, M, N, K, A.stride(0), A.stride(1), B.stride(0), B.stride(1), C.stride(0), C.stride(1))\n    return C"
     }
   ]
 }
@@ -100,20 +171,17 @@ The schema enforces a strict naming convention to eliminate ambiguity. The funct
 {
   "name": "rmsnorm_triton_v1",
   "definition": "rmsnorm",
-  "description": "A high-performance RMSNorm implementation using Triton. Generated by one-shot inquiry with Gemini-2.5-Pro.",
+  "description": "A high-performance RMSNorm implementation using Triton.",
   "author": "gemini-2.5-pro-mystery-agent",
   "spec": {
     "language": "triton",
-    "target_hardware": [
-      "NVIDIA_H100",
-      "NVIDIA_A100",
-      "NVIDIA_B200"
-    ],
+    "target_hardware": ["NVIDIA_H100", "NVIDIA_A100", "NVIDIA_B200"],
     "dependencies": [
       "triton >= 2.3",
       "torch"
     ],
-    "entry_point": "main.py::run"
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
   },
   "sources": [
     {
