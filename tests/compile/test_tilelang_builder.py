@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -33,9 +32,9 @@ def gemm_definition() -> Definition:
 @pytest.fixture
 def tilelang_gemm_solution() -> Solution:
     """TileLang GEMM solution for testing. Adapted from TileLang's GEMM example.
-    https://github.com/tile-ai/tilelang/tree/main/examples """
+    https://github.com/tile-ai/tilelang/tree/main/examples"""
 
-    kernel_code = '''import torch
+    kernel_code = """import torch
 import tilelang
 import tilelang.language as T
 
@@ -68,9 +67,9 @@ def run(A, B):
     M, K = A.shape
     N, _ = B.shape
 
-    kernel = matmul_kernel(M, N, K, 128, 128, 64, T.float16) 
+    kernel = matmul_kernel(M, N, K, 128, 128, 64, T.float16)
     return kernel(A, B)
-'''
+"""
 
     solution_json = {
         "name": "gemm_n128_k2048_tilelang_v1",
@@ -91,16 +90,16 @@ def run(A, B):
 
 @pytest.mark.requires_torch_cuda
 def test_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    import builtins
+    import importlib.util
 
-    original_import = builtins.__import__
+    original_find_spec = importlib.util.find_spec
 
-    def mock_import(name, *args, **kwargs):
+    def mock_find_spec(name, package=None):
         if name == "tilelang":
-            raise ImportError("Mocked: tilelang not available")
-        return original_import(name, *args, **kwargs)
+            return None
+        return original_find_spec(name, package)
 
-    monkeypatch.setattr(builtins, "__import__", mock_import)
+    monkeypatch.setattr(importlib.util, "find_spec", mock_find_spec)
 
     assert not TileLangBuilder.is_available()
 

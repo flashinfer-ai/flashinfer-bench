@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import ClassVar
 
-from flashinfer_bench.compile.builder import Builder
 from flashinfer_bench.compile.runnable import Runnable
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
 
@@ -26,7 +26,7 @@ class TileLangBuilder(PythonBuilder):
     """Subdirectory under FIB_CACHE_PATH where build results are stored"""
 
     def __init__(self) -> None:
-        Builder.__init__(self, self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
+        super().__init__()
 
     @staticmethod
     def is_available() -> bool:
@@ -37,11 +37,7 @@ class TileLangBuilder(PythonBuilder):
         bool
             True if TileLang is installed, False otherwise.
         """
-        try:
-            import tilelang
-        except ImportError:
-            return False
-        return True
+        return importlib.util.find_spec("tilelang") is not None
 
     def can_build(self, solution: Solution) -> bool:
         """Check if this builder can build the given solution.
