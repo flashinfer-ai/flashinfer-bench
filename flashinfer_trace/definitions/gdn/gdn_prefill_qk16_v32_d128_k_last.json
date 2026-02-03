@@ -17,18 +17,18 @@
     },
     "num_q_heads": {
       "type": "const",
-      "value": 16,
-      "description": "Number of query heads (same as key heads in GVA mode)."
+      "value": 4,
+      "description": "Number of query heads (same as key heads in GVA mode, TP=4)."
     },
     "num_k_heads": {
       "type": "const",
-      "value": 16,
-      "description": "Number of key heads."
+      "value": 4,
+      "description": "Number of key heads (TP=4)."
     },
     "num_v_heads": {
       "type": "const",
-      "value": 32,
-      "description": "Number of value heads (GVA: more value heads than query heads)."
+      "value": 8,
+      "description": "Number of value heads (GVA: more value heads than query heads, TP=4)."
     },
     "head_size": {
       "type": "const",
