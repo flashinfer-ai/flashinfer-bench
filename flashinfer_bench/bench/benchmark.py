@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
-from typing import List
+from typing import List, Set, Tuple
 
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import EvaluationStatus, Trace, TraceSet
-from flashinfer_bench.logging import get_logger
 
 from .config import BenchmarkConfig
 from .runner import IsolatedRunner, PersistentRunner
 
-logger = get_logger("Benchmark")
+logger = logging.getLogger(__name__)
 
 
 class Benchmark:
@@ -42,13 +42,14 @@ class Benchmark:
         self._trace_set = trace_set
         self._config = config if config is not None else BenchmarkConfig()
 
-        if self._config.use_isolated_runner:
-            self._runner = IsolatedRunner(logger, self._config.log_dir)
-        else:
-            self._runner = PersistentRunner(logger, self._config.log_dir)
-
         # Setup registry
         self._registry = BuilderRegistry.get_instance()
+
+        # Create runner
+        if self._config.use_isolated_runner:
+            self._runner = IsolatedRunner(self._config.log_dir)
+        else:
+            self._runner = PersistentRunner(self._config.log_dir)
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.
@@ -105,7 +106,7 @@ class Benchmark:
 
             logger.info(f"Processing definition: {def_name} with {len(sols)} solutions")
 
-            existing_traces = set()  # (workload_uuid, solution_name)
+            existing_traces: Set[Tuple[str, str]] = set()  # (workload_uuid, solution_name)
             if resume:
                 existing_def_traces = self._trace_set.traces.get(def_name, [])
                 for trace in existing_def_traces:
@@ -183,3 +184,7 @@ class Benchmark:
         )
 
         return result_trace_set
+
+    def close(self) -> None:
+        """Release all resources held by the benchmark runner."""
+        self._runner.close()
