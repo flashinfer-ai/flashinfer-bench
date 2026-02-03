@@ -443,15 +443,11 @@ self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
 
 When extracting kernel definitions, use different sources for different purposes:
 
-### For Model Constants: SGLang Model Config (Required)
-- **Location**: `tmp/sglang/python/sglang/srt/models/{model_name}.py`
-- **Use for**: Extracting model-specific constant values
-- **Examples**:
-  - `num_attention_heads`, `num_key_value_heads`, `head_dim`
-  - `hidden_size`, `intermediate_size`
-  - `num_experts`, `topk`, `n_group`, `topk_group`
-  - `page_size` (from SGLang's paged attention configuration)
-- **Important**: Always align constants with SGLang's model config to ensure compatibility
+### For Model Constants: HuggingFace + SGLang (Required)
+
+**IMPORTANT**: Always refer to the HuggingFace model page first (`https://huggingface.co/{org}/{model-name}`) for authoritative model constants when creating definitions for new kernels. Download `config.json` from the model repo for values like `hidden_size`, `num_experts`, `topk`, etc.
+
+Use SGLang (`tmp/sglang/python/sglang/srt/models/{model_name}.py`) for runtime-specific constants like `page_size` and tensor parallel configurations (e.g. `num_attention_heads`, `num_local_experts`).
 
 ### For Reference `run()` Implementation: FlashInfer Unit Tests (PRIMARY - ALWAYS CHECK FIRST)
 - **When**: FlashInfer has a kernel implementation and corresponding unit test **(CHECK THIS FIRST)**

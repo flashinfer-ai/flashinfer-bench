@@ -67,14 +67,9 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
 
 For each definition, locate ground truth implementation using this priority order:
 
-#### For Model Constants: SGLang Model Config (Required)
-- **Location**: `tmp/sglang/python/sglang/srt/models/{model_name}.py`
-- **Use for**: Extracting and validating model-specific constant values
-- **Examples**:
-  - `num_attention_heads`, `num_key_value_heads`, `head_dim`
-  - `hidden_size`, `intermediate_size`
-  - `num_experts`, `topk`, `n_group`, `topk_group`
-- **Important**: Test constants must match SGLang model config
+#### For Model Constants: HuggingFace + SGLang (Required)
+
+**Note**: See [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md#for-model-constants-huggingface-model-page--sglang-model-config-required) for detailed guidance on sourcing model constants from HuggingFace and SGLang.
 
 #### For Ground Truth Execution: FlashInfer API (Primary)
 - **When**: FlashInfer has the kernel implementation (MOST kernels)
