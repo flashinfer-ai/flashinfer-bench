@@ -481,6 +481,8 @@ const models: Model[] = [
           "gdn_decode_qk16_v32_d128_k_last",
           "gdn_prefill_qk16_v32_d128_v_last",
           "gdn_decode_qk16_v32_d128_v_last",
+          "gdn_mtp_qk16_v32_d128_k_last",
+          "gdn_mtp_qk16_v32_d128_v_last",
         ],
       },
       o_proj_gdn: {
