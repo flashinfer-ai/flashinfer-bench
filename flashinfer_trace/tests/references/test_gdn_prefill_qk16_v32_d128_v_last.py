@@ -232,7 +232,9 @@ def test_gdn_prefill_with_initial_state():
 
     scale = 1.0 / math.sqrt(head_size)
 
-    ref_result = reference_gdn_prefill(q, k, v, state_v_last, A_log, a, dt_bias, b, cu_seqlens, scale)
+    ref_result = reference_gdn_prefill(
+        q, k, v, state_v_last, A_log, a, dt_bias, b, cu_seqlens, scale
+    )
     ref_output, ref_new_state = ref_result
 
     # FlashInfer expects state in k-last layout [N, H, V, K]
@@ -306,7 +308,11 @@ def test_gdn_prefill_multi_sequence():
     b = torch.randn(total_seq_len, num_sab_heads, dtype=dtype, device=device)
 
     # Create cu_seqlens from variable lengths
-    cu_seqlens = torch.tensor([0] + [sum(seq_lens[: i + 1]) for i in range(len(seq_lens))], dtype=torch.int64, device=device)
+    cu_seqlens = torch.tensor(
+        [0] + [sum(seq_lens[: i + 1]) for i in range(len(seq_lens))],
+        dtype=torch.int64,
+        device=device,
+    )
 
     scale = 1.0 / math.sqrt(head_size)
 
@@ -361,11 +367,7 @@ def main():
         print("Skipping tests: GDN prefill kernel only supports SM90 (Hopper)")
         sys.exit(0)
 
-    test_configs = [
-        (1, 16),
-        (2, 32),
-        (4, 64),
-    ]
+    test_configs = [(1, 16), (2, 32), (4, 64)]
 
     print("\n" + "=" * 60)
     print("Running correctness tests")
