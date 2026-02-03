@@ -1,0 +1,19 @@
+:root {
+  --brand-200: #F99FDD;
+  --brand-400: #F44DC0;
+  --brand-500: #F339B9;
+  --brand-600: #E70EA3;
+  --brand-700: #C00C88;
+  --brand-800: #9A096D;
+  --bg-dark: #0D0D0D;
+  --flashinfer-logo-height: 40px;
+}
+
+html[data-theme="dark"] body {
+  background-color: var(--bg-dark);
+}
+
+.nav-logo {
+  height: var(--flashinfer-logo-height);
+  width: auto;
+}

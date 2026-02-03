@@ -1,3 +1,5 @@
+"""Common utilities for FlashInfer integration adapters."""
+
 import math
 from typing import Any, Optional
 

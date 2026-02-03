@@ -1,13 +1,18 @@
+"""Public API for the apply subsystem. Apply best-performing kernels from trace database."""
+
 from __future__ import annotations
 
+import logging
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from flashinfer_bench.data import TraceSet
-from flashinfer_bench.tracing import get_tracing_runtime
+from flashinfer_bench.tracing import TracingRuntime
 
-from .config import ApplyConfig
-from .runtime import ApplyRuntime, get_apply_runtime, set_apply_runtime
+from .config import ApplyConfig, ApplyConfigRegistry
+from .runtime import ApplyRuntime
+
+logger = logging.getLogger(__name__)
 
 
 # Decorator mode
@@ -50,7 +55,7 @@ def apply(
     number of arguments:
     - If len(args) == len(inputs): value-returning style, solution returns outputs
     - If len(args) == len(inputs) + len(outputs): destination-passing style, outputs are
-      pre-allocated and passed as arguments
+    pre-allocated and passed as arguments
 
     Parameters
     ----------
@@ -162,13 +167,13 @@ def _dispatch_apply_or_tracing(
         else def_name_or_resolver(*args, **kwargs)
     )
 
-    apply_rt = get_apply_runtime()
+    apply_rt = ApplyRuntime.get_instance()
 
     # Apply
     if apply_rt is not None:
         return apply_rt.dispatch(def_name, args, kwargs, fallback)
 
-    tracing_rt = get_tracing_runtime()
+    tracing_rt = TracingRuntime.get_instance()
 
     # Tracing
     if tracing_rt is not None:
@@ -181,53 +186,65 @@ def _dispatch_apply_or_tracing(
 
 
 def enable_apply(
-    dataset_path: Optional[str] = None, apply_config: Optional[ApplyConfig] = None
+    dataset_path: Optional[str] = None,
+    apply_config: Union[ApplyConfig, ApplyConfigRegistry, None] = None,
 ) -> ApplyRuntime:
     """Enable apply functionality globally and return a ApplyRuntime instance that manages the
     apply functionality.
 
-    There is only one global ApplyRuntime instance. This function must be called in the main thread.
+    The apply runtime is process-level and supports nesting. This function is recommended to be
+    called in the main thread.
 
     Parameters
     ----------
     dataset_path : str, optional
         Path to the dataset/trace_set directory
-    apply_config : ApplyConfig, optional
-        Configuration for the apply runtime
+    apply_config : Union[ApplyConfig, ApplyConfigRegistry], optional
+        Configuration for the apply runtime. Can be:
+        - ApplyConfig: A single config used as the default for all definitions
+        - ApplyConfigRegistry: A registry with per-definition configs
+        If None, uses default ApplyConfigRegistry.
 
     Returns
     -------
     ApplyRuntime
-        The global ApplyRuntime instance managing the apply functionality.
+        The newly created ApplyRuntime instance that has been pushed onto the global stack.
 
     Examples
     --------
-    >>> # Direct usage
-    >>> enable_apply("/path/to/trace_set", cfg)
-    >>> # Apply is now enabled
+    >>> # Direct usage with single config
+    >>> enable_apply("/path/to/trace_set", ApplyConfig(max_atol=1e-3))
     >>> out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> disable_apply()
-    >>> # Apply is now disabled.
+
+    >>> # Usage with per-definition configs
+    >>> registry = get_default_registry()
+    >>> registry.register("mla_paged", ApplyConfig(max_atol=1e-3, on_miss_policy="use_def_best"))
+    >>> registry.register("gemm_bf16", ApplyConfig(aot_ratio=0.8))
+    >>> enable_apply("/path/to/trace_set", registry)
 
     >>> # Context manager usage
     >>> with enable_apply("/path/to/trace_set", cfg):
     ...     out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> # Apply is now disabled.
     """
-    prev_runtime = get_apply_runtime()
     trace_set = TraceSet.from_path(dataset_path)
-    apply_runtime = ApplyRuntime(trace_set, apply_config, prev_runtime)
-    set_apply_runtime(apply_runtime)
+    apply_runtime = ApplyRuntime(trace_set, apply_config)
+    apply_runtime.start()
     return apply_runtime
 
 
 def disable_apply() -> None:
-    """Disable global apply functionality.
+    """Disable current apply runtime and restore the previous one (if any).
 
-    This function silently disables the global apply runtime by setting it to None.
-    After calling this function, any subsequent calls to apply() will use fallback
-    functions instead of the apply runtime.
+    Pops the top runtime from the global stack and restores the previous runtime (if any)
+    as the active instance. Safe to call even if no apply runtime is active.
 
     Check out the `enable_apply` function for examples.
     """
-    set_apply_runtime(None)
+    current = ApplyRuntime.get_instance()
+    if current is not None:
+        try:
+            current.stop()
+        except Exception as e:
+            logger.error(f"Cannot stop existing apply runtime: {e}, ignoring")

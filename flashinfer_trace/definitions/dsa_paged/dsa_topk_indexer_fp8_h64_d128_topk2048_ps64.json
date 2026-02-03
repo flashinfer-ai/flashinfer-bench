@@ -1,0 +1,113 @@
+{
+  "name": "dsa_topk_indexer_fp8_h64_d128_topk2048_ps64",
+  "description": "Native Sparse Attention (DSA) TopK indexer with FP8 quantization for DeepSeek-V3.2. Computes sparse attention scores using ReLU activation and learned weights, then selects top-K KV cache indices. Formula: sum(relu(q @ K.T) * weights). Matches SGLang/deep_gemm implementation. Page size 64 variant.",
+  "op_type": "dsa_paged",
+  "tags": [
+    "stage:indexer",
+    "status:verified",
+    "model:deepseek-v3.2",
+    "sparse:topk",
+    "quant:fp8"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var"
+    },
+    "num_index_heads": {
+      "type": "const",
+      "value": 64,
+      "description": "Number of indexer heads (64 required by deep_gemm)."
+    },
+    "index_head_dim": {
+      "type": "const",
+      "value": 128,
+      "description": "Indexer head dimension (matches deep_gemm requirement)."
+    },
+    "page_size": {
+      "type": "const",
+      "value": 64,
+      "description": "Page size for KV cache (64 tokens per page, required by deep_gemm)."
+    },
+    "topk": {
+      "type": "const",
+      "value": 2048,
+      "description": "Number of top-K indices to select."
+    },
+    "max_num_pages": {
+      "type": "var",
+      "description": "Maximum number of pages per sequence."
+    },
+    "num_pages": {
+      "type": "var",
+      "description": "Total number of allocated pages in the KV cache."
+    },
+    "kv_cache_num_heads": {
+      "type": "const",
+      "value": 1,
+      "description": "Number of heads in KV cache (always 1 for deep_gemm MQA format)."
+    },
+    "head_dim_with_scale": {
+      "type": "const",
+      "value": 132,
+      "description": "Head dimension (128) + scale bytes (4) = 132 for deep_gemm FP8 format."
+    }
+  },
+  "constraints": [
+    "topk <= max_num_pages * page_size"
+  ],
+  "inputs": {
+    "q_index_fp8": {
+      "shape": [
+        "batch_size",
+        "num_index_heads",
+        "index_head_dim"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "FP8 quantized query tensor for indexing."
+    },
+    "k_index_cache_fp8": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "kv_cache_num_heads",
+        "head_dim_with_scale"
+      ],
+      "dtype": "int8",
+      "description": "FP8 quantized key index cache with embedded scale factors (deep_gemm format). Memory layout: all FP8 values first (page_size * 128 bytes), then all scale factors (page_size * 4 bytes). Reshaped to [num_pages, page_size, 1, 132]. Uses int8 dtype but should be interpreted as uint8."
+    },
+    "weights": {
+      "shape": [
+        "batch_size",
+        "num_index_heads"
+      ],
+      "dtype": "float32",
+      "description": "Learned weights for combining heads. In SGLang: weights = weights_proj(x) * n_heads^-0.5 * q_scale * softmax_scale."
+    },
+    "seq_lens": {
+      "shape": [
+        "batch_size"
+      ],
+      "dtype": "int32",
+      "description": "Sequence lengths for each batch element."
+    },
+    "block_table": {
+      "shape": [
+        "batch_size",
+        "max_num_pages"
+      ],
+      "dtype": "int32",
+      "description": "Page-level block table mapping batch to page indices."
+    }
+  },
+  "outputs": {
+    "topk_indices": {
+      "shape": [
+        "batch_size",
+        "topk"
+      ],
+      "dtype": "int32",
+      "description": "Top-K token indices for each batch element. Values of -1 indicate padding."
+    }
+  },
+  "reference": "import torch\n\n\ndef dequant_fp8_kv_cache(k_index_cache_fp8):\n    \"\"\"Dequantize FP8 KV cache from deep_gemm format.\n    \n    Input: [num_pages, page_size, 1, 132] int8 (interpreted as uint8)\n           Memory layout (per page): [fp8_data (page_size * 128 bytes), scales (page_size * 4 bytes)]\n           After view to [num_pages, page_size, 1, 132]: NOT directly indexable as [fp8, scale] per token!\n    Output: [num_pages, page_size, 128] float32\n    \"\"\"\n    # View as uint8 for correct byte interpretation\n    k_index_cache_fp8 = k_index_cache_fp8.view(torch.uint8)\n    num_pages, page_size, num_heads, head_dim_sf = k_index_cache_fp8.shape\n    head_dim = head_dim_sf - 4  # 128\n    \n    # Go back to flat format to reverse the packing\n    kv_flat = k_index_cache_fp8.view(num_pages, page_size * head_dim_sf)\n    \n    # FP8 part: first page_size * head_dim bytes\n    fp8_bytes = kv_flat[:, :page_size * head_dim].contiguous()\n    fp8_tensor = fp8_bytes.view(num_pages, page_size, head_dim).view(torch.float8_e4m3fn)\n    fp8_float = fp8_tensor.to(torch.float32)\n    \n    # Scale part: last page_size * 4 bytes -> page_size float32 values\n    scale_bytes = kv_flat[:, page_size * head_dim:].contiguous()\n    scale = scale_bytes.view(num_pages, page_size, 4).view(torch.float32)  # [num_pages, page_size, 1]\n    \n    return fp8_float * scale\n\n\n@torch.no_grad()\ndef run(q_index_fp8, k_index_cache_fp8, weights, seq_lens, block_table):\n    batch_size, num_index_heads, index_head_dim = q_index_fp8.shape\n    num_pages, page_size, _, _ = k_index_cache_fp8.shape\n    topk = 2048\n\n    # Check constants\n    assert num_index_heads == 64\n    assert index_head_dim == 128\n    assert page_size == 64\n\n    device = q_index_fp8.device\n\n    # Dequantize inputs\n    q = q_index_fp8.to(torch.float32)  # [batch, heads, head_dim]\n    K_all = dequant_fp8_kv_cache(k_index_cache_fp8)  # [num_pages, page_size, head_dim]\n\n    topk_indices = torch.full((batch_size, topk), -1, dtype=torch.int32, device=device)\n    max_num_pages = block_table.shape[1]\n\n    for b in range(batch_size):\n        seq_len = int(seq_lens[b].item())\n        \n        if seq_len == 0:\n            continue\n\n        # Get pages for this sequence\n        num_pages_for_seq = (seq_len + page_size - 1) // page_size\n        page_indices = block_table[b, :num_pages_for_seq].to(torch.long)\n        \n        # Gather K from pages\n        K_paged = K_all[page_indices]  # [num_pages_for_seq, page_size, head_dim]\n        K = K_paged.reshape(-1, index_head_dim)[:seq_len]  # [seq_len, head_dim]\n        \n        # Query for this batch element\n        q_b = q[b]  # [num_heads, head_dim]\n        \n        # Compute attention scores\n        scores = q_b @ K.T  # [num_heads, seq_len]\n        \n        # Apply ReLU (deep_gemm uses ReLU activation)\n        scores_relu = torch.relu(scores)  # [num_heads, seq_len]\n        \n        # Apply learned weights and sum across heads\n        w = weights[b]  # [num_heads]\n        weighted_scores = scores_relu * w[:, None]  # [num_heads, seq_len]\n        final_scores = weighted_scores.sum(dim=0)  # [seq_len]\n        \n        # Select top-K\n        actual_topk = min(topk, seq_len)\n        _, topk_idx = torch.topk(final_scores, actual_topk)\n        \n        # Convert to global token indices\n        # Token index = page_idx * page_size + offset_in_page\n        page_idx_per_token = topk_idx // page_size\n        offset_per_token = topk_idx % page_size\n        global_page_idx = page_indices[page_idx_per_token]\n        topk_tokens = global_page_idx * page_size + offset_per_token\n        \n        topk_indices[b, :actual_topk] = topk_tokens.to(torch.int32)\n\n    return (topk_indices,)"
+}

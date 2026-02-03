@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from flashinfer_bench.apply import apply, disable_apply, enable_apply, set_apply_runtime
+from flashinfer_bench.apply import ApplyRuntime, apply, disable_apply, enable_apply
 from flashinfer_bench.data import (
     AxisConst,
     AxisVar,
@@ -40,15 +40,22 @@ class DummyRuntime:
             "fallback_name": getattr(fallback, "__name__", None),
         }
 
+    def start(self):
+        ApplyRuntime._stack.append(self)
+
+    def stop(self):
+        ApplyRuntime._stack.pop()
+
 
 def teardown_module(module):
     # Ensure global runtime is cleared after this module
     disable_apply()
-    set_apply_runtime(None)
+    ApplyRuntime._stack.clear()
+    ApplyRuntime._env_initialized = False
 
 
 def test_apply_imperative_when_disabled_calls_fallback():
-    set_apply_runtime(None)
+    ApplyRuntime._stack.clear()
 
     def fallback(*args, **kw):
         return {"fallback": True, "args": args, "kw": kw}
@@ -58,14 +65,14 @@ def test_apply_imperative_when_disabled_calls_fallback():
 
 
 def test_apply_imperative_raises_without_fallback_when_disabled():
-    set_apply_runtime(None)
+    ApplyRuntime._stack.clear()
     with pytest.raises(RuntimeError):
         apply("d", args=(1,), fallback=None)
 
 
 def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
     # Ensure no env auto-init and runtime is absent
-    set_apply_runtime(None)
+    ApplyRuntime._stack.clear()
     monkeypatch.delenv("FIB_ENABLE_APPLY", raising=False)
     monkeypatch.delenv("FIB_DATASET_PATH", raising=False)
 
@@ -79,7 +86,7 @@ def test_apply_decorator_without_runtime_is_transparent(monkeypatch):
 
 def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     runtime = DummyRuntime()
-    set_apply_runtime(runtime)
+    runtime.start()
 
     @apply(lambda a, b: f"sum_{a}_{b}")
     def f(a, b):
@@ -95,8 +102,7 @@ def test_apply_decorator_with_runtime_dispatches_and_preserves_metadata():
     assert f.__name__ == "f"
     assert f.__doc__ == "docstring here"
     assert isinstance(getattr(f, "__wrapped__", None), types.FunctionType)
-    # cleanup
-    set_apply_runtime(None)
+    runtime.stop()
 
 
 def test_apply_decorator_merge_conflicts_and_positional_overflow():
@@ -104,7 +110,7 @@ def test_apply_decorator_merge_conflicts_and_positional_overflow():
     # so the decorated function's signature checking is bypassed.
     # This test verifies that when no runtime is present, the original function
     # signature is enforced.
-    set_apply_runtime(None)
+    ApplyRuntime._stack.clear()
 
     @apply("foo")
     def g(a, b):

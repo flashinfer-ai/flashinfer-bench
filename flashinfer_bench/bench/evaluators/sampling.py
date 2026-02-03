@@ -1,3 +1,5 @@
+"""Evaluator for sampling operations with statistical validation."""
+
 import sys
 import traceback
 import uuid
@@ -81,12 +83,15 @@ class SamplingEvaluator(DefaultEvaluator):
         outputs.append([expected_probs])
 
         # Reference is always value-returning style
-        latencies: List[float] = []
-        for inp in inputs:
-            ms = time_runnable(ref_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
-            latencies.append(ms)
+        if cfg.profile_baseline:
+            latencies: List[float] = []
+            for inp in inputs:
+                ms = time_runnable(ref_runnable, inp, cfg.warmup_runs, cfg.iterations, device)
+                latencies.append(ms)
 
-        mean_latency_ms = sum(latencies) / float(len(latencies))
+            mean_latency_ms = sum(latencies) / float(len(latencies))
+        else:
+            mean_latency_ms = 0.0
 
         handle = BaselineHandle(uuid.uuid4().hex)
 

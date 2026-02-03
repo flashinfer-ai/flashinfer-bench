@@ -1,5 +1,7 @@
 """TraceSet as a pure data warehouse for definitions, solutions, and traces."""
 
+from __future__ import annotations
+
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -43,6 +45,16 @@ class TraceSet:
     definition."""
     traces: Dict[str, List[Trace]] = field(default_factory=dict)
     """The traces in the database. Map from definition name to all traces for that definition."""
+    _solution_by_name: Dict[str, Solution] = field(default_factory=dict, init=False, repr=False)
+    """Fast lookup index: solution name -> Solution object. Automatically maintained."""
+
+    def __post_init__(self):
+        """Initialize the _solution_by_name index from existing solutions."""
+        for solutions_list in self.solutions.values():
+            for solution in solutions_list:
+                if solution.name in self._solution_by_name:
+                    raise ValueError(f"Duplicate solution name found: {solution.name}")
+                self._solution_by_name[solution.name] = solution
 
     @property
     def definitions_path(self) -> Path:
@@ -81,7 +93,7 @@ class TraceSet:
         return self.root / "blob" / "workloads"
 
     @classmethod
-    def from_path(cls: type["TraceSet"], path: Optional[str] = None) -> "TraceSet":
+    def from_path(cls: type[TraceSet], path: Optional[str] = None) -> TraceSet:
         """Load a TraceSet from a directory structure.
 
         Loads a complete TraceSet by scanning the directory structure for:
@@ -130,6 +142,7 @@ class TraceSet:
                 raise ValueError(f"Duplicate solution name: {s.name}")
             seen_solutions.add(s.name)
             trace_set.solutions.setdefault(s.definition, []).append(s)
+            trace_set._solution_by_name[s.name] = s
 
         for p in sorted((trace_set.workloads_path.rglob("*.jsonl"))):
             for t in load_jsonl_file(Trace, p):
@@ -173,9 +186,8 @@ class TraceSet:
     def get_solution(self, name: str) -> Optional[Solution]:
         """Get a solution by name from all loaded solutions.
 
-        Searches across all solutions in the TraceSet to find one with the specified name.
-        Since solution names are unique across the entire dataset, this returns at most
-        one solution.
+        Uses an O(1) index lookup for fast retrieval. Since solution names are unique
+        across the entire dataset, this returns at most one solution.
 
         Parameters
         ----------
@@ -187,11 +199,7 @@ class TraceSet:
         Optional[Solution]
             The solution with the given name, or None if not found.
         """
-        for solution_list in self.solutions.values():
-            for solution in solution_list:
-                if solution.name == name:
-                    return solution
-        return None
+        return self._solution_by_name.get(name)
 
     def filter_traces(self, def_name: str, atol: float = 1e-2, rtol: float = 1e-2) -> List[Trace]:
         """Filter traces for a definition based on error bounds.

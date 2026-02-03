@@ -42,9 +42,11 @@ MANIFEST
 .sphinx-deps
 web/**/public
 
-.claude
+# .claude
 .vscode
 
 tmp/
 AGENTS.md
+
+.env
 .coverage

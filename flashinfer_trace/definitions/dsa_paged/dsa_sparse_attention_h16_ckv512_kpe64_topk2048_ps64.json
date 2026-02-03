@@ -1,0 +1,120 @@
+{
+  "name": "dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64",
+  "description": "Batched Native Sparse Attention (DSA) with sparse TopK KV cache selection. Captured from DeepSeek-V3.2 with tensor parallel size 8. Uses sparse indexing to select only top-K KV cache entries for attention computation. Page size 64 variant. Works for both prefill and decode stages.",
+  "op_type": "dsa_paged",
+  "tags": [
+    "status:verified",
+    "model:deepseek-v3.2",
+    "sparse:topk"
+  ],
+  "axes": {
+    "num_tokens": {
+      "type": "var",
+      "description": "Number of tokens (batch_size for decode, total_num_tokens for prefill)."
+    },
+    "num_qo_heads": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of query heads after tensor parallel split (128/8=16)."
+    },
+    "head_dim_ckv": {
+      "type": "const",
+      "value": 512,
+      "description": "Compressed KV head dimension."
+    },
+    "head_dim_kpe": {
+      "type": "const",
+      "value": 64,
+      "description": "Key positional encoding dimension."
+    },
+    "page_size": {
+      "type": "const",
+      "value": 64,
+      "description": "Page size for KV cache (64 tokens per page)."
+    },
+    "topk": {
+      "type": "const",
+      "value": 2048,
+      "description": "Number of top-K KV cache entries selected for sparse attention."
+    },
+    "num_pages": {
+      "type": "var",
+      "description": "Total number of allocated pages in the KV cache."
+    }
+  },
+  "constraints": [
+    "sparse_indices.shape[0] == num_tokens",
+    "sparse_indices.shape[-1] == topk",
+    "ckv_cache.shape[1] == page_size"
+  ],
+  "inputs": {
+    "q_nope": {
+      "shape": [
+        "num_tokens",
+        "num_qo_heads",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query tensor without positional encoding component."
+    },
+    "q_pe": {
+      "shape": [
+        "num_tokens",
+        "num_qo_heads",
+        "head_dim_kpe"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query positional encoding component."
+    },
+    "ckv_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16",
+      "description": "Compressed key-value cache with page_size=64."
+    },
+    "kpe_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "head_dim_kpe"
+      ],
+      "dtype": "bfloat16",
+      "description": "Key positional encoding cache."
+    },
+    "sparse_indices": {
+      "shape": [
+        "num_tokens",
+        "topk"
+      ],
+      "dtype": "int32",
+      "description": "Sparse indices selecting top-K KV cache entries for each token. Values of -1 indicate padding (invalid indices). For page_size=64, indices encode (page_idx * 64 + offset)."
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale. For MLA, uses pre-absorption head dimension: 1/sqrt(head_dim_qk + head_dim_kpe) = 1/sqrt(128 + 64) = 1/sqrt(192)."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "num_tokens",
+        "num_qo_heads",
+        "head_dim_ckv"
+      ],
+      "dtype": "bfloat16"
+    },
+    "lse": {
+      "shape": [
+        "num_tokens",
+        "num_qo_heads"
+      ],
+      "dtype": "float32",
+      "description": "The 2-based log-sum-exp of attention logits."
+    }
+  },
+  "reference": "import math\nimport torch\n\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):\n    num_tokens, num_qo_heads, head_dim_ckv = q_nope.shape\n    head_dim_kpe = q_pe.shape[-1]\n    num_pages, page_size, _ = ckv_cache.shape\n    topk = sparse_indices.shape[-1]\n\n    # Check constants\n    assert num_qo_heads == 16\n    assert head_dim_ckv == 512\n    assert head_dim_kpe == 64\n    assert page_size == 64\n    assert topk == 2048\n\n    # Check constraints\n    assert sparse_indices.shape[0] == num_tokens\n    assert sparse_indices.shape[-1] == topk\n    assert ckv_cache.shape[1] == page_size\n\n    device = q_nope.device\n\n    # Flatten paged KV cache to token-level: [num_pages, page_size, dim] -> [num_pages * page_size, dim]\n    Kc_all = ckv_cache.reshape(-1, head_dim_ckv).to(torch.float32)  # [total_kv_tokens, head_dim_ckv]\n    Kp_all = kpe_cache.reshape(-1, head_dim_kpe).to(torch.float32)  # [total_kv_tokens, head_dim_kpe]\n\n    output = torch.zeros(\n        (num_tokens, num_qo_heads, head_dim_ckv), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full((num_tokens, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device)\n\n    for t in range(num_tokens):\n        indices = sparse_indices[t]  # [topk]\n\n        # Handle padding: -1 indicates invalid indices\n        valid_mask = indices != -1\n        valid_indices = indices[valid_mask]\n\n        if valid_indices.numel() == 0:\n            output[t].zero_()\n            continue\n\n        # For page_size=64, indices encode (page_idx * 64 + offset)\n        tok_idx = valid_indices.to(torch.long)\n\n        Kc = Kc_all[tok_idx]  # [num_valid, head_dim_ckv]\n        Kp = Kp_all[tok_idx]  # [num_valid, head_dim_kpe]\n        qn = q_nope[t].to(torch.float32)  # [num_qo_heads, head_dim_ckv]\n        qp = q_pe[t].to(torch.float32)  # [num_qo_heads, head_dim_kpe]\n\n        # Compute attention logits\n        logits = (qn @ Kc.T) + (qp @ Kp.T)  # [num_qo_heads, num_valid]\n        logits_scaled = logits * sm_scale\n\n        # Compute 2-base LSE\n        lse[t] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)\n\n        # Compute attention output\n        attn = torch.softmax(logits_scaled, dim=-1)  # [num_qo_heads, num_valid]\n        out = attn @ Kc  # [num_qo_heads, head_dim_ckv]\n        output[t] = out.to(torch.bfloat16)\n\n    return output, lse"
+}

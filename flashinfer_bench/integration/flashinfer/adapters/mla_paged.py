@@ -10,17 +10,19 @@ from flashinfer_bench.integration.patch_manager import PatchSpec
 from flashinfer_bench.integration.utils import ArgBinder, ContextStore
 
 
-def _decode_def_name(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):
+def _decode_def_name(
+    q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale, page_size
+):
     # h16_ckv512_kpe64_ps1
-    return f"mla_paged_decode_h{q_nope.shape[1]}_ckv{q_nope.shape[2]}_kpe{q_pe.shape[2]}_ps1"
+    return (
+        f"mla_paged_decode_h{q_nope.shape[1]}_ckv{q_nope.shape[2]}_kpe{q_pe.shape[2]}_ps{page_size}"
+    )
 
 
 def _prefill_def_name(
-    q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, sm_scale
+    q_nope, q_pe, ckv_cache, kpe_cache, qo_indptr, kv_indptr, kv_indices, sm_scale, page_size
 ):
-    return (
-        f"mla_paged_prefill_causal_h{q_nope.shape[1]}_ckv{q_nope.shape[2]}_kpe{q_pe.shape[2]}_ps1"
-    )
+    return f"mla_paged_prefill_causal_h{q_nope.shape[1]}_ckv{q_nope.shape[2]}_kpe{q_pe.shape[2]}_ps{page_size}"
 
 
 class MLAPagedAdapter:
@@ -95,7 +97,8 @@ class MLAPagedAdapter:
                 # Compatibility checks
                 if not ctx.get("causal", False):
                     return orig(inst, *args, **kwargs)
-                if ctx.get("page_size", None) != 1:
+                page_size = ctx.get("page_size", None)
+                if page_size not in (1, 64):
                     return orig(inst, *args, **kwargs)
 
                 H = ctx.get("num_heads", None)
@@ -128,7 +131,14 @@ class MLAPagedAdapter:
 
                 if is_decode:
                     def_name = _decode_def_name(
-                        q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale
+                        q_nope,
+                        q_pe,
+                        ckv_cache,
+                        kpe_cache,
+                        kv_indptr,
+                        kv_indices,
+                        sm_scale,
+                        page_size,
                     )
                 else:
                     def_name = _prefill_def_name(
@@ -140,6 +150,7 @@ class MLAPagedAdapter:
                         kv_indptr,
                         kv_indices,
                         sm_scale,
+                        page_size,
                     )
 
                 if is_decode:

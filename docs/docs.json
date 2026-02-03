@@ -1,0 +1,97 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "FlashInfer-Bench",
+  "colors": {
+    "primary": "#F21AAF",
+    "light": "#FCD1EF",
+    "dark": "#B61483"
+  },
+  "favicon": "/logo/fib_mark.png",
+  "styles": {
+    "global": "/styles.css"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "index",
+              "start/installation",
+              "start/quickstart"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/bring-your-own-kernel"
+            ]
+          },
+          {
+            "group": "FlashInfer Trace",
+            "pages": [
+              "flashinfer-trace/index",
+              "flashinfer-trace/definition",
+              "flashinfer-trace/workload",
+              "flashinfer-trace/solution",
+              "flashinfer-trace/trace"
+            ]
+          },
+          {
+            "group": "Op Types",
+            "pages": [
+              "op-types/gemm",
+              "op-types/gqa-paged",
+              "op-types/gqa-ragged",
+              "op-types/mla-paged",
+              "op-types/rmsnorm",
+              "op-types/sampling",
+              "op-types/moe"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "icon": "code",
+        "href": "https://bench.flashinfer.ai/docs/api/python"
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "FlashInfer-Bench",
+          "href": "https://bench.flashinfer.ai/",
+          "icon": "rocket"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/flashinfer-ai/flashinfer-bench",
+          "icon": "github"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/fib-white-bg.png",
+    "dark": "/logo/fib-black-bg.png"
+  },
+  "navbar": {},
+  "contextual": {
+    "options": [
+     "copy",
+     "chatgpt",
+     "mcp",
+     "cursor",
+     "vscode"
+   ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/flashinfer-ai/flashinfer-bench"
+    }
+  }
+}

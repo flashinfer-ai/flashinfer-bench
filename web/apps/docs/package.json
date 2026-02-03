@@ -11,7 +11,7 @@
   "dependencies": {
     "@flashinfer-bench/config": "workspace:*",
     "@flashinfer-bench/ui": "workspace:*",
-    "next": "^15.5.0",
+    "next": "15.5.9",
     "nextra": "^4.4.0",
     "nextra-theme-docs": "^4.4.0",
     "react": "^19.1.1",

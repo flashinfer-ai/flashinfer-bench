@@ -1,3 +1,5 @@
+"""Apply table for mapping workload keys to optimal solutions."""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,11 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flashinfer_bench.compile import BuilderRegistry, Runnable
+from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import Trace, TraceSet
 from flashinfer_bench.env import get_fib_cache_path
 
-from .config import ApplyConfig
+from .config import ApplyConfigRegistry
 from .key import ApplyKey, ApplyKeyFactory
 
 
@@ -82,7 +84,9 @@ class ApplyTable:
             json.dump(data, f)
 
     @classmethod
-    def load_or_build(cls, trace_set: TraceSet, apply_config: ApplyConfig) -> "ApplyTable":
+    def load_or_build(
+        cls, trace_set: TraceSet, config_registry: ApplyConfigRegistry
+    ) -> "ApplyTable":
         """Load an existing apply table from cache or build a new one.
 
         This method first attempts to load a cached apply table based on the
@@ -93,15 +97,15 @@ class ApplyTable:
         ----------
         trace_set : TraceSet
             The trace set containing benchmark data and solutions.
-        apply_config : ApplyConfig
-            Configuration parameters for building the apply table.
+        config_registry : ApplyConfigRegistry
+            Per-definition configuration registry for building the apply table.
 
         Returns
         -------
         ApplyTable
             The loaded or newly built apply table.
         """
-        digest = cls._digest(trace_set, apply_config)
+        digest = cls._digest(trace_set, config_registry)
 
         # Try to load from cache
         raw = cls._load_from_disk(digest)
@@ -114,25 +118,15 @@ class ApplyTable:
                     bucket[key] = sol_name
                 index[def_name] = bucket
 
-            def_best: Dict[str, str] = {}
-            reg = BuilderRegistry.get_instance()
-
-            for def_name, sol_name in raw["def_best"].items():
-                definition = trace_set.definitions.get(def_name)
-                solution = trace_set.get_solution(sol_name)
-                if definition and solution:
-                    reg.build(definition, solution)
-                    def_best[def_name] = sol_name
+            def_best: Dict[str, str] = raw.get("def_best", {})
 
             table = cls(digest=digest, index=index, def_best=def_best)
-
-            if apply_config.aot_ratio and apply_config.aot_ratio > 0.0:
-                cls._prewarm_aot(trace_set, apply_config, table)
+            cls._prewarm_aot(trace_set, config_registry, table)
 
             return table
 
         # Build fresh
-        table = cls._build(trace_set, apply_config)
+        table = cls._build(trace_set, config_registry)
         # Persist minimal index
         to_dump: Dict[str, Any] = {"digest": table.digest, "index": {}, "def_best": {}}
         for def_name, bucket in table.index.items():
@@ -143,14 +137,12 @@ class ApplyTable:
             to_dump["def_best"][def_name] = sol_name
 
         cls._save_to_disk(digest, to_dump)
-
-        if apply_config.aot_ratio and apply_config.aot_ratio > 0.0:
-            cls._prewarm_aot(trace_set, apply_config, table)
+        cls._prewarm_aot(trace_set, config_registry, table)
 
         return table
 
     @classmethod
-    def _build(cls, trace_set: TraceSet, apply_config: ApplyConfig) -> "ApplyTable":
+    def _build(cls, trace_set: TraceSet, config_registry: ApplyConfigRegistry) -> "ApplyTable":
         """Build a new apply table from trace set data.
 
         This method processes all traces in the trace set to build lookup tables
@@ -160,24 +152,24 @@ class ApplyTable:
         ----------
         trace_set : TraceSet
             The trace set containing benchmark data and solutions.
-        apply_config : ApplyConfig
-            Configuration parameters including error tolerances.
+        config_registry : ApplyConfigRegistry
+            Per-definition configuration registry including error tolerances.
 
         Returns
         -------
         ApplyTable
             The newly built apply table.
         """
-        digest = cls._digest(trace_set, apply_config)
-        reg = BuilderRegistry.get_instance()
+        digest = cls._digest(trace_set, config_registry)
 
         index: Dict[str, Dict[ApplyKey, str]] = {}
-        def_best: Dict[str, Runnable] = {}
+        def_best: Dict[str, str] = {}
 
         for def_name, definition in trace_set.definitions.items():
-            per_key, ranked = cls._sweep_def(
-                trace_set, def_name, apply_config.max_atol, apply_config.max_rtol
-            )
+            config = config_registry.get(def_name)
+            if config is None:
+                continue
+            per_key, ranked = cls._sweep_def(trace_set, def_name, config.max_atol, config.max_rtol)
 
             # Build index
             for key, t in per_key.items():
@@ -188,13 +180,7 @@ class ApplyTable:
 
             # Build def_best
             if ranked:
-                best_sol_name = ranked[0][0]
-                solution = trace_set.get_solution(best_sol_name)
-                if solution:
-                    if apply_config.on_miss_policy == "use_def_best":
-                        # Only AOT if on_miss_policy is use_def_best
-                        reg.build(definition, solution)
-                    def_best[def_name] = best_sol_name
+                def_best[def_name] = ranked[0][0]
 
         return cls(digest=digest, index=index, def_best=def_best)
 
@@ -250,7 +236,9 @@ class ApplyTable:
         return per_key, ranked
 
     @classmethod
-    def _prewarm_aot(cls, trace_set: TraceSet, config: ApplyConfig, table: "ApplyTable") -> None:
+    def _prewarm_aot(
+        cls, trace_set: TraceSet, config_registry: ApplyConfigRegistry, table: "ApplyTable"
+    ) -> None:
         """Perform ahead-of-time compilation of frequently used solutions.
 
         This method pre-compiles solutions that are used frequently according to
@@ -260,17 +248,21 @@ class ApplyTable:
         ----------
         trace_set : TraceSet
             The trace set containing definitions and solutions.
-        config : ApplyConfig
-            Configuration containing AOT ratio and miss policy settings.
+        config_registry : ApplyConfigRegistry
+            Per-definition configuration registry containing AOT ratio and miss policy settings.
         table : ApplyTable
             The apply table containing solution mappings.
         """
-        if not (config.aot_ratio and config.aot_ratio > 0.0):
-            return
         reg = BuilderRegistry.get_instance()
 
         for def_name, bucket in table.index.items():
             if not bucket:
+                continue
+
+            config = config_registry.get(def_name)
+            if config is None:
+                continue
+            if not (config.aot_ratio and config.aot_ratio > 0.0):
                 continue
 
             win_counts = Counter(bucket.values())
@@ -285,15 +277,19 @@ class ApplyTable:
                 if solution:
                     reg.build(definition, solution)
 
-        if config.on_miss_policy == "use_def_best":
-            for def_name, sol_name in table.def_best.items():
+        # Build def_best for definitions with on_miss_policy == "use_def_best"
+        for def_name, sol_name in table.def_best.items():
+            config = config_registry.get(def_name)
+            if config is None:
+                continue
+            if config.on_miss_policy == "use_def_best":
                 definition = trace_set.definitions.get(def_name)
                 solution = trace_set.get_solution(sol_name)
                 if definition and solution:
                     reg.build(definition, solution)
 
     @classmethod
-    def _digest(cls, trace_set: TraceSet, config: ApplyConfig) -> str:
+    def _digest(cls, trace_set: TraceSet, config_registry: ApplyConfigRegistry) -> str:
         """Compute a hash digest for the trace set and configuration.
 
         This method creates a deterministic hash that uniquely identifies the
@@ -304,19 +300,19 @@ class ApplyTable:
         ----------
         trace_set : TraceSet
             The trace set containing benchmark data.
-        config : ApplyConfig
-            The apply configuration parameters.
+        config_registry : ApplyConfigRegistry
+            Per-definition configuration registry.
 
         Returns
         -------
         str
             SHA256 hash digest as a hexadecimal string.
         """
-        d = trace_set.to_dict()
-        for definition in d["definitions"].values():
+        trace_set_dict = trace_set.to_dict()
+        for definition in trace_set_dict["definitions"].values():
             for drop in ("description", "tags", "reference", "constraints"):
                 definition.pop(drop, None)
-        for sol_list in d["solutions"].values():
+        for sol_list in trace_set_dict["solutions"].values():
             for solution in sol_list:
                 spec = solution.get("spec", {}) or {}
                 deps = spec.get("dependencies") or []
@@ -331,7 +327,7 @@ class ApplyTable:
                     )
                 solution["sources"] = new_sources
         kept_traces: List[Dict[str, Any]] = []
-        for traces in d["traces"].values():
+        for traces in trace_set_dict["traces"].values():
             for trace in traces:
                 ev = trace.get("evaluation") or {}
                 perf = ev.get("performance") or {}
@@ -347,10 +343,26 @@ class ApplyTable:
                         "speedup": perf.get("speedup_factor"),
                     }
                 )
+
+        # Build per-definition config dict for digest
+        default_cfg = config_registry.default
+        per_def_cfg_dict: Dict[str, Dict[str, Any]] = {}
+        for def_name in trace_set_dict["definitions"]:
+            cfg = config_registry.per_definition.get(def_name)
+            if cfg is not None:
+                per_def_cfg_dict[def_name] = {"max_atol": cfg.max_atol, "max_rtol": cfg.max_rtol}
+
         payload = {
-            "cfg": {"max_atol": config.max_atol, "max_rtol": config.max_rtol},
-            "definitions": d["definitions"],
-            "solutions": d["solutions"],
+            "cfg": {
+                "default": (
+                    {"max_atol": default_cfg.max_atol, "max_rtol": default_cfg.max_rtol}
+                    if default_cfg
+                    else None
+                ),
+                "per_def": per_def_cfg_dict,
+            },
+            "definitions": trace_set_dict["definitions"],
+            "solutions": trace_set_dict["solutions"],
             "traces": sorted(
                 kept_traces,
                 key=lambda x: (
