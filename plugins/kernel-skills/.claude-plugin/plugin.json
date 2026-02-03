@@ -1,5 +1,5 @@
 {
-  "name": "kernelbook",
+  "name": "kernel-skills",
   "description": "CUDA matmul kernel optimization skills for Hopper+ GPUs (sm90+), covering TMA, WGMMA, swizzle, pipelining, warp specialization and more",
   "version": "1.0.0",
   "author": {
