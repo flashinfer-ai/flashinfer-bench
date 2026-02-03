@@ -153,20 +153,37 @@ class Builder(ABC):
         except (ValueError, TypeError):
             return
 
-        if solution.spec.destination_passing_style:
-            if len(signature.parameters) != len(definition.inputs) + len(definition.outputs):
+        # Count parameters, handling variadic arguments:
+        # - **kwargs (VAR_KEYWORD): ignored, allows extra keyword arguments
+        # - *args (VAR_POSITIONAL): enables range matching (num_params <= expected)
+        params = signature.parameters.values()
+        has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+        num_params = sum(
+            p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for p in params
+        )
+
+        dps = solution.spec.destination_passing_style
+        expected_nparam = (
+            len(definition.inputs) + len(definition.outputs) if dps else len(definition.inputs)
+        )
+
+        if has_var_positional:
+            if num_params > expected_nparam:
+                style = "Destination-passing" if dps else "Value-returning"
                 raise BuildError(
-                    "Destination-passing style callable has incorrect number of "
-                    f"parameters: {len(signature.parameters)} != "
-                    f"{len(definition.inputs) + len(definition.outputs)}"
+                    f"{style} style callable: expected {expected_nparam} parameters, "
+                    f"but got at least {num_params}"
                 )
-        else:
-            if len(signature.parameters) != len(definition.inputs):
-                raise BuildError(
-                    "Value-returning style callable has incorrect number of "
-                    f"parameters: {len(signature.parameters)} != {len(definition.inputs)}"
-                )
-            # Check return annotation
+        elif num_params != expected_nparam:
+            style = "Destination-passing" if dps else "Value-returning"
+            raise BuildError(
+                f"{style} style callable: expected {expected_nparam} parameters, but got "
+                f"{num_params}"
+            )
+
+        # Check return annotation (only for value-returning style)
+        if not solution.spec.destination_passing_style:
             num_outputs = len(definition.outputs)
             ret_ann = signature.return_annotation
             if ret_ann is not inspect.Signature.empty:
