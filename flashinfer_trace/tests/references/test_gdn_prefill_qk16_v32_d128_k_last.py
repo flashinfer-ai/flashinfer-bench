@@ -107,12 +107,12 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
 
     scale = 1.0 / math.sqrt(head_size)
 
-    # Reference from definition
-    ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
+    # Reference from definition (expects g/beta)
+    g, beta = compute_gates(A_log, a, dt_bias, b)
+    ref_result = reference_gdn_prefill(q, k, v, None, g, beta, cu_seqlens, scale)
     ref_output, ref_new_state = ref_result
 
     # FlashInfer uses pre-computed g/beta
-    g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
         q=q,
         k=k,
@@ -229,10 +229,10 @@ def test_gdn_prefill_with_initial_state():
 
     scale = 1.0 / math.sqrt(head_size)
 
-    ref_result = reference_gdn_prefill(q, k, v, state, A_log, a, dt_bias, b, cu_seqlens, scale)
+    g, beta = compute_gates(A_log, a, dt_bias, b)
+    ref_result = reference_gdn_prefill(q, k, v, state, g, beta, cu_seqlens, scale)
     ref_output, ref_new_state = ref_result
 
-    g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
         q=q,
         k=k,
@@ -341,10 +341,10 @@ def test_gdn_prefill_variable_seqlen():
 
     scale = 1.0 / math.sqrt(head_size)
 
-    ref_result = reference_gdn_prefill(q, k, v, None, A_log, a, dt_bias, b, cu_seqlens, scale)
+    g, beta = compute_gates(A_log, a, dt_bias, b)
+    ref_result = reference_gdn_prefill(q, k, v, None, g, beta, cu_seqlens, scale)
     ref_output, ref_new_state = ref_result
 
-    g, beta = compute_gates(A_log, a, dt_bias, b)
     fi_output, fi_new_state = chunk_gated_delta_rule(
         q=q,
         k=k,
