@@ -209,6 +209,7 @@ def run(args: argparse.Namespace):
             definitions=args.definitions,
             solutions=args.solutions,
             timeout_seconds=args.timeout,
+            required_matched_ratio=args.required_matched_ratio,
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
@@ -271,6 +272,12 @@ def cli():
     )
     run_parser.add_argument(
         "--atol", type=float, default=1e-2, help="Absolute tolerance for correctness checks"
+    )
+    run_parser.add_argument(
+        "--required-matched-ratio",
+        type=float,
+        default=None,
+        help="Required ratio of elements within tolerance. Overrides evaluator default (0.95 for low-bit).",
     )
     run_parser.add_argument(
         "--log-level",
