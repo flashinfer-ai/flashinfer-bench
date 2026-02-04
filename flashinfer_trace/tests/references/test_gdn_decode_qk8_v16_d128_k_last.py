@@ -72,13 +72,7 @@ def run_kernel(q, k, v, state, A_log, a, dt_bias, b, scale):
 
 
 def generate_random_inputs(
-    batch_size,
-    num_q_heads=8,
-    num_k_heads=8,
-    num_v_heads=16,
-    head_size=128,
-    device="cuda",
-    seed=42,
+    batch_size, num_q_heads=8, num_k_heads=8, num_v_heads=16, head_size=128, device="cuda", seed=42
 ):
     """Generate random inputs for testing."""
     torch.manual_seed(seed)
