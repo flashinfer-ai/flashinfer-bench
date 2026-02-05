@@ -49,4 +49,5 @@ tmp/
 AGENTS.md
 
 .env
+docker/.env
 .coverage

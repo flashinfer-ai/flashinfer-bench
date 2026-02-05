@@ -1,0 +1,58 @@
+# FlashInfer-Bench Development Environment
+#
+# Usage:
+#   # Start interactive shell
+#   docker compose run --rm flashinfer-bench
+#
+#   # Run specific command
+#   docker compose run --rm flashinfer-bench flashinfer-bench run ...
+#
+#   # Custom dataset path
+#   FIB_HOST_DATASET_PATH=/path/to/dataset docker compose run --rm flashinfer-bench
+#
+#   # Use .env file for persistent config
+#   echo "FIB_HOST_DATASET_PATH=/mnt/data/dataset" > .env
+
+services:
+  flashinfer-bench:
+    image: flashinfer/flashinfer-bench:cu129
+    container_name: flashinfer-bench
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      # Mount local code (editable)
+      - ..:/workspace/flashinfer-bench
+      # HuggingFace cache
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      # FlashInfer JIT cache
+      - ${HOME}/.cache/flashinfer:/root/.cache/flashinfer
+      # FlashInfer-Bench compile cache
+      - ${HOME}/.cache/flashinfer_bench:/root/.cache/flashinfer_bench
+      # Triton compile cache
+      - ${HOME}/.triton:/root/.triton
+      # Dataset (configurable via FIB_HOST_DATASET_PATH)
+      - ${FIB_HOST_DATASET_PATH:-${HOME}/.cache/flashinfer_bench/dataset}:/data/flashinfer-trace
+    working_dir: /workspace/flashinfer-bench
+    environment:
+      # Dataset path inside container
+      - FIB_DATASET_PATH=/data/flashinfer-trace
+      # GPU visibility (optional override)
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+    # Interactive mode
+    stdin_open: true
+    tty: true
+    # GPU configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Shared memory for PyTorch multiprocessing
+    shm_size: "2gb"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
