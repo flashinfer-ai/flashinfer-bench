@@ -10,10 +10,16 @@ from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, S
 from flashinfer_bench.env import get_fib_cache_path
 
 from .builder import Builder, BuildError
-from .builders import PythonBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder
+from .builders import PythonBuilder, TileLangBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder
 from .runnable import Runnable
 
-_BUILDER_PRIORITY: List[Type[Builder]] = [TritonBuilder, PythonBuilder, TVMFFIBuilder, TorchBuilder]
+_BUILDER_PRIORITY: List[Type[Builder]] = [
+    TritonBuilder,
+    TileLangBuilder,
+    PythonBuilder,
+    TVMFFIBuilder,
+    TorchBuilder,
+]
 """Builder types in priority order for automatic selection."""
 
 
@@ -66,6 +72,7 @@ class BuilderRegistry:
         The following builders are available (high to low priority):
 
         - TritonBuilder: Build Triton solutions.
+        - TileLangBuilder: Build TileLang solutions.
         - PythonBuilder: Build Python solutions.
         - TVMFFIBuilder: Build CUDA/C++ solutions using TVM-FFI backend.
         - TorchBuilder: Build CUDA/C++ solutions using PyTorch extension system.
