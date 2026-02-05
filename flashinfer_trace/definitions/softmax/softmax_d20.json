@@ -1,0 +1,35 @@
+{
+  "name": "softmax_d20",
+  "op_type": "softmax",
+  "description": "Softmax over dimension 20. Used for attention scores in gpt-oss-120b.",
+  "tags": [
+    "status:verified",
+    "model:gpt-oss-120b",
+    "use:attention"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "dim": {
+      "type": "const",
+      "value": 20
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "bfloat16",
+      "description": "Input logits"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "bfloat16",
+      "description": "Softmax probabilities"
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\n@torch.no_grad()\ndef run(input):\n    return F.softmax(input, dim=-1)"
+}

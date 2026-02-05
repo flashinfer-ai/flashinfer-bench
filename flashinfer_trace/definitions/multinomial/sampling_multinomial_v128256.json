@@ -1,0 +1,44 @@
+{
+  "name": "sampling_multinomial_v128256",
+  "op_type": "multinomial",
+  "description": "Multinomial sampling from probability distribution over vocabulary (128256). Used in LLaMA models.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 128256
+    },
+    "num_samples_out": {
+      "type": "const",
+      "value": 1,
+      "description": "Number of samples drawn (typically 1 for token generation)"
+    }
+  },
+  "inputs": {
+    "probs": {
+      "shape": ["batch_size", "vocab_size"],
+      "dtype": "float32",
+      "description": "Probability distribution over vocabulary"
+    },
+    "num_samples": {
+      "shape": null,
+      "dtype": "int64",
+      "description": "Number of samples to draw"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "num_samples_out"],
+      "dtype": "int64",
+      "description": "Sampled token indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(probs, num_samples):\n    batch_size, vocab_size = probs.shape\n    \n    # Check constants\n    assert vocab_size == 128256\n    \n    output = torch.multinomial(probs, num_samples)\n    return output"
+}
