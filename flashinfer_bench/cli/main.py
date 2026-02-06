@@ -102,8 +102,17 @@ def export_trace_set(trace_set, output_dir):
         save_json_file(definition, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
+        definition = trace_set.definitions[def_name]
         for solution in solutions:
-            out_path = output_dir / "solutions" / f"{solution.name}.json"
+            out_path = (
+                output_dir
+                / "solutions"
+                / solution.author
+                / definition.op_type
+                / def_name
+                / f"{solution.name}.json"
+            )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             save_json_file(solution, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
