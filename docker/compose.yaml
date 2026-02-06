@@ -15,7 +15,7 @@
 
 services:
   flashinfer-bench:
-    image: flashinfer/flashinfer-bench:cu129
+    image: flashinfer/flashinfer-bench:cu131
     container_name: flashinfer-bench
     build:
       context: ..

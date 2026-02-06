@@ -2,11 +2,11 @@
 # GPU kernel benchmarking and development environment
 #
 # Build:
-#   docker build -t flashinfer-bench:cu129 .
-#   docker build --build-arg CUDA_VERSION=12.6.3 -t flashinfer-bench:cu126 .
+#   docker build -t flashinfer-bench:cu131 .
+#   docker build --build-arg CUDA_VERSION=12.9.1 -t flashinfer-bench:cu129 .
 #   docker build --build-arg CUDA_VERSION=13.0.1 -t flashinfer-bench:cu130 .
 
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION=13.1.1
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04
 
 ARG CUDA_VERSION
@@ -85,6 +85,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         12.8.*) CUINDEX=128 ;; \
         12.9.*) CUINDEX=129 ;; \
         13.0.*) CUINDEX=130 ;; \
+        13.1.*) CUINDEX=131 ;; \
         *) echo "Unsupported CUDA version: $CUDA_VERSION" && exit 1 ;; \
     esac \
     && python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu${CUINDEX} \
