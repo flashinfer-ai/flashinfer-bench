@@ -15,6 +15,7 @@ from flashinfer_bench.data import (
     SupportedLanguages,
     TensorSpec,
 )
+from flashinfer_bench.testing import requires_torch_cuda
 
 
 @pytest.fixture(autouse=True)
@@ -146,7 +147,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("echo", &echo); }
     assert torch.allclose(out, input_tensors[0])
 
 
-@pytest.mark.requires_torch_cuda
+@requires_torch_cuda
 def test_cuda_vector_add():
     """Test building and running a simple CUDA vector add kernel."""
     definition = Definition(
@@ -224,7 +225,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     assert torch.allclose(Z, X + Y)
 
 
-@pytest.mark.requires_torch_cuda
+@requires_torch_cuda
 def test_cublas_matmul():
     definition = Definition(
         name="touch_cublas_matmul",

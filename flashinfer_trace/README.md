@@ -48,3 +48,16 @@ This component encapsulates the concrete input data and configurations used to e
 This component is an atomic and immutable record of a single benchmark run of a Solution. A Trace serves as a detailed log entry, precisely linking a Solution to a Definition for a specific workload configuration (i.e., concrete shapes and input data), and contains the complete evaluation result.
 
 The collection of Traces is the central artifact of the FlashInfer-Bench ecosystem, creating a complete, queryable performance database that enables both high-level analysis and the programmatic discovery of the optimal Solution for any given Definition and environment.
+
+# Testing
+
+Run `pytest` from the `flashinfer_trace` directory to validate all definitions:
+
+```bash
+cd flashinfer_trace
+pytest
+```
+
+The test suite includes:
+- **Schema validation**: Checks that all definition JSON files conform to the schema, and the reference is valid code.
+- **Reference correctness** (requires GPU): Compares the reference implementation output against FlashInfer baseline to ensure correctness.
