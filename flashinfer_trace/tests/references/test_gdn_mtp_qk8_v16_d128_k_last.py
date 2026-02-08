@@ -235,10 +235,10 @@ def test_correctness(batch_size=2, seq_len=4, atol=5e-3, rtol=5e-3):
 
     if output_close:
         print(f"\n✓ PASSED (atol={atol}, rtol={rtol})")
-        return True
     else:
         print(f"\n✗ FAILED (atol={atol}, rtol={rtol})")
-        return False
+    assert output_close, "Output mismatch in test_correctness"
+    return True
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
