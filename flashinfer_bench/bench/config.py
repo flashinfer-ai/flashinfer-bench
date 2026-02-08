@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from flashinfer_bench.env import get_fib_cache_path
+
 
 @dataclass
 class BenchmarkConfig:
@@ -18,7 +20,7 @@ class BenchmarkConfig:
     num_trials: int = field(default=3)
     rtol: float = field(default=1e-2)
     atol: float = field(default=1e-2)
-    log_dir: str = field(default="/tmp/flashinfer_bench")
+    log_dir: str = field(default_factory=lambda: str(get_fib_cache_path() / "logs"))
     use_isolated_runner: bool = field(default=False)
     required_matched_ratio: Optional[float] = field(default=None)
     sampling_validation_trials: int = field(default=100)

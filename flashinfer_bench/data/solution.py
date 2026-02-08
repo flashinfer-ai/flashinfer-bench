@@ -25,6 +25,21 @@ class SupportedLanguages(str, Enum):
     """Pure C++ source code."""
     CUDA = "cuda"
     """CUDA C++ programming language."""
+    TILELANG = "tilelang"
+    """TileLang GPU programming language."""
+
+
+class SupportedBindings(str, Enum):
+    """Supported bindings for C++/CUDA solution implementations.
+
+    Enumeration of binding types that can be used to interface compiled
+    C++/CUDA code with Python.
+    """
+
+    TVM_FFI = "tvm-ffi"
+    """TVM-FFI binding for framework-agnostic DLPack interop. Preferred for C++/CUDA solutions."""
+    TORCH = "torch"
+    """PyTorch C++/CUDA extension binding."""
 
 
 class SourceFile(BaseModelWithDocstrings):
@@ -83,6 +98,9 @@ class BuildSpec(BaseModelWithDocstrings):
     """Whether to use destination passing style for the solution. If True, the solution should
     accept the output tensors as the last arguments. If False, the solution should return the
     output tensors."""
+    binding: Optional[SupportedBindings] = None
+    """The binding type to use for C++/CUDA solutions. If None, defaults to 'tvm-ffi' for
+    C++/CUDA languages. Ignored for Python and Triton languages."""
 
     @model_validator(mode="after")
     def _validate_entry_point(self) -> "BuildSpec":
@@ -205,6 +223,7 @@ class Solution(BaseModelWithDocstrings):
             self.definition,
             self.spec.language,
             self.spec.entry_point,
+            self.spec.binding.value if self.spec.binding else "",
             *self.spec.dependencies,
             *(part for src in self.sources for part in (src.path, src.content)),
         ):

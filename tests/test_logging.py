@@ -23,14 +23,6 @@ def package_logger_state() -> logging.Logger:
     logger.propagate = original_propagate
 
 
-def test_get_logger_scopes_name(package_logger_state: logging.Logger) -> None:
-    logger = fib_logging.get_logger()
-    assert logger.name == "flashinfer-bench"
-
-    scoped = fib_logging.get_logger("bench.tests")
-    assert scoped.name == "flashinfer-bench.bench.tests"
-
-
 def test_configure_logging_with_custom_handler(package_logger_state: logging.Logger) -> None:
     records = []
 

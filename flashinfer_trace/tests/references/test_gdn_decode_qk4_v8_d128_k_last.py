@@ -2,8 +2,8 @@
 Test GDN decode k-last reference implementation against FlashInfer kernel.
 
 Run with:
-    pytest test_gdn_decode_qk16_v32_d128_k_last.py -v
-    python test_gdn_decode_qk16_v32_d128_k_last.py
+    pytest test_gdn_decode_qk4_v8_d128_k_last.py -v
+    python test_gdn_decode_qk4_v8_d128_k_last.py
 """
 
 import math
@@ -72,13 +72,7 @@ def run_kernel(q, k, v, state, A_log, a, dt_bias, b, scale):
 
 
 def generate_random_inputs(
-    batch_size,
-    num_q_heads=16,
-    num_k_heads=16,
-    num_v_heads=32,
-    head_size=128,
-    device="cuda",
-    seed=42,
+    batch_size, num_q_heads=4, num_k_heads=4, num_v_heads=8, head_size=128, device="cuda", seed=42
 ):
     """Generate random inputs for testing."""
     torch.manual_seed(seed)
@@ -131,7 +125,7 @@ def test_correctness(batch_size=4, atol=5e-3, rtol=5e-3):
     print(f"{'='*60}")
 
     # Load definition and compile reference
-    definition = load_definition("gdn_decode_qk16_v32_d128_k_last")
+    definition = load_definition("gdn_decode_qk4_v8_d128_k_last")
     run = compile_reference(definition.reference)
 
     device = "cuda"
@@ -243,7 +237,7 @@ def test_gdn_decode_k_last(batch_size: int):
     _skip_if_not_sm90_or_later()
 
     # Load definition and compile reference
-    definition = load_definition("gdn_decode_qk16_v32_d128_k_last")
+    definition = load_definition("gdn_decode_qk4_v8_d128_k_last")
     run = compile_reference(definition.reference)
 
     device = "cuda"
@@ -300,7 +294,7 @@ def main():
     """Run tests."""
     print("Testing GDN Decode K-Last Reference Implementation")
     print(
-        "Loading definition from: flashinfer_trace/definitions/gdn/gdn_decode_qk16_v32_d128_k_last.json"
+        "Loading definition from: flashinfer_trace/definitions/gdn/gdn_decode_qk4_v8_d128_k_last.json"
     )
 
     test_configs = [1, 4, 16, 64, 256]

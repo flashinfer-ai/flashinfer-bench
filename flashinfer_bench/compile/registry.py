@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from typing import ClassVar, Dict, List, Type
 
+import filelock
+
 from flashinfer_bench.data import BuildSpec, Definition, Solution, SourceFile, SupportedLanguages
+from flashinfer_bench.env import get_fib_cache_path
 
 from .builder import Builder, BuildError
-from .builders import PythonBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder
+from .builders import PythonBuilder, TileLangBuilder, TorchBuilder, TritonBuilder, TVMFFIBuilder
 from .runnable import Runnable
 
-_BUILDER_PRIORITY: List[Type[Builder]] = [TritonBuilder, PythonBuilder, TVMFFIBuilder, TorchBuilder]
+_BUILDER_PRIORITY: List[Type[Builder]] = [
+    TritonBuilder,
+    TileLangBuilder,
+    PythonBuilder,
+    TVMFFIBuilder,
+    TorchBuilder,
+]
 """Builder types in priority order for automatic selection."""
 
 
@@ -31,8 +40,8 @@ class BuilderRegistry:
     _builders: List[Builder]
     """List of available builders in priority order."""
 
-    _cache: Dict[str, Runnable]
-    """Cache mapping solution hashes to built runnables."""
+    _cache: Dict[str, Runnable | BuildError]
+    """Cache mapping solution hashes to built runnables or build errors."""
 
     def __init__(self, builders: List[Builder]) -> None:
         """Initialize the registry with a list of builders.
@@ -50,7 +59,7 @@ class BuilderRegistry:
         if len(builders) == 0:
             raise ValueError("BuilderRegistry requires at least one builder")
         self._builders = list(builders)
-        self._cache: Dict[str, Runnable] = {}
+        self._cache: Dict[str, Runnable | BuildError] = {}
 
     @classmethod
     def get_instance(cls) -> "BuilderRegistry":
@@ -63,6 +72,7 @@ class BuilderRegistry:
         The following builders are available (high to low priority):
 
         - TritonBuilder: Build Triton solutions.
+        - TileLangBuilder: Build TileLang solutions.
         - PythonBuilder: Build Python solutions.
         - TVMFFIBuilder: Build CUDA/C++ solutions using TVM-FFI backend.
         - TorchBuilder: Build CUDA/C++ solutions using PyTorch extension system.
@@ -88,6 +98,9 @@ class BuilderRegistry:
         one reports it can build the solution. The resulting runnable is cached for
         future use.
 
+        This method is process-safe: concurrent builds of the same solution are
+        serialized using file locks.
+
         Parameters
         ----------
         definition : Definition
@@ -107,15 +120,39 @@ class BuilderRegistry:
         """
         hash = solution.hash()
         if hash in self._cache:
-            return self._cache[hash]
+            cached = self._cache[hash]
+            if isinstance(cached, BuildError):
+                raise cached
+            return cached
 
-        for builder in self._builders:
-            # Choose the first builder that can build the solution
-            if builder.can_build(solution):
+        # Use file lock to ensure process-safe build
+        lock_dir = get_fib_cache_path() / "build_locks"
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_dir / f"{hash}.lock"
+
+        with filelock.FileLock(lock_file):
+            # Double-check after acquiring lock
+            if hash in self._cache:
+                cached = self._cache[hash]
+                if isinstance(cached, BuildError):
+                    raise cached
+                return cached
+
+            builder = next((b for b in self._builders if b.can_build(solution)), None)
+            if builder is None:
+                error = BuildError(f"No registered builder can build solution '{solution.name}'")
+                self._cache[hash] = error
+                raise error
+
+            try:
                 runnable = builder.build(definition, solution)
+            except BuildError as e:
+                self._cache[hash] = e
+                raise
+            else:
                 self._cache[hash] = runnable
-                return runnable
-        raise BuildError(f"No registered builder can build solution '{solution.name}'")
+
+        return runnable
 
     def build_reference(self, definition: Definition) -> Runnable:
         """Build the reference implementation for a definition.
@@ -160,9 +197,10 @@ class BuilderRegistry:
         then clears the cache. Cleanup errors are caught and ignored to ensure
         all runnables are cleaned up.
         """
-        for runnable in self._cache.values():
-            try:
-                runnable.cleanup()
-            except Exception:
-                pass
+        for cached in self._cache.values():
+            if isinstance(cached, Runnable):
+                try:
+                    cached.cleanup()
+                except Exception:
+                    pass
         self._cache.clear()

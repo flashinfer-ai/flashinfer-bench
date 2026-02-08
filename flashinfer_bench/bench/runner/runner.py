@@ -46,3 +46,8 @@ class Runner(ABC):
         config: BenchmarkConfig,
         root: Path,
     ) -> Dict[str, Evaluation]: ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Release all resources and terminate worker processes."""
+        ...
