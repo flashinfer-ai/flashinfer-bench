@@ -163,8 +163,6 @@ Add new model to `web/apps/web/data/models.ts`:
 
 #### 4. Map Modules to Definitions
 
-**IMPORTANT**: When creating definitions for new kernels, always refer to the HuggingFace model page (`https://huggingface.co/{org}/{model-name}`) to obtain authoritative model constants from `config.json`. Cross-reference with SGLang implementation for runtime-specific values like `page_size`.
-
 Associate each module with corresponding Definitions:
 
 - **Normalization layers**: `rmsnorm_h{hidden_size}`, `fused_add_rmsnorm_h{hidden_size}`
