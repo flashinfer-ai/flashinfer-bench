@@ -2,8 +2,8 @@
 Test GDN prefill k-last reference implementation against FlashInfer kernel.
 
 Run with:
-    pytest test_gdn_prefill_qk16_v32_d128_k_last.py -v
-    python test_gdn_prefill_qk16_v32_d128_k_last.py
+    pytest test_gdn_prefill_qk8_v16_d128_k_last.py -v
+    python test_gdn_prefill_qk8_v16_d128_k_last.py
 """
 
 import math
@@ -66,11 +66,6 @@ def compute_gates(A_log, a, dt_bias, b):
     return g, beta
 
 
-# Load definition and compile reference
-definition = load_definition("gdn_prefill_qk16_v32_d128_k_last")
-reference_gdn_prefill = compile_reference(definition.reference)
-
-
 @requires_cuda
 @requires_sm90_only
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
@@ -79,12 +74,15 @@ def test_gdn_prefill_correctness(batch_size: int, seq_len: int):
     """Test GDN prefill kernel correctness against reference implementation."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
 
+    definition = load_definition("gdn_prefill_qk8_v16_d128_k_last")
+    reference_gdn_prefill = compile_reference(definition.reference)
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 
-    num_q_heads = 16
-    num_k_heads = 16
-    num_v_heads = 32
+    num_q_heads = 8
+    num_k_heads = 8
+    num_v_heads = 16
     head_size = 128
     num_sab_heads = max(num_q_heads, num_v_heads)
 
@@ -191,12 +189,15 @@ def test_gdn_prefill_with_initial_state():
     """Test GDN prefill kernel with non-zero initial state."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
 
+    definition = load_definition("gdn_prefill_qk8_v16_d128_k_last")
+    reference_gdn_prefill = compile_reference(definition.reference)
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 
-    num_q_heads = 16
-    num_k_heads = 16
-    num_v_heads = 32
+    num_q_heads = 8
+    num_k_heads = 8
+    num_v_heads = 16
     head_size = 128
     num_sab_heads = max(num_q_heads, num_v_heads)
 
@@ -311,12 +312,15 @@ def test_gdn_prefill_variable_seqlen():
     """Test GDN prefill kernel with variable sequence lengths."""
     from flashinfer.gdn_prefill import chunk_gated_delta_rule
 
+    definition = load_definition("gdn_prefill_qk8_v16_d128_k_last")
+    reference_gdn_prefill = compile_reference(definition.reference)
+
     device = torch.device("cuda")
     dtype = torch.bfloat16
 
-    num_q_heads = 16
-    num_k_heads = 16
-    num_v_heads = 32
+    num_q_heads = 8
+    num_k_heads = 8
+    num_v_heads = 16
     head_size = 128
     num_sab_heads = max(num_q_heads, num_v_heads)
 

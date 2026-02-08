@@ -77,7 +77,7 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
 | `mla_paged` | Multi-Head Latent Attention (paged) | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
 | `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
-| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk16_v32_d128_k_last` |
+| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
 | `sampling` | Sampling operations | - |
 

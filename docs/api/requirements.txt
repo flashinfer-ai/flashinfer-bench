@@ -1,4 +1,5 @@
 autodoc_pydantic>=2.1,<3
+docstring-parser>=0.16
 myst-parser[linkify]>=4,<5
 setuptools-scm>=8
 shibuya
