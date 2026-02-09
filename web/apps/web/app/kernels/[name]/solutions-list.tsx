@@ -252,7 +252,7 @@ export function SolutionsList({
                         C++ binding: {solution.spec.binding}
                       </Badge>
                     )}
-                    {!solution.spec.destination_passing_style && (
+                    {solution.spec.destination_passing_style === false && (
                       <Badge variant="outline" className="text-xs">
                         DPS: off
                       </Badge>

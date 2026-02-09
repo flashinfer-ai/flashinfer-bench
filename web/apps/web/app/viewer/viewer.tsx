@@ -495,7 +495,7 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
         {spec && (
           <div>
             <span className="text-foreground font-medium">Destination Passing Style:</span>{" "}
-            <span>{spec.destination_passing_style ? "Yes" : "No"}</span>
+            <span>{spec.destination_passing_style === false ? "No" : spec.destination_passing_style === true ? "Yes" : "Yes (default)"}</span>
           </div>
         )}
         {solutionData.description && (
