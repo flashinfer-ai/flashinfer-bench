@@ -486,6 +486,18 @@ function DefinitionSolutionViewer({ data, onBack }: ViewerProps) {
             </Badge>
           </div>
         )}
+        {spec?.binding && (
+          <div>
+            <span className="text-foreground font-medium">C++ Binding:</span>{" "}
+            <span>{spec.binding}</span>
+          </div>
+        )}
+        {spec && (
+          <div>
+            <span className="text-foreground font-medium">Destination Passing Style:</span>{" "}
+            <span>{spec.destination_passing_style ? "Yes" : "No"}</span>
+          </div>
+        )}
         {solutionData.description && (
           <div>
             <span className="text-foreground font-medium">Description:</span>

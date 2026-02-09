@@ -247,6 +247,16 @@ export function SolutionsList({
                     <Badge variant="outline" className="text-xs">
                       {solution.spec.language}
                     </Badge>
+                    {solution.spec.binding && (
+                      <Badge variant="outline" className="text-xs">
+                        C++ binding: {solution.spec.binding}
+                      </Badge>
+                    )}
+                    {!solution.spec.destination_passing_style && (
+                      <Badge variant="outline" className="text-xs">
+                        DPS: off
+                      </Badge>
+                    )}
                     {solution.spec.target_hardware.slice(0, 3).map((target) => (
                       <Badge key={target} variant="outline" className="text-xs">
                         {target}
