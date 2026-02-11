@@ -3,6 +3,10 @@ title: "FlashInfer Trace Schema"
 license: apache-2.0
 ---
 
+FlashInfer Trace is a standardized JSON schema used to build the FlashInfer-Bench dataset. It captures the full lifecycle of GPU kernel benchmarking — from defining a computational workload, to implementing optimized solutions, to recording benchmark results. Each object in the dataset is a JSON file conforming to this schema.
+
+FlashInfer Trace JSON objects can contain nested structures and large code blocks. You can paste any FlashInfer Trace JSON into the [FlashInfer Trace Viewer](https://bench.flashinfer.ai/viewer) to get a friendly, structured view of its contents.
+
 We organize the FlashInfer-Bench dataset into the following four core components:
 
 # Definition

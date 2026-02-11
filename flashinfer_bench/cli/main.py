@@ -90,6 +90,13 @@ def merge_trace_sets(trace_sets):
     return merged
 
 
+def _safe_path_segment(segment: str) -> str:
+    """Validate that a string is safe to use as a single path segment."""
+    if not segment or "/" in segment or "\\" in segment or segment in (".", ".."):
+        raise ValueError(f"Invalid path segment: {segment!r}")
+    return segment
+
+
 def export_trace_set(trace_set, output_dir):
     """Export a TraceSet to a directory in the expected structure."""
     output_dir = Path(output_dir)
@@ -98,22 +105,31 @@ def export_trace_set(trace_set, output_dir):
     (output_dir / "traces").mkdir(parents=True, exist_ok=True)
     # Save definitions
     for definition in trace_set.definitions.values():
-        out_path = output_dir / "definitions" / f"{definition.name}.json"
+        out_path = output_dir / "definitions" / f"{_safe_path_segment(definition.name)}.json"
         save_json_file(definition, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
+        definition = trace_set.definitions[def_name]
         for solution in solutions:
-            out_path = output_dir / "solutions" / f"{solution.name}.json"
+            out_path = (
+                output_dir
+                / "solutions"
+                / _safe_path_segment(solution.author)
+                / _safe_path_segment(definition.op_type)
+                / _safe_path_segment(def_name)
+                / f"{_safe_path_segment(solution.name)}.json"
+            )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             save_json_file(solution, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
         if workloads:
-            out_path = output_dir / "traces" / f"{def_name}_workloads.jsonl"
+            out_path = output_dir / "traces" / f"{_safe_path_segment(def_name)}_workloads.jsonl"
             save_jsonl_file(workloads, out_path)
     # Save regular traces
     for def_name, traces in trace_set.traces.items():
         if traces:
-            out_path = output_dir / "traces" / f"{def_name}.jsonl"
+            out_path = output_dir / "traces" / f"{_safe_path_segment(def_name)}.jsonl"
             save_jsonl_file(traces, out_path)
 
 
