@@ -5,11 +5,13 @@ description: Extract kernel schemas and definitions from SGLang model implementa
 
 # Extract Kernel Definitions
 
-Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations.
+Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
 
 ## Description
 
 This skill analyzes SGLang model implementations to extract the complete set of GPU kernels used during inference. It identifies kernel types (MLA, MOE, GQA, RMSNorm, GEMM), extracts their parameters, generates Definition JSON schemas with Python reference implementations, and handles deduplication across multiple models.
+
+**Key Feature**: Uses sgl-cookbook repository to find recommended serving configurations (tensor parallel, expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
 
 ## Usage
 
@@ -39,7 +41,7 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer (the `flashinfer_trace/` directory is already part of this repository).
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, and sgl-cookbook (the `flashinfer_trace/` directory is already part of this repository).
 
 ## What This Skill Does
 
@@ -50,39 +52,64 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
    - Identify model class (e.g., `DeepseekV3ForCausalLM`, `LlamaForCausalLM`)
    - Parse model architecture from config
 
-2. **Identify Layer Components**:
-   - Attention mechanism (GQA, MHA, MLA)
+2. **Find Serving Configurations (NEW)**:
+   - Search `tmp/sgl-cookbook/data/models/generated/v0.5.6/` for model-specific YAML configs
+   - Identify all recommended TP (tensor parallel) and EP (expert parallel) settings across different hardware platforms
+   - Parse YAML files to extract `tp` and `ep` values from hardware configurations
+   - **Example**: Qwen3-Next (qwen3next.yaml) has:
+     - H100: tp=4 (requires definitions with heads split by 4)
+     - H200/B200: tp=2 (requires definitions with heads split by 2)
+   - **Example**: DeepSeek V3.2 (deepseek.yaml) has:
+     - All platforms: tp=8 (base config)
+     - high-throughput-ep: tp=8, ep=8 (affects num_local_experts)
+
+3. **Identify Layer Components**:
+   - Attention mechanism (GQA, MHA, MLA, GDN)
    - MLP/FFN structure (Dense, MoE)
    - Normalization layers (RMSNorm, LayerNorm)
    - Embedding and output projections
 
-3. **Extract Execution Paths**:
+4. **Extract Execution Paths**:
    - Prefill path (batch processing, variable sequence length)
    - Decode path (single token, paged KV cache)
 
-### Phase 2: Kernel Extraction
+### Phase 2: Kernel Extraction with Parallelism Variants
 
-For each layer component, extract:
+For each layer component AND each serving configuration (TP/EP setting), extract:
 
-#### Attention Kernels
+#### Attention Kernels (Affected by TP)
 - **GQA**: `gqa_paged_decode`, `gqa_paged_prefill`, `gqa_ragged_prefill`
+  - **TP Impact**: `num_qo_heads` = original_heads / TP, `num_kv_heads` = original_kv_heads / TP
 - **MLA**: `mla_paged_decode`, `mla_paged_prefill`
+  - **TP Impact**: `num_qo_heads` = original_heads / TP
+- **GDN**: `gdn_decode`, `gdn_prefill`
+  - **TP Impact**: `num_q_heads` = original_q_heads / TP, `num_v_heads` = original_v_heads / TP
+  - **Example**: Qwen3-Next with TP=2 → `gdn_decode_qk8_v16_d128_k_last`
+  - **Example**: Qwen3-Next with TP=4 → `gdn_decode_qk4_v8_d128_k_last`
 - **Parameters**: num_heads, num_kv_heads, head_dim, page_size, ckv_dim, kpe_dim
 
-#### MoE Kernels
+#### MoE Kernels (Affected by EP)
 - Expert routing and selection
 - Expert execution (FP8 quantized, block-scaled)
-- **Parameters**: num_experts, topk, hidden_size, intermediate_size, group_size
+- **EP Impact**: `num_local_experts` = num_experts / EP
+- **Example**: DeepSeek V3 has 256 experts
+  - EP=1 → `num_local_experts=256`
+  - EP=2 → `num_local_experts=128`
+  - EP=4 → `num_local_experts=64`
+  - EP=8 → `num_local_experts=32`
+- **Parameters**: num_experts (global), num_local_experts (per device), topk, hidden_size, intermediate_size, group_size
 
-#### Normalization Kernels
+#### Normalization Kernels (NOT affected by TP/EP)
 - `rmsnorm_h{hidden_size}`
 - `fused_add_rmsnorm_h{hidden_size}`
 - **Parameters**: hidden_size, epsilon
+- **Note**: Same definition across all TP/EP configs
 
-#### GEMM Kernels
+#### GEMM Kernels (NOT affected by TP/EP)
 - QKV projection, O projection
 - Gate/Up projection, Down projection
 - **Parameters**: M (variable), N (output dim), K (input dim)
+- **Note**: Shape changes handled at runtime, definition remains constant
 
 ### Phase 3: Deduplication
 
@@ -99,9 +126,15 @@ For each layer component, extract:
    - Kernels like `rmsnorm_h4096` may be used by multiple models
    - Only create once, add model tags to existing definitions
 
-### Phase 4: Definition Generation
+### Phase 4: Definition Generation with Parallelism Tags
 
-For each new kernel, generate a Definition JSON following the standards below.
+For each new kernel AND each TP/EP configuration, generate a Definition JSON following the standards below.
+
+**IMPORTANT**: When generating multiple definitions for different TP/EP configs:
+1. Create separate JSON files with parameters reflecting the parallelism split
+2. Add tags to indicate the TP/EP configuration (e.g., `"config:tp2"`, `"config:tp4_ep2"`)
+3. Update constant axes to reflect post-split values
+4. Include TP/EP info in the description field
 
 ## Definition JSON Standards
 
@@ -388,26 +421,55 @@ When executing this skill:
    ls tmp/sglang/python/sglang/srt/models/ | grep -i {model_name}
    ```
 
-2. **Read model implementation**:
+2. **Find sgl-cookbook configs for the model**:
+   ```bash
+   # Find the matching YAML config file
+   find tmp/sgl-cookbook/data/models/generated/v0.5.6/ -name "*{model_name}*.yaml"
+
+   # Example: for qwen3-next
+   cat tmp/sgl-cookbook/data/models/generated/v0.5.6/qwen3next.yaml
+   ```
+
+3. **Parse YAML to extract TP/EP configurations**:
+   - Read YAML file and parse hardware configurations
+   - Extract all unique `tp` values across all hardware platforms and configurations
+   - Extract all unique `ep` values (if model uses MoE)
+   - **Example parsing result for Qwen3-Next**:
+     ```
+     TP configs: [2, 4]
+     EP configs: [null] (no MoE)
+     ```
+   - **Example parsing result for DeepSeek-V3.2**:
+     ```
+     TP configs: [8]
+     EP configs: [null, 8]
+     ```
+
+4. **Read model implementation**:
    - Parse the Python file
    - Identify forward() methods
    - Extract kernel calls (attention, MoE, norm, GEMM)
 
-3. **Extract kernel parameters from model config**:
+5. **Extract kernel parameters from model config**:
    - Look for config class (e.g., `DeepseekV3Config`)
    - Extract: num_hidden_layers, hidden_size, num_attention_heads, num_key_value_heads, intermediate_size, etc.
 
-4. **Check existing definitions**:
+6. **Check existing definitions**:
    ```bash
    ls flashinfer_trace/definitions/*/
    ```
 
-5. **Generate new definition JSONs**:
+7. **Generate definition JSONs for each TP/EP config**:
+   - For each unique TP value, calculate split head counts
+   - For each unique EP value, calculate local expert counts
    - Create directory if needed: `mkdir -p flashinfer_trace/definitions/{op_type}/`
    - Write JSON file with reference implementation
+   - **Example**: For Qwen3-Next GDN kernel with original q_heads=16, v_heads=32:
+     - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
+     - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
 
-6. **Report results**:
-   - List new definitions created
+8. **Report results**:
+   - List new definitions created (grouped by TP/EP config)
    - List existing definitions skipped (deduplication)
    - List kernels shared across models
 
