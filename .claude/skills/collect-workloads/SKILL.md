@@ -10,42 +10,46 @@ Automatically collect real-world workloads by running SGLang inference with Flas
 ## Description
 
 This skill automates the complete workload collection pipeline:
-1. **Setup FlashInfer logging**: Enable Level 10 logging to dump all tensor inputs/outputs
-2. **Run SGLang inference**: Execute ShareGPT inference job to capture real workloads
-3. **Dump tensors locally**: Collect tensor dumps from FlashInfer logs
-4. **Sanitize workloads**: Convert raw tensor dumps to standard workload JSONL format according to kernel definitions
-5. **Submit PR**: Create pull request to flashinfer-ai/flashinfer-trace dataset repo
+1. **Update SGLang**: Get latest main branch from SGLang and install it
+2. **Create branch**: Checkout new branch `collect_workload_for_{definition_name}` in SGLang
+3. **Setup FlashInfer logging**: Set `FLASHINFER_LOGLEVEL=10`, `FLASHINFER_DUMP_DIR`, and `FLASHINFER_DUMP_INCLUDE` filter to only dump target APIs
+4. **Launch SGLang server**: Start server with recommended config (or custom launch command)
+5. **Run inference**: Use `sglang.bench_serving` with ShareGPT dataset
+6. **Sanitize tensors**: Process dumped tensors and generate workload JSONL files (TODO)
+7. **Submit PR**: Create pull request to flashinfer-ai/flashinfer-trace dataset repo (TODO)
 
 ## Usage
 
 ```bash
-# Collect workloads for specific definitions
-/collect-workloads --definition-names mla_paged_decode_h16_ckv512_kpe64_ps1 rmsnorm_h7168
+# Collect workloads for a specific definition
+/collect-workloads --definition-name gqa_paged_decode_h32_kv8_d128_ps1
 
-# Collect for all definitions of an op_type
-/collect-workloads --op-type mla_paged --model-name deepseek-v3
+# Collect with custom model
+/collect-workloads --definition-name mla_paged_decode_h16_ckv512_kpe64_ps1 --model-name deepseek-ai/DeepSeek-V3 --tp 4
 
-# Collect for all definitions (comprehensive collection)
-/collect-workloads --all --model-name llama-3.1-8b
+# Collect with custom launch command
+/collect-workloads --definition-name gdn_decode_qk16_v32_d128_k_last --launch-command "python3 -m sglang.launch_server --model Qwen/Qwen3-Next-80B-A3B-Instruct --tp 4"
 
-# Collect without submitting PR (local testing)
-/collect-workloads --op-type gqa_paged --submit-pr false
+# Collect with more prompts for better coverage
+/collect-workloads --definition-name rmsnorm_h7168 --num-prompts 2000
 
-# Custom dataset and sample size
-/collect-workloads --op-type rmsnorm --dataset /path/to/custom_sharegpt.jsonl --num-samples 500
+# Custom SGLang path
+/collect-workloads --definition-name gqa_paged_decode_h32_kv8_d128_ps1 --sglang-path /path/to/sglang
 ```
 
 ## Parameters
 
-- `definition_names` (optional): List of specific definition names to collect workloads for (e.g., ["mla_paged_decode_h16_ckv512_kpe64_ps1", "rmsnorm_h7168"])
-- `op_type` (optional): Collect workloads for all definitions of a specific op_type (e.g., "mla_paged", "gqa_paged", "rmsnorm")
-- `all` (optional): Collect workloads for ALL definitions in definitions directory (default: false)
-- `model_name` (required): Model to run inference on (e.g., "deepseek-v3", "llama-3.1-8b", "qwen2.5-7b")
-- `dataset` (optional): Path to ShareGPT-format JSONL dataset (default: download from Hugging Face)
-- `num_samples` (optional): Number of inference samples to process (default: 100)
-- `submit_pr` (optional): Whether to submit PR to flashinfer-trace repo (default: true)
-- `pr_title` (optional): Custom PR title (default: auto-generated)
-- `pr_branch` (optional): Custom branch name (default: auto-generated from definitions)
+- `definition_name` (required): Definition name to collect workloads for (e.g., "gqa_paged_decode_h32_kv8_d128_ps1")
+- `sglang_path` (optional): Path to SGLang repository (default: "./tmp/sglang")
+- `conda_env` (optional): Conda environment name (default: "flashinfer")
+- `model_name` (optional): Model to run inference on (auto-inferred from definition if not provided)
+  - GQA kernels → "meta-llama/Llama-3.1-8B-Instruct"
+  - MLA/DSA kernels → "deepseek-ai/DeepSeek-V3"
+  - GDN kernels → "Qwen/Qwen3-Next-80B-A3B-Instruct"
+- `launch_command` (optional): Custom SGLang launch command (overrides default config)
+  - Example: "python3 -m sglang.launch_server --model Qwen/Qwen3-Next-80B-A3B-Instruct --tp 4"
+- `num_prompts` (optional): Number of prompts to process from ShareGPT dataset (default: 1000)
+- `tp` (optional): Tensor parallelism degree (default: 1)
 
 ## Prerequisites
 
@@ -53,49 +57,186 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
 
 ## What This Skill Does
 
-### Phase 1: Environment Setup
+### Step 1: Update SGLang from Main Branch
 
-1. **Verify Prerequisites**:
-   - Check SGLang installation: `python -c "import sglang; print(sglang.__version__)"`
-   - Check FlashInfer installation: `python -c "import flashinfer; print(flashinfer.__version__)"`
-   - Verify model availability or download if needed
+1. **Fetch latest main branch**:
+   ```bash
+   cd $SGLANG_PATH
+   git fetch origin
+   git checkout main
+   git pull origin main
+   ```
 
-2. **Load Target Definitions**:
-   - If `definition_names` specified: load specific definitions
-   - If `op_type` specified: load all definitions matching op_type from `flashinfer_trace/definitions/{op_type}/`
-   - If `all`: scan all definitions in `flashinfer_trace/definitions/`
-   - Parse each definition to understand axes, inputs, and constraints
+2. **Install SGLang**:
+   ```bash
+   conda activate $CONDA_ENV
+   pip install -e '.[all]'
+   ```
 
-3. **Prepare Dataset**:
-   - If custom dataset path provided, verify file exists
-   - Otherwise, download ShareGPT dataset:
-     ```python
-     from datasets import load_dataset
-     dataset = load_dataset("anon8231489123/ShareGPT_Vicuna_unfiltered", split="train")
-     # Save to local JSONL for faster access
+3. **Verify installation**:
+   ```bash
+   python -c "import sglang; print(sglang.__version__)"
+   ```
+
+### Step 2: Create Workload Collection Branch
+
+1. **Checkout new branch** in SGLang repository:
+   ```bash
+   cd $SGLANG_PATH
+   git checkout -b collect_workload_for_{definition_name}
+   ```
+
+2. This branch isolates the workload collection work and can be used to:
+   - Add instrumentation or debugging code if needed
+   - Track which definitions have been collected
+   - Keep collection work separate from main development
+
+### Step 3: Setup FlashInfer Logging Environment with API Filtering
+
+1. **Create dump directory**:
+   ```bash
+   mkdir -p $SGLANG_PATH/flashinfer_dumps
+   ```
+
+2. **Set environment variables** in the conda environment:
+   ```bash
+   conda activate $CONDA_ENV
+   export FLASHINFER_LOGLEVEL=10
+   export FLASHINFER_DUMP_DIR=$SGLANG_PATH/flashinfer_dumps
+   export FLASHINFER_DUMP_SAFETENSORS=1
+   export FLASHINFER_DUMP_MAX_COUNT=10000
+   export FLASHINFER_DUMP_INCLUDE="*decode*"  # Filter pattern based on definition name
+   ```
+
+3. **Auto-generated filter patterns** (from definition tags):
+
+   The filter is generated by reading `api:*` tags from the definition's `tags` field:
+
+   **With api tags** (preferred):
+   ```json
+   "tags": ["api:batch_decode_with_paged_kv_cache"]
+   → FLASHINFER_DUMP_INCLUDE="*batch_decode_with_paged_kv_cache*"
+
+   "tags": ["api:gdn_prefill"]
+   → FLASHINFER_DUMP_INCLUDE="*gdn_prefill*"
+
+   "tags": ["api:rmsnorm", "api:fused_add_rmsnorm"]
+   → FLASHINFER_DUMP_INCLUDE="*rmsnorm*,*fused_add_rmsnorm*"
+   ```
+
+   **Fallback** (if no api tags present, inferred from definition name):
+   - `gqa_paged_decode_h32_kv8_d128_ps1` → `FLASHINFER_DUMP_INCLUDE="*gqa_paged*,*decode*"`
+   - `mla_paged_prefill_h16_ckv512_kpe64_ps1` → `FLASHINFER_DUMP_INCLUDE="*mla_paged*,*prefill*"`
+   - `rmsnorm_h7168` → `FLASHINFER_DUMP_INCLUDE="*rmsnorm*"`
+
+4. **Environment variable reference**:
+   - `FLASHINFER_LOGLEVEL=10`: Enable "Flight Recorder (Metadata + Tensors)" mode
+   - `FLASHINFER_DUMP_DIR`: Directory where tensor dumps will be saved
+   - `FLASHINFER_DUMP_SAFETENSORS=1`: Use safetensors format for dumps
+   - `FLASHINFER_DUMP_MAX_COUNT`: Limit maximum number of dumps
+   - `FLASHINFER_DUMP_INCLUDE`: Only dump APIs matching the filter pattern (reduces dump size significantly)
+
+5. **Adding FlashInfer API tags to definitions**:
+
+   To ensure accurate filtering, add `api:*` tags to definition JSON files:
+
+   ```json
+   {
+     "name": "gqa_paged_decode_h32_kv8_d128_ps1",
+     "tags": [
+       "stage:decode",
+       "status:verified",
+       "model:llama-3.1-8b",
+       "api:batch_decode_with_paged_kv_cache"
+     ],
+     ...
+   }
+   ```
+
+   Common FlashInfer API names :
+   - GQA: `batch_decode_with_paged_kv_cache`, `batch_prefill_with_paged_kv_cache`, `batch_prefill_with_ragged_kv_cache`
+   - MLA: `mla_decode_with_paged_kv_cache`, `mla_prefill_with_paged_kv_cache`
+   - DSA: `dsa_sparse_attention`, `dsa_topk_indexer`
+   - GDN: `gdn_decode`, `gdn_prefill`
+   - RMSNorm: `rmsnorm`, `fused_add_rmsnorm`
+   - MoE: `moe_router`, `moe_scatter`, `fused_moe`
+
+**Reference**:
+- [FlashInfer Logging Documentation](https://docs.flashinfer.ai/logging.html)
+- [FlashInfer PR #2206 - Tensor Dump & Replay](https://github.com/flashinfer-ai/flashinfer/pull/2206)
+
+### Step 4: Launch SGLang Server
+
+1. **Use recommended config** (if `--launch-command` not provided):
+
+   Based on op_type and definition, use cookbook-recommended launch commands:
+
+   - **GDN kernels** (Qwen3-Next):
+     ```bash
+     python3 -m sglang.launch_server \
+       --model Qwen/Qwen3-Next-80B-A3B-Instruct \
+       --tp 4 \
+       --host 0.0.0.0 \
+       --port 30000 \
+       --attention-backend flashinfer \
+       --disable-cuda-graph \
+       --log-level info
      ```
-   - Validate dataset format (ShareGPT conversation format)
 
-### Phase 2: FlashInfer Logging Configuration
+   - **MLA/DSA kernels** (DeepSeek-V3):
+     ```bash
+     python3 -m sglang.launch_server \
+       --model deepseek-ai/DeepSeek-V3 \
+       --tp 8 \
+       --host 0.0.0.0 \
+       --port 30000 \
+       --attention-backend flashinfer \
+       --disable-cuda-graph \
+       --log-level info
+     ```
 
-**Set environment variables** for Level 10 logging:
+   - **GQA kernels** (Llama-3.1):
+     ```bash
+     python3 -m sglang.launch_server \
+       --model meta-llama/Llama-3.1-8B-Instruct \
+       --tp 1 \
+       --host 0.0.0.0 \
+       --port 30000 \
+       --attention-backend flashinfer \
+       --disable-cuda-graph \
+       --log-level info
+     ```
 
-```bash
-# Core configuration
-export FLASHINFER_LOGLEVEL=10
-export FLASHINFER_DUMP_DIR=./workload_dumps_$(date +%Y%m%d_%H%M%S)
-export FLASHINFER_DUMP_MAX_SIZE_GB=50
-export FLASHINFER_DUMP_MAX_COUNT=10000
+2. **Key flags**:
+   - `--attention-backend flashinfer`: **Required** to use FlashInfer kernels
+   - `--disable-cuda-graph`: **Required** to ensure every kernel call is logged individually
+   - `--tp N`: Tensor parallelism based on model size and GPU availability
 
-# Format selection (use safetensors for better compatibility)
-export FLASHINFER_DUMP_SAFETENSORS=1
+3. **Wait for server to be ready** (typically 30-60 seconds)
 
-# Filtering (optional - only dump relevant op_types)
-# Example: export FLASHINFER_DUMP_INCLUDE="*mla_decode*,*rmsnorm*"
-# This reduces dump size by only capturing targeted kernels
-```
+### Step 5: Run Inference Benchmark
 
-**Reference**: [FlashInfer Logging Documentation](https://docs.flashinfer.ai/logging.html)
+1. **Use sglang.bench_serving** with ShareGPT dataset:
+   ```bash
+   python3 -m sglang.bench_serving \
+     --backend sglang \
+     --dataset-name sharegpt \
+     --num-prompts 1000
+   ```
+
+2. **Parameters**:
+   - `--backend sglang`: Use SGLang backend (connects to localhost:30000)
+   - `--dataset-name sharegpt`: Use built-in ShareGPT dataset
+   - `--num-prompts 1000`: Process 1000 prompts (adjustable based on coverage needs)
+
+3. **During inference**:
+   - FlashInfer will dump tensors to `$FLASHINFER_DUMP_DIR`
+   - Each kernel call creates a dump with metadata and tensor data
+   - Monitor disk space as dumps can be large (GBs)
+
+4. **After completion**:
+   - Shutdown the server gracefully
+   - Dumps are ready for sanitization (Step 6)
 
 **Important Notes**:
 - Level 10 enables "Flight Recorder (Metadata + Tensors)" mode
@@ -400,72 +541,86 @@ export FLASHINFER_DUMP_SAFETENSORS=1
 
 ### Console Output
 
-During execution, print:
+During execution, the script prints:
 
 ```
-=============================================================
-FlashInfer Workload Collection
-=============================================================
+======================================================================
+FlashInfer Workload Collection: gqa_paged_decode_h32_kv8_d128_ps1
+======================================================================
+Definition: gqa_paged_decode_h32_kv8_d128_ps1
+Op Type: gqa_paged
+SGLang Path: /Users/averyhuang/Documents/FLASHINFER/flashinfer-bench/tmp/sglang
+Conda Env: flashinfer
+Dump Dir: /Users/averyhuang/Documents/FLASHINFER/flashinfer-bench/tmp/sglang/flashinfer_dumps
+======================================================================
 
-Phase 1: Environment Setup
-  ✓ SGLang version: 0.4.1
-  ✓ FlashInfer version: 0.6.2
-  ✓ Model: deepseek-v3 (loaded)
-  ✓ Definitions to collect: 5
-    - mla_paged_decode_h16_ckv512_kpe64_ps1
-    - mla_paged_prefill_h16_ckv512_kpe64_ps1
-    - rmsnorm_h7168
-    - fused_add_rmsnorm_h7168
-    - moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048
+============================================================
+Step 1: Update SGLang from main branch
+============================================================
+Fetching latest changes from main...
+$ git fetch origin
+$ git checkout main
+$ git pull origin main
+Installing SGLang...
+$ pip install -e '.[all]'
+✓ SGLang installed: version 0.4.2
 
-Phase 2: FlashInfer Logging Configuration
-  ✓ FLASHINFER_LOGLEVEL=10
-  ✓ FLASHINFER_DUMP_DIR=./workload_dumps_20260202_143022
-  ✓ FLASHINFER_DUMP_SAFETENSORS=1
-  ✓ FLASHINFER_DUMP_INCLUDE=*mla*,*rmsnorm*,*moe*
+============================================================
+Step 2: Create workload collection branch
+============================================================
+Creating new branch 'collect_workload_for_gqa_paged_decode_h32_kv8_d128_ps1'...
+$ git checkout -b collect_workload_for_gqa_paged_decode_h32_kv8_d128_ps1
+✓ On branch: collect_workload_for_gqa_paged_decode_h32_kv8_d128_ps1
 
-Phase 3: SGLang Inference Execution
-  ✓ Server started on port 30000
-  ✓ Processing 100 ShareGPT samples
-  [████████████████████] 100/100 samples (2m 15s)
-  ✓ Server shutdown
+============================================================
+Step 3: Configure FlashInfer logging
+============================================================
+✓ FLASHINFER_LOGLEVEL=10
+✓ FLASHINFER_DUMP_DIR=/path/to/sglang/flashinfer_dumps
+✓ FLASHINFER_DUMP_SAFETENSORS=1
+✓ FLASHINFER_DUMP_MAX_COUNT=10000
+✓ FLASHINFER_DUMP_INCLUDE=*gqa_paged*,*decode*
+  (Only dumps APIs matching: *gqa_paged*,*decode*)
 
-Phase 4: Tensor Dump Processing
-  ✓ Dump directory: workload_dumps_20260202_143022
-  ✓ Found 2,547 API calls
-  ✓ Matched calls to definitions:
-    - mla_paged_decode_h16_ckv512_kpe64_ps1: 845 calls
-    - rmsnorm_h7168: 1,280 calls
-    - moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048: 422 calls
+============================================================
+Step 4: Launch SGLang server
+============================================================
+Using default launch command:
+  python3 -m sglang.launch_server --model meta-llama/Llama-3.1-8B-Instruct --tp 1 --host 0.0.0.0 --port 30000 --attention-backend flashinfer --disable-cuda-graph --log-level info
+Starting SGLang server (this may take a few minutes)...
+Waiting for server to be ready...
+  Waiting for server... (1/10)
+  Waiting for server... (2/10)
+✓ SGLang server is ready
 
-Phase 5: Workload Sanitization
-  ✓ Extracted axes and inputs
-  ✓ Applied deduplication (2547 → 234 unique workloads)
-  ✓ Workload distribution:
-    - mla_paged_decode_h16_ckv512_kpe64_ps1: 78 workloads
-    - rmsnorm_h7168: 102 workloads
-    - moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048: 54 workloads
-  ✓ Saved to flashinfer_trace/workloads/{op_type}/{def_name}.jsonl
+============================================================
+Step 5: Run inference benchmark
+============================================================
+Running benchmark with 1000 prompts...
+  python3 -m sglang.bench_serving --backend sglang --dataset-name sharegpt --num-prompts 1000
+✓ Benchmark complete
 
-Phase 6: Submit Pull Request
-  ✓ Cloned flashinfer-ai/flashinfer-trace
-  ✓ Created branch: workloads-20260202-mla_paged
-  ✓ Copied workload files
-  ✓ Committed changes
-  ✓ Pushed to origin
-  ✓ Created PR: https://github.com/flashinfer-ai/flashinfer-trace/pull/123
+Benchmark output:
+[Benchmark statistics here...]
 
-=============================================================
-Summary
-=============================================================
-✓ Collected 234 unique workloads across 3 definitions
-✓ PR submitted: https://github.com/flashinfer-ai/flashinfer-trace/pull/123
+============================================================
+TODO: Steps 6+ (sanitization, workload generation, PR submission)
+============================================================
+Raw dumps available at: /path/to/sglang/flashinfer_dumps
 
-Local workload files:
-  flashinfer_trace/workloads/mla_paged/mla_paged_decode_h16_ckv512_kpe64_ps1.jsonl
-  flashinfer_trace/workloads/rmsnorm/rmsnorm_h7168.jsonl
-  flashinfer_trace/workloads/moe/moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048.jsonl
-=============================================================
+============================================================
+Cleanup: Stopping SGLang server
+============================================================
+✓ Server stopped gracefully
+
+======================================================================
+Workload Collection Complete (Steps 1-5)
+======================================================================
+Next steps:
+  1. Review dumps in: /path/to/sglang/flashinfer_dumps
+  2. Implement sanitization (Step 6)
+  3. Generate workload JSONL
+  4. Submit PR to flashinfer-trace
 ```
 
 ### Generated Files
@@ -493,75 +648,32 @@ flashinfer_trace/workloads/tensors/
     └── ...
 ```
 
-## Implementation Steps
+## Implementation
 
-When executing this skill:
+When Claude invokes this skill, it will:
 
-1. **Verify prerequisites**:
+1. **Execute the Python script** [`collect_workloads.py`](./collect_workloads.py):
    ```bash
-   python -c "import sglang, flashinfer; print(f'SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')"
+   python .claude/skills/collect-workloads/collect_workloads.py \
+     --definition-name {definition_name} \
+     --sglang-path {sglang_path} \
+     --conda-env {conda_env} \
+     --model-name {model_name} \
+     --num-prompts {num_prompts} \
+     --tp {tp}
    ```
 
-2. **Load target definitions**:
-   ```bash
-   # List definitions to collect for
-   ls flashinfer_trace/definitions/{op_type}/*.json
-   ```
+2. **The script orchestrates all 5 steps**:
+   - Step 1: Update SGLang from main branch
+   - Step 2: Create branch `collect_workload_for_{definition_name}`
+   - Step 3: Set FlashInfer logging environment with `FLASHINFER_DUMP_INCLUDE` filter
+   - Step 4: Launch SGLang server
+   - Step 5: Run `sglang.bench_serving` with ShareGPT
 
-3. **Download ShareGPT dataset** (if not provided):
-   ```python
-   from datasets import load_dataset
-   dataset = load_dataset("anon8231489123/ShareGPT_Vicuna_unfiltered", split="train")
-   dataset.to_json("sharegpt.jsonl")
-   ```
-
-4. **Set FlashInfer logging environment**:
-   ```bash
-   export FLASHINFER_LOGLEVEL=10
-   export FLASHINFER_DUMP_DIR=./workload_dumps_$(date +%Y%m%d_%H%M%S)
-   export FLASHINFER_DUMP_SAFETENSORS=1
-   export FLASHINFER_DUMP_MAX_COUNT=10000
-   ```
-
-5. **Launch SGLang server**:
-   ```bash
-   python -m sglang.launch_server \
-     --model-path $MODEL_PATH \
-     --host 0.0.0.0 --port 30000 \
-     --attention-backend flashinfer \
-     --disable-cuda-graph \
-     --log-level info &
-
-   # Wait for server ready
-   sleep 30
-   ```
-
-6. **Run inference requests**:
-   ```python
-   # Send ShareGPT conversations to server
-   for conv in tqdm(conversations[:num_samples]):
-       requests.post("http://localhost:30000/v1/chat/completions", json=payload)
-   ```
-
-7. **Process tensor dumps**:
-   ```python
-   # Parse session.jsonl, load safetensors, match to definitions
-   workloads = process_dumps(DUMP_DIR, target_definitions)
-   ```
-
-8. **Sanitize and save workloads**:
-   ```python
-   # Write to JSONL format
-   for def_name, entries in workloads.items():
-       save_workload_jsonl(def_name, entries)
-   ```
-
-9. **Submit PR**:
-   ```bash
-   cd tmp/flashinfer-trace
-   git checkout -b $BRANCH_NAME
-   # Copy files, commit, push, create PR
-   ```
+3. **Output**:
+   - Raw tensor dumps in `$SGLANG_PATH/flashinfer_dumps/` (only matching APIs)
+   - Server logs and benchmark results
+   - Ready for sanitization (Step 6, TODO)
 
 ## ShareGPT Dataset Format
 
