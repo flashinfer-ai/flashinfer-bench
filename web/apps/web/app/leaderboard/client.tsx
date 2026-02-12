@@ -325,17 +325,17 @@ export function LeaderboardClient({
 
   const rankingsData = useMemo(() => {
     const allAuthors = new Set([
-      ...Object.keys(fast.curves),
-      ...correctness.stats.map(s => s.author)
+      ...Object.keys(fast.curves || {}),
+      ...(correctness.stats || []).map(s => s.author)
     ])
 
     return Array.from(allAuthors)
       .filter(author => !excludedSet.has(author))
       .map(author => {
-        const curve = fast.curves[author]
+        const curve = fast.curves?.[author]
         const avgSpeedup = calculateAUC(curve)
 
-        const correctnessEntry = correctness.stats.find(s => s.author === author)
+        const correctnessEntry = correctness.stats?.find(s => s.author === author)
         const passRate = correctnessEntry && correctnessEntry.total > 0
           ? correctnessEntry.passed / correctnessEntry.total
           : 0
