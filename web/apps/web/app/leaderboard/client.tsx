@@ -24,6 +24,7 @@ type DefinitionAuthorDetail = {
   totalComparisons: number
   totalWorkloads: number
   coverage: Record<string, CoverageStats>
+  speedupSums: Record<string, number>
   solutionNamesByAuthor: Record<string, string[]>
 }
 
@@ -34,6 +35,14 @@ type DefinitionDetail = {
   totalWorkloads: number
   coverage?: CoverageStats
   solutionNames: string[]
+}
+
+type OverallAuthorRanking = {
+  author: string
+  totalSpeedup: number
+  comparisons: number
+  coverage?: CoverageStats
+  correctness?: CorrectnessSummary
 }
 
 const DEFAULT_PIN = 0.95
@@ -86,7 +95,7 @@ export function LeaderboardClient({
 }: LeaderboardClientProps) {
   const [pinnedP, setPinnedP] = useState<number | null>(initialPinnedP)
   const [isListExpanded, setIsListExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<"fast" | "correctness">("fast")
+  const [activeTab, setActiveTab] = useState<"fast" | "rankings">("fast")
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [highlightedAuthor, setHighlightedAuthor] = useState<string | null>(null)
@@ -292,7 +301,43 @@ export function LeaderboardClient({
     openAuthorDetail(highlightedAuthor)
   }, [highlightedAuthor, openAuthorDetail])
 
-  const pinnedLabel = pinnedTarget.toFixed(2)
+  const correctnessByAuthor = useMemo(() => {
+    const map: Record<string, CorrectnessSummary> = {}
+    for (const entry of correctness.stats) {
+      map[entry.author] = {
+        total: entry.total,
+        passed: entry.passed,
+        incorrect: entry.incorrect,
+        runtime_error: entry.runtime_error,
+        other: entry.other,
+      }
+    }
+    return map
+  }, [correctness.stats])
+
+  const overallRanking = useMemo<OverallAuthorRanking[]>(() => {
+    const entries: OverallAuthorRanking[] = []
+    const speedupEntries = Object.entries(fast.speedupSums ?? {})
+    for (const [author, totalSpeedup] of speedupEntries) {
+      if (excludedSet.has(author)) continue
+      const comparisons = fast.comparisonCounts[author] ?? 0
+      if (comparisons <= 0) continue
+      entries.push({
+        author,
+        totalSpeedup,
+        comparisons,
+        coverage: fast.coverage?.[author],
+        correctness: correctnessByAuthor[author],
+      })
+    }
+    return entries.sort((a, b) => {
+      if (b.totalSpeedup !== a.totalSpeedup) return b.totalSpeedup - a.totalSpeedup
+      if (b.comparisons !== a.comparisons) return b.comparisons - a.comparisons
+      return a.author.localeCompare(b.author)
+    })
+  }, [correctnessByAuthor, excludedSet, fast.comparisonCounts, fast.coverage, fast.speedupSums])
+
+  const maxTotalSpeedup = overallRanking.length > 0 ? overallRanking[0].totalSpeedup : 0
 
   const correctnessRanking = useMemo(() => {
     return correctness.stats
@@ -313,20 +358,6 @@ export function LeaderboardClient({
 
   const maxPassRate = correctnessRanking.length > 0 ? correctnessRanking[0].passRate : 0
 
-  const correctnessByAuthor = useMemo(() => {
-    const map: Record<string, CorrectnessSummary> = {}
-    for (const entry of correctness.stats) {
-      map[entry.author] = {
-        total: entry.total,
-        passed: entry.passed,
-        incorrect: entry.incorrect,
-        runtime_error: entry.runtime_error,
-        other: entry.other,
-      }
-    }
-    return map
-  }, [correctness.stats])
-
   return (
     <section>
       <div className="container space-y-6 py-6 md:py-8">
@@ -337,14 +368,14 @@ export function LeaderboardClient({
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "fast" | "correctness")}
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "fast" | "rankings")}
           className="space-y-6"
         >
           <TabsList className="w-fit">
             <TabsTrigger value="fast">
               <FastPLabel className="font-medium" />
             </TabsTrigger>
-            <TabsTrigger value="correctness">Correctness</TabsTrigger>
+            <TabsTrigger value="rankings">Author rankings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="fast" className="space-y-6">
@@ -497,10 +528,30 @@ export function LeaderboardClient({
                 </div>
               )}
             </div>
+
+            <OverallRankingCard
+              rankings={overallRanking}
+              maxTotalSpeedup={maxTotalSpeedup}
+              formatCoverage={formatCoverage}
+              title="Overall author rankings"
+              description="Area under the Fast-p curve across every workload; higher values mean more consistent speedups over the baseline."
+            />
           </TabsContent>
 
-          <TabsContent value="correctness" className="space-y-6">
-            <div className="rounded-lg border bg-card/50 p-4">
+          <TabsContent value="rankings" className="space-y-6">
+            <OverallRankingCard
+              rankings={overallRanking}
+              maxTotalSpeedup={maxTotalSpeedup}
+              formatCoverage={formatCoverage}
+              title="Overall author rankings"
+              description="Area under the Fast-p curve across every workload; higher values mean more consistent speedups over the baseline."
+            />
+
+            <div className="rounded-lg border bg-card/50 p-4 space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold">Correctness author rankings</h3>
+                <p className="text-xs text-muted-foreground">Pass rate across all workloads for each author.</p>
+              </div>
               {correctnessRanking.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No correctness data available.</p>
               ) : (
@@ -520,10 +571,7 @@ export function LeaderboardClient({
                           </div>
                         </div>
                         <div className="h-2 rounded bg-muted">
-                          <div
-                            className="h-full rounded bg-primary"
-                            style={{ width }}
-                          />
+                          <div className="h-full rounded bg-primary" style={{ width }} />
                         </div>
                       </div>
                     )
@@ -558,6 +606,60 @@ type AuthorDetailDrawerProps = {
   definitions: Array<DefinitionDetail & { winPercent: number }>
   pinnedTarget: number
   onOpenChange: (open: boolean) => void
+}
+
+type OverallRankingCardProps = {
+  rankings: OverallAuthorRanking[]
+  maxTotalSpeedup: number
+  formatCoverage: (stats?: CoverageStats | null) => { percentText: string } | null
+  title: string
+  description: string
+}
+
+function OverallRankingCard({ rankings, maxTotalSpeedup, formatCoverage, title, description }: OverallRankingCardProps) {
+  const hasRankings = rankings.length > 0
+  return (
+    <div className="rounded-lg border bg-card/50 p-4 space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold">{title}</h3>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      {!hasRankings ? (
+        <p className="text-sm text-muted-foreground">No speedup data available.</p>
+      ) : (
+        <div className="space-y-4">
+          {rankings.map((entry, index) => {
+            const widthPercent = maxTotalSpeedup > 0 ? Math.max(0, (entry.totalSpeedup / maxTotalSpeedup) * 100) : 0
+            const width = `${Math.min(widthPercent, 100)}%`
+            const totalSpeedupText = entry.totalSpeedup.toFixed(2)
+            const passRatePercent = entry.correctness && entry.correctness.total > 0
+              ? ((entry.correctness.passed / entry.correctness.total) * 100).toFixed(1)
+              : null
+            const coverageInfo = formatCoverage(entry.coverage)
+            return (
+              <div key={entry.author} className="space-y-2">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-muted-foreground">{index + 1}.</span>
+                    <span>{entry.author}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">Area under Fast-p curve {totalSpeedupText}</div>
+                </div>
+                <div className="h-2 rounded bg-muted">
+                  <div className="h-full rounded bg-primary" style={{ width }} />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>{entry.comparisons} comparisons</span>
+                  {coverageInfo && <span>{coverageInfo.percentText}% evaluated</span>}
+                  {passRatePercent && <span>{passRatePercent}% pass</span>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function AuthorDetailDrawer({ open, author, definitions, pinnedTarget, onOpenChange }: AuthorDetailDrawerProps) {
