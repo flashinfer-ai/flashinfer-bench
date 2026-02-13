@@ -131,8 +131,10 @@ class TracingRuntime:
                 logger.warning(f"Tracing config found for unknown definition: {def_name}")
 
         from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
+        from flashinfer_bench.integration.transformers import install_transformers_integrations
 
         install_flashinfer_integrations()
+        install_transformers_integrations()
 
     def start(self):
         """Activate this runtime instance. Should be called in the
