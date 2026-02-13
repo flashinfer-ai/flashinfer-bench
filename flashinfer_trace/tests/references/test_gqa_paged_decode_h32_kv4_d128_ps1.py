@@ -222,7 +222,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     mean_abs_diff = abs_diff.mean().item()
     mean_rel_diff = rel_diff.mean().item()
 
-    print(f"\nOutput tensor comparison:")
+    print("\nOutput tensor comparison:")
     print(f"Max absolute difference: {max_abs_diff:.6e}")
     print(f"Max relative difference: {max_rel_diff:.6e}")
     print(f"Mean absolute difference: {mean_abs_diff:.6e}")
@@ -245,7 +245,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     lse_mean_abs_diff = lse_abs_diff.mean().item()
     lse_mean_rel_diff = lse_rel_diff.mean().item()
 
-    print(f"\nLSE comparison:")
+    print("\nLSE comparison:")
     print(f"Max absolute difference: {lse_max_abs_diff:.6e}")
     print(f"Max relative difference: {lse_max_rel_diff:.6e}")
     print(f"Mean absolute difference: {lse_mean_abs_diff:.6e}")
