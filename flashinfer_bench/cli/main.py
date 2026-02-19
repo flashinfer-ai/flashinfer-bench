@@ -39,7 +39,7 @@ def best(args: argparse.Namespace):
                 continue
             logger.info(f"Best solution for {definition}:")
             logger.info(f"- Solution: {trace.solution}")
-            logger.info(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
+            logger.info(f"- Speedup vs. ref: {trace.evaluation.performance.speedup_factor:.2f}×")
             logger.info(
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
@@ -165,7 +165,7 @@ def visualize(args: argparse.Namespace):
         logger.info("\nDetailed Results:")
         logger.info("-" * 80)
         logger.info(
-            f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}"
+            f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup vs. ref':<16} {'Latency(ms)':<12} {'Max Error':<15}"
         )
         logger.info("-" * 80)
 
@@ -188,7 +188,7 @@ def visualize(args: argparse.Namespace):
                     max_error = f"{max_error:.2e}"
 
                 logger.info(
-                    f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}"
+                    f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<16} {latency:<12} {max_error:<15}"
                 )
 
         # Print best solutions
@@ -202,7 +202,7 @@ def visualize(args: argparse.Namespace):
                 speedup = perf.get("speedup_factor", "N/A")
                 if isinstance(speedup, (int, float)):
                     speedup = f"{speedup:.2f}×"
-                logger.info(f"{def_name}: {best_trace.solution} (Speedup: {speedup})")
+                logger.info(f"{def_name}: {best_trace.solution} (Speedup vs. ref: {speedup})")
             else:
                 logger.warning(f"{def_name}: No valid solution found")
 
