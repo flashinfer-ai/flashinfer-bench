@@ -97,7 +97,13 @@ def main():
     # Save the solution
     if solution:
         try:
-            solutions_dir = Path(traceset_path) / "solutions"
+            solutions_dir = (
+                Path(traceset_path)
+                / "solutions"
+                / solution.author
+                / definition.op_type
+                / definition_name
+            )
             solutions_dir.mkdir(parents=True, exist_ok=True)
 
             solution_filename = f"{solution.name}.json"
