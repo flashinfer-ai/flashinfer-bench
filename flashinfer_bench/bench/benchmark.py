@@ -150,7 +150,7 @@ class Benchmark:
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
                             f"Solution '{sol_name}' for workload {workload.uuid}: PASSED with "
-                            f"{ev.performance.speedup_factor:.2f}x speedup"
+                            f"{ev.performance.speedup_factor:.2f}x speedup vs. mathematical reference"
                         )
                     else:
                         logger.warning(

@@ -55,6 +55,19 @@ function sampleCurve(points: CurvePoint[] | undefined, p: number): number {
   return points[lo]?.percent ?? 0
 }
 
+function calculateAUC(points: CurvePoint[] | undefined): number {
+  if (!points || points.length === 0) return 0
+  let area = 0
+  for (let i = 1; i < points.length; i++) {
+    const p1 = points[i - 1]
+    const p2 = points[i]
+    const width = p2.p - p1.p
+    const avgHeight = (p1.percent + p2.percent) / 2
+    area += width * avgHeight
+  }
+  return area / 100 // Convert from percentage to decimal
+}
+
 function buildScoreboard(curves: Record<string, CurvePoint[]>, p: number, excludedAuthors: Set<string>): ScoreboardEntry[] {
   const entries: ScoreboardEntry[] = []
   for (const [name, points] of Object.entries(curves)) {
@@ -86,10 +99,12 @@ export function LeaderboardClient({
 }: LeaderboardClientProps) {
   const [pinnedP, setPinnedP] = useState<number | null>(initialPinnedP)
   const [isListExpanded, setIsListExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<"fast" | "correctness">("fast")
+  const [activeTab, setActiveTab] = useState<"rankings" | "fast">("rankings")
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [highlightedAuthor, setHighlightedAuthor] = useState<string | null>(null)
+  const [rankingSortColumn, setRankingSortColumn] = useState<"author" | "speedup" | "resolved">("speedup")
+  const [rankingSortOrder, setRankingSortOrder] = useState<"asc" | "desc">("desc")
 
   const excludedSet = useMemo(() => new Set(excludedAuthors), [excludedAuthors])
 
@@ -294,25 +309,6 @@ export function LeaderboardClient({
 
   const pinnedLabel = pinnedTarget.toFixed(2)
 
-  const correctnessRanking = useMemo(() => {
-    return correctness.stats
-      .filter((entry) => !excludedSet.has(entry.author))
-      .map((entry) => {
-        const passRate = entry.total > 0 ? entry.passed / entry.total : 0
-        return {
-          ...entry,
-          passRate,
-        }
-      })
-      .sort((a, b) => {
-        if (b.passRate !== a.passRate) return b.passRate - a.passRate
-        if (b.total !== a.total) return b.total - a.total
-        return a.author.localeCompare(b.author)
-      })
-  }, [correctness, excludedSet])
-
-  const maxPassRate = correctnessRanking.length > 0 ? correctnessRanking[0].passRate : 0
-
   const correctnessByAuthor = useMemo(() => {
     const map: Record<string, CorrectnessSummary> = {}
     for (const entry of correctness.stats) {
@@ -327,6 +323,62 @@ export function LeaderboardClient({
     return map
   }, [correctness.stats])
 
+  const rankingsData = useMemo(() => {
+    const allAuthors = new Set([
+      ...Object.keys(fast.curves || {}),
+      ...(correctness.stats || []).map(s => s.author)
+    ])
+
+    return Array.from(allAuthors)
+      .filter(author => !excludedSet.has(author))
+      .map(author => {
+        const curve = fast.curves?.[author]
+        const avgSpeedup = calculateAUC(curve)
+
+        const correctnessEntry = correctness.stats?.find(s => s.author === author)
+        const passRate = correctnessEntry && correctnessEntry.total > 0
+          ? correctnessEntry.passed / correctnessEntry.total
+          : 0
+
+        return {
+          author,
+          avgSpeedup,
+          passRate,
+          totalTests: correctnessEntry?.total ?? 0,
+          passedTests: correctnessEntry?.passed ?? 0,
+        }
+      })
+  }, [fast.curves, correctness.stats, excludedSet])
+
+  const sortedRankings = useMemo(() => {
+    const sorted = [...rankingsData]
+    sorted.sort((a, b) => {
+      let compareValue = 0
+      switch (rankingSortColumn) {
+        case "author":
+          compareValue = a.author.localeCompare(b.author)
+          break
+        case "speedup":
+          compareValue = a.avgSpeedup - b.avgSpeedup
+          break
+        case "resolved":
+          compareValue = a.passRate - b.passRate
+          break
+      }
+      return rankingSortOrder === "asc" ? compareValue : -compareValue
+    })
+    return sorted
+  }, [rankingsData, rankingSortColumn, rankingSortOrder])
+
+  const handleSortColumn = useCallback((column: "author" | "speedup" | "resolved") => {
+    if (rankingSortColumn === column) {
+      setRankingSortOrder(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setRankingSortColumn(column)
+      setRankingSortOrder("desc")
+    }
+  }, [rankingSortColumn])
+
   return (
     <section>
       <div className="container space-y-6 py-6 md:py-8">
@@ -337,15 +389,104 @@ export function LeaderboardClient({
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "fast" | "correctness")}
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "rankings" | "fast")}
           className="space-y-6"
         >
           <TabsList className="w-fit">
+            <TabsTrigger value="rankings">Rankings</TabsTrigger>
             <TabsTrigger value="fast">
               <FastPLabel className="font-medium" />
             </TabsTrigger>
-            <TabsTrigger value="correctness">Correctness</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="rankings" className="space-y-6">
+            <div className="rounded-lg border bg-card/50">
+              {sortedRankings.length === 0 ? (
+                <p className="p-4 text-sm text-muted-foreground">No ranking data available.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="border-b bg-muted/50">
+                      <tr>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleSortColumn("author")}
+                            className="flex items-center gap-2 text-sm font-semibold hover:text-primary"
+                          >
+                            Author
+                            {rankingSortColumn === "author" && (
+                              <span className="text-xs">{rankingSortOrder === "asc" ? "↑" : "↓"}</span>
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleSortColumn("speedup")}
+                            className="flex items-center gap-2 text-sm font-semibold hover:text-primary"
+                          >
+                            Avg Speedup
+                            {rankingSortColumn === "speedup" && (
+                              <span className="text-xs">{rankingSortOrder === "asc" ? "↑" : "↓"}</span>
+                            )}
+                          </button>
+                        </th>
+                        <th className="px-4 py-3 text-left">
+                          <button
+                            type="button"
+                            onClick={() => handleSortColumn("resolved")}
+                            className="flex items-center gap-2 text-sm font-semibold hover:text-primary"
+                          >
+                            % Resolved
+                            {rankingSortColumn === "resolved" && (
+                              <span className="text-xs">{rankingSortOrder === "asc" ? "↑" : "↓"}</span>
+                            )}
+                          </button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {sortedRankings.map((entry, index) => (
+                        <tr
+                          key={entry.author}
+                          className="hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => openAuthorDetail(entry.author)}
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {index + 1}.
+                              </span>
+                              <span
+                                className="inline-flex h-6 w-1.5 flex-shrink-0 rounded-full"
+                                style={{ backgroundColor: colorFor(entry.author) }}
+                                aria-hidden="true"
+                              />
+                              <span className="font-medium">{entry.author}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-sm">{(entry.avgSpeedup * 100).toFixed(1)}%</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              <span className="text-sm">
+                                {(entry.passRate * 100).toFixed(1)}%
+                              </span>
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                ({entry.passedTests}/{entry.totalTests})
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </TabsContent>
 
           <TabsContent value="fast" className="space-y-6">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -494,40 +635,6 @@ export function LeaderboardClient({
                       )
                     })}
                   </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="correctness" className="space-y-6">
-            <div className="rounded-lg border bg-card/50 p-4">
-              {correctnessRanking.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No correctness data available.</p>
-              ) : (
-                <div className="space-y-4">
-                  {correctnessRanking.map((entry, index) => {
-                    const percent = (entry.passRate * 100).toFixed(1)
-                    const width = maxPassRate > 0 ? `${entry.passRate * 100}%` : "0%"
-                    return (
-                      <div key={entry.author} className="space-y-2">
-                        <div className="flex items-center justify-between text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-muted-foreground">{index + 1}.</span>
-                            <span>{entry.author}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {percent}% pass ({entry.passed}/{entry.total})
-                          </div>
-                        </div>
-                        <div className="h-2 rounded bg-muted">
-                          <div
-                            className="h-full rounded bg-primary"
-                            style={{ width }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               )}
             </div>
