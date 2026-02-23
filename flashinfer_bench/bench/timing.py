@@ -10,8 +10,8 @@ from multiprocessing.synchronize import Lock as LockType
 from typing import Any, List
 
 import torch
-
 from flashinfer.testing import bench_gpu_time_with_cupti
+
 from flashinfer_bench.compile import Runnable
 
 # Device-specific lock registry to ensure multiprocess-safe benchmarking
