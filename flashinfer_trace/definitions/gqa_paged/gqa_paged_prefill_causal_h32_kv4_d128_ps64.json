@@ -5,7 +5,8 @@
   "tags": [
     "stage:prefill",
     "status:verified",
-    "model:qwen3-30b-a3b"
+    "model:qwen3-30b-a3b",
+    "fi_api:flashinfer.BatchPrefillWithPagedKVCacheWrapper"
   ],
   "axes": {
     "num_qo_heads": {

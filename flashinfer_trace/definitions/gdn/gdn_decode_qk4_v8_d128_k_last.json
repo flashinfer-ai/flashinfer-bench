@@ -6,7 +6,8 @@
     "stage:decode",
     "status:verified",
     "model:qwen3-next",
-    "layout:k-last"
+    "layout:k-last",
+    "fi_api:flashinfer.gdn.gated_delta_rule_decode"
   ],
   "axes": {
     "batch_size": {

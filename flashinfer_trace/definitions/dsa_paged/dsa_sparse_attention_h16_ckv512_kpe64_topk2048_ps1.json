@@ -5,7 +5,8 @@
   "tags": [
     "status:verified",
     "model:deepseek-v3.2",
-    "sparse:topk"
+    "sparse:topk",
+    "fi_api:flashinfer.sparse.BlockSparseAttentionWrapper"
   ],
   "axes": {
     "num_tokens": {

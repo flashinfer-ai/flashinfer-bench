@@ -140,6 +140,26 @@ Tags follow the pattern `{category}:{value}`:
 | `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
 | `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
 | `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
+| `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
+
+**FlashInfer API Name Mapping by op_type:**
+
+| op_type | FlashInfer API | Notes |
+|---------|----------------|-------|
+| `rmsnorm` | `flashinfer.norm.rmsnorm` | |
+| `rmsnorm` (fused_add) | `flashinfer.norm.fused_add_rmsnorm` | |
+| `gqa_paged` (decode) | `flashinfer.BatchDecodeWithPagedKVCacheWrapper` | |
+| `gqa_paged` (prefill) | `flashinfer.BatchPrefillWithPagedKVCacheWrapper` | |
+| `gqa_ragged` | `flashinfer.BatchPrefillWithRaggedKVCacheWrapper` | |
+| `mla_paged` | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | |
+| `dsa_paged` | `flashinfer.sparse.BlockSparseAttentionWrapper` | Verify in `tmp/flashinfer/python/flashinfer/` |
+| `gdn` (prefill) | `flashinfer.gdn.chunk_gated_delta_rule` | Defined in `gdn_prefill.py` |
+| `gdn` (decode) | `flashinfer.gdn.gated_delta_rule_decode` | Defined in `gdn_decode.py` |
+| `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
+| `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
+| `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
+| `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
+| `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
 
 **Example tags array:**
 ```json
@@ -148,7 +168,8 @@ Tags follow the pattern `{category}:{value}`:
   "status:verified",
   "model:deepseek-v3",
   "model:deepseek-r1",
-  "quantization:float8_e4m3fn"
+  "quantization:float8_e4m3fn",
+  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper"
 ]
 ```
 
@@ -241,7 +262,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "stage:decode",
     "status:verified",
     "model:deepseek-v3",
-    "model:deepseek-r1"
+    "model:deepseek-r1",
+    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper"
   ],
   "axes": {
     "batch_size": { "type": "var" },
@@ -378,6 +400,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
   "reference": "import torch\n\n@torch.no_grad()\ndef run(routing_logits, hidden_states, ...):\n    # Check constants\n    assert H == 7168, 'hidden_size must be 7168'\n    ..."
 }
 ```
+
+> **Note**: The MoE FP8 block-scale variant has a FlashInfer API (`flashinfer.fused_moe.trtllm_fp8_block_scale_moe`); update the `tags` array accordingly. Other MoE variants without FlashInfer support should omit the `fi_api:` tag and use SGLang as ground truth. In general, omit `fi_api:` whenever no FlashInfer API covers the kernel.
 
 ## Implementation Steps
 

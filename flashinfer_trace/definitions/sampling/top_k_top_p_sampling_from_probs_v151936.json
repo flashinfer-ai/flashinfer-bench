@@ -4,7 +4,8 @@
   "description": "Top-k top-p (nucleus) sampling from probabilities with vocab_size=151936. Filters probabilities using top-k and top-p constraints, then samples from the filtered distribution. Captured from Qwen 3 30B A3B.",
   "tags": [
     "status:verified",
-    "model:qwen3-30b-a3b"
+    "model:qwen3-30b-a3b",
+    "fi_api:flashinfer.sampling.top_k_top_p_sampling_from_probs"
   ],
   "axes": {
     "batch_size": {
