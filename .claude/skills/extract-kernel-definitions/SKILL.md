@@ -148,9 +148,9 @@ Tags follow the pattern `{category}:{value}`:
 |---------|----------------|-------|
 | `rmsnorm` | `flashinfer.norm.rmsnorm` | |
 | `rmsnorm` (fused_add) | `flashinfer.norm.fused_add_rmsnorm` | |
-| `gqa_paged` (decode) | `flashinfer.BatchDecodeWithPagedKVCacheWrapper` | |
-| `gqa_paged` (prefill) | `flashinfer.BatchPrefillWithPagedKVCacheWrapper` | |
-| `gqa_ragged` | `flashinfer.BatchPrefillWithRaggedKVCacheWrapper` | |
+| `gqa_paged` (decode) | `flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper` | |
+| `gqa_paged` (prefill) | `flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper` | |
+| `gqa_ragged` | `flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper` | |
 | `mla_paged` | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | |
 | `dsa_paged` | `flashinfer.sparse.BlockSparseAttentionWrapper` | Verify in `tmp/flashinfer/python/flashinfer/` |
 | `gdn` (prefill) | `flashinfer.gdn.chunk_gated_delta_rule` | Defined in `gdn_prefill.py` |
