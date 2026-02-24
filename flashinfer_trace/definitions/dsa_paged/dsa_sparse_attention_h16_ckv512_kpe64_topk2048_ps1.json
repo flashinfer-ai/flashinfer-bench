@@ -6,7 +6,7 @@
     "status:verified",
     "model:deepseek-v3.2",
     "sparse:topk",
-    "fi_api:flashinfer.sparse.BlockSparseAttentionWrapper",
+    "fi_api:flashinfer.decode.trtllm_batch_decode_with_kv_cache_mla",
     "tp:8"
   ],
   "axes": {
