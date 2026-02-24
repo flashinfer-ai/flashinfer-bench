@@ -6,7 +6,7 @@
     "stage:decode",
     "status:verified",
     "model:llama-3.1-8b",
-    "fi_api:flashinfer.BatchDecodeWithPagedKVCacheWrapper"
+    "fi_api:flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper"
   ],
   "axes": {
     "batch_size": {
