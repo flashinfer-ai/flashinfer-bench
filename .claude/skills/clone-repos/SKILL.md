@@ -131,7 +131,8 @@ flashinfer-bench/
 │   │   ├── gqa_paged/
 │   │   ├── mla_paged/
 │   │   ├── gdn/
-│   │   └── moe/
+│   │   ├── moe/
+│   │   └── ...
 │   ├── workloads/                    # Workload configurations
 │   └── tests/
 │       └── references/               # Reference tests
