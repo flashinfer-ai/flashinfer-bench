@@ -7,7 +7,8 @@
     "status:verified",
     "model:qwen3-next",
     "layout:k-last",
-    "fi_api:flashinfer.gdn.chunk_gated_delta_rule"
+    "fi_api:flashinfer.gdn.chunk_gated_delta_rule",
+    "tp:2"
   ],
   "axes": {
     "total_seq_len": {

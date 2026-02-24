@@ -7,7 +7,8 @@
     "status:verified",
     "model:qwen3-next",
     "layout:k-last",
-    "fi_api:flashinfer.gdn.gated_delta_rule_decode"
+    "fi_api:flashinfer.gdn.gated_delta_rule_decode",
+    "tp:2"
   ],
   "axes": {
     "batch_size": {

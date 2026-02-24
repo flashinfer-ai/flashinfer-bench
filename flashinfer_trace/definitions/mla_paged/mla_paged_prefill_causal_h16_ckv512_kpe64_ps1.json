@@ -7,7 +7,8 @@
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper"
+    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+    "tp:8"
   ],
   "axes": {
     "num_qo_heads": {
