@@ -77,9 +77,32 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
 | `mla_paged` | Multi-Head Latent Attention (paged) | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
 | `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
-| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk16_v32_d128_k_last` |
+| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
 | `sampling` | Sampling operations | - |
+
+### Tensor/Expert Parallelism and Multiple Definitions
+
+Different serving configurations (TP/EP flags) can require separate kernel definitions for the same operation type:
+
+**Affected by TP (Tensor Parallelism)**:
+- **Attention kernels** (GQA, MLA, GDN): Head counts are divided by TP value
+  - Example: Qwen3-Next GDN with original q_heads=16, v_heads=32
+    - TP=2: `gdn_decode_qk8_v16_d128_k_last` (16/2=8, 32/2=16)
+    - TP=4: `gdn_decode_qk4_v8_d128_k_last` (16/4=4, 32/4=8)
+  - Example: DeepSeek V3 MLA with original num_heads=128
+    - TP=8: `mla_paged_decode_h16_ckv512_kpe64_ps1` (128/8=16)
+
+**Affected by EP (Expert Parallelism)**:
+- **MoE kernels**: Local expert count = total_experts / EP
+  - Example: DeepSeek V3 with 256 total experts
+    - EP=1: `num_local_experts=256`
+    - EP=8: `num_local_experts=32`
+
+**NOT affected by TP/EP**:
+- Normalization kernels (RMSNorm)
+- GEMM kernels (shape changes handled at runtime)
+- Sampling operations
 
 ## Automated Workflow
 
@@ -88,23 +111,21 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 We provide a suite of skills to automate the model addition process:
 
 ```bash
-# Add new model (complete workflow)
-claude-code run add-new-model --model-name kimi-k2
+# 1. Clone required repositories (SGLang, FlashInfer, sgl-cookbook)
+claude-code run clone-repos
 
-# Or execute step by step:
+# 2. Extract kernel definitions from model implementation
+#    This will automatically:
+#    - Parse SGLang model implementation
+#    - Find serving configs from sgl-cookbook (TP/EP flags)
+#    - Generate multiple definitions for different parallelism settings
+claude-code run extract-kernel-definitions --model-name deepseek_v3
 
-# 1. Extract model config from HuggingFace
-claude-code run extract-model-from-hf --model-id moonshot-ai/kimi-k2
-
-# 2. Find baseline implementation from SGLang
-claude-code run find-sglang-baseline --model-name kimi
-
-# 3. Generate model definition file
-claude-code run generate-model-definition --config config.json --output web/apps/web/data/models.ts
-
-# 4. Collect real-world workloads from inference runs
-claude-code run collect-workloads --op-type mla_paged --model-name deepseek-v3 --num-samples 100
+# 3. Add reference tests to validate definitions
+claude-code run add-reference-tests --op-type mla_paged
 ```
+
+**Key Feature**: The `extract-kernel-definitions` skill now automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
 
 ### Manual Model Addition Process
 
@@ -166,7 +187,11 @@ Add new model to `web/apps/web/data/models.ts`:
 
 #### 4. Map Modules to Definitions
 
-**IMPORTANT**: When creating definitions for new kernels, always refer to the HuggingFace model page (`https://huggingface.co/{org}/{model-name}`) to obtain authoritative model constants from `config.json`. Cross-reference with SGLang implementation for runtime-specific values like `page_size`.
+**IMPORTANT**: When creating definitions for new kernels:
+1. Refer to the HuggingFace model page (`https://huggingface.co/{org}/{model-name}`) to obtain authoritative model constants from `config.json`
+2. Check sgl-cookbook (`tmp/sgl-cookbook/data/models/generated/v0.5.6/{model}.yaml`) for recommended TP/EP configurations across different hardware platforms
+3. Generate multiple definitions for each TP/EP configuration that affects kernel parameters
+4. Cross-reference with SGLang implementation for runtime-specific values like `page_size`
 
 Associate each module with corresponding Definitions:
 

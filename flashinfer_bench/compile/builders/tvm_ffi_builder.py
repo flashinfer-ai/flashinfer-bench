@@ -11,7 +11,7 @@ from typing import Callable, ClassVar, List, Tuple
 from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 from flashinfer_bench.compile.utils import write_sources_to_path
-from flashinfer_bench.data import Definition, Solution, SupportedLanguages
+from flashinfer_bench.data import Definition, Solution, SupportedBindings, SupportedLanguages
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class TVMFFIBuilder(Builder):
 
     def can_build(self, solution: Solution) -> bool:
         """Check if this builder can build the given solution. The solution should be CUDA or
-        C++ source code.
+        C++ source code with TVM-FFI binding (or no binding specified, which defaults to TVM-FFI).
 
         Parameters
         ----------
@@ -74,12 +74,16 @@ class TVMFFIBuilder(Builder):
         Returns
         -------
         bool
-            True if solution language is CUDA or C++
+            True if solution language is CUDA or C++ and binding is TVM-FFI or None
         """
-        return (
+        is_cpp_or_cuda = (
             solution.spec.language == SupportedLanguages.CUDA
             or solution.spec.language == SupportedLanguages.CPP
         )
+        is_tvm_ffi_binding = (
+            solution.spec.binding is None or solution.spec.binding == SupportedBindings.TVM_FFI
+        )
+        return is_cpp_or_cuda and is_tvm_ffi_binding
 
     def _check_sources(self, path: Path, key: str, solution: Solution) -> bool:
         """Check if the source code is vaild, and if the cached .so can be used by comparing source

@@ -10,6 +10,22 @@ from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
 from flashinfer_bench.logging import configure_logging, get_logger
 
 logger = get_logger("CLI")
+pkg_name = __name__.split(".")[0]
+
+
+def cli_config_logging(args: argparse.Namespace):
+    """Configure logging for the CLI. Now we have two set of loggers:
+    - package logger: obtained by logging.getLogger(__name__)
+    - custom logger: obtained by get_logger("ModuleName")
+
+    In the future we will deprecate the custom logger and use the package logger only.
+    Now we need to configure both loggers to the same level.
+    """
+    log_level = getattr(args, "log_level", "WARNING")
+    pkg_logger = logging.getLogger(pkg_name)
+    pkg_logger.setLevel(log_level)
+    pkg_logger.addHandler(logging.StreamHandler())
+    configure_logging(level=log_level)
 
 
 def best(args: argparse.Namespace):
@@ -23,7 +39,7 @@ def best(args: argparse.Namespace):
                 continue
             logger.info(f"Best solution for {definition}:")
             logger.info(f"- Solution: {trace.solution}")
-            logger.info(f"- Speedup:  {trace.evaluation.performance.speedup_factor:.2f}×")
+            logger.info(f"- Speedup vs. ref: {trace.evaluation.performance.speedup_factor:.2f}×")
             logger.info(
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
@@ -74,6 +90,13 @@ def merge_trace_sets(trace_sets):
     return merged
 
 
+def _safe_path_segment(segment: str) -> str:
+    """Validate that a string is safe to use as a single path segment."""
+    if not segment or "/" in segment or "\\" in segment or segment in (".", ".."):
+        raise ValueError(f"Invalid path segment: {segment!r}")
+    return segment
+
+
 def export_trace_set(trace_set, output_dir):
     """Export a TraceSet to a directory in the expected structure."""
     output_dir = Path(output_dir)
@@ -82,22 +105,31 @@ def export_trace_set(trace_set, output_dir):
     (output_dir / "traces").mkdir(parents=True, exist_ok=True)
     # Save definitions
     for definition in trace_set.definitions.values():
-        out_path = output_dir / "definitions" / f"{definition.name}.json"
+        out_path = output_dir / "definitions" / f"{_safe_path_segment(definition.name)}.json"
         save_json_file(definition, out_path)
     # Save solutions
     for def_name, solutions in trace_set.solutions.items():
+        definition = trace_set.definitions[def_name]
         for solution in solutions:
-            out_path = output_dir / "solutions" / f"{solution.name}.json"
+            out_path = (
+                output_dir
+                / "solutions"
+                / _safe_path_segment(solution.author)
+                / _safe_path_segment(definition.op_type)
+                / _safe_path_segment(def_name)
+                / f"{_safe_path_segment(solution.name)}.json"
+            )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             save_json_file(solution, out_path)
     # Save workload traces
     for def_name, workloads in trace_set.workload.items():
         if workloads:
-            out_path = output_dir / "traces" / f"{def_name}_workloads.jsonl"
+            out_path = output_dir / "traces" / f"{_safe_path_segment(def_name)}_workloads.jsonl"
             save_jsonl_file(workloads, out_path)
     # Save regular traces
     for def_name, traces in trace_set.traces.items():
         if traces:
-            out_path = output_dir / "traces" / f"{def_name}.jsonl"
+            out_path = output_dir / "traces" / f"{_safe_path_segment(def_name)}.jsonl"
             save_jsonl_file(traces, out_path)
 
 
@@ -133,7 +165,7 @@ def visualize(args: argparse.Namespace):
         logger.info("\nDetailed Results:")
         logger.info("-" * 80)
         logger.info(
-            f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup':<10} {'Latency(ms)':<12} {'Max Error':<15}"
+            f"{'Definition':<15} {'Solution':<25} {'Status':<10} {'Speedup vs. ref':<16} {'Latency(ms)':<12} {'Max Error':<15}"
         )
         logger.info("-" * 80)
 
@@ -156,7 +188,7 @@ def visualize(args: argparse.Namespace):
                     max_error = f"{max_error:.2e}"
 
                 logger.info(
-                    f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<10} {latency:<12} {max_error:<15}"
+                    f"{def_name:<15} {trace.solution:<25} {status:<10} {speedup:<16} {latency:<12} {max_error:<15}"
                 )
 
         # Print best solutions
@@ -170,7 +202,7 @@ def visualize(args: argparse.Namespace):
                 speedup = perf.get("speedup_factor", "N/A")
                 if isinstance(speedup, (int, float)):
                     speedup = f"{speedup:.2f}×"
-                logger.info(f"{def_name}: {best_trace.solution} (Speedup: {speedup})")
+                logger.info(f"{def_name}: {best_trace.solution} (Speedup vs. ref: {speedup})")
             else:
                 logger.warning(f"{def_name}: No valid solution found")
 
@@ -193,17 +225,22 @@ def run(args: argparse.Namespace):
             definitions=args.definitions,
             solutions=args.solutions,
             timeout_seconds=args.timeout,
+            required_matched_ratio=args.required_matched_ratio,
         )
         benchmark = Benchmark(trace_set, config)
-        logger.info(f"Running benchmark for: {path}")
+        logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
         resume = getattr(args, "resume", False)
         if resume:
             logger.info("Resume mode enabled: will skip already evaluated solutions")
-            if not args.save_results:
-                logger.warning(
-                    "Resume mode is enabled but --save-results is False. New results will not be saved!"
-                )
-        benchmark.run_all(args.save_results, resume=resume)
+
+        try:
+            benchmark.run_all(args.save_results, resume=resume)
+        except Exception:
+            logger.exception("Benchmark run failed")
+            raise
+        finally:
+            benchmark.close()
+
         message = "Benchmark run complete."
         if args.save_results:
             message += " Results saved."
@@ -251,6 +288,12 @@ def cli():
     )
     run_parser.add_argument(
         "--atol", type=float, default=1e-2, help="Absolute tolerance for correctness checks"
+    )
+    run_parser.add_argument(
+        "--required-matched-ratio",
+        type=float,
+        default=None,
+        help="Required ratio of elements within tolerance. Overrides evaluator default (0.95 for low-bit).",
     )
     run_parser.add_argument(
         "--log-level",
@@ -359,8 +402,9 @@ def cli():
     visualize_parser.set_defaults(func=visualize)
 
     args = parser.parse_args()
-    formatter = logging.Formatter("%(message)s")
-    configure_logging(level=getattr(args, "log_level", "INFO"), formatter=formatter)
+
+    cli_config_logging(args)
+
     if hasattr(args, "func"):
         args.func(args)
     else:
