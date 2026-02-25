@@ -132,7 +132,7 @@ For each new kernel AND each TP/EP configuration, generate a Definition JSON fol
 
 **IMPORTANT**: When generating multiple definitions for different TP/EP configs:
 1. Create separate JSON files with parameters reflecting the parallelism split
-2. Add tags to indicate the TP/EP configuration (e.g., `"config:tp2"`, `"config:tp4_ep2"`)
+2. Add tags to indicate the TP/EP configuration (e.g., `"tp:2"`, `"tp:4"` + `"ep:2"`)
 3. Update constant axes to reflect post-split values
 4. Include TP/EP info in the description field
 
@@ -171,6 +171,8 @@ Tags follow the pattern `{category}:{value}`:
 | `status` | `verified`, `unverified` | Whether reference implementation is validated |
 | `stage` | `decode`, `prefill` | Inference execution mode |
 | `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
+| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels) |
+| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels) |
 | `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
 | `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
 | `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
@@ -202,7 +204,8 @@ Tags follow the pattern `{category}:{value}`:
   "model:deepseek-v3",
   "model:deepseek-r1",
   "quantization:float8_e4m3fn",
-  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper"
+  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+  "tp:8"
 ]
 ```
 
@@ -296,7 +299,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper"
+    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+    "tp:8"
   ],
   "axes": {
     "batch_size": { "type": "var" },
@@ -376,7 +380,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "quantization:float8_e4m3fn"
+    "quantization:float8_e4m3fn",
+    "ep:8"
   ],
   "axes": {
     "seq_len": { "type": "var", "description": "Sequence length (number of tokens)" },
