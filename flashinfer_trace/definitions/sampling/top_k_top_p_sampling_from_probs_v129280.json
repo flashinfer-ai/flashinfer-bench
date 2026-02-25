@@ -1,7 +1,7 @@
 {
   "name": "top_k_top_p_sampling_from_probs_v129280",
   "op_type": "sampling",
-  "description": "Top-k top-p (nucleus) sampling from probabilities with vocab_size=129280. Filters probabilities using top-k and top-p constraints, then samples from the filtered distribution. Captured from DeepSeek V3.",
+  "description": "Top-k top-p (nucleus) sampling from probabilities with vocab_size=129280. Filters probabilities using top-k and top-p constraints, then samples from the filtered distribution. Captured from DeepSeek V3/R1.",
   "tags": [
     "status:verified",
     "model:deepseek-v3",
