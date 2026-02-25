@@ -6,7 +6,8 @@
     "stage:prefill",
     "status:verified",
     "model:llama-3.1-8b",
-    "fi_api:flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper"
+    "fi_api:flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper",
+    "tp:1"
   ],
   "axes": {
     "num_qo_heads": {

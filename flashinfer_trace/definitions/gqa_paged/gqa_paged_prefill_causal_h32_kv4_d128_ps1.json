@@ -6,7 +6,8 @@
     "stage:prefill",
     "status:verified",
     "model:qwen3-30b-a3b",
-    "fi_api:flashinfer.BatchPrefillWithPagedKVCacheWrapper"
+    "fi_api:flashinfer.BatchPrefillWithPagedKVCacheWrapper",
+    "tp:1"
   ],
   "axes": {
     "num_qo_heads": {
