@@ -12,10 +12,12 @@
   ],
   "axes": {
     "total_seq_len": {
-      "type": "var"
+      "type": "var",
+      "description": "Total number of tokens across all sequences in the batch."
     },
     "num_seqs": {
-      "type": "var"
+      "type": "var",
+      "description": "Number of sequences in the batch."
     },
     "num_q_heads": {
       "type": "const",
@@ -34,7 +36,8 @@
     },
     "head_size": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head (K dimension in query/key space, V dimension in value space)."
     },
     "len_cu_seqlens": {
       "type": "var",

@@ -37,7 +37,8 @@
     },
     "head_size": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head (K dimension in query/key space, V dimension in value space)."
     }
   },
   "constraints": [
