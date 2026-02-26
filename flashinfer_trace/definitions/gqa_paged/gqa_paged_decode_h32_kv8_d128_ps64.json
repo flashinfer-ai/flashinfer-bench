@@ -5,7 +5,9 @@
   "tags": [
     "stage:decode",
     "status:verified",
-    "model:llama-3.1-8b"
+    "model:llama-3.1-8b",
+    "fi_api:flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+    "tp:1"
   ],
   "axes": {
     "batch_size": {

@@ -4,7 +4,8 @@
   "description": "Top-k top-p (nucleus) sampling from probabilities with vocab_size=128256. Filters probabilities using top-k and top-p constraints, then samples from the filtered distribution. Captured from Llama 3.1 8B.",
   "tags": [
     "status:verified",
-    "model:llama-3.1-8b"
+    "model:llama-3.1-8b",
+    "fi_api:flashinfer.sampling.top_k_top_p_sampling_from_probs"
   ],
   "axes": {
     "batch_size": {

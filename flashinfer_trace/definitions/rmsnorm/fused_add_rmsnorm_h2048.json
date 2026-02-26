@@ -5,7 +5,8 @@
   "tags": [
     "status:verified",
     "model:qwen3-30b-a3b",
-    "fused"
+    "fused",
+    "fi_api:flashinfer.norm.fused_add_rmsnorm"
   ],
   "axes": {
     "batch_size": {
