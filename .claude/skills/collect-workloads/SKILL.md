@@ -78,7 +78,67 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
 
 ### Phase 2: FlashInfer Logging Configuration
 
-**Set environment variables** for Level 10 logging:
+#### Step 2a: Extract fi_api Patterns from Definition Files
+
+Each definition JSON has `fi_api:<dotted.api.name>` tags that identify which FlashInfer API to capture. Parse these **before** starting the server to build a precise `FLASHINFER_DUMP_INCLUDE` filter:
+
+```python
+import json
+from pathlib import Path
+
+def get_dump_include_pattern(def_files: list[str]) -> str:
+    """
+    Parse fi_api tags from definition JSON files and return a
+    FLASHINFER_DUMP_INCLUDE glob pattern string.
+
+    Wrapper/class APIs (e.g. BatchMLAPagedAttentionWrapper) are captured
+    via their .run() method, so '.run' is appended automatically.
+    Plain function APIs (e.g. flashinfer.norm.rmsnorm) are used as-is.
+    """
+    apis = set()
+    for path in def_files:
+        defn = json.loads(Path(path).read_text())
+        for tag in defn.get("tags", []):
+            if tag.startswith("fi_api:"):
+                apis.add(tag[len("fi_api:"):])
+
+    patterns = []
+    for api in sorted(apis):
+        last_component = api.split(".")[-1]
+        # Class/Wrapper APIs are invoked through their .run() method
+        if last_component[0].isupper():
+            patterns.append(f"{api}.run")
+        else:
+            patterns.append(api)
+
+    return ",".join(patterns)
+```
+
+Equivalent one-liner for use in shell scripts:
+
+```bash
+# Collect fi_api values from a set of definition files and build the pattern
+FI_APIS=$(python3 -c "
+import json, sys, pathlib
+apis = set()
+for f in sys.argv[1:]:
+    d = json.loads(pathlib.Path(f).read_text())
+    for t in d.get('tags', []):
+        if t.startswith('fi_api:'):
+            apis.add(t[7:])
+patterns = []
+for api in sorted(apis):
+    last = api.split('.')[-1]
+    patterns.append(f'{api}.run' if last[0].isupper() else api)
+print(','.join(patterns))
+" flashinfer_trace/definitions/mla_paged/*.json flashinfer_trace/definitions/rmsnorm/*.json)
+
+echo "FLASHINFER_DUMP_INCLUDE=$FI_APIS"
+# Example output:
+# flashinfer.mla.BatchMLAPagedAttentionWrapper.run,flashinfer.norm.fused_add_rmsnorm,flashinfer.norm.rmsnorm
+```
+
+#### Step 2b: Set Environment Variables
 
 ```bash
 # Core configuration
@@ -90,10 +150,20 @@ export FLASHINFER_DUMP_MAX_COUNT=10000
 # Format selection (use safetensors for better compatibility)
 export FLASHINFER_DUMP_SAFETENSORS=1
 
-# Filtering (optional - only dump relevant op_types)
-# Example: export FLASHINFER_DUMP_INCLUDE="*mla_decode*,*rmsnorm*"
-# This reduces dump size by only capturing targeted kernels
+# Include only APIs identified from fi_api tags in target definitions.
+# This dramatically reduces dump size by skipping unrelated kernels.
+export FLASHINFER_DUMP_INCLUDE="$FI_APIS"
+
+# Always exclude constructor and plan/planner calls — they carry no useful
+# tensor data and would bloat the dump directory.
+export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan"
 ```
+
+**Filter pattern rules**:
+- `FLASHINFER_DUMP_INCLUDE` uses comma-separated glob patterns matched against the fully-qualified API call path (e.g. `flashinfer.norm.rmsnorm`)
+- `FLASHINFER_DUMP_EXCLUDE` is evaluated after INCLUDE; matching calls are always skipped
+- Wrapper `.run()` calls must be matched explicitly (e.g. `flashinfer.mla.BatchMLAPagedAttentionWrapper.run`)
+- Wildcards (`*`) match any characters including dots
 
 **Reference**: [FlashInfer Logging Documentation](https://docs.flashinfer.ai/logging.html)
 
@@ -419,10 +489,12 @@ Phase 1: Environment Setup
     - moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048
 
 Phase 2: FlashInfer Logging Configuration
+  ✓ Parsed fi_api tags from 5 definition files
   ✓ FLASHINFER_LOGLEVEL=10
   ✓ FLASHINFER_DUMP_DIR=./workload_dumps_20260202_143022
   ✓ FLASHINFER_DUMP_SAFETENSORS=1
-  ✓ FLASHINFER_DUMP_INCLUDE=*mla*,*rmsnorm*,*moe*
+  ✓ FLASHINFER_DUMP_INCLUDE=flashinfer.fused_moe.trtllm_fp8_block_scale_moe,flashinfer.mla.BatchMLAPagedAttentionWrapper.run,flashinfer.norm.fused_add_rmsnorm,flashinfer.norm.rmsnorm
+  ✓ FLASHINFER_DUMP_EXCLUDE=*.__init__,*.plan
 
 Phase 3: SGLang Inference Execution
   ✓ Server started on port 30000
@@ -516,11 +588,35 @@ When executing this skill:
    ```
 
 4. **Set FlashInfer logging environment**:
+
+   First, parse `fi_api` tags from the target definition files to build the include filter:
    ```bash
+   # Collect definition files for the target op_type(s)
+   DEF_FILES=$(ls flashinfer_trace/definitions/${op_type}/*.json)
+
+   # Parse fi_api tags to get precise API filter patterns
+   FI_APIS=$(python3 -c "
+   import json, sys, pathlib
+   apis = set()
+   for f in sys.argv[1:]:
+       d = json.loads(pathlib.Path(f).read_text())
+       for t in d.get('tags', []):
+           if t.startswith('fi_api:'):
+               apis.add(t[7:])
+   patterns = []
+   for api in sorted(apis):
+       last = api.split('.')[-1]
+       patterns.append(f'{api}.run' if last[0].isupper() else api)
+   print(','.join(patterns))
+   " $DEF_FILES)
+
    export FLASHINFER_LOGLEVEL=10
    export FLASHINFER_DUMP_DIR=./workload_dumps_$(date +%Y%m%d_%H%M%S)
    export FLASHINFER_DUMP_SAFETENSORS=1
    export FLASHINFER_DUMP_MAX_COUNT=10000
+   export FLASHINFER_DUMP_INCLUDE="$FI_APIS"
+   export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan"
+   echo "Capturing APIs: $FI_APIS"
    ```
 
 5. **Launch SGLang server**:
@@ -610,7 +706,8 @@ Map FlashInfer API function names to definitions:
 - **Error**: Dump directory empty after inference
 - **Handling**:
   - Verify `FLASHINFER_LOGLEVEL=10` is set
-  - Check `FLASHINFER_DUMP_INCLUDE` filters aren't excluding target kernels
+  - Check `FLASHINFER_DUMP_INCLUDE` matches the actual API names — run the `fi_api` parser script against your definition files to regenerate the correct patterns
+  - Check `FLASHINFER_DUMP_EXCLUDE` isn't inadvertently matching target APIs
   - Ensure `--attention-backend flashinfer` flag is used
   - Check SGLang is actually using FlashInfer (not falling back to other backends)
 
@@ -660,15 +757,33 @@ pytest flashinfer_trace/tests/references/test_mla_paged*.py -v
 /collect-workloads --op-type gqa_paged --model-name mistral-7b --num-samples 100
 ```
 
-### Custom Filtering with FLASHINFER_DUMP_INCLUDE
+### Custom Filtering with FLASHINFER_DUMP_INCLUDE / FLASHINFER_DUMP_EXCLUDE
+
+The skill automatically builds `FLASHINFER_DUMP_INCLUDE` by parsing `fi_api` tags from the target definition files. You can also set these manually for ad-hoc collection:
 
 ```bash
-# Only dump specific kernel types
-export FLASHINFER_DUMP_INCLUDE="*decode*,*rmsnorm*"
+# Automatically derived from fi_api tags (preferred approach)
+export FLASHINFER_DUMP_INCLUDE="flashinfer.mla.BatchMLAPagedAttentionWrapper.run,flashinfer.norm.rmsnorm"
+export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan"
 
-# Exclude certain kernels
-export FLASHINFER_DUMP_EXCLUDE="*prefill*"
+# Wildcard shorthand — useful for quick ad-hoc runs
+export FLASHINFER_DUMP_INCLUDE="*decode*"
+export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan"
+
+# Only capture Wrapper .run() calls (all attention types)
+export FLASHINFER_DUMP_INCLUDE="*Wrapper.run"
+export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan"
+
+# Combine include and exclude to fine-tune what gets captured
+export FLASHINFER_DUMP_INCLUDE="*BatchPrefill*,*rmsnorm*"
+export FLASHINFER_DUMP_EXCLUDE="*.__init__,*.plan,*prefill_ragged*"
 ```
+
+**Filter semantics**:
+- Patterns are comma-separated globs matched against the fully-qualified API path
+- `FLASHINFER_DUMP_INCLUDE`: only matching calls are recorded (omit to capture everything)
+- `FLASHINFER_DUMP_EXCLUDE`: matching calls are always skipped, even if INCLUDE matches
+- Always exclude `*.__init__,*.plan` — these carry no tensor data and inflate the dump
 
 ### Replay and Validation
 
