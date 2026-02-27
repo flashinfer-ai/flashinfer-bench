@@ -187,7 +187,7 @@ def _ensure_lfs_downloaded(file_path: Path, repo_root: Optional[Path]) -> None:
     except ValueError:
         rel = file_path
     include_path = str(rel).replace("\\", "/")
-    print(f"[lfs] Downloading {include_path} …")
+    logger.info(f"[lfs] Downloading {include_path} …")
     subprocess.run(
         ["git", "lfs", "pull", "--include", include_path], cwd=str(repo_root), check=True
     )
