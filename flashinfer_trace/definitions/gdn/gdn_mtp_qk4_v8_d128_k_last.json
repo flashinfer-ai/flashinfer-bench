@@ -6,7 +6,8 @@
     "stage:mtp",
     "status:verified",
     "model:qwen3-next",
-    "layout:k-last"
+    "layout:k-last",
+    "tp:4"
   ],
   "axes": {
     "batch_size": {
