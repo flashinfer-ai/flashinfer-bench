@@ -1,10 +1,22 @@
-import { promises as fs } from "fs"
+import { promises as fs, existsSync } from "fs"
 import path from "path"
 import modelsData from "@/data/models"
 import type { Definition, Solution, Trace, Model } from "./schemas"
 
-// Get the flashinfer-trace path from environment or use default
-const FLASHINFER_TRACE_PATH = process.env.FLASHINFER_TRACE_PATH || "/tmp/flashinfer-trace"
+// Resolve the data path in priority order:
+//   1. FLASHINFER_TRACE_PATH env var (explicit override)
+//   2. FIB_DATASET_PATH env var (set by prebuild script)
+//   3. Local repo's flashinfer_trace/ dir (web/apps/web → ../../../flashinfer_trace)
+//   4. /tmp/flashinfer-trace (fallback, produced by pnpm build prebuild)
+function resolveTracePath(): string {
+  if (process.env.FLASHINFER_TRACE_PATH) return process.env.FLASHINFER_TRACE_PATH
+  if (process.env.FIB_DATASET_PATH)      return process.env.FIB_DATASET_PATH
+  const localPath = path.resolve(process.cwd(), "../../../flashinfer_trace")
+  if (existsSync(localPath))             return localPath
+  return "/tmp/flashinfer-trace"
+}
+
+const FLASHINFER_TRACE_PATH = resolveTracePath()
 // Helper to resolve paths relative to the project root
 function getDataPath(subPath: string): string {
   const basePath = path.resolve(FLASHINFER_TRACE_PATH)
