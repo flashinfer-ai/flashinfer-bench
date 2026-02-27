@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -167,6 +168,31 @@ def compute_frequency_distribution(
     return frequency
 
 
+_LFS_MAGIC = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _ensure_lfs_downloaded(file_path: Path, repo_root: Optional[Path]) -> None:
+    """If *file_path* is a Git LFS pointer, pull the real content via git lfs."""
+    if repo_root is None:
+        return
+    try:
+        with open(file_path, "rb") as fh:
+            header = fh.read(len(_LFS_MAGIC))
+    except OSError:
+        return
+    if header != _LFS_MAGIC:
+        return
+    try:
+        rel = file_path.relative_to(repo_root)
+    except ValueError:
+        rel = file_path
+    include_path = str(rel).replace("\\", "/")
+    print(f"[lfs] Downloading {include_path} …")
+    subprocess.run(
+        ["git", "lfs", "pull", "--include", include_path], cwd=str(repo_root), check=True
+    )
+
+
 def load_safetensors(
     definition: Definition, workload: Workload, trace_set_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
@@ -188,6 +214,7 @@ def load_safetensors(
         if trace_set_root is not None and not Path(path).is_absolute():
             path = str(trace_set_root / path)
 
+        _ensure_lfs_downloaded(Path(path), trace_set_root)
         tensors = st.load_file(path)
         if input_spec.tensor_key not in tensors:
             raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")

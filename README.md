@@ -46,6 +46,13 @@ We provide an official dataset called **FlashInfer-Trace** with kernels and work
 
 The official dataset is on HuggingFace: https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
 
+Clone it with Git LFS pointer files only (large tensor files are downloaded on demand during benchmarking):
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 git clone https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
+flashinfer-bench run --local flashinfer-trace
+```
+
 ## Collaborators
 
 Our collaborators include:
