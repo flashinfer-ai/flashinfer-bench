@@ -6,7 +6,9 @@
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "quantization:float8_e4m3fn"
+    "quantization:float8_e4m3fn",
+    "fi_api:flashinfer.fused_moe.trtllm_fp8_block_scale_moe",
+    "ep:8"
   ],
   "axes": {
     "seq_len": {

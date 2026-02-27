@@ -4,7 +4,8 @@
   "description": "Top-p (nucleus) sampling from probabilities with vocab_size=128256. Filters probabilities using cumulative probability threshold, then samples from the filtered distribution.",
   "tags": [
     "status:verified",
-    "model:llama-3.1-8b"
+    "model:llama-3.1-8b",
+    "fi_api:flashinfer.sampling.top_p_sampling_from_probs"
   ],
   "axes": {
     "batch_size": {

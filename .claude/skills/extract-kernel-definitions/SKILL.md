@@ -99,17 +99,22 @@ For each layer component AND each serving configuration (TP/EP setting), extract
   - EP=8 → `num_local_experts=32`
 - **Parameters**: num_experts (global), num_local_experts (per device), topk, hidden_size, intermediate_size, group_size
 
-#### Normalization Kernels (NOT affected by TP/EP)
+#### Normalization Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - `rmsnorm_h{hidden_size}`
 - `fused_add_rmsnorm_h{hidden_size}`
 - **Parameters**: hidden_size, epsilon
-- **Note**: Same definition across all TP/EP configs
+- **Note**: Same definition across all TP/EP configs. Do NOT add `tp:N` or `ep:N` tags. Refer to sgl-cookbook to confirm the serving config, but the kernel definition itself is parallelism-agnostic.
 
-#### GEMM Kernels (NOT affected by TP/EP)
+#### GEMM Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - QKV projection, O projection
 - Gate/Up projection, Down projection
 - **Parameters**: M (variable), N (output dim), K (input dim)
-- **Note**: Shape changes handled at runtime, definition remains constant
+- **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
+
+#### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
+- `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.
+- **Parameters**: vocab_size, batch_size
+- **Note**: Sampling operates on per-token logits after all-reduce; the vocab dimension is never split. Do NOT add `tp:N` or `ep:N` tags.
 
 ### Phase 3: Deduplication
 
@@ -132,7 +137,7 @@ For each new kernel AND each TP/EP configuration, generate a Definition JSON fol
 
 **IMPORTANT**: When generating multiple definitions for different TP/EP configs:
 1. Create separate JSON files with parameters reflecting the parallelism split
-2. Add tags to indicate the TP/EP configuration (e.g., `"config:tp2"`, `"config:tp4_ep2"`)
+2. Add `tp:N` / `ep:N` tags **only for kernels whose input sizes are affected by parallelism** (attention/GDN kernels for TP; MoE kernels for EP). **Skip these tags for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — instead, refer to sgl-cookbook to confirm the serving config.
 3. Update constant axes to reflect post-split values
 4. Include TP/EP info in the description field
 
@@ -171,8 +176,30 @@ Tags follow the pattern `{category}:{value}`:
 | `status` | `verified`, `unverified` | Whether reference implementation is validated |
 | `stage` | `decode`, `prefill` | Inference execution mode |
 | `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
+| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — refer to sgl-cookbook to confirm TP but do not add this tag. |
+| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling). |
 | `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
 | `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
+| `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
+
+**FlashInfer API Name Mapping by op_type:**
+
+| op_type | FlashInfer API | Notes |
+|---------|----------------|-------|
+| `rmsnorm` | `flashinfer.norm.rmsnorm` | |
+| `rmsnorm` (fused_add) | `flashinfer.norm.fused_add_rmsnorm` | |
+| `gqa_paged` (decode) | `flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper` | |
+| `gqa_paged` (prefill) | `flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper` | |
+| `gqa_ragged` | `flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper` | |
+| `mla_paged` | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | |
+| `dsa_paged` | `flashinfer.sparse.BlockSparseAttentionWrapper` | Verify in `tmp/flashinfer/python/flashinfer/` |
+| `gdn` (prefill) | `flashinfer.gdn.chunk_gated_delta_rule` | Defined in `gdn_prefill.py` |
+| `gdn` (decode) | `flashinfer.gdn.gated_delta_rule_decode` | Defined in `gdn_decode.py` |
+| `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
+| `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
+| `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
+| `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
+| `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
 
 **Example tags array:**
 ```json
@@ -181,7 +208,9 @@ Tags follow the pattern `{category}:{value}`:
   "status:verified",
   "model:deepseek-v3",
   "model:deepseek-r1",
-  "quantization:float8_e4m3fn"
+  "quantization:float8_e4m3fn",
+  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+  "tp:8"
 ]
 ```
 
@@ -274,7 +303,9 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "stage:decode",
     "status:verified",
     "model:deepseek-v3",
-    "model:deepseek-r1"
+    "model:deepseek-r1",
+    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+    "tp:8"
   ],
   "axes": {
     "batch_size": { "type": "var" },
@@ -354,7 +385,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "quantization:float8_e4m3fn"
+    "quantization:float8_e4m3fn",
+    "ep:8"
   ],
   "axes": {
     "seq_len": { "type": "var", "description": "Sequence length (number of tokens)" },
@@ -411,6 +443,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
   "reference": "import torch\n\n@torch.no_grad()\ndef run(routing_logits, hidden_states, ...):\n    # Check constants\n    assert H == 7168, 'hidden_size must be 7168'\n    ..."
 }
 ```
+
+> **Note**: The MoE FP8 block-scale variant has a FlashInfer API (`flashinfer.fused_moe.trtllm_fp8_block_scale_moe`); update the `tags` array accordingly. Other MoE variants without FlashInfer support should omit the `fi_api:` tag and use SGLang as ground truth. In general, omit `fi_api:` whenever no FlashInfer API covers the kernel.
 
 ## Implementation Steps
 
