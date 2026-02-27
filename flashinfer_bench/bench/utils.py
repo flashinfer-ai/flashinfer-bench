@@ -172,7 +172,12 @@ def compute_frequency_distribution(
 _LFS_MAGIC = b"version https://git-lfs.github.com/spec/v1"
 
 
-def _ensure_lfs_downloaded(file_path: Path, repo_root: Optional[Path]) -> None:
+def _ensure_lfs_downloaded(
+    file_path: Path,
+    repo_root: Optional[Path],
+    tensor_name: Optional[str] = None,
+    workload_id: Optional[str] = None,
+) -> None:
     """If *file_path* is a Git LFS pointer, pull the real content via git lfs."""
     if repo_root is None:
         return
@@ -190,7 +195,9 @@ def _ensure_lfs_downloaded(file_path: Path, repo_root: Optional[Path]) -> None:
             f"Input safetensors path '{file_path}' is outside trace repo root '{repo_root}'"
         ) from e
     include_path = str(rel).replace("\\", "/")
-    print(f"[lfs] Downloading {include_path} …")
+    tensor_label = f" tensor '{tensor_name}'" if tensor_name else ""
+    workload_label = f" for workload '{workload_id}'" if workload_id else ""
+    print(f"[lfs] Downloading{tensor_label}{workload_label}: {include_path} …")
     git_exe = shutil.which("git")
     if git_exe is None:
         raise RuntimeError("`git` is required for on-demand Git LFS downloads")
@@ -228,7 +235,9 @@ def load_safetensors(
         if trace_set_root is not None and not Path(path).is_absolute():
             path = str(trace_set_root / path)
 
-        _ensure_lfs_downloaded(Path(path), trace_set_root)
+        _ensure_lfs_downloaded(
+            Path(path), trace_set_root, tensor_name=name, workload_id=workload.uuid
+        )
         tensors = st.load_file(path)
         if input_spec.tensor_key not in tensors:
             raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
