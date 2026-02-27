@@ -6,7 +6,8 @@
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "fused"
+    "fused",
+    "fi_api:flashinfer.norm.fused_add_rmsnorm"
   ],
   "axes": {
     "batch_size": {

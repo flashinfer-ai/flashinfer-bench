@@ -5,7 +5,9 @@
   "tags": [
     "stage:decode",
     "status:verified",
-    "model:qwen3-30b-a3b"
+    "model:qwen3-30b-a3b",
+    "fi_api:flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+    "tp:1"
   ],
   "axes": {
     "batch_size": {
