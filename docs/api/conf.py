@@ -131,6 +131,6 @@ html_theme_options = {
     "logo_target": "/",
     "light_logo": "_static/brand/fib-light.png",
     "dark_logo": "_static/brand/fib-dark.png",
-    "nav_links": [{"title": "Docs", "url": f"/docs", "external": True}],
+    "nav_links": [{"title": "Docs", "url": "/docs", "external": True}],
     "globaltoc_expand_depth": 1,
 }

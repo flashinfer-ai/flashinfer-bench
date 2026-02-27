@@ -14,6 +14,7 @@ from flashinfer_bench.data import (
     SupportedLanguages,
     TensorSpec,
 )
+from flashinfer_bench.testing import requires_torch_cuda
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +22,7 @@ def _use_tmp_cache_dir(tmp_cache_dir: Path) -> None:
     """Automatically use tmp_cache_dir for all tests in this module."""
 
 
-@pytest.mark.requires_torch_cuda
+@requires_torch_cuda
 def test_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
     # Mock the import to make triton unavailable
     import builtins
@@ -38,7 +39,7 @@ def test_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
     assert not TritonBuilder.is_available()
 
 
-@pytest.mark.requires_torch_cuda
+@requires_torch_cuda
 def test_vector_add():
     definition = Definition(
         name="vec_add",

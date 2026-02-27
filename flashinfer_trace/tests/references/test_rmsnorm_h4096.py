@@ -120,7 +120,7 @@ def test_correctness(batch_size=8, with_residual=True, atol=8e-3, rtol=1e-2):
     mean_abs_diff = abs_diff.mean().item()
     mean_rel_diff = rel_diff.mean().item()
 
-    print(f"\nOutput tensor comparison:")
+    print("\nOutput tensor comparison:")
     print(f"Max absolute difference: {max_abs_diff:.6e}")
     print(f"Max relative difference: {max_rel_diff:.6e}")
     print(f"Mean absolute difference: {mean_abs_diff:.6e}")
