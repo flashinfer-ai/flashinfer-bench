@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -183,14 +184,27 @@ def _ensure_lfs_downloaded(file_path: Path, repo_root: Optional[Path]) -> None:
     if header != _LFS_MAGIC:
         return
     try:
-        rel = file_path.relative_to(repo_root)
-    except ValueError:
-        rel = file_path
+        rel = file_path.resolve().relative_to(repo_root.resolve())
+    except ValueError as e:
+        raise ValueError(
+            f"Input safetensors path '{file_path}' is outside trace repo root '{repo_root}'"
+        ) from e
     include_path = str(rel).replace("\\", "/")
-    logger.info(f"[lfs] Downloading {include_path} …")
-    subprocess.run(
-        ["git", "lfs", "pull", "--include", include_path], cwd=str(repo_root), check=True
-    )
+    print(f"[lfs] Downloading {include_path} …")
+    git_exe = shutil.which("git")
+    if git_exe is None:
+        raise RuntimeError("`git` is required for on-demand Git LFS downloads")
+    try:
+        subprocess.run(
+            [git_exe, "lfs", "pull", "--include", include_path],
+            cwd=str(repo_root),
+            check=True,
+            timeout=500,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"Timed out downloading LFS object: {include_path}") from e
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"`git lfs pull` failed for: {include_path}") from e
 
 
 def load_safetensors(
