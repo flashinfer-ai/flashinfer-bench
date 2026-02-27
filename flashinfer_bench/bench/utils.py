@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -167,6 +169,51 @@ def compute_frequency_distribution(
     return frequency
 
 
+_LFS_MAGIC = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _ensure_lfs_downloaded(
+    file_path: Path,
+    repo_root: Optional[Path],
+    tensor_name: Optional[str] = None,
+    workload_id: Optional[str] = None,
+) -> None:
+    """If *file_path* is a Git LFS pointer, pull the real content via git lfs."""
+    if repo_root is None:
+        return
+    try:
+        with open(file_path, "rb") as fh:
+            header = fh.read(len(_LFS_MAGIC))
+    except OSError:
+        return
+    if header != _LFS_MAGIC:
+        return
+    try:
+        rel = file_path.resolve().relative_to(repo_root.resolve())
+    except ValueError as e:
+        raise ValueError(
+            f"Input safetensors path '{file_path}' is outside trace repo root '{repo_root}'"
+        ) from e
+    include_path = str(rel).replace("\\", "/")
+    tensor_label = f" tensor '{tensor_name}'" if tensor_name else ""
+    workload_label = f" for workload '{workload_id}'" if workload_id else ""
+    print(f"[lfs] Downloading{tensor_label}{workload_label}: {include_path} …")
+    git_exe = shutil.which("git")
+    if git_exe is None:
+        raise RuntimeError("`git` is required for on-demand Git LFS downloads")
+    try:
+        subprocess.run(
+            [git_exe, "lfs", "pull", "--include", include_path],
+            cwd=str(repo_root),
+            check=True,
+            timeout=500,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"Timed out downloading LFS object: {include_path}") from e
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"`git lfs pull` failed for: {include_path}") from e
+
+
 def load_safetensors(
     definition: Definition, workload: Workload, trace_set_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
@@ -188,6 +235,9 @@ def load_safetensors(
         if trace_set_root is not None and not Path(path).is_absolute():
             path = str(trace_set_root / path)
 
+        _ensure_lfs_downloaded(
+            Path(path), trace_set_root, tensor_name=name, workload_id=workload.uuid
+        )
         tensors = st.load_file(path)
         if input_spec.tensor_key not in tensors:
             raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
