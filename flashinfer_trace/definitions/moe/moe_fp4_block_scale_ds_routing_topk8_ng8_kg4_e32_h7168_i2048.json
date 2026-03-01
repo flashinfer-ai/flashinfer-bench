@@ -1,0 +1,171 @@
+{
+  "name": "moe_fp4_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048",
+  "description": "FP4 block scale MoE operation with DeepSeek V3 no-aux routing. Uses NvFP4/MxFP4 quantization with block-wise scaling factors. DeepSeek V3 routing: sigmoid scoring, grouped top-k selection with n_groups=8, topk_group=4.",
+  "op_type": "moe",
+  "tags": [
+    "status:draft",
+    "model:deepseek-v3",
+    "model:deepseek-r1",
+    "quantization:fp4_block_scale"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length (number of tokens)"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 256,
+      "description": "Total number of experts (DeepSeek V3)."
+    },
+    "num_local_experts": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of local experts with EP size 8."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 7168,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "MoE intermediate layer size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Output size of the first GEMM (W13). Should be 2 * intermediate_size."
+    },
+    "sf_vec_size": {
+      "type": "const",
+      "value": 16,
+      "description": "Block size for FP4 scale factors (16 for NvFP4, 32 for MxFP4)."
+    },
+    "top_k": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of experts selected per token."
+    },
+    "n_groups": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of expert groups for DeepSeek V3 routing."
+    },
+    "topk_group": {
+      "type": "const",
+      "value": 4,
+      "description": "Number of groups to select in DeepSeek V3 routing."
+    }
+  },
+  "inputs": {
+    "routing_logits": {
+      "shape": [
+        "seq_len",
+        "num_experts"
+      ],
+      "dtype": "float32",
+      "description": "Tensor of routing logits for expert selection. DeepSeek V3 routing uses float32."
+    },
+    "routing_bias": {
+      "shape": [
+        "num_experts"
+      ],
+      "dtype": "bfloat16",
+      "description": "Bias tensor for routing. Pass all zeros for no bias."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size / 2"
+      ],
+      "dtype": "uint8",
+      "description": "Input hidden states tensor (FP4 quantized, packed 2 values per byte)."
+    },
+    "hidden_states_scale": {
+      "shape": [
+        "seq_len",
+        "hidden_size / sf_vec_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Block-wise scale factors for hidden states."
+    },
+    "hidden_states_scale_global": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Global scale factor for hidden states (from PTQ calibration)."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "hidden_size / 2"
+      ],
+      "dtype": "uint8",
+      "description": "First GEMM weights (FP4 packed, shuffled for kernel)."
+    },
+    "gemm1_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "hidden_size / sf_vec_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Block-wise scale factors for first GEMM weights."
+    },
+    "gemm1_scales_global": {
+      "shape": [
+        "num_local_experts"
+      ],
+      "dtype": "float32",
+      "description": "Per-expert global scale factors for first GEMM weights."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "intermediate_size / 2"
+      ],
+      "dtype": "uint8",
+      "description": "Second GEMM weights (FP4 packed, shuffled for kernel)."
+    },
+    "gemm2_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "intermediate_size / sf_vec_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Block-wise scale factors for second GEMM weights."
+    },
+    "gemm2_scales_global": {
+      "shape": [
+        "num_local_experts"
+      ],
+      "dtype": "float32",
+      "description": "Per-expert global scale factors for second GEMM weights."
+    },
+    "local_expert_offset": {
+      "shape": null,
+      "dtype": "int32",
+      "description": "Offset of local experts in global expert space."
+    },
+    "routed_scaling_factor": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Scaling factor for routing weights (typically 2.5 for DeepSeek V3)."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor."
+    }
+  },
+  "reference": "import torch\r\n\r\n\r\n@torch.no_grad()\r\ndef run(\r\n    routing_logits: torch.Tensor,\r\n    routing_bias: torch.Tensor,\r\n    hidden_states: torch.Tensor,\r\n    hidden_states_scale: torch.Tensor,\r\n    hidden_states_scale_global: float,\r\n    gemm1_weights: torch.Tensor,\r\n    gemm1_weights_scale: torch.Tensor,\r\n    gemm1_scales_global: torch.Tensor,\r\n    gemm2_weights: torch.Tensor,\r\n    gemm2_weights_scale: torch.Tensor,\r\n    gemm2_scales_global: torch.Tensor,\r\n    local_expert_offset: int,\r\n    routed_scaling_factor: float,\r\n):\r\n    \"\"\"\r\n    FP4 block scale MoE with DeepSeek V3 no-aux routing.\r\n\r\n    This is a simplified reference that documents the expected behavior.\r\n    The actual FP4 dequantization involves complex shuffling and interleaving\r\n    operations that are handled by FlashInfer's fp4_quantize utilities.\r\n\r\n    DeepSeek V3 no-aux routing:\r\n    1. s = sigmoid(logits)\r\n    2. s_with_bias = s + bias\r\n    3. Group by n_group=8; per group take top-2 sum -> pick topk_group=4 groups\r\n    4. On the kept groups, take global top_k=8 experts\r\n    5. Combine with weights derived from s (without bias), normalized and\r\n       scaled by routed_scaling_factor\r\n\r\n    Local computation:\r\n    - Only experts in [local_expert_offset, local_expert_offset + E_local) are computed\r\n    - GEMM1 -> SwiGLU -> GEMM2, then per-token weighted accumulation\r\n    \"\"\"\r\n\r\n    # Fixed geometry\r\n    H = 7168\r\n    I = 2048\r\n    TOP_K = 8\r\n    N_GROUP = 8\r\n    TOPK_GROUP = 4\r\n    E_local = 32\r\n\r\n    E_global = routing_logits.shape[1]\r\n    T = routing_logits.shape[0]\r\n\r\n    assert E_global == 256, \"num_experts must be 256\"\r\n    device = routing_logits.device\r\n\r\n    # DeepSeek V3 no-aux routing\r\n    logits = routing_logits.to(torch.float32)\r\n    bias = routing_bias.to(torch.float32).reshape(-1)\r\n\r\n    # Sigmoid scoring\r\n    s = 1.0 / (1.0 + torch.exp(-logits))  # [T, E_global]\r\n    s_with_bias = s + bias                 # [T, E_global]\r\n\r\n    # Group experts\r\n    group_size = E_global // N_GROUP  # 32\r\n    s_wb_grouped = s_with_bias.view(T, N_GROUP, group_size)  # [T, 8, 32]\r\n\r\n    # Group scores = sum of top-2 values within each group\r\n    top2_vals, _ = torch.topk(s_wb_grouped, k=2, dim=2, largest=True, sorted=False)\r\n    group_scores = top2_vals.sum(dim=2)  # [T, 8]\r\n\r\n    # Select topk_group groups -> group mask\r\n    _, group_idx = torch.topk(group_scores, k=TOPK_GROUP, dim=1, largest=True, sorted=False)\r\n    group_mask = torch.zeros_like(group_scores)  # [T, 8]\r\n    group_mask.scatter_(1, group_idx, 1.0)\r\n    score_mask = group_mask.unsqueeze(2).expand(T, N_GROUP, group_size).reshape(T, E_global)\r\n\r\n    # Global top-k (within kept groups), based on s_with_bias\r\n    neg_inf = torch.finfo(torch.float32).min\r\n    scores_pruned = s_with_bias.masked_fill(score_mask == 0, neg_inf)\r\n    _, topk_idx = torch.topk(scores_pruned, k=TOP_K, dim=1, largest=True, sorted=False)\r\n\r\n    # Combination weights: use s (without bias) for normalization\r\n    M = torch.zeros_like(s)  # [T, E_global]\r\n    M.scatter_(1, topk_idx, 1.0)  # 0/1 mask\r\n    weights = s * M  # [T, E_global]\r\n    weights_sum = weights.sum(dim=1, keepdim=True) + 1e-20\r\n    weights = (weights / weights_sum) * routed_scaling_factor\r\n\r\n    # Note: Full FP4 dequantization requires FlashInfer utilities\r\n    # This reference shows the routing and accumulation logic\r\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\r\n\r\n    # For actual computation, would need to:\r\n    # 1. Dequantize hidden_states using hidden_states_scale and hidden_states_scale_global\r\n    # 2. For each expert, dequantize weights using block scales and global scales\r\n    # 3. Compute GEMM1 -> SwiGLU -> GEMM2\r\n    # 4. Accumulate with routing weights\r\n\r\n    return output.to(torch.bfloat16)"
+}
