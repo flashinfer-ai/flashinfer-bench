@@ -1,0 +1,40 @@
+{
+  "name": "rmsnorm_h4096_mxfp4",
+  "op_type": "rmsnorm",
+  "description": "RMS Layer Normalization with hidden_size=4096 using MXFP4 (Microscaling FP4) inputs. For MXFP4-quantized models.",
+  "tags": [
+    "status:experimental",
+    "model:llama-3.1-8b-mxfp4",
+    "dtype:mxfp4"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size (typically batch * seq_len)"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float4_e2m1",
+      "description": "Input hidden states in MXFP4"
+    },
+    "weight": {
+      "shape": ["hidden_size"],
+      "dtype": "float4_e2m1",
+      "description": "Normalization weights in MXFP4"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float4_e2m1",
+      "description": "Normalized output in MXFP4"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, weight):\n    batch_size, hidden_size = hidden_states.shape\n    \n    assert hidden_size == 4096\n    \n    x = hidden_states.to(torch.float32)\n    w = weight.to(torch.float32)\n    \n    variance = x.pow(2).mean(-1, keepdim=True)\n    x = x * torch.rsqrt(variance + 1e-6)\n    output = w * x\n    \n    return output.to(hidden_states.dtype)"
+}

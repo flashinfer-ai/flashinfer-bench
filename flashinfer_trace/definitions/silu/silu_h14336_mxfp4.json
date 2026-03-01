@@ -1,0 +1,35 @@
+{
+  "name": "silu_h14336_mxfp4",
+  "op_type": "silu",
+  "description": "SiLU (Swish) activation with hidden_size=14336 using MXFP4 (Microscaling FP4) inputs. For MXFP4-quantized models.",
+  "tags": [
+    "status:experimental",
+    "model:llama-3.1-8b-mxfp4",
+    "dtype:mxfp4"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size (typically batch * seq_len)"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 14336
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float4_e2m1",
+      "description": "Input tensor in MXFP4"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "hidden_size"],
+      "dtype": "float4_e2m1",
+      "description": "SiLU activation output in MXFP4"
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\n@torch.no_grad()\ndef run(input):\n    batch_size, hidden_size = input.shape\n    \n    assert hidden_size == 14336\n    \n    x = input.to(torch.float16)\n    output = F.silu(x)\n    return output.to(input.dtype)"
+}

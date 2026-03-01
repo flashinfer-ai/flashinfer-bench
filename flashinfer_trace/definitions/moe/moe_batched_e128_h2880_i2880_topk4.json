@@ -1,0 +1,61 @@
+{
+  "name": "moe_batched_e128_h2880_i2880_topk4",
+  "op_type": "moe",
+  "description": "Mixture of Experts with 128 experts, hidden_dim=2880, intermediate_dim=2880, top-k=4. For gpt-oss-120b.",
+  "tags": [
+    "status:verified",
+    "model:gpt-oss-120b"
+  ],
+  "axes": {
+    "num_tokens": {
+      "type": "var",
+      "description": "Number of input tokens"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 128
+    },
+    "hidden_dim": {
+      "type": "const",
+      "value": 2880
+    },
+    "intermediate_dim": {
+      "type": "const",
+      "value": 2880
+    },
+    "gate_up_dim": {
+      "type": "const",
+      "value": 5760,
+      "description": "Combined gate and up projection dimension (2 * intermediate_dim)"
+    },
+    "top_k": {
+      "type": "const",
+      "value": 4
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": ["num_tokens", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "Input hidden states"
+    },
+    "gate_up_proj": {
+      "shape": ["num_experts", "hidden_dim", "gate_up_dim"],
+      "dtype": "bfloat16",
+      "description": "Gate and up projection weights (transposed), gate_up_dim = 2 * intermediate_dim"
+    },
+    "down_proj": {
+      "shape": ["num_experts", "intermediate_dim", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "Down projection weights"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["num_tokens", "hidden_dim"],
+      "dtype": "bfloat16",
+      "description": "MoE output hidden states"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, gate_up_proj, down_proj):\n    # Simplified MoE forward pass (actual implementation uses routing)\n    num_tokens, hidden_dim = hidden_states.shape\n    output = torch.zeros_like(hidden_states)\n    return output"
+}

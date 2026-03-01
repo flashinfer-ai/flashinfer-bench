@@ -1,0 +1,44 @@
+{
+  "name": "embedding_v128256_d8192_fp8e4m3",
+  "op_type": "embedding",
+  "description": "Token embedding lookup with vocab_size=128256, embedding_dim=8192 using FP8 E4M3 weights. For FP8-quantized LLaMA-70B models.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-70b-fp8",
+    "dtype:fp8"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Number of input tokens"
+    },
+    "vocab_size": {
+      "type": "const",
+      "value": 128256
+    },
+    "embedding_dim": {
+      "type": "const",
+      "value": 8192
+    }
+  },
+  "inputs": {
+    "input_ids": {
+      "shape": ["batch_size"],
+      "dtype": "int64",
+      "description": "Token indices to look up"
+    },
+    "weight": {
+      "shape": ["vocab_size", "embedding_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "FP8 E4M3 quantized embedding weight matrix"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "embedding_dim"],
+      "dtype": "float8_e4m3fn",
+      "description": "Embedded token representations in FP8"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input_ids, weight):\n    batch_size = input_ids.shape[0]\n    vocab_size, embedding_dim = weight.shape\n    \n    # Check constants\n    assert vocab_size == 128256\n    assert embedding_dim == 8192\n    \n    weight_float = weight.to(torch.float16)\n    output = weight_float[input_ids]\n    return output.to(weight.dtype)"
+}

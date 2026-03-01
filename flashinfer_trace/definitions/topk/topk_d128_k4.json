@@ -1,0 +1,49 @@
+{
+  "name": "topk_d128_k4",
+  "op_type": "topk",
+  "description": "Top-k selection with dim=128 and k=4. Used for MoE expert selection in gpt-oss-120b.",
+  "tags": [
+    "status:verified",
+    "model:gpt-oss-120b",
+    "use:moe_routing"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "dim": {
+      "type": "const",
+      "value": 128
+    },
+    "k": {
+      "type": "const",
+      "value": 4
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "bfloat16",
+      "description": "Input tensor"
+    },
+    "k": {
+      "shape": null,
+      "dtype": "int64",
+      "description": "Number of top elements to select"
+    }
+  },
+  "outputs": {
+    "values": {
+      "shape": ["batch_size", "k"],
+      "dtype": "bfloat16",
+      "description": "Top-k values"
+    },
+    "indices": {
+      "shape": ["batch_size", "k"],
+      "dtype": "int64",
+      "description": "Top-k indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input, k):\n    return torch.topk(input, k=int(k), dim=-1)"
+}
