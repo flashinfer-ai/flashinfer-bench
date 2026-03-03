@@ -51,6 +51,7 @@ dev = [
   # as a dependency on python <= 3.11
   "setuptools",
 ]
+serve = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0"]
 cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
 [project.scripts]
