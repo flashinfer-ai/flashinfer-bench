@@ -581,6 +581,130 @@ const models: Model[] = [
       },
     },
   },
+  {
+    id: "nemotron-h-8b",
+    name: "NemotronH-8B",
+    description: "NVIDIA NemotronH-8B hybrid architecture combining Mamba2 SSM layers with standard attention. 52 total layers: 24 Mamba (M), 4 Attention (*), 24 MLP-only (-). Mamba layers use FlashInfer selective_state_update for decode.",
+    modules: {
+      NemotronHForCausalLM: {
+        count: 1,
+        type: "block",
+        definitions: [],
+      },
+      // --- Mamba decoder layers (24 of 52 layers) ---
+      NemotronHMambaDecoderLayer: {
+        count: 24,
+        parent: "NemotronHForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_mamba: {
+        count: 24,
+        parent: "NemotronHMambaDecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h4096", "fused_add_rmsnorm_h4096"],
+      },
+      mamba_mixer: {
+        count: 24,
+        parent: "NemotronHMambaDecoderLayer",
+        type: "layer",
+        definitions: [
+          "mamba_ssu_decode_h128_d64_s128_ng8",
+        ],
+      },
+      // --- Attention decoder layers (4 of 52 layers) ---
+      NemotronHAttentionDecoderLayer: {
+        count: 4,
+        parent: "NemotronHForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_attn: {
+        count: 4,
+        parent: "NemotronHAttentionDecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h4096", "fused_add_rmsnorm_h4096"],
+      },
+      self_attn: {
+        count: 4,
+        parent: "NemotronHAttentionDecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      qkv_proj: {
+        count: 4,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["gemm_n6144_k4096"],
+      },
+      rotary_emb: {
+        count: 4,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      attn: {
+        count: 4,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [
+          "gqa_paged_decode_h32_kv8_d128_ps1",
+          "gqa_paged_prefill_causal_h32_kv8_d128_ps1",
+          "gqa_ragged_prefill_causal_h32_kv8_d128",
+        ],
+      },
+      o_proj: {
+        count: 4,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["gemm_n4096_k4096"],
+      },
+      post_attention_layernorm_attn: {
+        count: 4,
+        parent: "NemotronHAttentionDecoderLayer",
+        type: "layer",
+        definitions: ["fused_add_rmsnorm_h4096"],
+      },
+      mlp_attn: {
+        count: 4,
+        parent: "NemotronHAttentionDecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      // --- MLP-only decoder layers (24 of 52 layers) ---
+      NemotronHMLPDecoderLayer: {
+        count: 24,
+        parent: "NemotronHForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_mlp: {
+        count: 24,
+        parent: "NemotronHMLPDecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h4096"],
+      },
+      mlp: {
+        count: 24,
+        parent: "NemotronHMLPDecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      // --- Final norm + head ---
+      norm: {
+        count: 1,
+        parent: "NemotronHForCausalLM",
+        type: "layer",
+        definitions: ["rmsnorm_h4096"],
+      },
+      lm_head: {
+        count: 1,
+        parent: "NemotronHForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+    },
+  },
 ] satisfies Model[]
 
 export default models
