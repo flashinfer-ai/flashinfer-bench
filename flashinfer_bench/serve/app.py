@@ -163,7 +163,7 @@ async def batch_get_tasks(req: BatchRequest):
 
 
 @app.get("/tasks/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: str, timeout: float = Query(default=0, ge=0, le=300)):
+async def get_task(task_id: str, timeout: float = Query(default=0, ge=0, le=3600)):
     results = await batch_get_tasks(BatchRequest(task_ids=[task_id], timeout=timeout))
     return results[0]
 

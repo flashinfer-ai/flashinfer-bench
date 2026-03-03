@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner.persistent_runner import PersistentSubprocessWorker
 from flashinfer_bench.bench.runner.runner import BaselineHandle
-from flashinfer_bench.data import Definition, Solution, Trace, TraceSet, Workload
+from flashinfer_bench.data import Definition, EvaluationStatus, Solution, Trace, TraceSet, Workload
 from flashinfer_bench.serve.task_store import Task, TaskStore
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,18 @@ class _GPUWorkerThread(threading.Thread):
                 evaluation=evaluation,
             )
             traces.append(trace)
+
+            # Check for CUDA context corruption after RUNTIME_ERROR
+            if evaluation.status == EvaluationStatus.RUNTIME_ERROR:
+                if not self._gpu_worker.is_healthy():
+                    logger.warning(
+                        f"Worker on {self._device} unhealthy after RUNTIME_ERROR, restarting"
+                    )
+                    if self._gpu_worker.restart():
+                        self._ref_cache.clear()
+                    else:
+                        logger.error(f"Failed to restart worker on {self._device}")
+                        raise RuntimeError(f"Worker on {self._device} failed to restart")
 
         return traces
 
