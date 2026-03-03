@@ -348,7 +348,7 @@ Where GDN maintains a recurrent state [B, H, K, V] and uses:
 
 Hybrid models interleave Mamba2 SSM layers with standard attention and MLP-only layers:
 ```
-Model (52 layers total: 24 Mamba, 4 Attention, 4 MLP-only)
+Model (52 layers total: 24 Mamba, 4 Attention, 24 MLP-only)
 ├── NemotronHMambaDecoderLayer (×24)   # 'M' positions in hybrid_override_pattern
 │   ├── input_layernorm → rmsnorm
 │   └── mamba_mixer → mamba_ssu_decode  (SSM state update, decode step)
