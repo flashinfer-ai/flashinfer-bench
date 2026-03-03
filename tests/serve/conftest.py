@@ -1,7 +1,10 @@
 """Fixtures for serve API tests."""
 
 import pytest
+import pytest_asyncio
 import torch
+
+pytest_plugins = ("pytest_asyncio",)
 
 from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.data import (
@@ -168,7 +171,7 @@ def kernel(X):
 # ── Pytest Fixtures ──
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def test_trace_set() -> TraceSet:
     """Create an in-memory TraceSet for testing."""
     definition = make_test_definition()
@@ -182,13 +185,13 @@ def test_trace_set() -> TraceSet:
     return trace_set
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def benchmark_config() -> BenchmarkConfig:
     """Short timeout config for testing."""
     return BenchmarkConfig(warmup_runs=1, iterations=2, num_trials=1, timeout_seconds=5)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def scheduler(test_trace_set, benchmark_config) -> Scheduler:
     """Create a real scheduler with one GPU worker."""
     if torch.cuda.device_count() == 0:
@@ -200,7 +203,7 @@ def scheduler(test_trace_set, benchmark_config) -> Scheduler:
     sched.shutdown()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client(scheduler) -> AsyncClient:
     """Async HTTP client for testing the API."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
