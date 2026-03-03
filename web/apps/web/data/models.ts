@@ -210,7 +210,7 @@ const models: Model[] = [
         count: 32,
         parent: "self_attn",
         type: "layer",
-        definitions: ["gemm_n_6144_k_4096"],
+        definitions: ["gemm_n6144_k4096"],
       },
       rotary_emb: {
         count: 32,
@@ -232,7 +232,7 @@ const models: Model[] = [
         count: 32,
         parent: "self_attn",
         type: "layer",
-        definitions: ["gemm_n_4096_k_4096"],
+        definitions: ["gemm_n4096_k4096"],
       },
       post_attention_layernorm: {
         count: 32,
@@ -250,7 +250,7 @@ const models: Model[] = [
         count: 32,
         parent: "mlp",
         type: "layer",
-        definitions: ["gemm_n_28672_k_4096"],
+        definitions: ["gemm_n28672_k4096"],
       },
       act_fn: {
         count: 32,
@@ -262,7 +262,7 @@ const models: Model[] = [
         count: 32,
         parent: "mlp",
         type: "layer",
-        definitions: ["gemm_n_4096_k_14336"],
+        definitions: ["gemm_n4096_k14336"],
       },
       norm: {
         count: 1,
