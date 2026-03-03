@@ -12,13 +12,13 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 
 ## Summary
 
-| Model | Architecture | rmsnorm | gemm | gqa | mla | dsa | gdn | moe | sampling | mamba_ssu |
-|-------|-------------|:-------:|:----:|:---:|:---:|:---:|:---:|:---:|:--------:|:---------:|
-| DeepSeek V3/R1 | MLA + Dense/MoE | ✅ | ✅ | — | ✅ (partial) | — | — | ✅ | ✅ | — |
-| DeepSeek V3.2 | DSA + Dense/MoE | ✅ | — | — | — | ✅ | — | ✅ | — | — |
-| Llama 3.1 8B | GQA + Dense | ✅ | ✅ | ✅ | — | — | — | — | ✅ | — |
-| Qwen3 30B A3B | GQA + MoE | ✅ | ✅ | ✅ | — | — | — | — (unmapped) | ✅ | — |
-| Qwen3 Next 80B A3B | GDN + GQA + MoE | ✅ | — | ❌ | — | — | ✅ | — (unmapped) | — | — |
+| Model | Architecture | Coverage |
+|-------|-------------|:--------:|
+| DeepSeek V3/R1 | MLA + Dense/MoE | 🟡 Partial |
+| DeepSeek V3.2 | DSA + Dense/MoE | ✅ Fully covered |
+| Llama 3.1 8B | GQA + Dense | ✅ Fully covered |
+| Qwen3 30B A3B | GQA + MoE | 🟡 Partial |
+| Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 
 ---
 
@@ -121,7 +121,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 
 ## Qwen3 Next 80B A3B
 
-**Architecture**: 48 layers total — 36 GDN (linear attention) + 12 GQA (standard attention), all layers use MoE FFN. Standard serving configuration: **TP=2**.
+**Architecture**: 48 layers total — 36 GDN (linear attention) + 12 GQA (standard attention), all layers use MoE FFN. Standard serving configuration: **TP=2 or TP=4**.
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
