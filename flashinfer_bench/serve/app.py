@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from flashinfer_bench import __version__
 from flashinfer_bench.data import Solution
 from flashinfer_bench.serve.scheduler import Scheduler
-from flashinfer_bench.serve.task_store import TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +50,11 @@ class TaskResponse(BaseModel):
 class DefinitionInfo(BaseModel):
     name: str
     description: Optional[str] = None
+
+
+class BatchRequest(BaseModel):
+    task_ids: List[str]
+    timeout: float = 0
 
 
 class WorkerInfo(BaseModel):
@@ -131,29 +135,37 @@ async def evaluate(req: EvaluateRequest):
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 
-@app.get("/tasks/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: str, wait: float = Query(default=0, ge=0, le=300)):
+@app.post("/tasks/batch", response_model=List[TaskResponse])
+async def batch_get_tasks(req: BatchRequest):
     sched = _get_scheduler()
-    task = sched.task_store.get_task(task_id)
-    if task is None:
-        raise HTTPException(404, detail="Task not found")
+    for task_id in req.task_ids:
+        if sched.task_store.get_task(task_id) is None:
+            raise HTTPException(404, detail=f"Task not found: {task_id}")
 
-    if wait > 0 and task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-        await asyncio.to_thread(sched.task_store.wait_for_task, task_id, wait)
-        task = sched.task_store.get_task(task_id)
+    if req.timeout > 0:
+        await asyncio.to_thread(sched.task_store.wait_for_all, req.task_ids, req.timeout)
 
-    traces_data = None
-    if task.traces:
-        traces_data = [t.model_dump(mode="json") for t in task.traces]
+    results = []
+    for tid in req.task_ids:
+        task = sched.task_store.get_task(tid)
+        traces_data = [t.model_dump(mode="json") for t in task.traces] if task.traces else None
+        results.append(
+            TaskResponse(
+                task_id=task.id,
+                status=task.status,
+                definition=task.definition_name,
+                solution=task.solution.name,
+                traces=traces_data,
+                error=task.error,
+            )
+        )
+    return results
 
-    return TaskResponse(
-        task_id=task.id,
-        status=task.status,
-        definition=task.definition_name,
-        solution=task.solution.name,
-        traces=traces_data,
-        error=task.error,
-    )
+
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
+async def get_task(task_id: str, timeout: float = Query(default=0, ge=0, le=300)):
+    results = await batch_get_tasks(BatchRequest(task_ids=[task_id], timeout=timeout))
+    return results[0]
 
 
 @app.get("/health", response_model=HealthResponse)

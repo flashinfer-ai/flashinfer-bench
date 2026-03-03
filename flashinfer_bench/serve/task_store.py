@@ -83,12 +83,21 @@ class TaskStore:
                 assert task_id in self._events, f"Event missing for task {task_id}"
                 self._events[task_id].set()
 
-    def wait_for_task(self, task_id: str, timeout: float) -> bool:
-        """Block until task completes or timeout. Returns True if done."""
-        event = self._events.get(task_id)
-        if not event:
-            return False
-        return event.wait(timeout=timeout)
+    def wait_for_all(self, task_ids: List[str], timeout: float) -> bool:
+        """Block until all tasks complete or timeout. Returns True if all done."""
+        deadline = time.time() + timeout
+        for task_id in task_ids:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return False
+            event = self._events.get(task_id)
+            if event and not event.is_set():
+                event.wait(timeout=remaining)
+        return all(
+            self._tasks[tid].status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+            for tid in task_ids
+            if tid in self._tasks
+        )
 
     def cleanup(self) -> int:
         """Remove completed tasks older than TTL. Returns count removed."""
