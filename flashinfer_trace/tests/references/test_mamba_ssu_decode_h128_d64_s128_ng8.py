@@ -55,9 +55,11 @@ def generate_inputs(batch_size, seed=42, device="cuda"):
 
     Tensor shapes and dtypes match the FlashInfer kernel requirements:
       - state: (state_cache_size, nheads, head_dim, dstate), bfloat16
-      - x, dt, B, C: (batch, nheads/ngroups, head_dim/dstate), bfloat16
-      - A, D, dt_bias: (nheads, head_dim), float32 (model weights)
-      - state_batch_indices: (batch,), int32
+      - x, dt: (batch_size, nheads, head_dim), bfloat16
+      - B, C: (batch_size, ngroups, dstate), bfloat16
+      - A: (nheads, head_dim, dstate), float32 (model weight)
+      - D, dt_bias: (nheads, head_dim), bfloat16 (model weights)
+      - state_batch_indices: (batch_size,), int32
     """
     torch.manual_seed(seed)
 
