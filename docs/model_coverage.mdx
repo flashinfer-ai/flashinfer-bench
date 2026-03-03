@@ -107,18 +107,24 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 |-----------|---------|:------:|
 | `rmsnorm_h2048` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h2048` | rmsnorm | ✅ |
-| `gdn_prefill_qk8_v16_d128_k_last` | gdn | ✅ |
-| `gdn_decode_qk8_v16_d128_k_last` | gdn | ✅ |
-| `gdn_mtp_qk8_v16_d128_k_last` | gdn | ✅ |
-| `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged | ❌ |
-| `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged | ❌ |
-| `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged | ❌ |
+| `gdn_prefill_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_prefill_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
+| `gdn_prefill_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
+| `gdn_decode_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_decode_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
+| `gdn_decode_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
+| `gdn_mtp_qk16_v32_d128_k_last` | gdn TP=1 | ✅ |
+| `gdn_mtp_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
+| `gdn_mtp_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
+| `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
+| `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
+| `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ❌ |
 | MoE gate / topk / experts (GDN layers) | moe | — |
 | MoE gate / topk / experts (GQA layers) | moe | — |
 
-**Coverage**: 5 / 8 referenced definitions present.
+**Coverage**: 9 / 14 referenced definitions present.
 
-Missing GQA definitions use shape h=8, kv=1, d=256 (TP=2 of original h=16, kv=2, d=256).
+Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, kv=1, d=256 (TP=2 of original h=16, kv=2, d=256).
 
 ---
 
