@@ -12,13 +12,13 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 
 ## Summary
 
-| Model | Architecture | rmsnorm | gemm | gqa | mla | dsa | gdn | moe | mamba_ssu |
-|-------|-------------|:-------:|:----:|:---:|:---:|:---:|:---:|:---:|:---------:|
-| DeepSeek V3/R1 | MLA + Dense/MoE | ✅ | — | — | ✅ (partial) | — | — | ✅ | — |
-| DeepSeek V3.2 | DSA + Dense/MoE | ✅ | — | — | — | ✅ | — | ✅ | — |
-| Llama 3.1 8B | GQA + Dense | ✅ | ✅ | ✅ | — | — | — | — | — |
-| Qwen3 30B A3B | GQA + MoE | ✅ | — | ✅ | — | — | — | — (unmapped) | — |
-| Qwen3 Next 80B A3B | GDN + GQA + MoE | ✅ | — | ❌ | — | — | ✅ | — (unmapped) | — |
+| Model | Architecture | rmsnorm | gemm | gqa | mla | dsa | gdn | moe | sampling | mamba_ssu |
+|-------|-------------|:-------:|:----:|:---:|:---:|:---:|:---:|:---:|:--------:|:---------:|
+| DeepSeek V3/R1 | MLA + Dense/MoE | ✅ | ✅ | — | ✅ (partial) | — | — | ✅ | ✅ | — |
+| DeepSeek V3.2 | DSA + Dense/MoE | ✅ | — | — | — | ✅ | — | ✅ | — | — |
+| Llama 3.1 8B | GQA + Dense | ✅ | ✅ | ✅ | — | — | — | — | ✅ | — |
+| Qwen3 30B A3B | GQA + MoE | ✅ | ✅ | ✅ | — | — | — | — (unmapped) | ✅ | — |
+| Qwen3 Next 80B A3B | GDN + GQA + MoE | ✅ | — | ❌ | — | — | ✅ | — (unmapped) | — | — |
 
 ---
 
@@ -32,12 +32,18 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
 | `rmsnorm_h1536` | rmsnorm | ✅ |
 | `rmsnorm_h512` | rmsnorm | ✅ |
+| `gemm_n256_k7168` | gemm | ✅ |
 | `mla_ragged_prefill_causal_h16_qk192_vo128` | mla_ragged | ❌ |
 | `mla_paged_prefill_causal_h16_ckv512_kpe64_ps1` | mla_paged | ✅ |
+| `mla_paged_prefill_causal_h16_ckv512_kpe64_ps64` | mla_paged | ✅ |
 | `mla_paged_decode_h16_ckv512_kpe64_ps1` | mla_paged | ✅ |
+| `mla_paged_decode_h16_ckv512_kpe64_ps64` | mla_paged | ✅ |
 | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` | moe | ✅ |
+| `top_k_sampling_from_probs_v129280` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v129280` | sampling | ✅ |
+| `top_p_sampling_from_probs_v129280` | sampling | ✅ |
 
-**Coverage**: 7 / 8 definitions present. Missing: MLA ragged prefill definition.
+**Coverage**: 11 / 12 definitions present. Missing: MLA ragged prefill definition.
 
 ---
 
@@ -55,9 +61,10 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `rmsnorm_h512` | rmsnorm | ✅ |
 | `dsa_topk_indexer_fp8_h64_d128_topk2048_ps64` | dsa_paged | ✅ |
 | `dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps1` | dsa_paged | ✅ |
+| `dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64` | dsa_paged | ✅ |
 | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` | moe | ✅ |
 
-**Coverage**: 7 / 7 definitions present. Fully covered.
+**Coverage**: 8 / 8 definitions present. Fully covered.
 
 ---
 
@@ -74,10 +81,15 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `gemm_n28672_k4096` | gemm | ✅ |
 | `gemm_n4096_k14336` | gemm | ✅ |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_ragged_prefill_causal_h32_kv8_d128` | gqa_ragged | ✅ |
+| `top_k_sampling_from_probs_v128256` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
+| `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 9 / 9 definitions present. Fully covered.
+**Coverage**: 14 / 14 definitions present. Fully covered.
 
 ---
 
@@ -90,12 +102,20 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `rmsnorm_h128` | rmsnorm | ✅ |
 | `rmsnorm_h2048` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h2048` | rmsnorm | ✅ |
+| `gemm_n128_k2048` | gemm | ✅ |
+| `gemm_n2048_k4096` | gemm | ✅ |
+| `gemm_n5120_k2048` | gemm | ✅ |
 | `gqa_paged_prefill_causal_h32_kv4_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h32_kv4_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv4_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv4_d128_ps64` | gqa_paged | ✅ |
 | `gqa_ragged_prefill_causal_h32_kv4_d128` | gqa_ragged | ✅ |
+| `top_k_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | MoE gate / topk / experts | moe | — |
 
-**Coverage**: 6 / 6 referenced definitions present. MoE kernels are not yet mapped in `models.ts`.
+**Coverage**: 14 / 14 referenced definitions present. MoE kernels are not yet mapped in `models.ts`.
 
 ---
 
@@ -127,30 +147,3 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, kv=1, d=256 (TP=2 of original h=16, kv=2, d=256).
 
 ---
-
-## Available Definitions Not Yet Assigned to Any Model
-
-These definitions exist in `flashinfer_trace/definitions/` but are not currently referenced by any model in `models.ts`:
-
-| Definition | Op Type | Notes |
-|-----------|---------|-------|
-| `gemm_n128_k2048` | gemm | — |
-| `gemm_n2048_k4096` | gemm | — |
-| `gemm_n256_k7168` | gemm | — |
-| `gemm_n5120_k2048` | gemm | — |
-| `gqa_paged_decode_h32_kv4_d128_ps64` | gqa_paged | ps64 variant |
-| `gqa_paged_decode_h32_kv8_d128_ps64` | gqa_paged | ps64 variant |
-| `gqa_paged_prefill_causal_h32_kv4_d128_ps64` | gqa_paged | ps64 variant |
-| `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ps64 variant |
-| `mla_paged_decode_h16_ckv512_kpe64_ps64` | mla_paged | ps64 variant |
-| `mla_paged_prefill_causal_h16_ckv512_kpe64_ps64` | mla_paged | ps64 variant |
-| `dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64` | dsa_paged | DeepSeek V3.2 ps64 variant |
-| `top_k_sampling_from_probs_v128256` | sampling | Llama 3.1 vocab |
-| `top_k_sampling_from_probs_v129280` | sampling | Qwen3 vocab |
-| `top_k_sampling_from_probs_v151936` | sampling | DeepSeek vocab |
-| `top_k_top_p_sampling_from_probs_v128256` | sampling | — |
-| `top_k_top_p_sampling_from_probs_v129280` | sampling | — |
-| `top_k_top_p_sampling_from_probs_v151936` | sampling | — |
-| `top_p_sampling_from_probs_v128256` | sampling | — |
-| `top_p_sampling_from_probs_v129280` | sampling | — |
-| `top_p_sampling_from_probs_v151936` | sampling | — |
