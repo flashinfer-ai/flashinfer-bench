@@ -38,6 +38,9 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Mistral Small 3.1 24B | GQA + Dense | 🟡 Partial |
 | GLM-4.6 | GQA + Dense | ❌ Not covered |
 | MiniMax M2 / Text-01 | Lightning Attn + MoE | ❌ Not covered |
+| Gemma 3 27B | GQA + Dense | ❌ Not covered |
+| NemotronH 47B | GQA + Mamba2 | ❌ Not covered |
+| Qwen3 14B | GQA + Dense | ❌ Not covered |
 
 ---
 
@@ -624,5 +627,81 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | Sampling (vocab TBD) | sampling | — |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is Lightning Attention — a linear attention variant not yet in FlashInfer. The softmax attention layers (GQA-style) also require new definitions for this model's specific dimensions. To add support, a new `lightning_attn` op type would first need to be defined.
+
+---
+
+## Gemma 3 27B
+
+**Architecture**: 62 decoder layers, GQA attention with explicit head_dim=128 (decoupled from hidden_size), dense MLP. Alternates local (sliding window) and global attention — both use standard GQA kernels in FlashInfer.
+
+> **Note**: Exact config.json values are pending verification from HuggingFace (`google/gemma-3-27b-it`). The parameters below are based on the published Gemma 3 model spec and may differ slightly from the actual config.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h5376` | rmsnorm | ❌ |
+| `fused_add_rmsnorm_h5376` | rmsnorm | ❌ |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps1` | gqa_paged | ❌ |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps64` | gqa_paged | ❌ |
+| `gqa_paged_decode_h32_kv16_d128_ps1` | gqa_paged | ❌ |
+| `gqa_paged_decode_h32_kv16_d128_ps64` | gqa_paged | ❌ |
+| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | ❌ |
+| `gemm_n8192_k5376` | gemm | ❌ |
+| `gemm_n5376_k4096` | gemm | ❌ |
+| `gemm_n64512_k5376` | gemm | ❌ |
+| `gemm_n5376_k32256` | gemm | ❌ |
+| `top_k_sampling_from_probs_v262144` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v262144` | sampling | ❌ |
+| `top_p_sampling_from_probs_v262144` | sampling | ❌ |
+
+**Coverage**: 0 / 15 definitions present. No existing definitions match this architecture. Notable: Gemma 3 uses `head_dim=128` explicitly (32 q-heads × 128 = 4096 ≠ hidden_size=5376), requiring separate Q/KV GEMM projections. The KV ratio is 2:1 (32q / 16kv), distinct from existing h32_kv4 and h32_kv8 GQA definitions. Sampling definitions for vocab_size=262144 are entirely new.
+
+---
+
+## NemotronH 47B
+
+**Architecture**: 47B parameter hybrid model with interleaved Transformer (GQA) and Mamba2 SSU (State Space Model) layers. The Mamba2 SSU layers implement a linear recurrent attention alternative that does not use the standard softmax attention mechanism.
+
+> **Note**: Exact architecture parameters (nheads, ngroups, dstate, layer counts) require verification from HuggingFace (`nvidia/NemotronH-47B-Instruct`). The Mamba2 SSU op type is planned for FlashInfer-Bench but not yet implemented.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h?` | rmsnorm | ❌ (dims TBD) |
+| `fused_add_rmsnorm_h?` | rmsnorm | ❌ (dims TBD) |
+| `gqa_paged_prefill_causal_h?_kv?_d128_ps1` | gqa_paged | ❌ (dims TBD) |
+| `gqa_paged_prefill_causal_h?_kv?_d128_ps64` | gqa_paged | ❌ (dims TBD) |
+| `gqa_paged_decode_h?_kv?_d128_ps1` | gqa_paged | ❌ (dims TBD) |
+| `gqa_paged_decode_h?_kv?_d128_ps64` | gqa_paged | ❌ (dims TBD) |
+| `gqa_ragged_prefill_causal_h?_kv?_d128` | gqa_ragged | ❌ (dims TBD) |
+| `mamba_ssu_decode_h?_d?_s?_ng?` | mamba_ssu | ❌ (op type not supported) |
+| Sampling (vocab TBD) | sampling | — |
+
+**Coverage**: 0 / ? definitions present. The primary blocker is the **Mamba2 SSU** op type, which is not yet implemented in FlashInfer-Bench. The GQA kernels for transformer layers also require new definitions once dimensions are verified. To add full support, the `mamba_ssu` op type must first be defined and implemented, subject to FlashInfer SSU constraints (`nheads/ngroups ∈ [1, 8, 16]`). Run `/track-models --model-name nemotronh --hf-repo-id nvidia/NemotronH-47B-Instruct` to populate exact dimensions once available.
+
+---
+
+## Qwen3 14B
+
+**Architecture**: 40 decoder layers, GQA attention, dense MLP. Uses hidden_size=5120 with 40 query heads and 8 KV heads at head_dim=128 (5120/40=128). Standard serving configuration: **TP=2** (estimated from Qwen3 family patterns in sgl-cookbook).
+
+> **Note**: Exact sgl-cookbook TP configuration and intermediate_size require verification. Parameters below are based on the known Qwen3 architectural scaling pattern.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h5120` | rmsnorm | ❌ |
+| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps1` | gqa_paged TP=2 | ❌ |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | ❌ |
+| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | ❌ |
+| `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | ❌ |
+| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | ❌ |
+| `gemm_n6400_k5120` | gemm | ❌ |
+| `gemm_n5120_k5120` | gemm | ❌ |
+| `gemm_n55296_k5120` | gemm | ❌ |
+| `gemm_n5120_k27648` | gemm | ❌ |
+| `top_k_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_p_sampling_from_probs_v151936` | sampling | ✅ |
+
+**Coverage**: 3 / 14 definitions present. Sampling definitions are shared with Qwen3 8B and other Qwen3 models (same vocab_size=151936). Missing: rmsnorm h5120, all GQA definitions (h20_kv4_d128 at TP=2 is a new configuration), and all GEMM definitions (new k=5120 input dimension). The h5120 rmsnorm is also needed by Mistral Nemo 12B and Mistral Small 3.1 24B.
 
 ---
