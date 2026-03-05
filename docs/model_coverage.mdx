@@ -6,7 +6,8 @@ title: Model Coverage
 
 This document tracks which kernels are supported in FlashInfer-Bench for each model.
 
-- ✅ Definition JSON exists in `flashinfer_trace/definitions/`
+- ✅ Definition JSON exists and workload has been collected
+- 🟡 Definition JSON exists but workload has not yet been collected
 - ❌ Definition is referenced in `models.ts` but the file does not exist (missing)
 - — Module exists in the architecture but no definition is mapped (unmapped)
 
@@ -38,8 +39,8 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Mistral Small 3.1 24B | GQA + Dense | 🟡 Partial |
 | GLM-4.6 | GQA + Dense | ❌ Not covered |
 | MiniMax M2 / Text-01 | Lightning Attn + MoE | ❌ Not covered |
-| Gemma 3 27B | GQA + Dense | ✅ Fully covered |
-| Qwen3 14B | GQA + Dense | ✅ Fully covered |
+| Gemma 3 27B | GQA + Dense | 🟡 Partial |
+| Qwen3 14B | GQA + Dense | 🟡 Partial |
 | NemotronH 47B | GQA + Mamba2 Hybrid | ❌ Not covered |
 
 ---
@@ -253,8 +254,8 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
@@ -476,15 +477,15 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h40_kv10_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h40_kv10_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps64` | gqa_paged | ❌ |
 | `gqa_ragged_prefill_causal_h40_kv10_d128` | gqa_ragged | ❌ |
 | `gemm_n7680_k5120` | gemm | ❌ |
-| `gemm_n5120_k5120` | gemm | ✅ |
+| `gemm_n5120_k5120` | gemm | 🟡 |
 | `gemm_n35840_k5120` | gemm | ❌ |
 | `gemm_n5120_k17920` | gemm | ❌ |
 | `top_k_sampling_from_probs_v100352` | sampling | ❌ |
@@ -528,8 +529,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
@@ -552,8 +553,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
@@ -574,8 +575,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
@@ -638,23 +639,23 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5376` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5376` | rmsnorm | ✅ |
-| `gqa_paged_prefill_causal_h32_kv16_d128_ps1` | gqa_paged | ✅ |
-| `gqa_paged_prefill_causal_h32_kv16_d128_ps64` | gqa_paged | ✅ |
-| `gqa_paged_decode_h32_kv16_d128_ps1` | gqa_paged | ✅ |
-| `gqa_paged_decode_h32_kv16_d128_ps64` | gqa_paged | ✅ |
-| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | ✅ |
-| `gemm_n4096_k5376` | gemm (q_proj) | ✅ |
-| `gemm_n2048_k5376` | gemm (k/v proj) | ✅ |
-| `gemm_n5376_k4096` | gemm (o_proj) | ✅ |
-| `gemm_n21504_k5376` | gemm (gate/up proj) | ✅ |
-| `gemm_n5376_k21504` | gemm (down proj) | ✅ |
-| `top_k_sampling_from_probs_v262208` | sampling | ✅ |
-| `top_k_top_p_sampling_from_probs_v262208` | sampling | ✅ |
-| `top_p_sampling_from_probs_v262208` | sampling | ✅ |
+| `rmsnorm_h5376` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5376` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h32_kv16_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | 🟡 |
+| `gemm_n4096_k5376` | gemm (q_proj) | 🟡 |
+| `gemm_n2048_k5376` | gemm (k/v proj) | 🟡 |
+| `gemm_n5376_k4096` | gemm (o_proj) | 🟡 |
+| `gemm_n21504_k5376` | gemm (gate/up proj) | 🟡 |
+| `gemm_n5376_k21504` | gemm (down proj) | 🟡 |
+| `top_k_sampling_from_probs_v262208` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v262208` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v262208` | sampling | 🟡 |
 
-**Coverage**: 15 / 15 definitions present. Fully covered. All dimensions are unique to this model: hidden=5376, intermediate=21504, vocab=262208. GQA ratio is 2:1 (vs 4:1 for Llama/Qwen), so kv_heads=16 (not 8).
+**Coverage**: 15 / 15 definitions present. All dimensions are unique to this model: hidden=5376, intermediate=21504, vocab=262208. GQA ratio is 2:1 (vs 4:1 for Llama/Qwen), so kv_heads=16 (not 8). Workloads not yet collected.
 
 ---
 
@@ -664,22 +665,22 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
-| `gqa_paged_prefill_causal_h20_kv4_d128_ps1` | gqa_paged TP=2 | ✅ |
-| `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | ✅ |
-| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | ✅ |
-| `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | ✅ |
-| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | ✅ |
-| `gemm_n7168_k5120` | gemm (qkv_proj combined) | ✅ |
-| `gemm_n5120_k5120` | gemm (o_proj) | ✅ |
-| `gemm_n34816_k5120` | gemm (gate_up combined) | ✅ |
-| `gemm_n5120_k17408` | gemm (down proj) | ✅ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
+| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | 🟡 |
+| `gemm_n7168_k5120` | gemm (qkv_proj combined) | 🟡 |
+| `gemm_n5120_k5120` | gemm (o_proj) | 🟡 |
+| `gemm_n34816_k5120` | gemm (gate_up combined) | 🟡 |
+| `gemm_n5120_k17408` | gemm (down proj) | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 14 / 14 definitions present. Fully covered. Sampling definitions are shared with Qwen2.5 and other Qwen3 models (same vocab=151936). The rmsnorm_h5120 definition is also shared with Mistral Nemo 12B, Mistral Small 3.1 24B, Phi-4 14B, and Llama 4 Scout/Maverick.
+**Coverage**: 14 / 14 definitions present. Sampling definitions are shared with Qwen2.5 and other Qwen3 models (same vocab=151936) which already have workloads collected. The rmsnorm_h5120 definition is also shared with Mistral Nemo 12B, Mistral Small 3.1 24B, Phi-4 14B, and Llama 4 Scout/Maverick. Non-sampling workloads not yet collected.
 
 ---
 
