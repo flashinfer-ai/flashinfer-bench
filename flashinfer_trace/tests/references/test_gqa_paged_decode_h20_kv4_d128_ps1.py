@@ -1,10 +1,10 @@
 """Reference test for gqa_paged_decode_h20_kv4_d128_ps1 (Qwen3 14B TP=2)."""
+
 import math
 
 import flashinfer
 import numpy as np
 import torch
-
 
 NUM_QO_HEADS = 20
 NUM_KV_HEADS = 4
@@ -86,8 +86,12 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
 
     q = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
     num_pages = total_pages + 100
-    k_cache = torch.randn(num_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
-    v_cache = torch.randn(num_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    k_cache = torch.randn(
+        num_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
+    v_cache = torch.randn(
+        num_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
 
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
 
@@ -106,7 +110,9 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
 def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     """Test correctness of reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing GQA Paged Decode h20/kv4 ps1 (Qwen3 14B TP=2): batch_size={batch_size}, max_seq_len={max_seq_len}")
+    print(
+        f"Testing GQA Paged Decode h20/kv4 ps1 (Qwen3 14B TP=2): batch_size={batch_size}, max_seq_len={max_seq_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -190,6 +196,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

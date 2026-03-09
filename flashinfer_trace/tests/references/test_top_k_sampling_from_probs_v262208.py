@@ -1,7 +1,7 @@
 """Reference test for top_k_sampling_from_probs_v262208 (Gemma 3 27B)."""
+
 import flashinfer
 import torch
-
 
 VOCAB_SIZE = 262208
 
@@ -45,7 +45,9 @@ def generate_random_inputs(batch_size, distribution="peaked", device="cuda"):
         logits = torch.randn(batch_size, VOCAB_SIZE, device=device)
 
     probs = torch.softmax(logits, dim=-1).to(torch.float32)
-    top_k = torch.randint(10, min(500, VOCAB_SIZE // 2), (batch_size,), dtype=torch.int32, device=device)
+    top_k = torch.randint(
+        10, min(500, VOCAB_SIZE // 2), (batch_size,), dtype=torch.int32, device=device
+    )
 
     return probs, top_k
 
@@ -53,7 +55,9 @@ def generate_random_inputs(batch_size, distribution="peaked", device="cuda"):
 def test_correctness(batch_size=4, num_trials=5000):
     """Test correctness by comparing sampling distributions with FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing Top-K Sampling v262208 (Gemma 3 27B): batch_size={batch_size}, num_trials={num_trials}")
+    print(
+        f"Testing Top-K Sampling v262208 (Gemma 3 27B): batch_size={batch_size}, num_trials={num_trials}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -82,7 +86,7 @@ def test_correctness(batch_size=4, num_trials=5000):
     fi_freq = fi_counter.float() / num_trials
 
     # Check only tokens with non-trivial probability
-    nonzero_mask = (probs > 1e-6)
+    nonzero_mask = probs > 1e-6
     ref_nonzero = ref_freq[nonzero_mask]
     fi_nonzero = fi_freq[nonzero_mask]
 
@@ -112,6 +116,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

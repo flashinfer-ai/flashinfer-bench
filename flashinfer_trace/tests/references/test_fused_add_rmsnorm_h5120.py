@@ -1,7 +1,7 @@
 """Reference test for fused_add_rmsnorm_h5120 (Qwen3 14B)."""
+
 import flashinfer
 import torch
-
 
 HIDDEN_SIZE = 5120
 EPS = 1e-6
@@ -46,11 +46,7 @@ def test_correctness(batch_size=8, atol=8e-3, rtol=1e-2):
 
     # Run reference
     print("\nRunning reference implementation...")
-    ref_output = run(
-        inputs["hidden_states"].clone(),
-        inputs["residual"].clone(),
-        inputs["weight"],
-    )
+    ref_output = run(inputs["hidden_states"].clone(), inputs["residual"].clone(), inputs["weight"])
 
     # Run FlashInfer (fused_add_rmsnorm modifies input_fi in-place)
     print("Running FlashInfer implementation...")
@@ -96,6 +92,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

@@ -1,9 +1,9 @@
 """Reference test for gqa_paged_prefill_causal_h32_kv16_d128_ps1 (Gemma 3 27B)."""
+
 import math
 
 import flashinfer
 import torch
-
 
 NUM_QO_HEADS = 32
 NUM_KV_HEADS = 16
@@ -100,13 +100,17 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, max_pages, device=
     idx = 0
     for i in range(batch_size):
         seq_len = int(kv_lens[i].item())
-        kv_indices[idx:idx + seq_len] = all_page_ids[idx:idx + seq_len]
+        kv_indices[idx : idx + seq_len] = all_page_ids[idx : idx + seq_len]
         idx += seq_len
 
     last_page_len = torch.ones(batch_size, dtype=torch.int32, device=device)
 
-    k_cache = torch.randn(max_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
-    v_cache = torch.randn(max_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    k_cache = torch.randn(
+        max_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
+    v_cache = torch.randn(
+        max_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
     q = torch.randn(total_q, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
 
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
@@ -128,7 +132,9 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, max_pages, device=
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=5e-2):
     """Test correctness of reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing GQA Paged Prefill h32/kv16 ps1 (Gemma 3 27B): batch={batch_size}, max_q={max_q_len}, max_kv={max_kv_len}")
+    print(
+        f"Testing GQA Paged Prefill h32/kv16 ps1 (Gemma 3 27B): batch={batch_size}, max_q={max_q_len}, max_kv={max_kv_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -218,6 +224,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

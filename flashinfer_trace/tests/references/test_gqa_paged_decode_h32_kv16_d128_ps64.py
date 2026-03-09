@@ -1,9 +1,9 @@
 """Reference test for gqa_paged_decode_h32_kv16_d128_ps64 (Gemma 3 27B)."""
+
 import math
 
 import flashinfer
 import torch
-
 
 NUM_QO_HEADS = 32
 NUM_KV_HEADS = 16
@@ -70,12 +70,16 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
         token_idx = 0
         for p_idx, page_id in enumerate(page_ids):
             if p_idx < num_full_pages:
-                k_batch[token_idx:token_idx + page_size] = k_cache_f32[page_id]
-                v_batch[token_idx:token_idx + page_size] = v_cache_f32[page_id]
+                k_batch[token_idx : token_idx + page_size] = k_cache_f32[page_id]
+                v_batch[token_idx : token_idx + page_size] = v_cache_f32[page_id]
                 token_idx += page_size
             else:
-                k_batch[token_idx:token_idx + last_page_len] = k_cache_f32[page_id, :last_page_len]
-                v_batch[token_idx:token_idx + last_page_len] = v_cache_f32[page_id, :last_page_len]
+                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[
+                    page_id, :last_page_len
+                ]
+                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[
+                    page_id, :last_page_len
+                ]
                 token_idx += last_page_len
 
         q_batch = q[b].to(torch.float32)
@@ -109,8 +113,12 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
 
     q = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
     num_cache_pages = total_pages + 100
-    k_cache = torch.randn(num_cache_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
-    v_cache = torch.randn(num_cache_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
+    k_cache = torch.randn(
+        num_cache_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
+    v_cache = torch.randn(
+        num_cache_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
+    )
 
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
 
@@ -129,7 +137,9 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
 def test_correctness(batch_size=4, max_seq_len=128, atol=1e-2, rtol=5e-2):
     """Test correctness of reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing GQA Paged Decode h32/kv16 ps64 (Gemma 3 27B): batch_size={batch_size}, max_seq_len={max_seq_len}")
+    print(
+        f"Testing GQA Paged Decode h32/kv16 ps64 (Gemma 3 27B): batch_size={batch_size}, max_seq_len={max_seq_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -214,6 +224,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

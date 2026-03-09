@@ -1,9 +1,9 @@
 """Reference test for gqa_ragged_prefill_causal_h20_kv4_d128 (Qwen3 14B TP=2)."""
+
 import math
 
 import flashinfer
 import torch
-
 
 NUM_QO_HEADS = 20
 NUM_KV_HEADS = 4
@@ -111,7 +111,9 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, device="cuda"):
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=5e-2):
     """Test correctness of reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing GQA Ragged Prefill h20/kv4 (Qwen3 14B TP=2): batch={batch_size}, max_q={max_q_len}, max_kv={max_kv_len}")
+    print(
+        f"Testing GQA Ragged Prefill h20/kv4 (Qwen3 14B TP=2): batch={batch_size}, max_q={max_q_len}, max_kv={max_kv_len}"
+    )
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -197,6 +199,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")

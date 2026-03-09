@@ -1,7 +1,7 @@
 """Reference test for rmsnorm_h5120 (Qwen3 14B)."""
+
 import flashinfer
 import torch
-
 
 HIDDEN_SIZE = 5120
 EPS = 1e-6
@@ -88,6 +88,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")
