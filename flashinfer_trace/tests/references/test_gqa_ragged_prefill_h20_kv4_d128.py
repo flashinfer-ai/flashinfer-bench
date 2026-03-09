@@ -104,6 +104,13 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
     )
 
     # Setup FlashInfer
+    # FlashInfer only supports power-of-2 group sizes. Since group_size = 20/4 = 5
+    # is not a power of 2, expand KV heads from 4 to 20 (repeating each KV head
+    # 5 times) so group_size=1 (MHA), which gives mathematically equivalent results.
+    group_size = NUM_QO_HEADS // NUM_KV_HEADS  # 5
+    k_expanded = inputs["k"].repeat_interleave(group_size, dim=1)
+    v_expanded = inputs["v"].repeat_interleave(group_size, dim=1)
+
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
     prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(
@@ -114,7 +121,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
         qo_indptr=inputs["qo_indptr"],
         kv_indptr=inputs["kv_indptr"],
         num_qo_heads=NUM_QO_HEADS,
-        num_kv_heads=NUM_KV_HEADS,
+        num_kv_heads=NUM_QO_HEADS,  # expanded to match q heads (group_size=1)
         head_dim_qk=HEAD_DIM,
         head_dim_vo=HEAD_DIM,
         causal=True,
@@ -124,7 +131,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
     )
 
     print("Running FlashInfer...")
-    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], inputs["k"], inputs["v"], return_lse=True)
+    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], k_expanded, v_expanded, return_lse=True)
 
     # Compare
     print("\nComparing outputs...")

@@ -114,12 +114,19 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=128, atol=1e-2, rtol
     )
 
     # Setup FlashInfer
+    # FlashInfer only supports power-of-2 group sizes. Since group_size = 20/4 = 5
+    # is not a power of 2, expand KV heads from 4 to 20 (repeating each KV head
+    # 5 times) so group_size=1 (MHA), which gives mathematically equivalent results.
+    group_size = NUM_QO_HEADS // NUM_KV_HEADS  # 5
+    k_cache_expanded = inputs["k_cache"].repeat_interleave(group_size, dim=2)
+    v_cache_expanded = inputs["v_cache"].repeat_interleave(group_size, dim=2)
+
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
     prefill_wrapper = flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper(
         workspace_buffer, kv_layout="NHD"
     )
-    paged_kv_cache = torch.stack([inputs["k_cache"], inputs["v_cache"]], dim=1)
+    paged_kv_cache = torch.stack([k_cache_expanded, v_cache_expanded], dim=1)
 
     prefill_wrapper.plan(
         qo_indptr=inputs["qo_indptr"],
@@ -127,7 +134,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=128, atol=1e-2, rtol
         paged_kv_indices=inputs["kv_indices"],
         paged_kv_last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
-        num_kv_heads=NUM_KV_HEADS,
+        num_kv_heads=NUM_QO_HEADS,  # expanded to match q heads (group_size=1)
         head_dim_qk=HEAD_DIM,
         head_dim_vo=HEAD_DIM,
         page_size=PAGE_SIZE,
