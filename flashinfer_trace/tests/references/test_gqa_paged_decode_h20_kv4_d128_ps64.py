@@ -1,9 +1,14 @@
 """Reference test for gqa_paged_decode_h20_kv4_d128_ps64 (Qwen3 14B TP=2)."""
 
 import math
+from pathlib import Path
 
 import flashinfer
 import torch
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 NUM_QO_HEADS = 20
 NUM_KV_HEADS = 4
@@ -11,92 +16,21 @@ HEAD_DIM = 128
 PAGE_SIZE = 64
 
 
-@torch.no_grad()
-def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
-    batch_size, num_qo_heads, head_dim = q.shape
-    _, page_size, num_kv_heads, _ = k_cache.shape
-    len_indptr = kv_indptr.shape[0]
-    num_kv_indices = kv_indices.shape[0]
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
 
-    # Check constants
-    assert num_qo_heads == NUM_QO_HEADS
-    assert num_kv_heads == NUM_KV_HEADS
-    assert head_dim == HEAD_DIM
-    assert page_size == PAGE_SIZE
 
-    # Check constraints
-    assert len_indptr == batch_size + 1
-    assert num_kv_indices == kv_indptr[-1].item()
-
-    device = q.device
-
-    output = torch.zeros((batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device)
-    lse = torch.full((batch_size, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
-
-    gqa_ratio = num_qo_heads // num_kv_heads
-    k_cache_f32 = k_cache.to(torch.float32)
-    v_cache_f32 = v_cache.to(torch.float32)
-
-    for b in range(batch_size):
-        page_start = int(kv_indptr[b].item())
-        page_end = int(kv_indptr[b + 1].item())
-        last_page_len = int(kv_last_page_len[b].item())
-
-        if page_start >= page_end:
-            output[b].zero_()
-            continue
-
-        page_ids = kv_indices[page_start:page_end].to(torch.long)
-        num_pages_for_seq = page_ids.shape[0]
-
-        if num_pages_for_seq == 0:
-            output[b].zero_()
-            continue
-
-        num_full_pages = num_pages_for_seq - 1
-        total_tokens = num_full_pages * page_size + last_page_len
-
-        if total_tokens == 0:
-            output[b].zero_()
-            continue
-
-        k_batch = torch.zeros(
-            (total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device
-        )
-        v_batch = torch.zeros(
-            (total_tokens, num_kv_heads, head_dim), dtype=torch.float32, device=device
-        )
-
-        token_idx = 0
-        for p_idx, page_id in enumerate(page_ids):
-            if p_idx < num_full_pages:
-                k_batch[token_idx : token_idx + page_size] = k_cache_f32[page_id]
-                v_batch[token_idx : token_idx + page_size] = v_cache_f32[page_id]
-                token_idx += page_size
-            else:
-                k_batch[token_idx : token_idx + last_page_len] = k_cache_f32[
-                    page_id, :last_page_len
-                ]
-                v_batch[token_idx : token_idx + last_page_len] = v_cache_f32[
-                    page_id, :last_page_len
-                ]
-                token_idx += last_page_len
-
-        q_batch = q[b].to(torch.float32)  # [num_qo_heads, head_dim]
-
-        for h in range(num_qo_heads):
-            kv_head = h // gqa_ratio
-
-            q_head = q_batch[h]
-            k_head = k_batch[:, kv_head]
-            v_head = v_batch[:, kv_head]
-
-            logits = torch.matmul(q_head, k_head.T) * sm_scale
-            lse[b, h] = torch.logsumexp(logits, dim=-1) / math.log(2.0)
-            attn = torch.softmax(logits, dim=-1)
-            output[b, h] = torch.matmul(attn, v_head).to(torch.bfloat16)
-
-    return output, lse
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
@@ -146,6 +80,9 @@ def test_correctness(batch_size=4, max_seq_len=128, atol=1e-2, rtol=5e-2):
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
         return False
+
+    definition = load_definition("gqa_paged_decode_h20_kv4_d128_ps64")
+    run = compile_reference(definition.reference)
 
     inputs = generate_random_inputs(batch_size, max_seq_len, device)
     print(f"Sequence lengths: {inputs['seq_lens'].cpu().numpy()}")

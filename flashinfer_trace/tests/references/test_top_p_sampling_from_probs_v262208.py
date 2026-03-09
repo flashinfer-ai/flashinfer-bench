@@ -1,47 +1,33 @@
 """Reference test for top_p_sampling_from_probs_v262208 (Gemma 3 27B)."""
 
+import math
+from pathlib import Path
+
 import flashinfer
 import torch
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 VOCAB_SIZE = 262208
 
 
-@torch.no_grad()
-def run(probs, top_p):
-    batch_size, vocab_size = probs.shape
-    device = probs.device
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
 
-    # Check constants
-    assert vocab_size == VOCAB_SIZE
 
-    probs = probs.to(torch.float32)
-    out = torch.empty(batch_size, dtype=torch.int64, device=device)
-
-    for i in range(batch_size):
-        row = probs[i]
-        p = float(top_p[i].item())
-
-        if p <= 0.0:
-            out[i] = torch.argmax(row).to(torch.int64)
-            continue
-
-        if p < 1.0:
-            vals, idx = torch.sort(row, descending=True)
-            cdf = torch.cumsum(vals, dim=0)
-
-            to_remove = cdf > p
-            to_remove[1:] = to_remove[:-1].clone()
-            to_remove[0] = False
-            keep = ~to_remove
-            keep_idx = idx[keep]
-
-            filtered = torch.zeros_like(row)
-            filtered[keep_idx] = row[keep_idx]
-            row = filtered / filtered.sum()
-
-        out[i] = torch.multinomial(row, 1, replacement=True).squeeze(0)
-
-    return out
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def generate_random_inputs(batch_size, distribution="peaked", device="cuda"):
@@ -72,6 +58,9 @@ def test_correctness(batch_size=4, num_trials=5000):
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
         return False
+
+    definition = load_definition("top_p_sampling_from_probs_v262208")
+    run = compile_reference(definition.reference)
 
     torch.manual_seed(42)
     probs, top_p = generate_random_inputs(batch_size, "peaked", device)

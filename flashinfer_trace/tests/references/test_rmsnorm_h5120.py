@@ -1,23 +1,34 @@
 """Reference test for rmsnorm_h5120 (Qwen3 14B)."""
 
+import math
+from pathlib import Path
+
 import flashinfer
 import torch
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 HIDDEN_SIZE = 5120
 EPS = 1e-6
 
 
-@torch.no_grad()
-def run(hidden_states, weight):
-    batch_size, hidden_size = hidden_states.shape
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
 
-    # Check constants
-    assert hidden_size == HIDDEN_SIZE
 
-    x = hidden_states.to(torch.float32)
-    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)
-    y = (x * inv_rms) * weight.to(torch.float32)
-    return y.to(hidden_states.dtype)
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def generate_random_inputs(batch_size, device="cuda"):
@@ -36,6 +47,9 @@ def test_correctness(batch_size=8, atol=8e-3, rtol=1e-2):
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
         return False
+
+    definition = load_definition("rmsnorm_h5120")
+    run = compile_reference(definition.reference)
 
     inputs = generate_random_inputs(batch_size, device)
 

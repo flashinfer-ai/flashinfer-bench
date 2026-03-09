@@ -1,9 +1,14 @@
 """Reference test for gqa_paged_prefill_causal_h32_kv16_d128_ps1 (Gemma 3 27B)."""
 
 import math
+from pathlib import Path
 
 import flashinfer
 import torch
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 NUM_QO_HEADS = 32
 NUM_KV_HEADS = 16
@@ -11,72 +16,21 @@ HEAD_DIM = 128
 PAGE_SIZE = 1
 
 
-@torch.no_grad()
-def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
-    total_q, num_qo_heads, head_dim = q.shape
-    num_pages, page_size, num_kv_heads, _ = k_cache.shape
-    len_indptr = qo_indptr.shape[0]
-    num_kv_indices = kv_indices.shape[0]
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
 
-    # Check constants
-    assert num_qo_heads == NUM_QO_HEADS
-    assert num_kv_heads == NUM_KV_HEADS
-    assert head_dim == HEAD_DIM
-    assert page_size == PAGE_SIZE
 
-    # Check constraints
-    assert total_q == qo_indptr[-1].item()
-    assert num_kv_indices == kv_indptr[-1].item()
-
-    device = q.device
-
-    output = torch.zeros((total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device)
-    lse = torch.full((total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device)
-
-    gqa_ratio = num_qo_heads // num_kv_heads
-    q_f32 = q.to(torch.float32)
-    k_cache_flat = k_cache.squeeze(1).to(torch.float32)
-    v_cache_flat = v_cache.squeeze(1).to(torch.float32)
-
-    for b in range(len_indptr - 1):
-        q_start = int(qo_indptr[b].item())
-        q_end = int(qo_indptr[b + 1].item())
-        kv_start = int(kv_indptr[b].item())
-        kv_end = int(kv_indptr[b + 1].item())
-
-        if q_start >= q_end or kv_start >= kv_end:
-            continue
-
-        page_ids = kv_indices[kv_start:kv_end].to(torch.long)
-        num_kv_tokens = page_ids.shape[0]
-        k_batch = k_cache_flat[page_ids]
-        v_batch = v_cache_flat[page_ids]
-
-        q_batch = q_f32[q_start:q_end]
-        num_q_tokens = q_batch.shape[0]
-        delta = num_kv_tokens - num_q_tokens
-
-        for q_idx in range(num_q_tokens):
-            global_q_idx = q_start + q_idx
-            max_kv_idx = min(q_idx + 1 + delta, num_kv_tokens)
-            if max_kv_idx <= 0:
-                continue
-
-            q_pos = q_batch[q_idx]
-
-            for h in range(num_qo_heads):
-                kv_head = h // gqa_ratio
-
-                q_head = q_pos[h]
-                k_head = k_batch[:max_kv_idx, kv_head]
-                v_head = v_batch[:max_kv_idx, kv_head]
-
-                logits = torch.matmul(q_head, k_head.T) * sm_scale
-                lse[global_q_idx, h] = torch.logsumexp(logits, dim=-1) / math.log(2.0)
-                attn = torch.softmax(logits, dim=-1)
-                output[global_q_idx, h] = torch.matmul(attn, v_head).to(torch.bfloat16)
-
-    return output, lse
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def generate_random_inputs(batch_size, max_q_len, max_kv_len, max_pages, device="cuda"):
@@ -141,6 +95,9 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
         return False
+
+    definition = load_definition("gqa_paged_prefill_causal_h32_kv16_d128_ps1")
+    run = compile_reference(definition.reference)
 
     max_pages = max_kv_len * batch_size * 2
     inputs = generate_random_inputs(batch_size, max_q_len, max_kv_len, max_pages, device)

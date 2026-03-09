@@ -1,37 +1,33 @@
 """Reference test for top_k_sampling_from_probs_v262208 (Gemma 3 27B)."""
 
+import math
+from pathlib import Path
+
 import flashinfer
 import torch
+from flashinfer_bench.data import Definition, load_json_file
+
+# Paths
+DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 VOCAB_SIZE = 262208
 
 
-@torch.no_grad()
-def run(probs, top_k):
-    batch_size, vocab_size = probs.shape
-    device = probs.device
+def load_definition(name: str) -> Definition:
+    """Load a definition by name from definitions directory."""
+    for op_dir in DEFINITIONS_DIR.iterdir():
+        if op_dir.is_dir():
+            def_file = op_dir / f"{name}.json"
+            if def_file.exists():
+                return load_json_file(Definition, def_file)
+    raise FileNotFoundError(f"Definition {name} not found in {DEFINITIONS_DIR}")
 
-    # Check constants
-    assert vocab_size == VOCAB_SIZE
 
-    probs = probs.to(torch.float32)
-    samples = torch.empty(batch_size, dtype=torch.int64, device=device)
-
-    for i in range(batch_size):
-        row = probs[i]
-        k = int(top_k[i].item())
-
-        if 0 < k < vocab_size:
-            idx_sorted = torch.argsort(row, descending=True)
-            keep_idx = idx_sorted[:k]
-
-            filtered = torch.zeros_like(row)
-            filtered[keep_idx] = row[keep_idx]
-            row = filtered / filtered.sum()
-
-        samples[i] = torch.multinomial(row, 1, replacement=True).squeeze(0)
-
-    return samples
+def compile_reference(reference_code: str):
+    """Compile reference implementation to callable function."""
+    namespace = {"torch": torch, "math": math}
+    exec(reference_code, namespace)
+    return namespace["run"]
 
 
 def generate_random_inputs(batch_size, distribution="peaked", device="cuda"):
@@ -64,6 +60,9 @@ def test_correctness(batch_size=4, num_trials=5000):
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
         return False
+
+    definition = load_definition("top_k_sampling_from_probs_v262208")
+    run = compile_reference(definition.reference)
 
     torch.manual_seed(42)
     probs, top_k = generate_random_inputs(batch_size, "peaked", device)
