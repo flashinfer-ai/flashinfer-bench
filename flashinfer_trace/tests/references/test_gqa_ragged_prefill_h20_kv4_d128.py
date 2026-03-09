@@ -125,7 +125,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
         head_dim_qk=HEAD_DIM,
         head_dim_vo=HEAD_DIM,
         causal=True,
-        sm_scale=inputs["sm_scale"],
+        sm_scale=inputs["sm_scale"].item(),
         q_data_type=torch.bfloat16,
         kv_data_type=torch.bfloat16,
     )
