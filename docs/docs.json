@@ -21,7 +21,8 @@
             "pages": [
               "index",
               "start/installation",
-              "start/quickstart"
+              "start/quickstart",
+              "model_coverage"
             ]
           },
           {
