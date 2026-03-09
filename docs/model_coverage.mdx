@@ -150,13 +150,13 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 |-----------|---------|:------:|
 | `rmsnorm_h2048` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h2048` | rmsnorm | ✅ |
-| `gdn_prefill_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_prefill_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_prefill_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_prefill_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
-| `gdn_decode_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_decode_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_decode_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_decode_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
-| `gdn_mtp_qk16_v32_d128_k_last` | gdn TP=1 | ✅ |
+| `gdn_mtp_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_mtp_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_mtp_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
