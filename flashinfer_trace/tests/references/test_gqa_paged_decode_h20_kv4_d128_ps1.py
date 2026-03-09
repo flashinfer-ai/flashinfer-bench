@@ -6,6 +6,7 @@ from pathlib import Path
 import flashinfer
 import numpy as np
 import torch
+
 from flashinfer_bench.data import Definition, load_json_file
 
 # Paths
