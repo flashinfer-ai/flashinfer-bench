@@ -92,6 +92,14 @@ struct GmmaDescriptor {
     uint64_t base_desc;
     int k_stride_bytes;
 
+    __device__ uint64_t add_k_offset_bytes(uint64_t desc, int k_offset_bytes) {
+        uint64_t base_addr_16b = desc & 0x3FFF;
+        uint64_t k_offset_16b = ((uint64_t)k_offset_bytes >> 4) & 0x3FFF;
+        uint64_t non_addr = desc & ~0x3FFFULL;
+        uint64_t addr = (base_addr_16b + k_offset_16b) & 0x3FFF;
+        return non_addr | addr;
+    }
+
     __device__ void init(void* smem_base, int tile_k, int elem_size) {
         base_desc = make_gmma_desc_b128(smem_base);
         k_stride_bytes = tile_k * elem_size;  // e.g., 64 * 2 = 128 bytes
@@ -99,11 +107,9 @@ struct GmmaDescriptor {
 
     // Get descriptor for K iteration
     __device__ uint64_t get(int k_iter) {
-        // Add K offset to address field
+        // Add K offset to descriptor address field (bits [13:0]).
         int k_offset_bytes = k_iter * 16 * sizeof(__nv_bfloat16);  // 16 = MMA_K
-        uint64_t desc = base_desc;
-        desc += (k_offset_bytes >> 4);  // Add to address bits [13:0]
-        return desc;
+        return add_k_offset_bytes(base_desc, k_offset_bytes);
     }
 };
 ```
@@ -143,8 +149,8 @@ __device__ uint64_t make_desc_B(
 ) {
     uint64_t addr = (uint64_t)__cvta_generic_to_shared(smem_b);
 
-    // K-major: K is contiguous, so offset = k_iter * N * elem_size
-    // But with swizzle, addressing is more complex
+    // K-major tile traversal: each MMA step advances by MMA_K elements along K.
+    // For BF16/FP16 MMA_K=16, byte offset is k_iter * 16 * sizeof(element).
     int k_offset = k_iter * 16 * sizeof(__nv_bfloat16);
     addr += k_offset;
 
@@ -171,17 +177,26 @@ __device__ void compute_wgmma(
     // Pre-compute base descriptors
     uint64_t desc_a_base = make_gmma_desc_b128(smem_a);
     uint64_t desc_b_base = make_gmma_desc_b128(smem_b);
+    bool first_k = true;
 
     #pragma unroll
     for (int k = 0; k < K_ITERS; k++) {
-        // Compute descriptor offsets for this K iteration
-        int k_offset_16b = k * MMA_K * sizeof(__nv_bfloat16) / 16;
+        // Compute descriptor offsets for this K iteration.
+        int k_offset_bytes = k * MMA_K * sizeof(__nv_bfloat16);
+        uint64_t k_offset_16b = ((uint64_t)k_offset_bytes >> 4) & 0x3FFF;
 
-        uint64_t desc_a = desc_a_base + k_offset_16b;
-        uint64_t desc_b = desc_b_base + k_offset_16b;
+        uint64_t desc_a = (desc_a_base & ~0x3FFFULL) |
+            (((desc_a_base & 0x3FFF) + k_offset_16b) & 0x3FFF);
+        uint64_t desc_b = (desc_b_base & ~0x3FFFULL) |
+            (((desc_b_base & 0x3FFF) + k_offset_16b) & 0x3FFF);
 
         // Issue WGMMA
-        wgmma_m64n256k16(desc_a, desc_b, accum, /*accumulate=*/k > 0);
+        if (first_k) {
+            wgmma_m64n256k16<0>(desc_a, desc_b, accum);
+            first_k = false;
+        } else {
+            wgmma_m64n256k16<1>(desc_a, desc_b, accum);
+        }
     }
 
     // Commit group

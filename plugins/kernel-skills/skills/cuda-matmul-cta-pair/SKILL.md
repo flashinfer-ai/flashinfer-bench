@@ -39,21 +39,21 @@ Cluster (e.g., 2×1):
 // Only CTA 0 (peer rank 0) issues the instruction
 // CTA 1 participates implicitly
 
+template<int ScaleD = 1>
 __device__ void umma_2sm_m128n256k16(
     uint32_t tmem_d_addr,  // TMEM in this CTA
     uint64_t desc_a,       // A descriptor
     uint64_t desc_b,       // B descriptor
-    uint32_t idesc,
-    bool accumulate
+    uint32_t idesc
 ) {
-    int scale_d = accumulate ? 1 : 0;
+    static_assert(ScaleD == 0 || ScaleD == 1, "ScaleD must be 0 or 1");
 
     asm volatile(
         "tcgen05.mma.cta_group::2.kind::f16 "  // Note: cta_group::2
         "[%0], %1, %2, %3, %4;\n"
         :
         : "r"(tmem_d_addr), "l"(desc_a), "l"(desc_b),
-          "r"(idesc), "r"(scale_d)
+          "r"(idesc), "n"(ScaleD)
         : "memory"
     );
 }
@@ -64,6 +64,7 @@ __device__ void umma_2sm_m128n256k16(
 ```cuda
 __device__ int get_peer_cta_rank() {
     // Position within CTA pair (0 or 1)
+    // Assumes launch clusterDim = {2, 1, 1}; pair members have ranks 0 and 1.
     uint32_t rank;
     asm volatile("mov.u32 %0, %%cluster_ctarank;\n" : "=r"(rank));
     return rank % 2;  // For 2-CTA pairs
@@ -119,15 +120,20 @@ __global__ void matmul_cta_pair(
     __syncthreads();
 
     // Barrier for 2-CTA synchronization
+    __shared__ uint64_t load_bar;
     __shared__ uint64_t mma_barrier;
     if (elect_warp && elect_thr) {
-        // Initialize for 2 CTAs
-        mbarrier_init(&mma_barrier, 2);
+        // load_bar: one expected producer thread per CTA for load completion signaling
+        mbarrier_init(&load_bar, 1);
+        // mma_barrier: launcher commits with arrive::one once per K tile
+        mbarrier_init(&mma_barrier, 1);
     }
     __syncthreads();
 
+    int load_phase = 0;
     int mma_phase = 0;
     bool first_k = true;
+    uint32_t idesc = make_umma_idesc_f16();
 
     // Tile coordinates (both CTAs work on same tile)
     int m_tile = blockIdx.x / 2;  // Pair shares M tile
@@ -137,6 +143,12 @@ __global__ void matmul_cta_pair(
         // TMA loads - can use multicast for B
         // Each CTA loads its portion of A
         if (elect_warp && elect_thr) {
+            size_t bytes_a = TILE_K * 64 * sizeof(__nv_bfloat16);   // Per-CTA A slice
+            size_t bytes_b = TILE_K * 256 * sizeof(__nv_bfloat16);  // Full B tile if this CTA issues it
+            // If this barrier tracks both loads, include both byte counts.
+            size_t load_bytes = bytes_a + (peer_rank == 0 ? bytes_b : 0);
+            mbarrier_arrive_expect_tx(&load_bar, load_bytes);
+
             // Load A (each CTA loads different M portion)
             int m_offset = m_tile * 128 + peer_rank * 64;
             tma_load_2d(smem_a, tma_a, k * TILE_K, m_offset, &load_bar);
@@ -149,20 +161,21 @@ __global__ void matmul_cta_pair(
         }
 
         // Wait for loads
-        mbarrier_wait(&load_bar, phase);
+        mbarrier_wait(&load_bar, load_phase);
+        load_phase ^= 1;
 
         // UMMA - only CTA 0 launches, but both participate
-        if (elect_warp && is_launcher) {
+        if (elect_warp && elect_thr && is_launcher) {
             for (int k_inner = 0; k_inner < TILE_K / 16; k_inner++) {
                 uint64_t desc_a = make_smem_desc(smem_a, k_inner);
                 uint64_t desc_b = make_smem_desc(smem_b, k_inner);
 
-                umma_2sm_m128n256k16(
-                    tmem_base,
-                    desc_a, desc_b,
-                    idesc,
-                    !first_k
-                );
+                // First K tile overwrites TMEM, later K tiles accumulate.
+                if (first_k) {
+                    umma_2sm_m128n256k16<0>(tmem_base, desc_a, desc_b, idesc);
+                } else {
+                    umma_2sm_m128n256k16<1>(tmem_base, desc_a, desc_b, idesc);
+                }
                 first_k = false;
             }
 
@@ -223,9 +236,15 @@ cudaLaunchKernelEx(&config, matmul_cta_pair, ...);
 ## Synchronization for CTA Pairs
 
 ```cuda
-// 2-CTA barrier operations
-__device__ void mbarrier_init_2cta(uint64_t* mbar, int threads_per_cta) {
-    mbarrier_init(mbar, threads_per_cta * 2);
+// For load-completion barriers: pass the total number of threads that will call arrive
+// on this specific barrier instance (local-per-CTA or shared-across-pair).
+__device__ void mbarrier_init_load(uint64_t* mbar, int total_signaling_threads) {
+    mbarrier_init(mbar, total_signaling_threads);
+}
+
+// For UMMA commit barriers with arrive::one: initialize to 1 arrival.
+__device__ void mbarrier_init_mma_commit(uint64_t* mbar) {
+    mbarrier_init(mbar, 1);
 }
 
 // Arrive on partner CTA's barrier

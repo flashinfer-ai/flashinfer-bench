@@ -141,8 +141,7 @@ For loading A operand into TMEM:
 // Copy from SMEM to TMEM
 __device__ void smem_to_tmem_copy(
     uint32_t tmem_addr,
-    void* smem_ptr,
-    int num_bytes
+    void* smem_ptr
 ) {
     uint64_t smem_addr = (uint64_t)__cvta_generic_to_shared(smem_ptr);
 
@@ -225,6 +224,7 @@ __device__ void store_row_vectorized(
     float* C_row,    // Global memory row pointer
     int N_valid      // Valid columns
 ) {
+    // Ensure C_row is 16-byte aligned before using float4 stores.
     #pragma unroll
     for (int c = 0; c < 256; c += 4) {
         if (c + 4 <= N_valid) {
@@ -239,7 +239,7 @@ __device__ void store_row_vectorized(
 
 1. **Warp-wide operation**: `tcgen05.ld` is warp-synchronized
 2. **Lane restrictions**: Each warp accesses only 32 lanes (use warpgroup for full tile)
-3. **Same base address**: All threads in warp use same TMEM base address
+3. **Per-lane addressing**: Threads share a tile base but each lane computes its own lane-specific TMEM address
 4. **Must copy out**: No compute on TMEM - copy to registers first
 5. **Vectorization**: Use larger `.num` values for efficiency
 

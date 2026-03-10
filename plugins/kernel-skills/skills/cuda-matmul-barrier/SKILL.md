@@ -177,7 +177,7 @@ struct PipelineBarriers {
         if (threadIdx.x == 0) {
             for (int s = 0; s < NUM_STAGES; s++) {
                 mbarrier_init(&load_complete[s], math_threads);
-                mbarrier_init(&compute_complete[s], 1);  // Single producer
+                mbarrier_init(&compute_complete[s], 1);  // Example: exactly one signaling producer thread
             }
         }
         __syncthreads();
@@ -216,17 +216,22 @@ __device__ void cluster_arrive_relaxed(uint64_t* mbar, int dst_cta) {
 ### Producer-Consumer
 
 ```cuda
+int load_phase[NUM_STAGES] = {0};
+int empty_phase[NUM_STAGES] = {0};
+
 // Producer (TMA warp)
 mbarrier_arrive_expect_tx(&mbar_load[stage], bytes);
 tma_load(..., &mbar_load[stage]);
 
 // Consumer (Math warps)
-mbarrier_wait(&mbar_load[stage], phase);
+mbarrier_wait(&mbar_load[stage], load_phase[stage]);
+load_phase[stage] ^= 1;
 // ... compute ...
 mbarrier_arrive(&mbar_empty[stage]);  // Signal buffer available
 
 // Producer waits for buffer
-mbarrier_wait(&mbar_empty[stage], phase);
+mbarrier_wait(&mbar_empty[stage], empty_phase[stage]);
+empty_phase[stage] ^= 1;
 ```
 
 ### Warpgroup Sync

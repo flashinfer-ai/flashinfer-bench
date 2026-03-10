@@ -147,27 +147,45 @@ __global__ void cluster_matmul(
     int M, int N, int K
 ) {
     extern __shared__ char smem[];
+    __shared__ uint64_t load_bar;
 
     int cta_rank = cta_rank_in_cluster();
     int m_tile, n_tile;
     get_tile_coords(m_tile, n_tile, M / TILE_M, N / TILE_N);
+    int load_phase = 0;
 
-    // Each CTA in cluster handles different M tile, same N tile
-    m_tile = m_tile * CLUSTER_M + cta_rank;
+    if (threadIdx.x == 0) {
+        mbarrier_init(&load_bar, 1);  // Example: one elected load-signaling thread per CTA
+    }
+    __syncthreads();
+
+    // get_tile_coords already accounts for cta_rank within the cluster.
+    // Do not apply an extra cluster scaling here.
 
     // CTA 0 loads B tile (shared by cluster)
     // Both CTAs load their own A tile
 
     for (int k = 0; k < K / TILE_K; k++) {
+        if (threadIdx.x == 0) {
+            size_t bytes_a = TILE_M * TILE_K * sizeof(__nv_bfloat16);
+            size_t bytes_b = TILE_K * TILE_N * sizeof(__nv_bfloat16);  // only CTA 0 issues B multicast
+            // expected_bytes must match all TMA ops that target this barrier.
+            size_t load_bytes = bytes_a + (cta_rank == 0 ? bytes_b : 0);
+            mbarrier_arrive_expect_tx(&load_bar, load_bytes);
+        }
+
         if (cta_rank == 0) {
             // Load B tile (will be multicast to cluster)
-            tma_load_multicast(smem_b, tma_b, ...);
+            tma_load_multicast(smem_b, tma_b, ..., &load_bar, ...);
         }
 
         // Each CTA loads its own A tile
-        tma_load(smem_a, tma_a, k * TILE_K, m_tile * TILE_M, ...);
+        tma_load(smem_a, tma_a, k * TILE_K, m_tile * TILE_M, &load_bar);
 
-        cluster_sync();  // Ensure all loads complete
+        // cluster_sync only synchronizes CTA progress; TMA completion still needs mbarrier waits.
+        mbarrier_wait(&load_bar, load_phase);
+        load_phase ^= 1;
+        cluster_sync();
 
         // Compute WGMMA
         // ...

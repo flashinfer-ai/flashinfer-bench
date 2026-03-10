@@ -15,8 +15,7 @@ TMA provides hardware-accelerated tensor data movement on SM90+. It handles addr
 CUtensorMap create_tma_descriptor(
     void* gmem_ptr,           // Global memory pointer
     int M, int N,             // Tensor dimensions
-    int tile_m, int tile_n,   // Tile dimensions
-    cudaDataType dtype = CUDA_R_16BF
+    int tile_m, int tile_n    // Tile dimensions
 ) {
     CUtensorMap tensor_map{};
 
@@ -47,6 +46,15 @@ CUtensorMap create_tma_descriptor(
 }
 ```
 
+### cuTensorMapEncodeTiled Parameters
+
+- `size`: Global tensor shape in elements (matmul 2D example uses `{N, M}` for column-major). 
+- `stride`: Leading-dimension stride in bytes for each higher dimension.
+- `box_size`: Tile copy shape in elements (`{tile_n, tile_m}` in 2D).
+- `elem_stride`: Per-dimension element stride inside the box (usually `{1, 1}`).
+- `swizzle`: Shared-memory swizzle mode (`NONE`, `32B`, `64B`, `128B`).
+- `oob_fill`: Out-of-bounds fill policy used for edge tiles.
+
 ## TMA Load (Device Side)
 
 ### Single CTA Load
@@ -70,6 +78,16 @@ __device__ void tma_load_2d(
     );
 }
 ```
+
+### cp.async.bulk.tensor Syntax (2D Load)
+
+```ptx
+cp.async.bulk.tensor.2d.shared::cluster.global.mbarrier::complete_tx::bytes
+  [smem_addr], [tensor_map, {coord_n, coord_m}], [mbar_addr];
+```
+
+- `coord_n`, `coord_m` are element coordinates (not byte offsets).
+- `complete_tx` updates the mbarrier transaction counter for completion tracking.
 
 ### Coordinates vs Offsets
 - TMA uses **element coordinates**, not byte offsets
@@ -106,10 +124,10 @@ __device__ void tma_store_2d(
 
 | Mode | Bytes | Use Case |
 |------|-------|----------|
-| `SWIZZLE_NONE` | - | Debug only |
-| `SWIZZLE_32B` | 32 | Narrow tiles |
-| `SWIZZLE_64B` | 64 | Medium tiles |
-| `SWIZZLE_128B` | 128 | **WGMMA (recommended)** |
+| `CU_TENSOR_MAP_SWIZZLE_NONE` | - | Debug only |
+| `CU_TENSOR_MAP_SWIZZLE_32B` | 32 | Narrow tiles |
+| `CU_TENSOR_MAP_SWIZZLE_64B` | 64 | Medium tiles |
+| `CU_TENSOR_MAP_SWIZZLE_128B` | 128 | **WGMMA (recommended)** |
 
 ## Expected Bytes Calculation
 
@@ -141,14 +159,24 @@ tma_load_2d(smem_a, &tma_a, k_idx * TILE_K, m_idx * TILE_M, &mbar);
 tma_load_2d(smem_b, &tma_b, n_idx * TILE_N, k_idx * TILE_K, &mbar);
 ```
 
-## Key Points
+## Bounds Handling
+
+Bounds handling matters for edge tiles when the requested tile partially falls outside the global tensor.
+
+- The descriptor `box_size` defines the copy bounding box in tiled mode.
+- Out-of-bounds checks are applied per copied element within that box.
+- `CU_TENSOR_MAP_OOBFILL_ZERO` is the standard choice for GEMM edge handling.
+- OOB-NaN fill can be useful for debugging invalid accesses, but is typically avoided in production kernels.
+
+## Key Constraints
 
 1. **Single thread**: Only one thread issues TMA (typically thread 0)
 2. **Async completion**: Use mbarrier to track completion
-3. **Alignment**: SMEM pointer must match swizzle alignment (128B for B128)
-4. **Bounds handling**: TMA auto-fills zeros for out-of-bounds accesses
+3. **Alignment**: SMEM pointer must match swizzle alignment (e.g. 128B for B128)
+4. **Bounds handling**: Out-of-bounds behavior follows descriptor `oob_fill` policy (for example, `CU_TENSOR_MAP_OOBFILL_ZERO` for zero-fill)
 
 ## Related Skills
 - `cuda-matmul-tma-multicast`: Multicast loads across cluster
 - `cuda-matmul-barrier`: mbarrier synchronization
 - `cuda-matmul-swizzle`: SMEM layout matching TMA swizzle
+- `cuda-matmul-warp-specialization`: Producer-consumer warp specialization

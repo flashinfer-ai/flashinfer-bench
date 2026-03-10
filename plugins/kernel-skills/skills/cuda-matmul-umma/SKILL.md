@@ -37,50 +37,47 @@ tcgen05.mma.cta_group.kind [d-tmem], [a-tmem], b-desc, idesc, enable-input-d;
 ## Basic UMMA Usage
 
 ```cuda
-// UMMA is single-threaded - only one thread issues the instruction
+// UMMA is single-threaded: only one elected thread issues the instruction.
+template<int ScaleD = 1>
 __device__ void umma_m128n256k16(
     uint32_t tmem_d_addr,  // TMEM address for accumulator D
     uint64_t desc_a,       // SMEM descriptor for A (or TMEM address)
     uint64_t desc_b,       // SMEM descriptor for B
-    uint32_t idesc,        // Instruction descriptor
-    bool accumulate
+    uint32_t idesc         // Instruction descriptor
 ) {
-    int scale_d = accumulate ? 1 : 0;
+    static_assert(ScaleD == 0 || ScaleD == 1, "ScaleD must be 0 or 1");
 
     asm volatile(
         "tcgen05.mma.cta_group::1.kind::f16 "
         "[%0], %1, %2, %3, %4;\n"
         :
         : "r"(tmem_d_addr), "l"(desc_a), "l"(desc_b),
-          "r"(idesc), "r"(scale_d)
+          "r"(idesc), "n"(ScaleD)
         : "memory"
     );
 }
 ```
 
+Use `umma_m128n256k16<0>(...)` for first-K overwrite and `umma_m128n256k16<1>(...)` for accumulation.
+
 ## Instruction Descriptor
 
-32-bit metadata encoding data types, sparsity, and transpose:
+`idesc` is 32-bit metadata encoding data types, transpose/negation, and other instruction options.
+Do not rely on guessed bit positions; use a validated encoder helper (framework/CUTLASS/PTX utility) so fields stay correct across UMMA variants.
 
 ```cuda
-__device__ uint32_t make_umma_idesc(
+// Pseudocode: delegate to a tested descriptor encoder.
+__device__ uint32_t make_umma_idesc_f16(
     bool transpose_a = false,
     bool transpose_b = false,
     bool negate_a = false,
     bool negate_b = false
 ) {
-    uint32_t idesc = 0;
-
-    // Bits for transpose (check PTX spec for exact positions)
-    if (transpose_a) idesc |= (1 << 0);
-    if (transpose_b) idesc |= (1 << 1);
-    if (negate_a)    idesc |= (1 << 2);
-    if (negate_b)    idesc |= (1 << 3);
-
-    // Data type encoding for FP16 (check spec)
-    // ...
-
-    return idesc;
+    return tcgen05_encode_instr_descriptor(
+        /*a_type=*/F16, /*b_type=*/F16,
+        transpose_a, transpose_b, negate_a, negate_b,
+        /*cta_group=*/1
+    );
 }
 ```
 
@@ -100,28 +97,28 @@ __global__ void matmul_umma(
 
     int warp_id = threadIdx.x / 32;
     int lane_id = threadIdx.x % 32;
-    bool elect_one_warp = (warp_id == 0);
-    bool elect_one_thr = (lane_id == 0);
+    bool alloc_warp = (warp_id == 0);
+    bool issue_thr = (warp_id == 0 && lane_id == 0);
 
     // Allocate TMEM (512 columns = full capacity)
-    if (elect_one_warp) {
+    if (alloc_warp) {
         asm volatile(
             "tcgen05.alloc.cta_group::1.sync.aligned.b32 [%0], 512;\n"
             :
-            : "l"((uint64_t)&tmem_base_ptr)
+            : "l"((uint64_t)__cvta_generic_to_shared(&tmem_base_ptr))
         );
     }
     __syncthreads();
 
     // Initialize mbarrier
     __shared__ uint64_t mma_barrier;
-    if (elect_one_warp && elect_one_thr) {
-        mbarrier_init(&mma_barrier, 1);  // Single CTA
+    if (issue_thr) {
+        mbarrier_init(&mma_barrier, 1);  // One issuing thread arrives per K tile
     }
     __syncthreads();
 
     int mma_phase = 0;
-    uint32_t idesc = make_umma_idesc();
+    uint32_t idesc = make_umma_idesc_f16();
 
     // First MMA: overwrite accumulator
     bool first_k = true;
@@ -130,26 +127,33 @@ __global__ void matmul_umma(
         // TMA loads (same as Hopper)
         // ...
 
-        // Only one warp issues UMMAs
-        if (elect_one_warp) {
+        // Only one thread issues UMMAs
+        if (issue_thr) {
             for (int k_inner = 0; k_inner < TILE_K / 16; k_inner++) {
                 uint64_t desc_a = make_smem_desc(smem_a, k_inner);
                 uint64_t desc_b = make_smem_desc(smem_b, k_inner);
 
-                umma_m128n256k16(
-                    tmem_base_ptr,
-                    desc_a, desc_b,
-                    idesc,
-                    !first_k  // accumulate after first
-                );
-                first_k = false;
+                if (first_k) {
+                    umma_m128n256k16<0>(
+                        tmem_base_ptr,
+                        desc_a, desc_b,
+                        idesc
+                    );
+                    first_k = false;
+                } else {
+                    umma_m128n256k16<1>(
+                        tmem_base_ptr,
+                        desc_a, desc_b,
+                        idesc
+                    );
+                }
             }
 
             // Signal completion via mbarrier
             asm volatile(
                 "tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [%0];\n"
                 :
-                : "l"((uint64_t)&mma_barrier)
+                : "l"((uint64_t)__cvta_generic_to_shared(&mma_barrier))
             );
         }
 
@@ -166,7 +170,7 @@ __global__ void matmul_umma(
     // ...
 
     // Deallocate TMEM
-    if (elect_one_warp) {
+    if (alloc_warp) {
         asm volatile("tcgen05.relinquish_alloc_permit;\n" ::);
         asm volatile(
             "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 512;\n"

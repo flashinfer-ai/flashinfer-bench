@@ -84,7 +84,9 @@ __device__ void tma_load_multicast_2d(
 
 ## Multicast Mask
 
-The mask specifies which CTAs receive the data:
+The mask specifies which CTAs receive the data (it is possible to multicast to up to 16 CTAs within the same cluster):
+
+Mask bit mapping uses cluster rank: bit `r` targets CTA with `cta_rank_in_cluster() == r`.
 
 ```cuda
 // For 2x1 cluster (2 CTAs)
@@ -93,6 +95,7 @@ uint16_t mask_cta0 = 0b01;      // CTA 0 only
 uint16_t mask_cta1 = 0b10;      // CTA 1 only
 
 // For 2x2 cluster (4 CTAs)
+// Assume rank order: (0,0)->0, (0,1)->1, (1,0)->2, (1,1)->3
 uint16_t mask_all = 0b1111;     // All 4 CTAs
 uint16_t mask_row0 = 0b0011;    // CTA 0,1 (first row)
 uint16_t mask_col0 = 0b0101;    // CTA 0,2 (first column)
@@ -103,6 +106,7 @@ uint16_t mask_col0 = 0b0101;    // CTA 0,2 (first column)
 ```cuda
 constexpr int CLUSTER_M = 2;
 constexpr int CLUSTER_N = 1;
+constexpr int CLUSTER_SIZE = CLUSTER_M * CLUSTER_N;
 
 __global__ void matmul_multicast(
     const CUtensorMap* tma_a,
@@ -120,8 +124,10 @@ __global__ void matmul_multicast(
     // Only CTA 0 loads B with multicast
     bool is_b_loader = (cta_rank == 0);
 
-    // Multicast mask: both CTAs in 2x1 cluster
-    uint16_t multicast_mask = (1 << CLUSTER_M) - 1;  // 0b11
+    // Multicast mask for all CTAs in cluster
+    static_assert(CLUSTER_SIZE <= 16, "TMA multicast supports up to 16 CTAs");
+    uint16_t multicast_mask = (1u << CLUSTER_SIZE) - 1u;
+    bool is_b_receiver = (multicast_mask & (1u << cta_rank)) != 0;
 
     for (int k = 0; k < K / TILE_K; k++) {
         int stage = k % NUM_STAGES;
@@ -134,12 +140,15 @@ __global__ void matmul_multicast(
                 k * TILE_K, (m_tile * CLUSTER_M + cta_rank) * TILE_M,
                 &shared->mbar[stage]);
 
-            // Only CTA 0 loads B with multicast
-            if (is_b_loader) {
-                size_t b_bytes = TILE_K * TILE_N * sizeof(__nv_bfloat16);
-                // Expect bytes on all destination CTAs' barriers
-                mbarrier_arrive_expect_tx(&shared->mbar[stage], b_bytes);
+            size_t b_bytes = TILE_K * TILE_N * sizeof(__nv_bfloat16);
 
+            // Every destination CTA must expect B bytes on its local barrier
+            if (is_b_receiver) {
+                mbarrier_arrive_expect_tx(&shared->mbar[stage], b_bytes);
+            }
+
+            // Only one CTA issues multicast
+            if (is_b_loader) {
                 tma_load_multicast_2d(
                     shared->smem_b[stage], tma_b,
                     n_tile * TILE_N, k * TILE_K,
@@ -160,19 +169,22 @@ __global__ void matmul_multicast(
 
 ## Barrier Handling for Multicast
 
-Critical: All destination CTAs must set expected bytes:
+Critical: All destination CTAs must set expected bytes to avoid deadlocks:
 
 ```cuda
-// CTA 0 (loader)
-if (cta_rank == 0 && lane_id == 0) {
-    mbarrier_arrive_expect_tx(&mbar, b_tile_bytes);
-    tma_load_multicast(..., multicast_mask);
-}
+bool is_loader = (cta_rank == 0);
+bool is_receiver = (multicast_mask & (1u << cta_rank)) != 0;
 
-// CTA 1 (receiver) - MUST also expect bytes!
-if (cta_rank == 1 && lane_id == 0) {
-    mbarrier_arrive_expect_tx(&mbar, b_tile_bytes);
-    // No TMA load, but barrier expects incoming data
+if (lane_id == 0) {
+    // Every destination CTA sets expected bytes
+    if (is_receiver) {
+        mbarrier_arrive_expect_tx(&mbar, b_tile_bytes);
+    }
+
+    // Exactly one CTA issues multicast
+    if (is_loader) {
+        tma_load_multicast(..., multicast_mask);
+    }
 }
 ```
 
@@ -201,7 +213,7 @@ tma_load_multicast_2d(smem_b, tma_b, ..., mask_both);
 // After sync, both CTAs can read from their local smem_b
 ```
 
-## Key Points
+## Key Constraints
 
 1. **Single issuer**: Only one CTA issues multicast, others just wait
 2. **All expect bytes**: Every destination CTA must call arrive_expect_tx
