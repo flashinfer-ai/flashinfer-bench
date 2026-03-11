@@ -6,7 +6,8 @@ title: Model Coverage
 
 This document tracks which kernels are supported in FlashInfer-Bench for each model.
 
-- ✅ Definition JSON exists in `flashinfer_trace/definitions/`
+- ✅ Definition JSON exists and workload has been collected
+- 🟡 Definition JSON exists but workload has not yet been collected
 - ❌ Definition is referenced in `models.ts` but the file does not exist (missing)
 - — Module exists in the architecture but no definition is mapped (unmapped)
 
@@ -31,13 +32,16 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
-| Phi-4 14B | GQA + Dense | ❌ Not covered |
+| Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
-| Llama 4 Scout 17B-16E | GQA + MoE | ❌ Not covered |
-| Llama 4 Maverick 17B-128E | GQA + MoE | ❌ Not covered |
+| Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
+| Llama 4 Maverick 17B-128E | GQA + MoE | 🟡 Partial |
 | Mistral Small 3.1 24B | GQA + Dense | 🟡 Partial |
 | GLM-4.6 | GQA + Dense | ❌ Not covered |
 | MiniMax M2 / Text-01 | Lightning Attn + MoE | ❌ Not covered |
+| Gemma 3 27B | GQA + Dense | 🟡 Partial |
+| Qwen3 14B | GQA + Dense | 🟡 Partial |
+| NemotronH 47B | GQA + Mamba2 Hybrid | ❌ Not covered |
 
 ---
 
@@ -146,13 +150,13 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 |-----------|---------|:------:|
 | `rmsnorm_h2048` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h2048` | rmsnorm | ✅ |
-| `gdn_prefill_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_prefill_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_prefill_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_prefill_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
-| `gdn_decode_qk16_v32_d128_k_last` | gdn TP=1 | ❌ |
+| `gdn_decode_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_decode_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_decode_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
-| `gdn_mtp_qk16_v32_d128_k_last` | gdn TP=1 | ✅ |
+| `gdn_mtp_qk16_v32_d128_k_last` | gdn TP=1 | 🟡 |
 | `gdn_mtp_qk8_v16_d128_k_last` | gdn TP=2 | ✅ |
 | `gdn_mtp_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
@@ -250,8 +254,8 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
@@ -265,7 +269,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v131072` | sampling | ❌ |
 | `top_p_sampling_from_probs_v131072` | sampling | ❌ |
 
-**Coverage**: 5 / 14 definitions present. GQA defs are shared with Llama 3.1 8B (same 32q/8kv/d128 config). Missing: rmsnorm h5120, all GEMM (different hidden=5120 input dim), sampling v131072.
+**Coverage**: 7 / 14 definitions present. GQA defs are shared with Llama 3.1 8B; rmsnorm h5120 is now shared with Qwen3 14B. Missing: all GEMM (different hidden=5120 input dim), sampling v131072.
 
 ---
 
@@ -473,22 +477,22 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h40_kv10_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h40_kv10_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps64` | gqa_paged | ❌ |
 | `gqa_ragged_prefill_causal_h40_kv10_d128` | gqa_ragged | ❌ |
 | `gemm_n7680_k5120` | gemm | ❌ |
-| `gemm_n5120_k5120` | gemm | ❌ |
+| `gemm_n5120_k5120` | gemm | 🟡 |
 | `gemm_n35840_k5120` | gemm | ❌ |
 | `gemm_n5120_k17920` | gemm | ❌ |
 | `top_k_sampling_from_probs_v100352` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v100352` | sampling | ❌ |
 | `top_p_sampling_from_probs_v100352` | sampling | ❌ |
 
-**Coverage**: 0 / 14 definitions present. No existing definitions match this architecture. Notable: Phi-4 uses an unusual 10 KV-head configuration (4:1 ratio with 40 query heads).
+**Coverage**: 3 / 14 definitions present. rmsnorm h5120 is now shared with Qwen3 14B; `gemm_n5120_k5120` (o_proj shape) is shared since 40q*128=5120=hidden. Missing: all GQA defs (unusual 10 KV-head config), most GEMM, sampling v100352.
 
 ---
 
@@ -525,8 +529,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
@@ -537,7 +541,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 0 / 10 referenced definitions present. All definitions are new. Notable: TP=8 with 40 query heads gives 5 heads per device — an unusual value. The interleaved NoPE/RoPE layers use the same attention kernels (positional encoding is applied to Q/K before the attention call, not inside it). MoE uses standard top-1 routing (not DeepSeek FP8 block-scale style), so the existing MoE def does not apply.
+**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Missing: all GQA defs (h=5 per device is unusual), MoE (standard top-1 routing not yet supported), sampling v202048.
 
 ---
 
@@ -549,8 +553,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
@@ -561,7 +565,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 0 / 10 referenced definitions present. Same base dimensions as Llama 4 Scout; definitions are shared once created. More experts (128 vs 16) affects MoE but not attention or normalization kernels.
+**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Same base dimensions as Llama 4 Scout; remaining definitions are shared once created. More experts (128 vs 16) affects MoE but not attention or normalization kernels.
 
 ---
 
@@ -571,8 +575,8 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h5120` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h5120` | rmsnorm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
@@ -586,7 +590,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v131072` | sampling | ❌ |
 | `top_p_sampling_from_probs_v131072` | sampling | ❌ |
 
-**Coverage**: 5 / 14 definitions present. GQA kernels are shared with Mistral Nemo 12B and Llama 3.1 8B (same 32q/8kv/d128 config, regardless of hidden_size). Missing: rmsnorm h5120, GEMM defs with k=5120 input dim, and sampling v131072.
+**Coverage**: 7 / 14 definitions present. GQA kernels are shared with Mistral Nemo 12B and Llama 3.1 8B; rmsnorm h5120 is now shared with Qwen3 14B. Missing: GEMM defs with k=5120 input dim (Mistral-specific intermediate sizes), sampling v131072.
 
 ---
 
@@ -624,5 +628,76 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | Sampling (vocab TBD) | sampling | — |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is Lightning Attention — a linear attention variant not yet in FlashInfer. The softmax attention layers (GQA-style) also require new definitions for this model's specific dimensions. To add support, a new `lightning_attn` op type would first need to be defined.
+
+---
+
+## Gemma 3 27B
+
+**Architecture**: 62 decoder layers, GQA attention (2:1 ratio, 32 q-heads / 16 kv-heads, explicit head_dim=128 decoupled from hidden_size=5376), dense MLP with GeGLU activation.
+
+Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/32=168). This is a multimodal model (vision+text) but the language backbone uses standard transformer attention.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h5376` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5376` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h32_kv16_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | 🟡 |
+| `gemm_n4096_k5376` | gemm (q_proj) | 🟡 |
+| `gemm_n2048_k5376` | gemm (k/v proj) | 🟡 |
+| `gemm_n5376_k4096` | gemm (o_proj) | 🟡 |
+| `gemm_n21504_k5376` | gemm (gate/up proj) | 🟡 |
+| `gemm_n5376_k21504` | gemm (down proj) | 🟡 |
+| `top_k_sampling_from_probs_v262208` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v262208` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v262208` | sampling | 🟡 |
+
+**Coverage**: 15 / 15 definitions present. All dimensions are unique to this model: hidden=5376, intermediate=21504, vocab=262208. GQA ratio is 2:1 (vs 4:1 for Llama/Qwen), so kv_heads=16 (not 8). Workloads not yet collected.
+
+---
+
+## Qwen3 14B
+
+**Architecture**: 40 decoder layers, GQA attention (5:1 ratio, 40 q-heads / 8 kv-heads, head_dim=128), dense MLP. Standard serving configuration: **TP=2** (from sgl-cookbook), giving 20 q-heads and 4 kv-heads per device.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h5120` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
+| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | 🟡 |
+| `gemm_n7168_k5120` | gemm (qkv_proj combined) | 🟡 |
+| `gemm_n5120_k5120` | gemm (o_proj) | 🟡 |
+| `gemm_n34816_k5120` | gemm (gate_up combined) | 🟡 |
+| `gemm_n5120_k17408` | gemm (down proj) | 🟡 |
+| `top_k_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_p_sampling_from_probs_v151936` | sampling | ✅ |
+
+**Coverage**: 14 / 14 definitions present. Sampling definitions are shared with Qwen2.5 and other Qwen3 models (same vocab=151936) which already have workloads collected. The rmsnorm_h5120 definition is also shared with Mistral Nemo 12B, Mistral Small 3.1 24B, Phi-4 14B, and Llama 4 Scout/Maverick. Non-sampling workloads not yet collected.
+
+---
+
+## NemotronH 47B
+
+**Architecture**: 52 decoder layers total — hybrid of standard GQA (Transformer) and Mamba2 SSM layers. Uses 20 GQA attention layers and 32 Mamba2 layers in an interleaved pattern. Standard serving configuration: **TP=8** (from sgl-cookbook).
+
+**Mamba2 SSM** (Structured State Space Model) is a linear recurrent architecture that does not use softmax attention. It maintains a fixed-size state matrix updated at each step, analogous to a hidden state in RNNs. Mamba2 is **not currently supported as an op type in FlashInfer-Bench** and requires defining a new `mamba_ssu` (Selective State-space Unit) operation type before this model can be tracked.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h{hidden}` | rmsnorm | ❌ (dims TBD) |
+| GQA attention layers (20 layers, TP=8) | gqa_paged | ❌ |
+| Mamba2 SSM layers (32 layers) | mamba_ssu | ❌ (op type not supported) |
+| MLP / MoE FFN | gemm / moe | ❌ |
+| Sampling | sampling | ❌ |
+
+**Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax M2's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
 
 ---
