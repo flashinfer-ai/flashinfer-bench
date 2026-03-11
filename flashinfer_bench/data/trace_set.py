@@ -433,9 +433,7 @@ class TraceSet:
         # Sample evenly for smooth AUC; also include the actual ratio values
         import numpy as np
 
-        sample_pts = sorted(
-            set(np.linspace(p_min, p_max, sample_count).tolist()) | set(all_ratios)
-        )
+        sample_pts = sorted(set(np.linspace(p_min, p_max, sample_count).tolist()) | set(all_ratios))
 
         def _auc(ratios: List[float], p_grid: List[float], total: int) -> float:
             """Trapezoidal AUC of win@p curve."""
@@ -470,12 +468,7 @@ class TraceSet:
             auc = _auc(ratios, sample_pts, total)
             win_at_1x = _win_at_p(ratios, 1.0, total)
             rankings.append(
-                {
-                    "author": author,
-                    "auc": auc,
-                    "n_comparisons": total,
-                    "win_at_1x": win_at_1x,
-                }
+                {"author": author, "auc": auc, "n_comparisons": total, "win_at_1x": win_at_1x}
             )
 
         rankings.sort(key=lambda x: x["auc"], reverse=True)

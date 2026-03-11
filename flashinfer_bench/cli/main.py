@@ -73,7 +73,11 @@ def summary(args: argparse.Namespace):
             logger.info("Author Rankings (by area under win@p curve):")
             logger.info(
                 "  %-4s  %-24s  %-10s  %-14s  %-12s",
-                "Rank", "Author", "AUC Score", "Win@1x (>base)", "Comparisons",
+                "Rank",
+                "Author",
+                "AUC Score",
+                "Win@1x (>base)",
+                "Comparisons",
             )
             logger.info("  " + "-" * 70)
             for rank, entry in enumerate(rankings, start=1):
@@ -86,7 +90,9 @@ def summary(args: argparse.Namespace):
                     entry["n_comparisons"],
                 )
             logger.info("")
-            logger.info("  AUC: area under win@p curve (higher = faster vs baseline across workloads)")
+            logger.info(
+                "  AUC: area under win@p curve (higher = faster vs baseline across workloads)"
+            )
             logger.info("  Win@1x: fraction of workloads where this author beats the baseline")
         else:
             logger.info("(No author ranking data available — run with multiple solutions)")
