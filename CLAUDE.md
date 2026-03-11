@@ -269,6 +269,32 @@ Generate TypeScript model definition.
 - Updated models.ts file
 - TypeScript code for module definitions
 
+### collect-workloads
+
+Auto-collect real-world workloads from SGLang inference runs using FlashInfer Level 10 logging API.
+
+**Parameters**:
+- `--definition-names`: List of specific definition names to collect workloads for (optional)
+- `--op-type`: Collect workloads for all definitions of a specific op_type (optional)
+- `--all`: Collect workloads for ALL definitions (optional)
+- `--model-name`: Model to run inference on (required, e.g., "deepseek-v3", "llama-3.1-8b")
+- `--dataset`: Path to ShareGPT-format JSONL dataset (optional)
+- `--num-samples`: Number of inference samples to process (default: 100)
+- `--submit-pr`: Whether to submit PR to flashinfer-trace repo (default: true)
+
+**Output**:
+- Workload JSONL files in `flashinfer_trace/workloads/{op_type}/{definition_name}.jsonl`
+- Safetensors files for large tensors (if applicable)
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset repo
+
+**Workflow**:
+1. Setup FlashInfer Level 10 logging (tensor dump mode)
+2. Run SGLang inference with ShareGPT dataset
+3. Dump tensors locally from FlashInfer logs
+4. Sanitize tensors according to kernel definitions
+5. Convert to workload JSONL format with deduplication
+6. Submit PR to flashinfer-trace HuggingFace dataset repo
+
 ## Common Model Architecture Patterns
 
 ### Standard Transformer (e.g., Llama)
@@ -363,8 +389,10 @@ https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
 ## References
 
 - [FlashInfer Documentation](https://docs.flashinfer.ai)
+- [FlashInfer Logging API](https://docs.flashinfer.ai/logging.html)
 - [SGLang GitHub](https://github.com/sgl-project/sglang)
 - [HuggingFace Hub](https://huggingface.co/models)
+- [flashinfer-ai/flashinfer-trace Dataset](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
 - [Definition Schema Documentation](docs/flashinfer_trace/definition.md)
 - [Operation Type Schema](docs/op_type_schema/)
 
@@ -407,7 +435,13 @@ cat web/apps/web/data/models.ts
 # 3. Start web interface for validation
 cd web/apps/web && pnpm dev
 
-# 4. Run benchmarks
+# 4. Collect real-world workloads
+claude-code run collect-workloads \
+  --model-name kimi-k2 \
+  --op-type gqa_paged \
+  --num-samples 200
+
+# 5. Run benchmarks with collected workloads
 flashinfer-bench run --local ./data --definitions <generated-defs>
 ```
 
@@ -415,3 +449,5 @@ Expected output:
 - New kimi-k2 entry in `web/apps/web/data/models.ts`
 - `model_analysis_kimi-k2.json` containing architecture analysis
 - List of Definition mapping suggestions
+- Workload JSONL files in `flashinfer_trace/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset
