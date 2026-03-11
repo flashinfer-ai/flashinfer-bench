@@ -95,7 +95,7 @@ def _build_ncu_command(
         set,
         "--nvtx",
         "--nvtx-include",
-        "flashinfer_bench_ncu_profile",
+        "flashinfer_bench_ncu_profile]",
     ]
 
     # Add extra sections
