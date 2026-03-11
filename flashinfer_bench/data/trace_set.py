@@ -297,7 +297,7 @@ class TraceSet:
 
         return None
 
-    def summary(self) -> Dict[str, any]:
+    def summary(self) -> Dict[str, Any]:
         """Get a comprehensive summary of all traces in the TraceSet.
 
         Computes aggregate statistics across all execution traces including success rates,
@@ -313,6 +313,7 @@ class TraceSet:
             - min_latency_ms: Minimum latency among successful traces (None if no successful traces)
             - max_latency_ms: Maximum latency among successful traces (None if no successful traces)
             - avg_latency_ms: Average latency among successful traces (None if no successful traces)
+            - rankings: List of dicts with author ranking by AUC of win@p curve
         """
         all_traces = [t for traces in self.traces.values() for t in traces]
 
@@ -324,6 +325,7 @@ class TraceSet:
                 "min_latency_ms": None,
                 "max_latency_ms": None,
                 "avg_latency_ms": None,
+                "rankings": [],
             }
 
         passed = [
@@ -336,6 +338,8 @@ class TraceSet:
         max_latency = max(latencies) if latencies else None
         avg_latency = sum(latencies) / len(latencies) if latencies else None
 
+        rankings = self.compute_win_at_p_ranking()
+
         return {
             "total": len(all_traces),
             "passed": len(passed),
@@ -343,7 +347,139 @@ class TraceSet:
             "min_latency_ms": min_latency,
             "max_latency_ms": max_latency,
             "avg_latency_ms": avg_latency,
+            "rankings": rankings,
         }
+
+    def compute_win_at_p_ranking(
+        self, baseline_author: str = "flashinfer", sample_count: int = 200
+    ) -> List[Dict[str, Any]]:
+        """Compute author rankings based on area under the win@p (fast_p) curve.
+
+        For each workload group (same definition + workload.uuid), a baseline latency is
+        identified (preferring the baseline_author; falling back to the fastest run).
+        For each other author A with latency L_A and baseline L_B, the ratio r = L_B / L_A
+        is computed. win@p is the fraction of groups where r > p. The AUC of this curve
+        (integrated over p) is used as the ranking score ("avg speedup").
+
+        Parameters
+        ----------
+        baseline_author : str
+            Author name to use as baseline (default: 'flashinfer').
+        sample_count : int
+            Number of evenly-spaced p values for AUC integration (default: 200).
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of dicts sorted by auc descending, each containing:
+            - author: str
+            - auc: float  (area under win@p curve; 1.0 means always faster than baseline)
+            - n_comparisons: int  (number of workload groups compared)
+            - win_at_1x: float  (fraction of groups faster than baseline, i.e. win@1.0)
+        """
+        # Build (definition, workload_uuid) -> list of (author, latency_ms)
+        groups: Dict[tuple, Dict[str, float]] = defaultdict(dict)
+        for def_name, traces in self.traces.items():
+            for trace in traces:
+                if not (
+                    trace.evaluation
+                    and trace.evaluation.status == EvaluationStatus.PASSED
+                    and trace.solution
+                    and trace.evaluation.performance
+                    and trace.evaluation.performance.latency_ms > 0
+                ):
+                    continue
+                sol = self._solution_by_name.get(trace.solution)
+                if sol is None:
+                    continue
+                author = sol.author
+                key = (def_name, trace.workload.uuid)
+                lat = trace.evaluation.performance.latency_ms
+                # Keep best (min) latency per author per group
+                if author not in groups[key] or lat < groups[key][author]:
+                    groups[key][author] = lat
+
+        if not groups:
+            return []
+
+        # For each author, collect ratios r = baseline_lat / author_lat
+        ratios_by_author: Dict[str, List[float]] = defaultdict(list)
+        totals_by_author: Dict[str, int] = defaultdict(int)
+        baseline_ci = baseline_author.lower()
+
+        for _key, best_by_author in groups.items():
+            if not best_by_author:
+                continue
+            # Find baseline author (case-insensitive), fallback to fastest
+            bl_key = next((a for a in best_by_author if a.lower() == baseline_ci), None)
+            if bl_key is None:
+                bl_key = min(best_by_author, key=lambda a: best_by_author[a])
+            bl_lat = best_by_author[bl_key]
+
+            for author, lat in best_by_author.items():
+                if author == bl_key:
+                    continue
+                totals_by_author[author] += 1
+                if bl_lat > 0 and lat > 0:
+                    ratios_by_author[author].append(bl_lat / lat)
+
+        if not ratios_by_author:
+            return []
+
+        # Build p-grid: union of all ratios, sorted, plus endpoints 0 and max
+        all_ratios = sorted({r for rs in ratios_by_author.values() for r in rs})
+        p_min = 0.0
+        p_max = max(all_ratios) if all_ratios else 2.0
+        # Sample evenly for smooth AUC; also include the actual ratio values
+        import numpy as np
+
+        sample_pts = sorted(
+            set(np.linspace(p_min, p_max, sample_count).tolist()) | set(all_ratios)
+        )
+
+        def _auc(ratios: List[float], p_grid: List[float], total: int) -> float:
+            """Trapezoidal AUC of win@p curve."""
+            if not ratios or total == 0 or len(p_grid) < 2:
+                return 0.0
+            rs = sorted(ratios)
+            n = len(rs)
+            points = []
+            idx = 0
+            for p in p_grid:
+                while idx < n and rs[idx] <= p:
+                    idx += 1
+                win_frac = (n - idx) / total
+                points.append((p, win_frac))
+            area = 0.0
+            for i in range(1, len(points)):
+                p1, w1 = points[i - 1]
+                p2, w2 = points[i]
+                area += (p2 - p1) * (w1 + w2) / 2
+            # Normalize so that a curve always at 1.0 gives AUC = p_max - p_min
+            span = p_grid[-1] - p_grid[0]
+            return area / span if span > 0 else 0.0
+
+        def _win_at_p(ratios: List[float], p: float, total: int) -> float:
+            if not ratios or total == 0:
+                return 0.0
+            return sum(1 for r in ratios if r > p) / total
+
+        rankings = []
+        for author, ratios in ratios_by_author.items():
+            total = totals_by_author[author]
+            auc = _auc(ratios, sample_pts, total)
+            win_at_1x = _win_at_p(ratios, 1.0, total)
+            rankings.append(
+                {
+                    "author": author,
+                    "auc": auc,
+                    "n_comparisons": total,
+                    "win_at_1x": win_at_1x,
+                }
+            )
+
+        rankings.sort(key=lambda x: x["auc"], reverse=True)
+        return rankings
 
     def backup_traces(self) -> None:
         """Backup the traces directory to a new directory. This is useful when we want to keep the
