@@ -1,0 +1,48 @@
+{
+  "name": "gemm_n44032_k4096",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Qwen3-8B mlp.gate_up_proj (2*intermediate=2*22016=44032 → hidden=4096).",
+  "op_type": "gemm",
+  "tags": [
+    "status:verified",
+    "model:qwen3-8b"
+  ],
+  "axes": {
+    "M": {
+      "type": "var"
+    },
+    "N": {
+      "type": "const",
+      "value": 44032
+    },
+    "K": {
+      "type": "const",
+      "value": 4096
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": [
+        "M",
+        "K"
+      ],
+      "dtype": "float16"
+    },
+    "B": {
+      "shape": [
+        "N",
+        "K"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": [
+        "M",
+        "N"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
+}

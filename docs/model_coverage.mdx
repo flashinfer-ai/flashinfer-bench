@@ -18,15 +18,15 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | DeepSeek V3/R1 | MLA + Dense/MoE | 🟡 Partial |
 | DeepSeek V3.2 | DSA + Dense/MoE | ✅ Fully covered |
 | Llama 3.1 8B | GQA + Dense | ✅ Fully covered |
-| Llama 3.1/3.3 70B | GQA + Dense | 🟡 Partial |
-| Llama 3.2 3B | GQA + Dense | 🟡 Partial |
+| Llama 3.1/3.3 70B | GQA + Dense | 🟡 Partial (GQA missing) |
+| Llama 3.2 3B | GQA + Dense | 🟡 Partial (GQA missing) |
 | Mistral 7B v0.3 | GQA + Dense | 🟡 Partial |
 | Mistral Nemo 12B | GQA + Dense | 🟡 Partial |
 | Mixtral 8x7B | GQA + MoE | 🟡 Partial |
 | Mixtral 8x22B | GQA + MoE | ❌ Not covered |
-| Qwen2.5 7B | GQA + Dense | 🟡 Partial |
-| Qwen2.5 72B | GQA + Dense | 🟡 Partial |
-| Qwen3 8B | GQA + Dense | 🟡 Partial |
+| Qwen2.5 7B | GQA + Dense | 🟡 Partial (GQA missing) |
+| Qwen2.5 72B | GQA + Dense | 🟡 Partial (GQA missing) |
+| Qwen3 8B | GQA + Dense | ✅ Fully covered |
 | Qwen3 30B A3B | GQA + MoE | 🟡 Partial |
 | Qwen3 32B | GQA + Dense | 🟡 Partial |
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
@@ -42,6 +42,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Gemma 3 27B | GQA + Dense | 🟡 Partial |
 | Qwen3 14B | GQA + Dense | 🟡 Partial |
 | NemotronH 47B | GQA + Mamba2 Hybrid | ❌ Not covered |
+| Qwen3 4B | GQA + Dense | 🟡 Partial |
 
 ---
 
@@ -179,22 +180,22 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h8192` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
+| `rmsnorm_h8192` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h8192` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps1` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_decode_h16_kv2_d128_ps1` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_decode_h16_kv2_d128_ps64` | gqa_paged TP=4 | ❌ |
 | `gqa_ragged_prefill_causal_h16_kv2_d128` | gqa_ragged TP=4 | ❌ |
-| `gemm_n10240_k8192` | gemm | ❌ |
-| `gemm_n8192_k8192` | gemm | ❌ |
-| `gemm_n57344_k8192` | gemm | ❌ |
-| `gemm_n8192_k28672` | gemm | ❌ |
+| `gemm_n10240_k8192` | gemm | 🟡 |
+| `gemm_n8192_k8192` | gemm | 🟡 |
+| `gemm_n57344_k8192` | gemm | 🟡 |
+| `gemm_n8192_k28672` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: rmsnorm h8192, all GQA definitions (h16_kv2_d128 at TP=4), all GEMM definitions for hidden=8192.
+**Coverage**: 9 / 14 definitions present. Missing: all GQA definitions (h16_kv2_d128 at TP=4). RMSNorm and GEMM definitions now added.
 
 ---
 
@@ -204,22 +205,22 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h3072` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h3072` | rmsnorm | ❌ |
+| `rmsnorm_h3072` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h3072` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h24_kv8_d128_ps64` | gqa_paged | ❌ |
 | `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ❌ |
-| `gemm_n5120_k3072` | gemm | ❌ |
-| `gemm_n3072_k3072` | gemm | ❌ |
-| `gemm_n16384_k3072` | gemm | ❌ |
-| `gemm_n3072_k8192` | gemm | ❌ |
+| `gemm_n5120_k3072` | gemm | 🟡 |
+| `gemm_n3072_k3072` | gemm | 🟡 |
+| `gemm_n16384_k3072` | gemm | 🟡 |
+| `gemm_n3072_k8192` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3072.
+**Coverage**: 9 / 14 definitions present. Missing: all GQA definitions (h24_kv8_d128). RMSNorm and GEMM definitions now added.
 
 ---
 
@@ -327,22 +328,22 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h3584` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h3584` | rmsnorm | ❌ |
+| `rmsnorm_h3584` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h3584` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h28_kv4_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h28_kv4_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h28_kv4_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h28_kv4_d128_ps64` | gqa_paged | ❌ |
 | `gqa_ragged_prefill_causal_h28_kv4_d128` | gqa_ragged | ❌ |
-| `gemm_n4608_k3584` | gemm | ❌ |
-| `gemm_n3584_k3584` | gemm | ❌ |
-| `gemm_n37888_k3584` | gemm | ❌ |
-| `gemm_n3584_k18944` | gemm | ❌ |
+| `gemm_n4608_k3584` | gemm | 🟡 |
+| `gemm_n3584_k3584` | gemm | 🟡 |
+| `gemm_n37888_k3584` | gemm | 🟡 |
+| `gemm_n3584_k18944` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3584.
+**Coverage**: 9 / 14 definitions present. Missing: all GQA definitions (h28_kv4_d128). RMSNorm and GEMM definitions now added.
 
 ---
 
@@ -352,22 +353,22 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h8192` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
+| `rmsnorm_h8192` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h8192` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h8_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h8_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h8_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_decode_h8_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h8_kv1_d128` | gqa_ragged TP=8 | ❌ |
-| `gemm_n10240_k8192` | gemm | ❌ |
-| `gemm_n8192_k8192` | gemm | ❌ |
-| `gemm_n59392_k8192` | gemm | ❌ |
-| `gemm_n8192_k29696` | gemm | ❌ |
+| `gemm_n10240_k8192` | gemm | 🟡 |
+| `gemm_n8192_k8192` | gemm | 🟡 |
+| `gemm_n59392_k8192` | gemm | 🟡 |
+| `gemm_n8192_k29696` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: rmsnorm h8192, all GQA definitions (h8_kv1_d128 at TP=8), all GEMM definitions for hidden=8192.
+**Coverage**: 9 / 14 definitions present. Missing: all GQA definitions (h8_kv1_d128 at TP=8). RMSNorm and GEMM definitions now added (rmsnorm_h8192 and gemm_n10240/n8192_k8192 are shared with Llama 70B).
 
 ---
 
@@ -386,13 +387,13 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `gqa_ragged_prefill_causal_h32_kv8_d128` | gqa_ragged | ✅ |
 | `gemm_n6144_k4096` | gemm | ✅ |
 | `gemm_n4096_k4096` | gemm | ✅ |
-| `gemm_n44032_k4096` | gemm | ❌ |
-| `gemm_n4096_k22016` | gemm | ❌ |
+| `gemm_n44032_k4096` | gemm | 🟡 |
+| `gemm_n4096_k22016` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 12 / 14 definitions present. Missing: gate_up GEMM (`gemm_n44032_k4096`, intermediate=22016 × 2) and down GEMM (`gemm_n4096_k22016`). All normalization, attention, and non-MLP GEMM kernels are shared with Llama 3.1 8B.
+**Coverage**: 14 / 14 definitions present. All normalization, attention, and non-MLP GEMM kernels are shared with Llama 3.1 8B. Workloads not yet collected.
 
 ---
 
@@ -699,5 +700,32 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | Sampling | sampling | ❌ |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax M2's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
+
+---
+
+## Qwen3 4B
+
+**Architecture**: 36 decoder layers, GQA attention (32 q-heads / 8 kv-heads, head_dim=128), dense MLP. Smallest dense Qwen3 model; single-GPU serving (TP=1). hidden_size=2560 with explicitly set head_dim=128 (non-square projection dimensions).
+
+> **Note**: GEMM shapes (intermediate_size) are based on the Qwen3 technical report; run `/extract-kernel-definitions --model-name qwen3_4b --hf-repo-id Qwen/Qwen3-4B` to verify from config.json. The attention and sampling definitions are confirmed correct.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h2560` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h2560` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d128_ps64` | gqa_paged | ✅ |
+| `gqa_ragged_prefill_causal_h32_kv8_d128` | gqa_ragged | ✅ |
+| `gemm_n6144_k2560` | gemm (qkv_proj) | 🟡 |
+| `gemm_n2560_k4096` | gemm (o_proj) | 🟡 |
+| `gemm_n19456_k2560` | gemm (gate_up) | 🟡 |
+| `gemm_n2560_k9728` | gemm (down) | 🟡 |
+| `top_k_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_p_sampling_from_probs_v151936` | sampling | ✅ |
+
+**Coverage**: 14 / 14 definitions present. All definitions now added. GQA kernels (h32_kv8_d128) are shared with Llama 3.1 8B, Mistral 7B, Mixtral 8x7B, and Qwen3 8B. Sampling definitions are shared with all Qwen3/Qwen2.5 models (same vocab=151936). RMSNorm h2560 and all GEMM definitions are new (hidden=2560 creates different projection shapes from all existing models). Workloads not yet collected.
 
 ---
