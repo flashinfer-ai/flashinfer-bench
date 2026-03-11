@@ -6,6 +6,7 @@ import pytest
 
 from flashinfer_bench.agents.ncu import flashinfer_bench_run_ncu
 from flashinfer_bench.data import Solution, TraceSet
+from flashinfer_bench.data.workload import RandomInput, Workload
 
 TRACE_SET_PATH = str(Path(__file__).resolve().parents[2] / "tmp-repos" / "flashinfer-trace")
 DEFN_NAME = "gemm_n128_k2048"
@@ -61,7 +62,7 @@ def test_run_ncu_invalid_page():
 
 
 def test_run_ncu_solution_file_not_found():
-    _, workload = _load_gemm_fixture()
+    workload = Workload(axes={}, inputs={}, uuid="test-stub")
     result = flashinfer_bench_run_ncu(
         solution="/nonexistent/path/solution.json", workload=workload, trace_set_path=TRACE_SET_PATH
     )
