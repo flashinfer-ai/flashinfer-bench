@@ -42,6 +42,8 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Gemma 3 27B | GQA + Dense | 🟡 Partial |
 | Qwen3 14B | GQA + Dense | 🟡 Partial |
 | NemotronH 47B | GQA + Mamba2 Hybrid | ❌ Not covered |
+| DeepSeek R1-0528 | MLA + Dense/MoE | 🟡 Partial |
+| Qwen3 4B | GQA + Dense | 🟡 Partial |
 
 ---
 
@@ -699,5 +701,59 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | Sampling | sampling | ❌ |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax M2's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
+
+---
+
+## DeepSeek R1-0528
+
+**Architecture**: 61 decoder layers, MLA attention, hybrid Dense+MoE FFN. Identical architecture to DeepSeek V3/R1 — this is an updated reasoning-focused checkpoint released May 28, 2025 with the same model structure and serving configuration: **TP=8**.
+
+DeepSeek R1-0528 shares all kernel definitions with DeepSeek V3/R1 (same hidden=7168, same MLA dimensions, same MoE structure). The only difference is training data and RLHF tuning; the forward-pass compute graph is identical.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h7168` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
+| `rmsnorm_h1536` | rmsnorm | ✅ |
+| `rmsnorm_h512` | rmsnorm | ✅ |
+| `gemm_n256_k7168` | gemm | ✅ |
+| `mla_ragged_prefill_causal_h16_qk192_vo128` | mla_ragged | ❌ |
+| `mla_paged_prefill_causal_h16_ckv512_kpe64_ps1` | mla_paged | ✅ |
+| `mla_paged_prefill_causal_h16_ckv512_kpe64_ps64` | mla_paged | ✅ |
+| `mla_paged_decode_h16_ckv512_kpe64_ps1` | mla_paged | ✅ |
+| `mla_paged_decode_h16_ckv512_kpe64_ps64` | mla_paged | ✅ |
+| `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` | moe | ✅ |
+| `top_k_sampling_from_probs_v129280` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v129280` | sampling | ✅ |
+| `top_p_sampling_from_probs_v129280` | sampling | ✅ |
+
+**Coverage**: 13 / 14 definitions present. All definitions shared with DeepSeek V3/R1. Missing: MLA ragged prefill definition (same gap as V3/R1).
+
+---
+
+## Qwen3 4B
+
+**Architecture**: 36 decoder layers, GQA attention (32 q-heads / 8 kv-heads, head_dim=128), dense MLP. Smallest dense Qwen3 model; single-GPU serving (TP=1). hidden_size=2560 with explicitly set head_dim=128 (non-square projection dimensions).
+
+> **Note**: GEMM shapes (intermediate_size) are based on the Qwen3 technical report; run `/extract-kernel-definitions --model-name qwen3_4b --hf-repo-id Qwen/Qwen3-4B` to verify from config.json. The attention and sampling definitions are confirmed correct.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h2560` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h2560` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h32_kv8_d128_ps64` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d128_ps64` | gqa_paged | ✅ |
+| `gqa_ragged_prefill_causal_h32_kv8_d128` | gqa_ragged | ✅ |
+| `gemm_n6144_k2560` | gemm (qkv_proj) | 🟡 |
+| `gemm_n2560_k4096` | gemm (o_proj) | 🟡 |
+| `gemm_n19456_k2560` | gemm (gate_up) | 🟡 |
+| `gemm_n2560_k9728` | gemm (down) | 🟡 |
+| `top_k_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
+| `top_p_sampling_from_probs_v151936` | sampling | ✅ |
+
+**Coverage**: 14 / 14 definitions present. All definitions now added. GQA kernels (h32_kv8_d128) are shared with Llama 3.1 8B, Mistral 7B, Mixtral 8x7B, and Qwen3 8B. Sampling definitions are shared with all Qwen3/Qwen2.5 models (same vocab=151936). RMSNorm h2560 and all GEMM definitions are new (hidden=2560 creates different projection shapes from all existing models). Workloads not yet collected.
 
 ---
