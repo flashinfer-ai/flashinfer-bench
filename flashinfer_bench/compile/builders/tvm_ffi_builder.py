@@ -266,6 +266,7 @@ class TVMFFIBuilder(Builder):
                             cpp_files=cpp_files,
                             cuda_files=cuda_files,
                             extra_include_paths=extra_include_paths,
+                            extra_ldflags=["-lcuda"],
                             build_directory=build_path,
                         )
                     except Exception as e:
