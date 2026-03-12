@@ -1,0 +1,926 @@
+You are optimizing a CUDA kernel for A800 GPU. The current implementation has issues that need to be fixed.
+
+Original Specification:
+Name: gqa_ragged_prefill_causal_h32_kv8_d128
+Type: gqa_ragged
+
+Axes:
+  num_qo_heads: constant = 32
+  num_kv_heads: constant = 8
+  head_dim: constant = 128
+  len_indptr: variable (Length of indptr arrays. Should be the same for qo_indptr and kv_indptr (batch_size + 1).)
+  total_q: variable (Total number of query tokens.)
+  total_kv: variable (Total key-value tokens across all sequences.)
+
+Inputs:
+  q: [total_q, num_qo_heads, head_dim] (DType.BFLOAT16)
+  k: [total_kv, num_kv_heads, head_dim] (DType.BFLOAT16)
+  v: [total_kv, num_kv_heads, head_dim] (DType.BFLOAT16)
+  qo_indptr: [len_indptr] (DType.INT32) - Query offsets for each sequence.
+  kv_indptr: [len_indptr] (DType.INT32) - Key-value offsets for each sequence.
+  sm_scale: scalar (DType.FLOAT32) - Softmax scale. Default is (1/sqrt(head_dim)).
+
+Outputs:
+  output: [total_q, num_qo_heads, head_dim] (DType.BFLOAT16) - Attention output tensor.
+  lse: [total_q, num_qo_heads] (DType.FLOAT32) - The 2-based log-sum-exp of attention logits.
+
+Constraints:
+  - total_q == qo_indptr[-1].item()
+  - total_kv == kv_indptr[-1].item()
+
+
+Reference Implementation:
+import torch
+import math
+
+
+@torch.no_grad()
+def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
+    total_q, num_qo_heads, head_dim = q.shape
+    total_kv, num_kv_heads, _ = k.shape
+    len_indptr = qo_indptr.shape[0]
+
+    # Check constants
+    assert num_qo_heads == 32
+    assert num_kv_heads == 8
+    assert head_dim == 128
+
+    # Check constraints
+    assert total_q == qo_indptr[-1].item()
+    assert total_kv == kv_indptr[-1].item()
+
+    device = q.device
+
+    output = torch.zeros(
+        (total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device
+    )
+    lse = torch.full(
+        (total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
+    )
+
+    gqa_ratio = num_qo_heads // num_kv_heads
+
+    q_f32 = q.to(torch.float32)
+    k_f32 = k.to(torch.float32)
+    v_f32 = v.to(torch.float32)
+
+    for b in range(len_indptr - 1):
+        q_start = int(qo_indptr[b].item())
+        q_end = int(qo_indptr[b + 1].item())
+
+        kv_start = int(kv_indptr[b].item())
+        kv_end = int(kv_indptr[b + 1].item())
+
+        if q_start >= q_end or kv_start >= kv_end:
+            # No queries or KV for this batch element
+            continue
+
+        # Get Q, K, V for this batch
+        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]
+        k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
+        v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
+
+        num_q_tokens = q_batch.shape[0]
+        num_kv_tokens = k_batch.shape[0]
+        delta = num_kv_tokens - num_q_tokens
+
+        k_expanded = k_batch.repeat_interleave(gqa_ratio, dim=1)
+        v_expanded = v_batch.repeat_interleave(gqa_ratio, dim=1)
+
+        # Compute attention scores: Q @ K^T
+        logits = torch.einsum('qhd,khd->qhk', q_batch, k_expanded) * sm_scale
+
+        # For position q_idx, can attend to KV positions [0, min(q_idx + 1 + delta, num_kv_tokens))
+        q_positions = torch.arange(num_q_tokens, device=device)  # [num_q_tokens]
+        kv_positions = torch.arange(num_kv_tokens, device=device)  # [num_kv_tokens]
+        
+        # Apply causal mask
+        causal_mask = kv_positions[None, :] < (q_positions[:, None] + 1 + delta)
+        logits = logits.masked_fill(~causal_mask[:, None, :], float('-inf'))
+
+        # Compute 2-base LSE
+        lse_batch = torch.logsumexp(logits, dim=-1) / math.log(2.0)
+        lse[q_start:q_end] = lse_batch
+
+        attn_weights = torch.softmax(logits, dim=-1)  # [num_q_tokens, num_qo_heads, num_kv_tokens]
+        output_batch = torch.einsum('qhk,khd->qhd', attn_weights, v_expanded)
+        output[q_start:q_end] = output_batch.to(torch.bfloat16)
+
+    return output, lse
+
+Current Implementation Status:
+Status: RUNTIME_ERROR
+Timestamp: 2026-03-11T21:05:07.582981
+
+Execution Log:
+[1/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96/main.cpp -o main.o 
+[2/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96/kernel.cu -o kernel.cuda.o 
+/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96/kernel.cu(29): warning #177-D: function "warp_reduce_max" was declared but never referenced
+                                   float warp_reduce_max(float val) {
+                                         ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+[3/3] c++ kernel.cuda.o main.o -shared -L/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda-13.0/lib64 -lcudart -o torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r2_c0_high_0d4c96.so
+Traceback (most recent call last):
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/evaluators/default.py", line 116, in check_correctness
+    result = sol_runnable(*inp)
+             ^^^^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/runnable.py", line 95, in __call__
+    ret = self._callable(*args)
+          ^^^^^^^^^^^^^^^^^^^^^
+TypeError: run(): incompatible function arguments. The following argument types are supported:
+    1. (q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, qo_indptr: torch.Tensor, kv_indptr: torch.Tensor, sm_scale: torch.Tensor | None = None) -> list[torch.Tensor]
+
+Invoked with: tensor([[[ 0.3477, -0.5078, -1.0859,  ...,  0.3574, -0.8633,  0.4355],
+         [-1.2188, -2.7500,  0.8008,  ..., -0.4180, -0.6797,  0.1484],
+         [ 0.3770, -0.9180,  0.1729,  ...,  0.1621,  0.3750,  0.5938],
+         ...,
+         [ 0.4570,  0.7188,  0.6875,  ..., -0.8438, -0.4980,  0.3535],
+         [-0.8359, -0.1514, -0.7734,  ...,  1.9922, -0.6562,  0.4570],
+         [-1.3672, -0.5391, -0.6953,  ...,  1.1875,  1.1172,  1.6953]],
+
+        [[-0.3887,  0.7891,  0.8281,  ..., -1.5547, -0.6016,  0.4766],
+         [ 2.5000,  0.9219,  0.8320,  ...,  0.6758,  0.2812,  0.9727],
+         [-0.1230,  0.3184, -0.8398,  ...,  0.1309,  0.4121, -1.0938],
+         ...,
+         [-1.5703,  1.2656, -1.5312,  ...,  0.0513, -1.2422, -1.0781],
+         [ 0.6875,  1.1016, -1.3125,  ...,  1.9922,  0.7227, -0.7422],
+         [-0.0708,  0.3223,  1.4375,  ..., -0.7266, -0.7695,  0.3848]],
+
+        [[-0.8164,  0.1572,  1.1250,  ...,  0.7109, -0.6406,  0.0349],
+         [-1.1328, -1.3672,  0.6602,  ...,  0.6445,  1.8047,  0.1797],
+         [-1.2422,  0.7383,  0.8320,  ..., -0.8516, -0.0522,  0.3887],
+         ...,
+         [ 0.8516, -0.0544,  1.0625,  ...,  0.0186, -0.3145, -0.4844],
+         [-1.6953, -0.0337,  1.9453,  ...,  0.5469,  0.3457, -0.0459],
+         [ 0.7852,  0.1582,  1.7266,  ...,  0.2598,  1.6016, -0.1191]],
+
+        ...,
+
+        [[ 1.0781, -0.8984,  0.0698,  ...,  0.3613, -2.5938, -0.9102],
+         [-0.2734, -1.3281,  1.2578,  ...,  1.0234,  1.7969, -0.4375],
+         [ 0.6680, -0.0386, -2.7344,  ...,  1.6562, -0.8477,  0.4922],
+         ...,
+         [-0.0420,  0.5547, -0.2871,  ...,  0.7969, -0.3379, -0.4414],
+         [ 0.5195, -1.7891,  0.0452,  ..., -0.9766, -1.3281, -0.2812],
+         [ 0.6367,  0.3164,  0.1240,  ..., -0.8438, -0.1187, -1.2031]],
+
+        [[-0.4629,  0.6484,  0.7930,  ...,  0.1406,  0.3359, -0.5508],
+         [-0.1816, -0.5664, -1.3125,  ...,  0.8867,  1.2812,  0.1045],
+         [-1.3750, -1.3750, -0.1758,  ...,  1.7812, -1.2656, -1.8750],
+         ...,
+         [ 0.6445,  0.1396, -0.0820,  ..., -0.3809,  1.0312,  0.3711],
+         [ 0.2695, -1.2891, -0.4004,  ..., -0.4258,  0.6914, -0.7891],
+         [-0.2402, -0.8555,  0.0503,  ...,  0.3438, -2.6406,  0.7578]],
+
+        [[-0.2871,  1.6953, -0.0359,  ..., -1.2422, -1.8672,  0.4238],
+         [ 0.0781, -0.7188, -0.5625,  ...,  1.0781, -0.9766,  0.7578],
+         [-1.5781,  0.0840, -1.0703,  ..., -1.2812, -0.6992,  0.9570],
+         ...,
+         [-0.5781, -0.9102, -1.1250,  ...,  1.0000,  0.4629,  0.3809],
+         [ 0.3457,  0.8281, -0.4766,  ...,  0.2891, -0.5625,  1.4297],
+         [ 0.0280, -1.5469, -1.1641,  ...,  0.5898, -0.3984,  0.8164]]],
+       device='cuda:0', dtype=torch.bfloat16), tensor([[[-1.0312,  1.1484,  0.0166,  ..., -0.6211, -0.5391,  1.0469],
+         [ 0.7227,  1.3359, -0.9414,  ..., -0.3945,  0.0811, -0.3496],
+         [ 0.0347,  0.0625,  0.9141,  ..., -0.9219,  0.9453,  0.2148],
+         ...,
+         [-2.0469,  0.2598, -1.2734,  ..., -1.9766, -0.4980,  1.8203],
+         [-1.6016,  0.4512, -0.7227,  ...,  0.5352, -1.0859,  1.3281],
+         [-1.3047, -0.5234, -3.1406,  ...,  0.4863,  0.4258, -0.1201]],
+
+        [[-0.1494,  0.2969, -1.2266,  ..., -1.9453,  1.0469,  2.3906],
+         [-0.6719,  1.8984, -1.6094,  ...,  1.2266,  0.1250, -1.5078],
+         [-1.1719,  0.9102,  0.4355,  ..., -1.0703, -0.8984,  0.2246],
+         ...,
+         [-0.0493, -1.2266,  0.5703,  ..., -0.1118,  0.6875, -0.6953],
+         [-1.5625, -1.6562,  0.2773,  ..., -0.9180,  1.3594, -0.4980],
+         [-2.1250, -0.4258, -0.5586,  ...,  0.4727, -0.1494,  2.0156]],
+
+        [[-1.4609, -1.6953,  0.5234,  ..., -0.9883,  0.7891,  0.2441],
+         [ 1.1641, -0.8242,  0.1094,  ...,  1.8672,  0.0349, -0.6406],
+         [ 0.2441,  0.3281,  0.0894,  ..., -1.3750, -0.9414, -1.2969],
+         ...,
+         [-0.4453, -1.2109, -0.6211,  ...,  0.3477, -0.5625,  0.6094],
+         [-0.1836,  1.1094,  1.6406,  ..., -0.1816, -1.3594,  1.5938],
+         [ 0.3320, -0.8203,  1.4062,  ..., -0.0850, -0.9844,  0.7578]],
+
+        ...,
+
+        [[ 0.9102, -1.9219,  0.0413,  ..., -0.5938, -0.0217,  1.2656],
+         [ 0.4727,  0.2500,  1.4922,  ...,  1.1875,  0.1465, -1.0156],
+         [-1.4688, -1.4219, -0.7031,  ...,  0.0791, -0.6719, -0.4883],
+         ...,
+         [-0.1797, -0.9844,  0.7383,  ...,  0.5273,  0.3516, -0.2139],
+         [ 0.9492,  0.5781, -0.4531,  ..., -2.1562, -0.7344,  0.8398],
+         [ 1.0781,  1.1250,  0.3281,  ..., -0.4785, -0.3809,  0.2393]],
+
+        [[ 0.1465,  0.9258,  0.6016,  ...,  2.4688,  0.7148, -0.1807],
+         [-1.0156,  0.1030,  0.8516,  ..., -3.4531,  0.0703, -0.2324],
+         [-0.5664,  0.6133, -0.8828,  ..., -0.2676,  0.7656, -0.9805],
+         ...,
+         [-0.3418,  0.2256, -0.6914,  ...,  0.4785, -1.0859,  1.2422],
+         [-0.1934, -0.0693, -0.9609,  ...,  0.1494,  1.8750, -0.5820],
+         [-0.2969,  0.1904,  1.7422,  ..., -0.8789,  1.5781, -1.0469]],
+
+        [[-0.1592,  0.1406,  0.2656,  ...,  0.4219, -0.0291,  0.9219],
+         [ 0.1406, -0.1943, -0.1592,  ..., -0.3320, -0.2432,  0.2676],
+         [ 0.6367,  0.2334, -0.2852,  ..., -1.4375, -0.3359,  0.0299],
+         ...,
+         [ 0.9648, -0.9219, -0.6055,  ..., -0.0161,  0.4121, -2.3125],
+         [ 1.4219,  0.0045,  0.9648,  ..., -1.5234,  0.2773,  0.1123],
+         [ 1.0156,  1.9688, -0.1318,  ...,  0.7852,  1.4297, -0.2119]]],
+       device='cuda:0', dtype=torch.bfloat16), tensor([[[-0.3262, -0.4238, -0.1514,  ..., -0.2559, -1.5938, -0.1113],
+         [ 0.3223, -0.4199,  0.1758,  ...,  0.8867,  1.5312, -0.1582],
+         [-0.3574,  0.3340,  3.3594,  ..., -1.1797,  0.9414,  0.3496],
+         ...,
+         [ 0.8086, -0.9844,  0.6562,  ...,  0.3438,  0.2080,  0.7617],
+         [-1.6250, -0.0645, -1.0938,  ..., -0.1226,  0.1787, -0.0085],
+         [-0.8359, -0.4707, -2.2656,  ..., -0.0234,  0.2637,  0.5508]],
+
+        [[-0.7031, -1.3438, -1.5703,  ..., -1.7812, -0.4082,  0.7539],
+         [-0.2217,  0.8633,  1.2500,  ...,  0.7891, -0.2012, -1.1797],
+         [-0.0952, -0.3633, -1.6641,  ..., -0.7109, -1.0234,  0.2656],
+         ...,
+         [-0.3145, -0.6211, -0.4336,  ..., -0.4082, -0.3809, -1.0391],
+         [ 0.6953, -0.3262,  0.9844,  ..., -0.9023, -1.8906, -1.4453],
+         [ 0.7695, -0.3496,  0.9375,  ...,  0.8008,  1.5625, -0.2275]],
+
+        [[-0.3809, -0.3184, -0.6641,  ...,  1.1250, -0.0113, -0.7227],
+         [ 0.1963,  0.6562, -0.9258,  ..., -1.0234, -1.6172,  0.1504],
+         [ 0.4004,  1.2812, -0.7383,  ...,  1.4844, -0.5195, -1.0000],
+         ...,
+         [ 0.4082,  1.5781,  1.1250,  ..., -0.3691,  0.1299, -0.0466],
+         [ 0.3496,  1.0625, -0.0483,  ...,  1.0625, -0.3203, -0.4062],
+         [ 1.1953,  0.3379,  0.5117,  ..., -0.7812, -0.5938,  0.5312]],
+
+        ...,
+
+        [[ 0.5156, -0.9141, -0.3223,  ...,  0.8711,  0.7305, -0.0747],
+         [ 1.8359,  1.7344, -0.9062,  ..., -0.2061,  0.4473,  0.5547],
+         [ 0.0654, -0.3613,  0.1816,  ..., -1.4922,  0.8789,  0.6914],
+         ...,
+         [ 0.1797,  1.4219,  1.0859,  ...,  0.8320,  0.5625,  1.9531],
+         [ 0.6602,  0.0364,  0.0574,  ..., -1.2656, -0.1050, -0.5039],
+         [-0.9961, -0.6719,  0.1807,  ..., -1.5391, -1.4141,  1.8984]],
+
+        [[-0.3711, -0.8555, -1.2422,  ..., -0.4160, -0.3125, -0.2676],
+         [-0.1699, -1.0781,  0.5703,  ...,  0.0669, -1.0547,  0.2158],
+         [ 1.1016, -0.3262,  0.1826,  ...,  1.0469, -0.4180, -2.1719],
+         ...,
+         [ 1.0391, -1.2344, -1.5234,  ...,  0.8984, -1.0234,  0.9961],
+         [-0.0369, -1.2656, -0.6211,  ...,  0.1680,  0.8984, -0.1738],
+         [ 0.0077,  0.3516, -0.6914,  ..., -0.0586, -0.1562, -0.1514]],
+
+        [[-1.8359, -0.1689, -0.1729,  ...,  0.8789, -0.5156,  0.3516],
+         [-0.7617,  1.4844,  0.0723,  ..., -0.1240,  0.0854, -0.9727],
+         [ 1.0312,  0.8281,  0.0708,  ..., -1.1016, -1.5938,  0.4199],
+         ...,
+         [-1.2656, -1.0938, -1.0078,  ..., -0.5742,  2.0312, -0.9258],
+         [-0.1768, -1.8125, -1.0781,  ..., -0.6250,  0.0510, -2.5938],
+         [-0.7031,  0.6875, -0.6094,  ...,  0.0315, -0.5391,  1.6953]]],
+       device='cuda:0', dtype=torch.bfloat16), tensor([0, 7], device='cuda:0', dtype=torch.int32), tensor([0, 7], device='cuda:0', dtype=torch.int32), 0.0883883461356163
+
+
+
+Current Implementation:
+<header_file name="kernel.h">
+#ifndef GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+#define GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <torch/extension.h>
+#include <cstdint>
+#include <vector>
+
+#define GQA_QO_HEADS 32
+#define GQA_KV_HEADS 8
+#define GQA_HEAD_DIM 128
+
+// CUDA kernel launcher declaration
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,           // [total_q, 32, 128]
+    const __nv_bfloat16* k,           // [total_kv, 8, 128]
+    const __nv_bfloat16* v,           // [total_kv, 8, 128]
+    const int32_t* qo_indptr,         // [len_indptr]
+    const int32_t* kv_indptr,         // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,            // [total_q, 32, 128]
+    float* lse,                        // [total_q, 32]
+    cudaStream_t stream);
+
+// Host function declaration (Torch binding)
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt);
+
+#endif  // GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+#include <cstdio>
+#include <cmath>
+#include <cuda.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
+#include <math_constants.h>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(call)                                                                 \
+  do {                                                                                   \
+    cudaError_t err__ = call;                                                            \
+    if (err__ != cudaSuccess) {                                                          \
+      fprintf(stderr, "CUDA error %s at %s:%d: %s\n", #call, __FILE__, __LINE__,         \
+              cudaGetErrorString(err__));                                                \
+    }                                                                                    \
+  } while (0)
+#endif
+
+// Warp reduce helpers
+static __device__ __forceinline__ float warp_reduce_sum(float val) {
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    val += __shfl_down_sync(0xffffffff, val, offset);
+  }
+  return val;
+}
+
+static __device__ __forceinline__ float warp_reduce_max(float val) {
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    float other = __shfl_down_sync(0xffffffff, val, offset);
+    val = fmaxf(val, other);
+  }
+  return val;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void load_q_vector_4floats_per_thread(
+    const __nv_bfloat16* q_ptr, int lane, float qreg[HEAD_DIM / 32]) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    qreg[i] = __bfloat162float(q_ptr[d]);
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ float dot_qk_4floats_per_thread(
+    const float qreg[HEAD_DIM / 32],
+    const __nv_bfloat16* sK_row, // pointer to sK[k * HEAD_DIM]
+    int lane) {
+  float sum = 0.f;
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float kf = __bfloat162float(sK_row[d]);
+    sum += qreg[i] * kf;
+  }
+  // warp reduce sum
+  sum = warp_reduce_sum(sum);
+  // Broadcast to all lanes
+  sum = __shfl_sync(0xffffffff, sum, 0);
+  return sum;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void acc_weighted_v_4floats_per_thread(
+    const __nv_bfloat16* sV_row, // pointer to sV[k * HEAD_DIM]
+    int lane,
+    float weight,
+    float acc[HEAD_DIM / 32]) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float vf = __bfloat162float(sV_row[d]);
+    acc[i] += weight * vf;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void scale_acc_4floats_per_thread(
+    float acc[HEAD_DIM / 32],
+    float scale) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    acc[i] *= scale;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void store_out_vector_4bf16_per_thread(
+    __nv_bfloat16* out_ptr, int lane, const float acc[HEAD_DIM / 32], float norm) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float val = acc[i] * norm;
+    out_ptr[d] = __float2bfloat16_rn(val);
+  }
+}
+
+// Kernel: One block processes one (sequence, qo_head).
+// 4 warps per block; each warp handles one query row concurrently.
+template<int HEAD_DIM, int WARP_Q, int TK>
+__global__ void gqa_ragged_prefill_causal_kernel(
+    const __nv_bfloat16* __restrict__ q,   // [total_q, 32, 128]
+    const __nv_bfloat16* __restrict__ k,   // [total_kv, 8, 128]
+    const __nv_bfloat16* __restrict__ v,   // [total_kv, 8, 128]
+    const int32_t* __restrict__ qo_indptr, // [len_indptr]
+    const int32_t* __restrict__ kv_indptr, // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* __restrict__ out,       // [total_q, 32, 128]
+    float* __restrict__ lse)               // [total_q, 32]
+{
+  constexpr int NUM_QO_HEADS = GQA_QO_HEADS;
+  constexpr int NUM_KV_HEADS = GQA_KV_HEADS;
+  constexpr int GQA_RATIO = NUM_QO_HEADS / NUM_KV_HEADS;
+  constexpr float LN2 = 0.693147180559945309417232121458176568f;
+
+  int b = blockIdx.x;  // sequence index
+  int hq = blockIdx.y; // query head [0, 31]
+  int kv_head = hq / GQA_RATIO;
+
+  if (b >= (len_indptr - 1)) return;
+
+  int warp_id = threadIdx.x >> 5;
+  int lane = threadIdx.x & 31;
+
+  // Indptr for this sequence
+  int q_start = qo_indptr[b];
+  int q_end   = qo_indptr[b + 1];
+  int kv_start = kv_indptr[b];
+  int kv_end   = kv_indptr[b + 1];
+
+  int q_len = max(0, q_end - q_start);
+  int kv_len = max(0, kv_end - kv_start);
+  int delta = kv_len - q_len;
+
+  if (q_len <= 0 || kv_len <= 0) {
+    return;
+  }
+
+  extern __shared__ __align__(16) unsigned char smem_raw[];
+  __nv_bfloat16* sK = reinterpret_cast<__nv_bfloat16*>(smem_raw);                                   // TK * HEAD_DIM
+  __nv_bfloat16* sV = reinterpret_cast<__nv_bfloat16*>(sK + TK * HEAD_DIM);                         // TK * HEAD_DIM
+  float* scores_base = reinterpret_cast<float*>(sV + TK * HEAD_DIM);                                // WARP_Q * TK
+  float* scores_warp = scores_base + warp_id * TK;
+
+  for (int q_tile = 0; q_tile < q_len; q_tile += WARP_Q) {
+    int q_local = q_tile + warp_id;  // index within sequence for this warp
+    bool valid_q = (q_local < q_len);
+    int q_global = q_start + q_local;
+
+    // Load Q vector to registers
+    float qreg[HEAD_DIM / 32];
+    if (valid_q) {
+      const __nv_bfloat16* q_ptr = q + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      load_q_vector_4floats_per_thread<HEAD_DIM>(q_ptr, lane, qreg);
+    }
+
+    // Initialize streaming softmax stats per query
+    float m_global = -CUDART_INF_F;
+    float l_global = 0.f;
+    float acc_global[HEAD_DIM / 32];
+#pragma unroll
+    for (int i = 0; i < HEAD_DIM / 32; ++i) acc_global[i] = 0.f;
+
+    // Causal mask bound
+    int allowed_k = 0;
+    if (valid_q) {
+      int qpos = q_local; // position within sequence
+      int bound = qpos + 1 + delta;
+      if (bound < 0) bound = 0;
+      if (bound > kv_len) bound = kv_len;
+      allowed_k = bound;
+    }
+
+    if (valid_q && allowed_k <= 0) {
+      // lse = -inf; out = 0
+      if (lane == 0) {
+        lse[(size_t)q_global * NUM_QO_HEADS + (size_t)hq] = -INFINITY;
+      }
+      __nv_bfloat16* out_ptr = out + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+#pragma unroll
+      for (int i = 0; i < HEAD_DIM / 32; ++i) {
+        int d = lane + i * 32;
+        if (d < HEAD_DIM) {
+          out_ptr[d] = __float2bfloat16_rn(0.f);
+        }
+      }
+      continue;
+    }
+
+    // Iterate over K/V tiles
+    for (int kt = 0; kt < kv_len; kt += TK) {
+      int k_this_max = kv_len - kt;
+      if (k_this_max > TK) k_this_max = TK;
+
+      // Cooperative load K and V tiles into shared memory (vectorized as uint32 pairs)
+      int total_pairs = k_this_max * (HEAD_DIM / 2);
+      const uint32_t* __restrict__ k_glob_u32 = reinterpret_cast<const uint32_t*>(k);
+      const uint32_t* __restrict__ v_glob_u32 = reinterpret_cast<const uint32_t*>(v);
+      uint32_t* __restrict__ sK_u32 = reinterpret_cast<uint32_t*>(sK);
+      uint32_t* __restrict__ sV_u32 = reinterpret_cast<uint32_t*>(sV);
+
+      for (int idx = threadIdx.x; idx < total_pairs; idx += blockDim.x) {
+        int t = idx / (HEAD_DIM / 2);
+        int d_pair = idx - t * (HEAD_DIM / 2);
+        int kv_pos = kv_start + kt + t;
+        size_t base_pair_index =
+            (((size_t)kv_pos * NUM_KV_HEADS + (size_t)kv_head) * (HEAD_DIM / 2) + (size_t)d_pair);
+        sK_u32[t * (HEAD_DIM / 2) + d_pair] = k_glob_u32[base_pair_index];
+        sV_u32[t * (HEAD_DIM / 2) + d_pair] = v_glob_u32[base_pair_index];
+      }
+      __syncthreads();
+
+      int k_this_warp = 0;
+      if (valid_q) {
+        int rem = allowed_k - kt;
+        if (rem > 0) k_this_warp = rem < k_this_max ? rem : k_this_max;
+      }
+
+      if (valid_q && k_this_warp > 0) {
+        // First pass: compute scores and tile max
+        float m_tile = -CUDART_INF_F;
+        for (int t = 0; t < k_this_warp; ++t) {
+          const __nv_bfloat16* sK_row = sK + t * HEAD_DIM;
+          float dot = dot_qk_4floats_per_thread<HEAD_DIM>(qreg, sK_row, lane);
+          float s = dot * sm_scale;
+          if (lane == 0) {
+            scores_warp[t] = s;
+          }
+          m_tile = fmaxf(m_tile, s);
+        }
+        __syncwarp();
+
+        // Second pass: compute exp sum and weighted V accumulation
+        float l_tile = 0.f;
+        float acc_tile[HEAD_DIM / 32];
+#pragma unroll
+        for (int i = 0; i < HEAD_DIM / 32; ++i) acc_tile[i] = 0.f;
+
+        for (int t = 0; t < k_this_warp; ++t) {
+          float s = (lane == 0) ? scores_warp[t] : 0.f;
+          s = __shfl_sync(0xffffffff, s, 0);
+          float w = __expf(s - m_tile);
+          const __nv_bfloat16* sV_row = sV + t * HEAD_DIM;
+          acc_weighted_v_4floats_per_thread<HEAD_DIM>(sV_row, lane, w, acc_tile);
+          if (lane == 0) {
+            l_tile += w;
+          }
+        }
+        l_tile = __shfl_sync(0xffffffff, l_tile, 0);
+
+        // Combine tile with global accumulators
+        float m_new = fmaxf(m_global, m_tile);
+        float exp_mg = __expf(m_global - m_new);
+        float exp_mt = __expf(m_tile - m_new);
+
+        scale_acc_4floats_per_thread<HEAD_DIM>(acc_global, exp_mg);
+#pragma unroll
+        for (int i = 0; i < HEAD_DIM / 32; ++i) {
+          acc_global[i] += acc_tile[i] * exp_mt;
+        }
+        l_global = l_global * exp_mg + l_tile * exp_mt;
+        m_global = m_new;
+      }
+
+      __syncthreads(); // ensure all warps are finished with this tile before next load
+    } // tiles loop
+
+    if (valid_q) {
+      // Finalize output and LSE (base-2)
+      float lse_val = -INFINITY;
+      if (l_global > 0.f) {
+        lse_val = (logf(l_global) + m_global) / LN2;
+      }
+      if (lane == 0) {
+        lse[(size_t)q_global * NUM_QO_HEADS + (size_t)hq] = lse_val;
+      }
+      float norm = (l_global > 0.f) ? (1.f / l_global) : 0.f;
+      __nv_bfloat16* out_ptr = out + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      store_out_vector_4bf16_per_thread<HEAD_DIM>(out_ptr, lane, acc_global, norm);
+    }
+  } // q_tile loop
+}
+
+// Host launcher
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,
+    const __nv_bfloat16* k,
+    const __nv_bfloat16* v,
+    const int32_t* qo_indptr,
+    const int32_t* kv_indptr,
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,
+    float* lse,
+    cudaStream_t stream) {
+
+  dim3 grid(len_indptr - 1, GQA_QO_HEADS, 1);
+  constexpr int BLOCK_THREADS = 128;   // 4 warps
+  constexpr int HEAD_DIM = GQA_HEAD_DIM;
+  constexpr int WARP_Q = 4;
+  constexpr int TK = 64;
+
+  // Shared memory: sK + sV (bf16) + scores (float)
+  size_t smem_bytes = (size_t)2 * TK * HEAD_DIM * sizeof(__nv_bfloat16)
+                    + (size_t)WARP_Q * TK * sizeof(float);
+
+  gqa_ragged_prefill_causal_kernel<HEAD_DIM, WARP_Q, TK>
+      <<<grid, BLOCK_THREADS, smem_bytes, stream>>>(
+          q, k, v, qo_indptr, kv_indptr, len_indptr, sm_scale, output, lse);
+
+  CUDA_CHECK(cudaGetLastError());
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_bf16.h>
+#include <vector>
+#include <stdexcept>
+#include <sstream>
+#include <cmath>
+
+static inline void check_cuda(const torch::Tensor& t, const char* name) {
+  if (!t.device().is_cuda()) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must be on CUDA device.";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_dtype(const torch::Tensor& t, at::ScalarType dt, const char* name) {
+  if (t.dtype() != dt) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must have dtype " << c10::toString(dt)
+        << " but got " << c10::toString(t.dtype());
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_contiguous(const torch::Tensor& t, const char* name) {
+  if (!t.is_contiguous()) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must be contiguous.";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_sizes_q(const torch::Tensor& q) {
+  if (q.dim() != 3) throw std::invalid_argument("q must be 3D [total_q, 32, 128]");
+  if (q.size(1) != GQA_QO_HEADS) throw std::invalid_argument("q.shape[1] must be 32");
+  if (q.size(2) != GQA_HEAD_DIM) throw std::invalid_argument("q.shape[2] must be 128");
+}
+
+static inline void check_sizes_kv(const torch::Tensor& kv, const char* name) {
+  if (kv.dim() != 3) {
+    std::ostringstream oss; oss << name << " must be 3D [total_kv, 8, 128]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(1) != GQA_KV_HEADS) {
+    std::ostringstream oss; oss << name << ".shape[1] must be 8";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(2) != GQA_HEAD_DIM) {
+    std::ostringstream oss; oss << name << ".shape[2] must be 128";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_indptr(const torch::Tensor& indptr, const char* name) {
+  if (indptr.dim() != 1) {
+    std::ostringstream oss; oss << name << " must be 1D [len_indptr]";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt) {
+
+  // Validate devices
+  check_cuda(q, "q");
+  check_cuda(k, "k");
+  check_cuda(v, "v");
+  check_cuda(qo_indptr, "qo_indptr");
+  check_cuda(kv_indptr, "kv_indptr");
+
+  // Validate dtypes
+  check_dtype(q, at::kBFloat16, "q");
+  check_dtype(k, at::kBFloat16, "k");
+  check_dtype(v, at::kBFloat16, "v");
+  check_dtype(qo_indptr, at::kInt, "qo_indptr");
+  check_dtype(kv_indptr, at::kInt, "kv_indptr");
+
+  // Validate contiguity
+  check_contiguous(q, "q");
+  check_contiguous(k, "k");
+  check_contiguous(v, "v");
+  check_contiguous(qo_indptr, "qo_indptr");
+  check_contiguous(kv_indptr, "kv_indptr");
+
+  // Validate sizes and constants
+  check_sizes_q(q);
+  check_sizes_kv(k, "k");
+  check_sizes_kv(v, "v");
+  check_indptr(qo_indptr, "qo_indptr");
+  check_indptr(kv_indptr, "kv_indptr");
+
+  if (k.size(1) != GQA_KV_HEADS || v.size(1) != GQA_KV_HEADS) {
+    throw std::invalid_argument("k and v must have num_kv_heads == 8");
+  }
+  if (q.size(1) != GQA_QO_HEADS) {
+    throw std::invalid_argument("q must have num_qo_heads == 32");
+  }
+  if (q.size(2) != GQA_HEAD_DIM || k.size(2) != GQA_HEAD_DIM || v.size(2) != GQA_HEAD_DIM) {
+    throw std::invalid_argument("head_dim must be 128 for q, k, v");
+  }
+
+  // sm_scale handling
+  float sm_scale = 1.0f / std::sqrt((float)GQA_HEAD_DIM);
+  if (sm_scale_opt.has_value()) {
+    torch::Tensor smt = sm_scale_opt.value();
+    if (smt.numel() != 1) {
+      throw std::invalid_argument("sm_scale must be a scalar tensor with one element.");
+    }
+    if (smt.dtype() != at::kFloat) {
+      throw std::invalid_argument("sm_scale must be float32 dtype.");
+    }
+    sm_scale = smt.to(at::kCPU).item<float>();
+  }
+
+  // Constraint checks: indptr[-1] equals totals
+  int64_t len_indptr = qo_indptr.size(0);
+  if (len_indptr != kv_indptr.size(0)) {
+    throw std::invalid_argument("qo_indptr and kv_indptr must have the same length.");
+  }
+  // Fetch last elements to CPU
+  torch::Tensor last_q = qo_indptr.index({len_indptr - 1}).to(at::kCPU);
+  torch::Tensor last_kv = kv_indptr.index({len_indptr - 1}).to(at::kCPU);
+  int64_t total_q = q.size(0);
+  int64_t total_kv = k.size(0);
+  int64_t total_q_from_indptr = last_q.item<int32_t>();
+  int64_t total_kv_from_indptr = last_kv.item<int32_t>();
+  if (total_q_from_indptr != total_q) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_q (" << total_q << ") != qo_indptr[-1] ("
+        << total_q_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+  if (total_kv_from_indptr != total_kv) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_kv (" << total_kv << ") != kv_indptr[-1] ("
+        << total_kv_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+
+  // Allocate outputs on same device
+  auto options_bf16 = torch::TensorOptions().dtype(at::kBFloat16).device(q.device());
+  auto options_f32  = torch::TensorOptions().dtype(at::kFloat).device(q.device());
+  torch::Tensor output = torch::zeros({total_q, GQA_QO_HEADS, GQA_HEAD_DIM}, options_bf16);
+  torch::Tensor lse = torch::full({total_q, GQA_QO_HEADS}, -INFINITY, options_f32);
+
+  // Raw pointers
+  const __nv_bfloat16* q_ptr  = reinterpret_cast<const __nv_bfloat16*>(q.data_ptr<at::BFloat16>());
+  const __nv_bfloat16* k_ptr  = reinterpret_cast<const __nv_bfloat16*>(k.data_ptr<at::BFloat16>());
+  const __nv_bfloat16* v_ptr  = reinterpret_cast<const __nv_bfloat16*>(v.data_ptr<at::BFloat16>());
+  const int32_t* qo_indptr_ptr = qo_indptr.data_ptr<int32_t>();
+  const int32_t* kv_indptr_ptr = kv_indptr.data_ptr<int32_t>();
+  __nv_bfloat16* out_ptr = reinterpret_cast<__nv_bfloat16*>(output.data_ptr<at::BFloat16>());
+  float* lse_ptr = lse.data_ptr<float>();
+
+  // Launch kernel
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+      q_ptr, k_ptr, v_ptr,
+      qo_indptr_ptr, kv_indptr_ptr,
+      static_cast<int>(len_indptr),
+      sm_scale,
+      out_ptr, lse_ptr,
+      stream);
+
+  // Ensure errors are propagated
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    std::ostringstream oss;
+    oss << "CUDA kernel launch error: " << cudaGetErrorString(err);
+    throw std::runtime_error(oss.str());
+  }
+
+  return {output, lse};
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function",
+        py::arg("q"),
+        py::arg("k"),
+        py::arg("v"),
+        py::arg("qo_indptr"),
+        py::arg("kv_indptr"),
+        py::arg("sm_scale") = py::none());
+}
+</cpp_file>
+
+Optimization Strategy:
+1. ENSURE CORRECTNESS: If there are compile errors, runtime errors, or incorrect outputs, focus entirely on fixing these issues
+   - Analyze compilation errors and fix syntax/API usage
+   - Fix runtime errors like shape mismatches, memory access violations, kernel launch failures
+   - Ensure numerical correctness matches the reference implementation
+   - Verify proper CUDA memory management and synchronization
+
+2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
+   - Optimize memory access patterns and coalescing for A800
+   - Tune block sizes and grid dimensions for maximum occupancy
+   - Utilize shared memory effectively to reduce global memory transactions
+   - Optimize register usage and minimize divergent branches
+   - Consider using specialized libraries (such as CUTLASS) where beneficial
+   - Leverage constant axis values for compile-time optimizations
+
+Requirements for the optimized implementation:
+- Write clean, efficient CUDA C++ code optimized for A800 architecture
+- Use proper CUDA syntax and modern features appropriate for A800
+- Fix all identified issues from the feedback
+- Maintain or improve computational accuracy
+- Preserve the same function signatures and device handling as specified
+- For fixed axis values, optimize specifically for those constants rather than general cases
+
+IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
+
+<header_file name="kernel.h">
+- All CUDA kernel function declarations
+- Host function declarations
+- Any necessary struct/type definitions
+- Include guards and necessary headers
+</header_file>
+
+<cuda_file name="kernel.cu">
+- All __global__ kernel implementations
+- All __device__ helper functions
+- CUDA-specific optimizations and memory patterns
+- Proper error checking and memory management
+</cuda_file>
+
+<cpp_file name="main.cpp">
+- Host function that launches kernels
+- Memory allocation and data transfer management
+- Device management and error handling
+- Entry point function named "run" that can be called to execute the implementation
+- Handle both args and kwargs properly
+- Move CPU data to GPU, execute kernels, and return results to CPU
+</cpp_file>
+
+Code Generation Guidelines:
+- Use modern CUDA features appropriate for A800
+- Optimize memory coalescing and reduce bank conflicts
+- Utilize shared memory effectively for data reuse
+- Consider occupancy and register usage
+- Implement proper error checking with cudaGetLastError()
+- Use appropriate grid and block dimensions for the problem size
+- Leverage constant memory for frequently accessed read-only data
+- Ensure proper CUDA stream synchronization and error handling
+
+Generate the corrected and optimized implementation:
+
+
+Use TORCH for your generated kernel host function and bindings
+
+Requirements:
+- Include all necessary headers (torch/extension.h, kernel.h, etc.)
+- Implement the "run" function that:
+  * Takes torch::Tensor arguments
+  * Validates tensor properties (device, dtype, shape)
+  * Extracts raw pointers using .data_ptr<T>()
+  * Calls the CUDA kernel with appropriate launch configuration
+  * Returns results as torch::Tensor
+- Use PYBIND11_MODULE to bind the "run" function:
+  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  *   m.def("run", &run, "Kernel execution function");
+  * }
+- Handle both positional args and kwargs properly
+- Include proper error messages for invalid inputs
+
+- Use torch::Tensor for all tensor arguments
+- Use .device().is_cuda() to check if tensors are on GPU
+- Use .dtype() to validate tensor data types
+- Use .sizes() or .size(dim) to get tensor dimensions
+- Use .data_ptr<float>() or .data_ptr<T>() to get raw pointers
+- Call cudaDeviceSynchronize() or cudaGetLastError() for error checking
+- Return torch::Tensor from the run function
+- Handle exceptions gracefully with proper error messages

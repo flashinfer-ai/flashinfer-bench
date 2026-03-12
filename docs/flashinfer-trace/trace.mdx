@@ -31,7 +31,7 @@ This object represents a single, complete benchmark result.
 | **Field** | **Type** | **Required** | **Description** |
 | --- | --- | --- | --- |
 | `status` | string | Yes | The final status of the evaluation run. Has to be one of the following:
-`"PASSED"`, `"INCORRECT_SHAPE"`, `"INCORRECT_NUMERICAL"`, `"INCORRECT_DTYPE"`, `"RUNTIME_ERROR"`, `"COMPILE_ERROR"`. |
+`"PASSED"`, `"INCORRECT_SHAPE"`, `"INCORRECT_NUMERICAL"`, `"INCORRECT_DTYPE"`, `"RUNTIME_ERROR"`, `"COMPILE_ERROR"`, `"TIMEOUT"`. |
 | `log` | string | Yes | The embedded record of the stdout and stderr of the evaluation run. |
 | `correctness` | object | Yes | The summarized correctness results across all entries in the dataset. |
 | `performance` | object | Yes | The summarized performance metrics across all entries in the dataset. |
@@ -72,6 +72,7 @@ The `correctness` and `performance` fields are set to be nullable depending on t
 | INCORRECT_SHAPE/DTYPE | **None** | **None** |
 | RUNTIME_ERROR | **None** | **None** |
 | COMPILE_ERROR | **None** | **None** |
+| TIMEOUT | **None** | **None** |
 
 ### Example: RMSNorm Trace
 

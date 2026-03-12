@@ -1,8 +1,7 @@
-"""
-This file contains the prompts for baseline agent generation.
-"""
+"""This file contains the prompts for baseline agent generation."""
 
-from flashinfer_bench import FFI_PROMPT_SIMPLE, Definition, EvaluationStatus, Trace
+from flashinfer_bench.agents import FFI_PROMPT_SIMPLE
+from flashinfer_bench.data import Definition, EvaluationStatus, Trace
 
 
 def _format_definition(definition: Definition) -> str:

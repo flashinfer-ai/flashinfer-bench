@@ -1,0 +1,3048 @@
+[
+  {
+    "id": "babbage-002",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "bge-m3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "bge-reranker-v2-m3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "chatgpt-4o-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-5-haiku-20241022",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-5-sonnet-20240620",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-5-sonnet-20241022",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-7-sonnet-20250219",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-7-sonnet-20250219-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-3-haiku-20240307",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-haiku-4-5-20251001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-haiku-4-5-20251001-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-1-20250805",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-1-20250805-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-20250514",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-20250514-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-5-20251101",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-5-20251101-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai",
+      "anthropic"
+    ]
+  },
+  {
+    "id": "claude-opus-4-6",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-opus-4-6-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai",
+      "anthropic"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-20250514",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-20250514-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-5-20250929",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai",
+      "anthropic"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-5-20250929-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai",
+      "anthropic"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "aws",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai",
+      "anthropic"
+    ]
+  },
+  {
+    "id": "claude-sonnet-4-6-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "anthropic",
+      "openai"
+    ]
+  },
+  {
+    "id": "dall-e-3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "image-generation",
+      "openai"
+    ]
+  },
+  {
+    "id": "davinci-002",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-ocr",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-r1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "coze",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-r1-250528",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "coze",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3-250324",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3.1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3.1-terminus",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3.2",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3.2-exp",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "deepseek-v3.2-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "direct-generate-pptx",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "docmee-ppt-generate",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "docmee-ppt-proxy",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-6-251015",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-6-flash-250828",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-6-lite-251015",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-6-thinking-250715",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "volcengine",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-6-vision-250815",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-1-8-251228",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-2-0-code-preview-260215",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-2-0-lite-260215",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-2-0-mini-260215",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-2-0-pro-260215",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-code-preview-251028",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seed-translation-250915",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seedance-1-0-pro-250528",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "volcengine",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seedance-1-0-pro-fast-251015",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seedream-4-0-250828",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "volcengine",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "doubao-seedream-4-5-251128",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-1.5-flash",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-1.5-flash-002",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-1.5-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-1.5-pro-002",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.0-flash",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.0-flash-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.0-flash-lite",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.0-flash-lite-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-image",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-image-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-lite",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-lite-preview-06-17",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-lite-preview-09-2025",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-preview-04-17",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-preview-05-20",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-flash-preview-09-2025",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-pro-preview-03-25",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-pro-preview-05-06",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-2.5-pro-preview-06-05",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-flash-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-pro-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-pro-image-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-pro-image-preview-2k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-pro-image-preview-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3-pro-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "vertex-ai",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3.1-flash-image-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3.1-flash-image-preview-2k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3.1-flash-image-preview-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3.1-flash-lite-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "gemini-3.1-pro-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "gemini",
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.5-air",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.5-airx",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.5-flash",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.6",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "zhipu_4v",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-4.7",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "glm-5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-0125",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-0301",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-0613",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-1106",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-16k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-16k-0613",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-3.5-turbo-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-0125-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-0314",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-0613",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-1106-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-32k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-32k-0314",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-32k-0613",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-turbo",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-turbo-2024-04-09",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-turbo-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4-vision-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1-2025-04-14",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1-mini-2025-04-14",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1-nano",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.1-nano-2025-04-14",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.5-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4.5-preview-2025-02-27",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-2024-05-13",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-2024-08-06",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-2024-11-20",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-audio-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-audio-preview-2024-10-01",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-audio-preview-2024-12-17",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-image",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-2024-07-18",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-audio-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-audio-preview-2024-12-17",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-search-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-search-preview-2025-03-11",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-mini-tts",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-realtime-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-realtime-preview-2024-10-01",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-search-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-4o-search-preview-2025-03-11",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-2025-08-07",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-chat",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-chat-2025-08-07",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-chat-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-codex",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-codex-high",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-mini-2025-08-07",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-nano",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-nano-2025-08-07",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-2025-11-13",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-chat",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-chat-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-codex",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-codex-high",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-codex-medium",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-codex-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-high",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-low",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-medium",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-minimal",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.1-thinking-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2-2025-12-11",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2-chat-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2-codex",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.2-pro-2025-12-11",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.3-chat-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.3-codex",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "codex",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.4",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.4-2026-03-05",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.4-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-5.4-pro-2026-03-05",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-image-1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "image-generation",
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-image-1-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "image-generation",
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-image-1.5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "image-generation",
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-oss-120b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "gpt-oss-20b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "xai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-3-deepersearch",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-3-deepsearch",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-3-image",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-3-reasoning",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-4",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-4-1-thinking-1129",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-4-auto",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-4.1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-420-agents",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-420-fast",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-420-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-imagine-image",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "xai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "grok-imagine-video",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "xai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "hunyuan-a13b-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kimi-k2-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kimi-k2-thinking",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kimi-k2.5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kling-video-pro-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kling-video-pro-5s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kling-video-std-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kling-video-std-5s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "kling-video-v3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "minimax-m2",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "minimax-m2.5",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_blend",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_custom_zoom",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_describe",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_high_variation",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_imagine",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_inpaint",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_low_variation",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_modal",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_pan",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_reroll",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_shorten",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_upscale",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_variation",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "mj_zoom",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "nano_banana",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "nano_banana_2",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "nano_banana_pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-2024-12-17",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-mini-2024-09-12",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-preview",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-preview-2024-09-12",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o1-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-2025-04-16",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-deep-research",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai-response"
+    ]
+  },
+  {
+    "id": "o3-deep-research-2025-06-26",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai-response"
+    ]
+  },
+  {
+    "id": "o3-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-mini-2025-01-31",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-mini-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-mini-high",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-mini-high-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o3-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai-response"
+    ]
+  },
+  {
+    "id": "o3-pro-2025-06-10",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai-response"
+    ]
+  },
+  {
+    "id": "o4-mini",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o4-mini-2025-04-16",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o4-mini-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "o4-mini-high-all",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-14b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-235b-a22b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "ali",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-235b-a22b-instruct-2507",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-30b-a3b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-32b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-4b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-8b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-coder-480b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-embedding-8b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-next-80b-a3b-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-reranker-8b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-vl-235b-a22b-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3-vl-30b-a3b-instruct",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3.5-122b-a10b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3.5-27b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3.5-35b-a3b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "qwen3.5-397b-a17b",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-landscape-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-landscape-10s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-landscape-15s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-landscape-15s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-landscape-25s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-portrait-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-portrait-10s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-portrait-15s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-portrait-15s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-portrait-25s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-landscape-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-landscape-10s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-landscape-15s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-landscape-15s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-landscape-25s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-portrait-10s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-portrait-10s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-portrait-15s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-portrait-15s-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora-2-storyboard-portrait-25s",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "sora_image",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "suno_lyrics",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "suno_music",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "swap_face",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "midjourney",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-ada-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-babbage-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-curie-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-davinci-edit-001",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-embedding-3-large",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-embedding-3-small",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-embedding-ada-002",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-moderation-latest",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "text-moderation-stable",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "tts-1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "tts-1-1106",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "tts-1-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "tts-1-hd-1106",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-fast",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-fast-fl",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-fl",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-fl",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-fl-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-fl-gif",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-fl-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-gif",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-landscape-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-fl",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-fl-4k",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-fl-gif",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-fl-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-gif",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-portrait-hd",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "veo3.1-pro",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "custom",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  },
+  {
+    "id": "whisper-1",
+    "created": 1626777600,
+    "object": "model",
+    "owned_by": "openai",
+    "supported_endpoint_types": [
+      "openai"
+    ]
+  }
+]
