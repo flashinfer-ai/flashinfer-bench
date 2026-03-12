@@ -44,10 +44,6 @@ def best(args: argparse.Namespace):
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            if trace.evaluation.log:
-                logger.info("- Log snippet:")
-                for line in trace.evaluation.log.splitlines()[:5]:
-                    logger.info("  %s", line)
 
 
 def summary(args: argparse.Namespace):
@@ -70,13 +66,13 @@ def summary(args: argparse.Namespace):
         rankings = s.get("rankings", [])
         if rankings:
             logger.info("")
-            logger.info("Author Rankings (by area under win@p curve):")
+            logger.info("Author Rankings (by area under fast@p curve):")
             logger.info(
                 "  %-4s  %-24s  %-10s  %-14s  %-12s",
                 "Rank",
                 "Author",
                 "AUC Score",
-                "Win@1x (>base)",
+                "Fast@1x (>base)",
                 "Comparisons",
             )
             logger.info("  " + "-" * 70)
@@ -86,14 +82,14 @@ def summary(args: argparse.Namespace):
                     rank,
                     entry["author"],
                     entry["auc"],
-                    entry["win_at_1x"] * 100,
+                    entry["fast_at_1x"] * 100,
                     entry["n_comparisons"],
                 )
             logger.info("")
             logger.info(
-                "  AUC: area under win@p curve (higher = faster vs baseline across workloads)"
+                "  AUC: area under fast@p curve (higher = faster vs baseline across workloads)"
             )
-            logger.info("  Win@1x: fraction of workloads where this author beats the baseline")
+            logger.info("  Fast@1x: fraction of workloads where this author beats the baseline")
         else:
             logger.info("(No author ranking data available — run with multiple solutions)")
 
@@ -419,6 +415,12 @@ def cli():
     )
     best_parser.add_argument(
         "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
+    best_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)",
     )
     best_parser.set_defaults(func=best)
 
