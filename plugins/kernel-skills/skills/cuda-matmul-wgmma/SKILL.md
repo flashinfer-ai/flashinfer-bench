@@ -5,7 +5,7 @@ description: Write CUDA matmul kernels using WGMMA (Warp-Group MMA) instructions
 
 # WGMMA (Warp-Group Matrix Multiply-Accumulate)
 
-WGMMA is the primary Tensor Core instruction for SM90+ (Hopper). It operates at warpgroup level (4 warps = 128 threads) and computes `D = A * B + D` asynchronously.
+WGMMA is the primary Tensor Core instruction for SM90+ (Hopper). It operates at warpgroup level (4 warps = 128 threads) and computes `D = A * B + D` asynchronously, where the A matrix is `MxK`, the B matrix is `KxN`, and the D matrix is `MxN`.
 
 ## Instruction Variants
 
@@ -16,24 +16,43 @@ wgmma.mma_async.sync.aligned.m64n128k16.f32.bf16.bf16  // Medium tile
 wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16  // Large tile (best throughput)
 ```
 
+Use `m64n64k16` when register pressure or occupancy is the primary limit, `m64n128k16` as a balanced default, and `m64n256k16` when register budget allows maximum Tensor Core throughput.
+
+Other `wgmma.mma_async` variants exist across data types and shapes; keep the same fence/commit/wait flow when switching variants.
+
 ### Source Requirements
-- **A operand**: Can be from registers or shared memory (via descriptor)
-- **B operand**: Must be from shared memory (via descriptor)
+- **A operand**: Can be in registers or shared memory (via descriptor)
+- **B operand**: Must be in shared memory (via descriptor)
 - **D accumulator**: Always in registers
 
+This skill's main example uses the descriptor-based path for both A and B (both sourced from shared memory).
+
 ## Basic Usage Pattern
+
+The wgmma instructions perform warpgroup level matrix multiply-and-accumulate operation by having all threads in a warpgroup collectively perform the following actions:
+1. Load matrices A, B and D into registers or into shared memory.
+2. Perform the following fence operations:
+    1. wgmma.fence operations to indicate that the register/shared-memory across the warpgroup have been written into.
+    2. fence.proxy.async operation to make the generic proxy operations visible to the async proxy.
+3. Issue the asynchronous matrix multiply and accumulate operations using the wgmma.mma_async operation on the input matrices. The wgmma.mma_async operation is performed in the async proxy.
+4. Create a wgmma-group and commit all the prior outstanding wgmma.mma_async operations into the group, by using wgmma.commit_group operation.
+5. Wait for the completion of the required wgmma-group.
+6. Once the wgmma-group completes, all the wgmma.mma_async operations have been performed and completed.
+
+## Example Usage
 
 ```cuda
 #include <cuda_fp16.h>
 
-// WGMMA requires warpgroup (128 threads) coordination
+// WGMMA requires warpgroup (128 threads) coordination.
+// ScaleD must be an immediate (0 = overwrite D, 1 = accumulate into D).
+template<int ScaleD = 1>
 __device__ void wgmma_m64n256k16(
     uint64_t desc_a,      // GMMA descriptor for A in SMEM
     uint64_t desc_b,      // GMMA descriptor for B in SMEM
-    float (&d)[64],       // Accumulator in registers (64 floats per thread for m64n256)
-    bool accumulate = true
+    float (&d)[64]        // Accumulator in registers (64 floats per thread for m64n256)
 ) {
-    int scale_d = accumulate ? 1 : 0;
+    static_assert(ScaleD == 0 || ScaleD == 1, "ScaleD must be 0 or 1");
 
     asm volatile(
         "wgmma.mma_async.sync.aligned.m64n256k16.f32.bf16.bf16 "
@@ -62,20 +81,26 @@ __device__ void wgmma_m64n256k16(
           "+f"(d[52]), "+f"(d[53]), "+f"(d[54]), "+f"(d[55]),
           "+f"(d[56]), "+f"(d[57]), "+f"(d[58]), "+f"(d[59]),
           "+f"(d[60]), "+f"(d[61]), "+f"(d[62]), "+f"(d[63])
-        : "l"(desc_a), "l"(desc_b), "n"(scale_d)
+        : "l"(desc_a), "l"(desc_b), "n"(ScaleD)
     );
 }
 ```
 
+Use `wgmma_m64n256k16<1>(...)` for accumulate (`D = A*B + D`) and `wgmma_m64n256k16<0>(...)` for overwrite (`D = A*B`).
+
 ## Synchronization Requirements
 
-WGMMA is asynchronous. Must use commit/wait for correctness:
+WGMMA is asynchronous. Use fence/commit/wait ordering for correctness:
 
 ```cuda
-// After issuing WGMMA instructions
+1. Ensure operand writes are visible to async proxy before issuing WGMMA. Use wgmma.fence (for register path) and fence.proxy.async as needed.
+
+2. Issue one or more wgmma.mma_async instructions.
+
+3. Commit issued operations into a WGMMA group.
 asm volatile("wgmma.commit_group.sync.aligned;\n" ::);
 
-// Before reading accumulator results
+4. Wait before reading accumulator registers.
 asm volatile("wgmma.wait_group.sync.aligned %0;\n" :: "n"(0));
 ```
 
@@ -91,7 +116,7 @@ For m64n256k16 with FP32 accumulator, each thread holds 64 floats covering a 64Ã
 1. **Warpgroup requirement**: All 128 threads must execute WGMMA together
 2. **SMEM layout**: B operand requires swizzled layout (B128 swizzle recommended)
 3. **Descriptor alignment**: SMEM addresses must be 16-byte aligned
-4. **K dimension**: Fixed at 16 elements (32 bytes for BF16/FP16)
+4. **K dimension**: For the FP16/BF16 variants shown here, K is fixed at 16 elements (32 bytes)
 
 ## Choosing Tile Size
 
@@ -105,3 +130,4 @@ For m64n256k16 with FP32 accumulator, each thread holds 64 floats covering a 64Ã
 - `cuda-matmul-descriptor`: Building GMMA descriptors
 - `cuda-matmul-swizzle`: SMEM layout for WGMMA
 - `cuda-matmul-barrier`: Synchronization with mbarrier
+- `cuda-matmul-warp-specialization`: Producer-consumer warp specialization

@@ -1,11 +1,24 @@
 ---
 name: cuda-matmul-swizzle
-description: Implement shared memory swizzle patterns for CUDA matmul to avoid bank conflicts on Hopper+ GPUs. Use when designing SMEM layouts for TMA and WGMMA, or when optimizing shared memory access patterns for GEMM.
+description: Implement shared memory swizzle patterns for CUDA matmul to avoid shared memory bank conflicts on Hopper+ GPUs. Use when designing SMEM layouts for TMA and WGMMA, or when optimizing shared memory access patterns for GEMM.
 ---
 
 # Shared Memory Swizzle for Matmul
 
 Swizzling XORs address bits to distribute accesses across memory banks, eliminating bank conflicts for strided access patterns common in matmul.
+
+Supported swizzle modes are `none`, `32B`, `64B`, and `128B`.
+
+## Supported Swizzle Modes
+
+Choose the smallest swizzle mode that removes bank conflicts for your access pattern. For Hopper WGMMA + TMA kernels, use `128B` by default unless tile shape or alignment constraints require a smaller mode.
+
+| Mode | TMA Enum | GMMA Layout Type | Use When | Conflict Behavior | Key Constraints |
+|------|----------|------------------|----------|-------------------|-----------------|
+| None | `CU_TENSOR_MAP_SWIZZLE_NONE` | `0` | Bring-up, debugging, or naturally conflict-free access | No conflict mitigation | No swizzle transform; baseline behavior |
+| B32 | `CU_TENSOR_MAP_SWIZZLE_32B` | `1` | Narrow tiles / short contiguous row segments | Reduces conflicts for small-stride patterns | Keep TMA and GMMA mode consistent |
+| B64 | `CU_TENSOR_MAP_SWIZZLE_64B` | `2` | Medium-width tiles when B32 is insufficient and B128 is too large | Better conflict distribution than B32 | Keep TMA and GMMA mode consistent |
+| B128 | `CU_TENSOR_MAP_SWIZZLE_128B` | `3` | Default for SM90+ WGMMA pipelines | Best distribution for common GEMM tile layouts | Require 128B alignment and compatible tile width |
 
 ## B128 Swizzle (Recommended for SM90+)
 
@@ -31,7 +44,7 @@ struct Swizzle {
 using SwizzleB128 = Swizzle<3, 4, 3>;  // 128-byte swizzle pattern
 ```
 
-## How Swizzle Works
+## How B128 Swizzle Works
 
 For a 128×64 BF16 tile (128 rows × 64 cols × 2 bytes = 16KB):
 
@@ -48,6 +61,8 @@ Row 1: [col 0-63]  -> bytes 128-255 XOR (1<<4) = different banks
 Row 2: [col 0-63]  -> bytes 256-383 XOR (2<<4) = different banks
 ...
 ```
+
+The same XOR idea applies to B32 and B64 with different swizzle granularity.
 
 ## SMEM Allocation with Swizzle
 
@@ -111,7 +126,7 @@ GMMA descriptors encode the swizzle pattern:
 
 ```cuda
 // Descriptor layout_type field for B128 swizzle
-constexpr int LAYOUT_TYPE_SWIZZLE_128B = 3;  // bits [62:61] = 0b11
+constexpr int LAYOUT_TYPE_SWIZZLE_128B = 3;  // bits [63:62] = 0b11
 
 uint64_t make_gmma_desc(void* smem_ptr) {
     uint64_t desc = 0;
@@ -124,15 +139,6 @@ uint64_t make_gmma_desc(void* smem_ptr) {
     return desc;
 }
 ```
-
-## Swizzle Modes Comparison
-
-| Mode | Pattern | Tile Width | Best For |
-|------|---------|------------|----------|
-| None | Identity | Any | Debug |
-| B32 | XOR 32B | 32+ bytes | Narrow tiles |
-| B64 | XOR 64B | 64+ bytes | Medium tiles |
-| B128 | XOR 128B | 128+ bytes | **WGMMA (standard)** |
 
 ## Bank Conflict Analysis
 
@@ -152,7 +158,9 @@ Thread 2 reads row 2, col 0 -> bank 4  // Different bank
 ...
 ```
 
-## Key Points
+Exact bank indices depend on data type and address mapping; the key property is that accesses are spread across banks instead of collapsing onto one bank.
+
+## Key Constraints
 
 1. **TMA + WGMMA consistency**: Both must use same swizzle mode
 2. **Alignment**: SMEM allocation must be 128-byte aligned for B128

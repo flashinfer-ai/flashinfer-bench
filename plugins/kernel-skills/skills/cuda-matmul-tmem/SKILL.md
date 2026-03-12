@@ -38,7 +38,7 @@ __device__ void tmem_alloc(uint32_t* smem_addr_ptr, int num_columns) {
     asm volatile(
         "tcgen05.alloc.cta_group::1.sync.aligned.b32 [%0], %1;\n"
         :
-        : "l"((uint64_t)smem_addr_ptr), "r"(num_columns)
+        : "l"((uint64_t)__cvta_generic_to_shared(smem_addr_ptr)), "r"(num_columns)
     );
 }
 
@@ -189,7 +189,7 @@ nvcc --g-tensor-memory-access-check -arch=sm_100 kernel.cu
 2. **SMEM address storage**: `tcgen05.alloc` writes to SMEM location
 3. **Power-of-2 columns**: Allocation size must be 32, 64, 128, 256, or 512
 4. **No direct compute**: Must copy to registers for post-processing
-5. **Lane restrictions**: Each warp accesses only 32 of 128 lanes
+5. **Lane mapping**: TMEM load/store instructions are warp-scoped; full 128-lane tiles typically use 4 coordinated warps
 
 ## Related Skills
 - `cuda-matmul-umma`: Using TMEM with UMMA operations

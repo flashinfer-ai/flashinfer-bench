@@ -65,6 +65,9 @@ __device__ void gemm_mainloop(
     bool is_producer = (warp_id == 0);  // Warp 0 does TMA loads
 
     PipelineState pipe = {0, 0, 0, num_k_tiles};
+    int load_phase[NUM_STAGES] = {0};
+    int compute_phase[NUM_STAGES] = {0};
+    bool first_mma = true;
 
     // Prologue: Fill pipeline stages
     #pragma unroll
@@ -90,10 +93,17 @@ __device__ void gemm_mainloop(
 
         // Producer: Load next tile
         if (is_producer && lane_id == 0 && pipe.can_produce()) {
+            // Before reusing a stage buffer, wait for consumer completion.
+            if (pipe.k_tile >= NUM_STAGES) {
+                mbarrier_wait(&mbar_compute[prod_stage], compute_phase[prod_stage]);
+                compute_phase[prod_stage] ^= 1;
+            }
+
             mbarrier_arrive_expect_tx(&mbar_load[prod_stage],
                 TILE_M * TILE_K * 2 + TILE_K * TILE_N * 2);
 
-            int k = pipe.k_tile - (NUM_STAGES - 1);
+            // pipe.k_tile tracks the next global K tile to produce.
+            int k = pipe.k_tile;
             tma_load_2d(smem_a[prod_stage], tma_a, k * TILE_K, m_tile * TILE_M, &mbar_load[prod_stage]);
             tma_load_2d(smem_b[prod_stage], tma_b, n_tile * TILE_N, k * TILE_K, &mbar_load[prod_stage]);
         }
@@ -101,20 +111,28 @@ __device__ void gemm_mainloop(
         // Consumer: Wait for data and compute
         if (pipe.can_consume()) {
             // Wait for load to complete
-            mbarrier_wait(&mbar_load[cons_stage]);
+            mbarrier_wait(&mbar_load[cons_stage], load_phase[cons_stage]);
+            load_phase[cons_stage] ^= 1;
 
             // Build descriptors and compute WGMMA
             uint64_t desc_a = make_gmma_desc(smem_a[cons_stage]);
             uint64_t desc_b = make_gmma_desc(smem_b[cons_stage]);
 
-            // Issue WGMMA (simplified - actual has multiple K iterations)
-            wgmma_m64n256k16(desc_a, desc_b, accum, /*accumulate=*/true);
+            // First MMA overwrites accumulator; later MMAs accumulate.
+            if (first_mma) {
+                wgmma_m64n256k16<0>(desc_a, desc_b, accum);
+                first_mma = false;
+            } else {
+                wgmma_m64n256k16<1>(desc_a, desc_b, accum);
+            }
 
             // Commit WGMMA
             asm volatile("wgmma.commit_group.sync.aligned;\n" ::);
 
             // Signal compute done (producer can reuse buffer)
-            mbarrier_arrive(&mbar_compute[cons_stage]);
+            if (lane_id == 0) {
+                mbarrier_arrive(&mbar_compute[cons_stage]);
+            }
         }
 
         pipe.advance();
@@ -128,14 +146,17 @@ __device__ void gemm_mainloop(
 ## Barrier Synchronization Pattern
 
 ```cuda
+int phase = 0;
+
 // Producer side (TMA warp)
 mbarrier_arrive_expect_tx(&mbar, expected_bytes);  // Declare expected bytes
 tma_load(..., &mbar);                              // TMA adds to transaction count
 // TMA hardware signals completion when bytes arrive
 
 // Consumer side (Math warps)
-mbarrier_wait(&mbar);  // Block until TMA completes
+mbarrier_wait(&mbar, phase);  // Block until TMA completes
 // Safe to read SMEM now
+phase ^= 1;
 ```
 
 ## Stage Count Selection
@@ -163,7 +184,8 @@ __shared__ struct {
 1. **Producer-consumer separation**: Dedicated warp(s) for TMA, others for compute
 2. **Circular buffer**: Stages wrap around with modulo indexing
 3. **Barrier per stage**: Independent tracking of each buffer's state
-4. **Prologue/epilogue**: Fill pipeline before mainloop, drain after
+4. **Phase tracking**: Maintain per-stage phase bits for load/compute barriers
+5. **Prologue/epilogue**: Fill pipeline before mainloop, drain after
 
 ## Related Skills
 - `cuda-matmul-warp-specialization`: Producer/consumer warp roles

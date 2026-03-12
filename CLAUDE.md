@@ -36,6 +36,52 @@ flashinfer-bench/
     └── add-new-model/          # New model addition workflow
 ```
 
+## Kernel Skills Plugin
+
+The CUDA kernel skills plugin is organized under `plugins/kernel-skills/`:
+
+```text
+flashinfer-bench/plugins/kernel-skills/
+├── .claude-plugin/
+│   └── plugin.json                 # Plugin metadata (name/description/version)
+└── skills/
+    ├── cuda-matmul-barrier/
+    │   └── SKILL.md
+    ├── cuda-matmul-block-scaling/
+    │   └── SKILL.md
+    ├── cuda-matmul-cluster/
+    │   └── SKILL.md
+    ├── cuda-matmul-cta-pair/
+    │   └── SKILL.md
+    ├── cuda-matmul-descriptor/
+    │   └── SKILL.md
+    ├── cuda-matmul-pipelining/
+    │   └── SKILL.md
+    ├── cuda-matmul-swizzle/
+    │   └── SKILL.md
+    ├── cuda-matmul-tma/
+    │   └── SKILL.md
+    ├── cuda-matmul-tma-multicast/
+    │   └── SKILL.md
+    ├── cuda-matmul-tmem/
+    │   └── SKILL.md
+    ├── cuda-matmul-tmem-load/
+    │   └── SKILL.md
+    ├── cuda-matmul-umma/
+    │   └── SKILL.md
+    ├── cuda-matmul-warp-specialization/
+    │   └── SKILL.md
+    └── cuda-matmul-wgmma/
+        └── SKILL.md
+```
+
+### Structure
+
+- `plugin.json` defines discoverability metadata for the whole skill pack.
+- Each folder in `skills/` is a single, composable optimization concept (one `SKILL.md` per concept).
+- Hopper-focused skills (sm90+) include WGMMA/TMA/swizzle/descriptor/barrier/pipelining/cluster/warp-specialization.
+- Blackwell-focused skills (sm100) include UMMA/CTA-pair/TMEM/TMEM-load/block-scaling.
+
 ## Model Definition Structure
 
 Models are defined in `web/apps/web/data/models.ts` with a hierarchical structure:

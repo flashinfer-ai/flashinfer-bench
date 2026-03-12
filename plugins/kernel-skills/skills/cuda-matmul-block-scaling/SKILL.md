@@ -33,27 +33,30 @@ Effective value = quantized_value × block_scale
 ## UMMA with Block Scaling
 
 ```cuda
-// Instruction for FP8/FP6/FP4 with block scaling
-// tcgen05.mma.cta_group.kind::f8f6f4 [d], a-desc, b-desc, idesc, scale-d;
+// Representative block-scale UMMA form (verify exact mnemonic/operand order
+// for your chosen narrow-precision opcode in PTX ISA / CUTLASS helpers):
+// tcgen05.mma.cta_group::1.kind::mxf4.block_scale
+//   [d], a-desc, b-desc, a-scale-desc, b-scale-desc, idesc, scale-d;
 
+template<int ScaleD = 1>
 __device__ void umma_fp4_scaled(
     uint32_t tmem_d,
     uint64_t desc_a,        // FP4 data descriptor
     uint64_t desc_b,        // FP4 data descriptor
     uint64_t desc_a_scale,  // A scale factors descriptor
     uint64_t desc_b_scale,  // B scale factors descriptor
-    uint32_t idesc,
-    bool accumulate
+    uint32_t idesc
 ) {
-    int scale_d = accumulate ? 1 : 0;
+    static_assert(ScaleD == 0 || ScaleD == 1, "ScaleD must be 0 or 1");
 
-    // Instruction descriptor includes scale factor info
+    // idesc encodes data/scale type config; scale descriptors provide scale tiles.
     asm volatile(
-        "tcgen05.mma.cta_group::1.kind::f8f6f4 "
-        "[%0], %1, %2, %3, %4;\n"
+        "tcgen05.mma.cta_group::1.kind::mxf4.block_scale "
+        "[%0], %1, %2, %3, %4, %5, %6;\n"
         :
         : "r"(tmem_d), "l"(desc_a), "l"(desc_b),
-          "r"(idesc), "r"(scale_d)
+          "l"(desc_a_scale), "l"(desc_b_scale),
+          "r"(idesc), "n"(ScaleD)
         : "memory"
     );
 }
@@ -121,8 +124,9 @@ CUtensorMap create_fp4_data_desc(
     CUtensorMap desc{};
 
     uint64_t size[2] = {(uint64_t)K_packed, (uint64_t)M};
-    uint64_t stride[1] = {(uint64_t)K_packed};
+    uint64_t stride[1] = {(uint64_t)K_packed * sizeof(uint8_t)};
     uint32_t box[2] = {32, 128};  // Tile size in packed elements
+    uint32_t elem_stride[2] = {1, 1};
 
     cuTensorMapEncodeTiled(
         &desc,
@@ -149,9 +153,33 @@ CUtensorMap create_scale_desc(
         CU_TENSOR_MAP_DATA_TYPE_FLOAT32;
 
     uint64_t size[2] = {(uint64_t)num_k_blocks, (uint64_t)M};
-    // ... configure for scale factor tile
+    uint64_t stride[1] = {(uint64_t)num_k_blocks * (is_fp8_scale ? sizeof(uint8_t) : sizeof(float))};
+    uint32_t box[2] = {(uint32_t)num_k_blocks, 128};
+    uint32_t elem_stride[2] = {1, 1};
+
+    cuTensorMapEncodeTiled(
+        &desc,
+        dtype,
+        2, scale_ptr, size, stride, box, elem_stride,
+        CU_TENSOR_MAP_INTERLEAVE_NONE,
+        CU_TENSOR_MAP_SWIZZLE_NONE,
+        CU_TENSOR_MAP_L2_PROMOTION_L2_128B,
+        CU_TENSOR_MAP_OOBFILL_ZERO
+    );
 
     return desc;
+}
+```
+
+```cuda
+// Device-side helper for scale descriptors.
+// Map MMA K-step to scale-block index (BLOCK_K=32 means two MMA_K=16 steps share one scale block).
+constexpr int BLOCK_K = 32;
+constexpr int MMA_K = 16;
+
+__device__ uint64_t make_scale_desc(void* smem_scale, int mma_k_iter) {
+    int scale_block_iter = (mma_k_iter * MMA_K) / BLOCK_K;
+    return make_smem_desc(smem_scale, scale_block_iter);
 }
 ```
 
@@ -180,6 +208,7 @@ __global__ void matmul_fp4_scaled(
     __shared__ uint32_t tmem_base;
     // ... allocate
 
+    bool first_k = true;
     for (int k_tile = 0; k_tile < K / TILE_K; k_tile++) {
         // Load data tiles (FP4 packed)
         tma_load_2d(smem_a, tma_a, ...);
@@ -198,11 +227,18 @@ __global__ void matmul_fp4_scaled(
         for (int k = 0; k < TILE_K / 16; k++) {
             uint64_t desc_a = make_smem_desc(smem_a, k);
             uint64_t desc_b = make_smem_desc(smem_b, k);
+            uint64_t desc_a_scale = make_scale_desc(smem_a_scale, k);
+            uint64_t desc_b_scale = make_scale_desc(smem_b_scale, k);
 
             // Scales are applied automatically by hardware
-            umma_fp4_scaled(tmem_base, desc_a, desc_b,
-                           desc_a_scale, desc_b_scale,
-                           idesc, k > 0);
+            if (first_k) {
+                umma_fp4_scaled<0>(tmem_base, desc_a, desc_b,
+                                   desc_a_scale, desc_b_scale, idesc);
+                first_k = false;
+            } else {
+                umma_fp4_scaled<1>(tmem_base, desc_a, desc_b,
+                                   desc_a_scale, desc_b_scale, idesc);
+            }
         }
     }
 
@@ -241,7 +277,7 @@ void quantize_to_fp4(
             }
 
             // Scale to FP4 range (±6 for E2M1)
-            float scale = max_val / 6.0f;
+            float scale = fmaxf(max_val / 6.0f, 1e-8f);
             scales[m * num_blocks_k + kb] = scale;
 
             // Quantize block
