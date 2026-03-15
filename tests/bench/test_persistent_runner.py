@@ -1,4 +1,3 @@
-import logging
 import sys
 from pathlib import Path
 
@@ -53,8 +52,7 @@ def _simple_def():
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 class TestPersistentSubprocessWorker:
     def test_worker_initialization_and_cleanup(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         assert worker.is_healthy() is True
         assert worker._worker_proc is not None
@@ -66,8 +64,7 @@ class TestPersistentSubprocessWorker:
         assert worker._worker_proc is None or not worker._worker_proc.is_alive()
 
     def test_worker_health_check(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         try:
             health_result = worker.is_healthy()
@@ -81,8 +78,7 @@ class TestPersistentSubprocessWorker:
             worker.close()
 
     def test_worker_run_ref_basic(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         try:
             definition = _simple_def()
@@ -106,8 +102,7 @@ class TestPersistentSubprocessWorker:
             worker.close()
 
     def test_worker_run_solution_success(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         try:
             definition = _simple_def()
@@ -158,8 +153,7 @@ class TestPersistentSubprocessWorker:
             worker.close()
 
     def test_worker_embeds_stdout(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         handle = None
         try:
@@ -204,10 +198,7 @@ class TestPersistentSubprocessWorker:
 @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
 class TestPersistentRunner:
     def test_runner_initialization(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         assert (
             len(runner._workers) > 0
@@ -222,9 +213,7 @@ class TestPersistentRunner:
             assert worker._parent_conn is not None
 
     def test_run_workload_single_solution(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             definition = _simple_def()
@@ -276,9 +265,7 @@ class TestPersistentRunner:
             pass
 
     def test_run_workload_multiple_solutions(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             definition = _simple_def()
@@ -330,9 +317,7 @@ class TestPersistentRunner:
             pass
 
     def test_run_workload_compilation_error(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             definition = _simple_def()
@@ -376,9 +361,7 @@ class TestPersistentRunner:
             pass
 
     def test_run_workload_empty_solutions(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             definition = _simple_def()
@@ -395,9 +378,7 @@ class TestPersistentRunner:
             pass
 
     def test_worker_retry_logic(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             # Test that the runner has retry logic parameters
@@ -416,9 +397,7 @@ class TestPersistentRunner:
             pass
 
     def test_has_healthy_workers(self, tmp_path):
-        log_dir = str(tmp_path / "logs")
-        logger = logging.getLogger("test_runner")
-        runner = PersistentRunner(logger=logger, log_dir=log_dir)
+        runner = PersistentRunner()
 
         try:
             assert runner._has_healthy_workers() is True
@@ -430,9 +409,7 @@ class TestPersistentRunner:
 
     def test_registry_cache_usage(self, tmp_path):
         """Test that the registry's builder cache is being used properly by testing with the same worker."""
-        log_dir = str(tmp_path / "logs")
-
-        worker = PersistentSubprocessWorker(device="cuda:0", log_dir=log_dir)
+        worker = PersistentSubprocessWorker(device="cuda:0")
 
         try:
             definition = _simple_def()

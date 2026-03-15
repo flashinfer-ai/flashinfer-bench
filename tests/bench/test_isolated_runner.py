@@ -1,4 +1,3 @@
-import logging
 import sys
 from pathlib import Path
 
@@ -37,7 +36,7 @@ def test_isolated_runner(monkeypatch: pytest.MonkeyPatch):
 
     # Replace SubprocessWorker with a lightweight dummy to avoid actual process spawning
     class _Dummy:
-        def __init__(self, device: str, log_dir: str) -> None:
+        def __init__(self, device: str) -> None:
             self._device = device
 
         def is_healthy(self) -> bool:
@@ -56,7 +55,7 @@ def test_isolated_runner(monkeypatch: pytest.MonkeyPatch):
             pass
 
     monkeypatch.setattr("flashinfer_bench.bench.runner.isolated_runner.SubprocessWorker", _Dummy)
-    b = IsolatedRunner(logging.getLogger(__name__))
+    b = IsolatedRunner()
 
     b._workers = [object(), object(), object()]
     b._curr_worker_idx = 0
@@ -145,12 +144,7 @@ def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
 
 def test_compute_error_stats():
     cfg = BenchmarkConfig(
-        warmup_runs=0,
-        iterations=1,
-        num_trials=1,
-        rtol=float(1e-2),
-        atol=float(1e-2),
-        log_dir="ignored",
+        warmup_runs=0, iterations=1, num_trials=1, rtol=float(1e-2), atol=float(1e-2)
     )
 
     ref = torch.tensor([0.0, 10.0, -2.0], dtype=torch.float32)
@@ -299,7 +293,7 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
         name="py_log", definition=definition.name, author="me", spec=spec, sources=srcs
     )
 
-    worker = SubprocessWorker(device="cuda:0", log_dir=str(tmp_path / "logs"))
+    worker = SubprocessWorker(device="cuda:0")
     cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
     handle = None
     try:
