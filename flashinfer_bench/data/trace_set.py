@@ -205,6 +205,19 @@ class TraceSet:
                     raise ValueError(f"Duplicate solution name found: {solution.name}")
                 self._solution_by_name[solution.name] = solution
 
+    def add_solution(self, solution: Solution) -> None:
+        """Add a solution to the dataset, updating both the solutions dict and the name index.
+
+        Raises
+        ------
+        ValueError
+            If a solution with the same name already exists.
+        """
+        if solution.name in self._solution_by_name:
+            raise ValueError(f"Duplicate solution name: {solution.name}")
+        self.solutions.setdefault(solution.definition, []).append(solution)
+        self._solution_by_name[solution.name] = solution
+
     @property
     def definitions_path(self) -> Path:
         if self.root is None:
