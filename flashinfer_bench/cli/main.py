@@ -44,16 +44,54 @@ def best(args: argparse.Namespace):
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            if trace.evaluation.log:
-                logger.info("- Log snippet:")
-                for line in trace.evaluation.log.splitlines()[:5]:
-                    logger.info("  %s", line)
 
 
 def summary(args: argparse.Namespace):
     trace_sets = _load_traces(args)
-    for trace_set in trace_sets:
-        logger.info("%s", trace_set.summary())
+    for i, trace_set in enumerate(trace_sets):
+        s = trace_set.summary()
+
+        if len(trace_sets) > 1:
+            logger.info("Dataset %d:", i + 1)
+
+        logger.info("Traces: %d total, %d passed, %d failed", s["total"], s["passed"], s["failed"])
+        if s["avg_latency_ms"] is not None:
+            logger.info(
+                "Latency (ms): avg=%.3f  min=%.3f  max=%.3f",
+                s["avg_latency_ms"],
+                s["min_latency_ms"],
+                s["max_latency_ms"],
+            )
+
+        rankings = s.get("rankings", [])
+        if rankings:
+            logger.info("")
+            logger.info("Author Rankings (by area under fast@p curve):")
+            logger.info(
+                "  %-4s  %-24s  %-10s  %-14s  %-12s",
+                "Rank",
+                "Author",
+                "AUC Score",
+                "Fast@1x (>base)",
+                "Comparisons",
+            )
+            logger.info("  " + "-" * 70)
+            for rank, entry in enumerate(rankings, start=1):
+                logger.info(
+                    "  %-4d  %-24s  %-10.4f  %-14.1f  %-12d",
+                    rank,
+                    entry["author"],
+                    entry["auc"],
+                    entry["fast_at_1x"] * 100,
+                    entry["n_comparisons"],
+                )
+            logger.info("")
+            logger.info(
+                "  AUC: area under fast@p curve (higher = faster vs baseline across workloads)"
+            )
+            logger.info("  Fast@1x: fraction of workloads where this author beats the baseline")
+        else:
+            logger.info("(No author ranking data available — run with multiple solutions)")
 
 
 def merge_trace_sets(trace_sets):
@@ -360,6 +398,12 @@ def cli():
     summary_parser.add_argument(
         "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
+    summary_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)",
+    )
     summary_parser.set_defaults(func=summary)
 
     best_parser = report_subparsers.add_parser("best", help="Find best solution for a definition.")
@@ -371,6 +415,12 @@ def cli():
     )
     best_parser.add_argument(
         "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+    )
+    best_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)",
     )
     best_parser.set_defaults(func=best)
 
