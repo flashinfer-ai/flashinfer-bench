@@ -204,6 +204,19 @@ def _solution_worker_main(
     """Worker process: strong isolation for single Solution.
 
     Borrow/return trial data via Pipe and send Evaluation back to parent process.
+
+    Parameters
+    ----------
+    conn : mp.connection.Connection
+        Multiprocessing connection for communication with parent process.
+    device : str
+        Device string (e.g. "cuda:0").
+    definition : Definition
+        Operation definition.
+    solution : Solution
+        Solution to evaluate.
+    cfg : BenchmarkConfig
+        Benchmark configuration.
     """
     log_path = redirect_stdio_to_tempfile()
     try:
