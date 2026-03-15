@@ -245,6 +245,47 @@ def visualize(args: argparse.Namespace):
                 logger.warning(f"{def_name}: No valid solution found")
 
 
+def serve(args: argparse.Namespace):
+    """Start the benchmark HTTP server."""
+    try:
+        import uvicorn
+    except ImportError:
+        raise RuntimeError(
+            "uvicorn is required for the serve command. "
+            "Install with: pip install flashinfer-bench[serve]"
+        )
+
+    from flashinfer_bench.bench import BenchmarkConfig
+    from flashinfer_bench.data import TraceSet
+    from flashinfer_bench.serve.app import init_app
+    from flashinfer_bench.serve.scheduler import Scheduler
+
+    trace_set = TraceSet.from_path(str(args.local))
+
+    devices = args.devices.split(",") if args.devices else None
+    if devices is None:
+        import flashinfer_bench.utils as fib_utils
+
+        devices = fib_utils.list_cuda_devices()
+    if not devices:
+        raise RuntimeError("No CUDA devices available")
+
+    config = BenchmarkConfig(
+        warmup_runs=args.warmup_runs,
+        iterations=args.iterations,
+        num_trials=args.num_trials,
+        rtol=args.rtol,
+        atol=args.atol,
+        timeout_seconds=args.timeout,
+    )
+
+    scheduler = Scheduler(trace_set=trace_set, config=config, devices=devices)
+    app = init_app(scheduler)
+
+    logger.info(f"Starting server on {args.host}:{args.port} with devices {devices}")
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
 def run(args: argparse.Namespace):
     """Benchmark run: executes benchmarks and writes results."""
     if not args.local:
@@ -310,6 +351,29 @@ def cli():
     command_subparsers = parser.add_subparsers(
         dest="command", required=True, help="Primary commands"
     )
+
+    serve_parser = command_subparsers.add_parser("serve", help="Start the benchmark HTTP server.")
+    serve_parser.add_argument(
+        "--local", type=Path, required=True, help="Path to the trace set dataset."
+    )
+    serve_parser.add_argument(
+        "--devices",
+        type=str,
+        default=None,
+        help="Comma-separated CUDA devices (e.g. cuda:0,cuda:1). Default: all available.",
+    )
+    serve_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Server port")
+    serve_parser.add_argument("--warmup-runs", type=int, default=10)
+    serve_parser.add_argument("--iterations", type=int, default=50)
+    serve_parser.add_argument("--num-trials", type=int, default=3)
+    serve_parser.add_argument("--rtol", type=float, default=1e-2)
+    serve_parser.add_argument("--atol", type=float, default=1e-2)
+    serve_parser.add_argument("--timeout", type=int, default=300)
+    serve_parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+    serve_parser.set_defaults(func=serve)
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
     run_parser.add_argument(
