@@ -68,23 +68,35 @@ def make_task_yml(definition: Definition) -> str:
     return yaml.dump(task, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
-class _RunToCustomKernel(ast.NodeTransformer):
-    """Rename 'def run(...)' to 'def custom_kernel(...)' and strip decorators."""
-
-    def visit_FunctionDef(self, node):
-        if node.name == "run":
-            node.name = "custom_kernel"
-            node.decorator_list = []
-        return node
-
-
 def _rename_run_to_custom_kernel(source: str) -> str:
-    """Rename 'def run(...)' to 'def custom_kernel(...)' and strip decorators."""
+    """Rename 'def run(...)' to 'def custom_kernel(...)' and strip @torch.no_grad()."""
     tree = ast.parse(source)
-    tree = _RunToCustomKernel().visit(tree)
-    ast.fix_missing_locations(tree)
-    code = ast.unparse(tree)
-    return '"""Optimize this kernel. Signature matches Definition inputs."""\n' + code + "\n"
+    lines = source.splitlines(keepends=True)
+
+    replacements = []
+    decorators_to_remove = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "run":
+            line_idx = node.lineno - 1
+            old_line = lines[line_idx]
+            name_start = node.col_offset + 4  # len("def ")
+            name_end = name_start + len("run")
+            new_line = old_line[:name_start] + "custom_kernel" + old_line[name_end:]
+            replacements.append((line_idx, new_line))
+            for dec in node.decorator_list:
+                decorators_to_remove.append(dec.lineno - 1)
+            break
+
+    result_lines = list(lines)
+    for idx in sorted(decorators_to_remove, reverse=True):
+        result_lines[idx] = ""
+    for idx, new_line in replacements:
+        result_lines[idx] = new_line
+
+    code = "".join(result_lines).strip() + "\n"
+    # Prepend docstring
+    return '"""Optimize this kernel. Signature matches Definition inputs."""\n' + code
 
 
 def make_submission_py(definition: Definition) -> str:
@@ -119,7 +131,7 @@ def generate(trace_path: str, output: str, gpus: list[str] | None = None):
             ├── rmsnorm_h4096/  (task.yml, submission.py, reference.py)
             └── ...
     """
-    gpus = gpus or ["B200"]
+    gpus = gpus or ["B200", "H100"]
     out = Path(output)
     problems_dir = out / "flashinfer-bench"
     problems_dir.mkdir(parents=True, exist_ok=True)
@@ -149,7 +161,9 @@ def main():
     )
     parser.add_argument("--trace-path", required=True, help="Path to flashinfer-trace dataset")
     parser.add_argument("--output", required=True, help="Output directory for problem dirs")
-    parser.add_argument("--gpus", nargs="+", default=["B200"], help="GPU types for competition")
+    parser.add_argument(
+        "--gpus", nargs="+", default=["B200", "H100"], help="GPU types for competition"
+    )
     args = parser.parse_args()
     generate(args.trace_path, args.output, args.gpus)
 

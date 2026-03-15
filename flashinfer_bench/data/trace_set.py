@@ -212,7 +212,14 @@ class TraceSet:
         ------
         ValueError
             If a solution with the same name already exists.
+        KeyError
+            If the solution's definition is not loaded in this TraceSet.
         """
+        if solution.definition not in self.definitions:
+            raise KeyError(
+                f"Unknown definition: {solution.definition!r}. "
+                "Load the definition before adding solutions."
+            )
         if solution.name in self._solution_by_name:
             raise ValueError(f"Duplicate solution name: {solution.name}")
         self.solutions.setdefault(solution.definition, []).append(solution)
