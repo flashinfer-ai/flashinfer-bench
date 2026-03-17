@@ -303,7 +303,7 @@ def gen_inputs(
 _MAX_EMBEDDED_LOG_BYTES = 5 * 1024 * 1024
 
 
-def read_and_cleanup_log(
+def _read_and_cleanup_log(
     log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES
 ) -> Optional[str]:
     """Read log file content and delete it. Returns None if path is None or file missing."""
@@ -345,7 +345,7 @@ def make_eval(
     performance: Optional[Performance] = None,
     extra_msg: Optional[str] = None,
 ) -> Evaluation:
-    log_text = read_and_cleanup_log(log_path) or ""
+    log_text = _read_and_cleanup_log(log_path) or ""
     if extra_msg:
         log_text = log_text + "\n" + extra_msg if log_text else extra_msg
     return Evaluation(
