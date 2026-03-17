@@ -1,4 +1,6 @@
+import glob
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,7 @@ from flashinfer_bench.data import (
     AxisConst,
     BuildSpec,
     Definition,
+    EvaluationStatus,
     RandomInput,
     SafetensorsInput,
     ScalarInput,
@@ -301,6 +304,86 @@ def test_isolated_worker_embeds_stdout(tmp_path: Path):
         evaluation = worker.run_solution(solution, handle, cfg)
         assert isinstance(evaluation.log, str)
         assert message in evaluation.log
+    finally:
+        if handle is not None:
+            worker.release(handle)
+        worker.close()
+
+
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+def test_isolated_worker_compile_error_log():
+    definition = Definition(
+        name="dmp_ce",
+        op_type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A\n",
+    )
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_ce")
+
+    spec = BuildSpec(
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
+    )
+    srcs = [
+        SourceFile(
+            path="pkg/main.py",
+            content="import nonexistent_module_xyz\n\ndef run(A):\n    return A\n",
+        )
+    ]
+    solution = Solution(
+        name="py_ce", definition=definition.name, author="me", spec=spec, sources=srcs
+    )
+
+    worker = SubprocessWorker(device="cuda:0")
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    handle = None
+    try:
+        handle = worker.run_ref(definition, workload, cfg, None)
+        evaluation = worker.run_solution(solution, handle, cfg)
+        assert evaluation.status in {EvaluationStatus.COMPILE_ERROR, EvaluationStatus.RUNTIME_ERROR}
+        assert evaluation.log and "nonexistent_module_xyz" in evaluation.log
+    finally:
+        if handle is not None:
+            worker.release(handle)
+        worker.close()
+
+
+@pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+def test_isolated_worker_no_temp_file_leak():
+    definition = Definition(
+        name="dmp_leak",
+        op_type="op",
+        axes={"N": AxisConst(value=4)},
+        inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
+        outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
+        reference="import torch\n\ndef run(A):\n    return A\n",
+    )
+    workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="wmpr_leak")
+
+    spec = BuildSpec(
+        language=SupportedLanguages.PYTHON,
+        target_hardware=["cuda"],
+        entry_point="pkg/main.py::run",
+        destination_passing_style=False,
+    )
+    srcs = [SourceFile(path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n")]
+    solution = Solution(
+        name="py_leak", definition=definition.name, author="me", spec=spec, sources=srcs
+    )
+
+    worker = SubprocessWorker(device="cuda:0")
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+    handle = None
+    try:
+        before = set(glob.glob(f"{tempfile.gettempdir()}/fib_*.log"))
+        handle = worker.run_ref(definition, workload, cfg, None)
+        worker.run_solution(solution, handle, cfg)
+        after = set(glob.glob(f"{tempfile.gettempdir()}/fib_*.log"))
+        assert after - before == set(), f"Leaked temp files: {after - before}"
     finally:
         if handle is not None:
             worker.release(handle)

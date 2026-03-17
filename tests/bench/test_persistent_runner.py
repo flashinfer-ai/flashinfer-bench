@@ -1,4 +1,6 @@
+import glob
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -189,6 +191,79 @@ class TestPersistentSubprocessWorker:
             assert isinstance(evaluation.log, str)
             assert message in evaluation.log
 
+        finally:
+            if handle is not None:
+                worker.release(handle)
+            worker.close()
+
+    def test_worker_compile_error_log(self, tmp_path):
+        worker = PersistentSubprocessWorker(device="cuda:0")
+
+        handle = None
+        try:
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_ce")
+            cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+
+            spec = BuildSpec(
+                language=SupportedLanguages.PYTHON,
+                target_hardware=["cuda"],
+                entry_point="pkg/main.py::run",
+                destination_passing_style=False,
+            )
+            srcs = [
+                SourceFile(
+                    path="pkg/main.py",
+                    content="import nonexistent_module_xyz\n\ndef run(A):\n    return A\n",
+                )
+            ]
+            solution = Solution(
+                name="test_ce", definition=definition.name, author="test", spec=spec, sources=srcs
+            )
+
+            handle = worker.run_ref(definition, workload, cfg, None)
+            evaluation = worker.run_solution(solution, handle, cfg)
+
+            assert evaluation.status in {
+                EvaluationStatus.COMPILE_ERROR,
+                EvaluationStatus.RUNTIME_ERROR,
+            }
+            assert evaluation.log and "nonexistent_module_xyz" in evaluation.log
+        finally:
+            if handle is not None:
+                worker.release(handle)
+            worker.close()
+
+    def test_worker_no_temp_file_leak(self, tmp_path):
+        worker = PersistentSubprocessWorker(device="cuda:0")
+
+        handle = None
+        try:
+            definition = _simple_def()
+            workload = Workload(axes={"N": 4}, inputs={"A": RandomInput()}, uuid="test_leak")
+            cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+
+            spec = BuildSpec(
+                language=SupportedLanguages.PYTHON,
+                target_hardware=["cuda"],
+                entry_point="pkg/main.py::run",
+                destination_passing_style=False,
+            )
+            srcs = [
+                SourceFile(
+                    path="pkg/main.py", content="import torch\n\ndef run(A):\n    return A\n"
+                )
+            ]
+            solution = Solution(
+                name="test_leak", definition=definition.name, author="test", spec=spec, sources=srcs
+            )
+
+            before = set(glob.glob(f"{tempfile.gettempdir()}/fib_*.log"))
+            handle = worker.run_ref(definition, workload, cfg, None)
+            worker.run_solution(solution, handle, cfg)
+            after = set(glob.glob(f"{tempfile.gettempdir()}/fib_*.log"))
+
+            assert after - before == set(), f"Leaked temp files: {after - before}"
         finally:
             if handle is not None:
                 worker.release(handle)
