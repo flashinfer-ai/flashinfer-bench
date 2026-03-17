@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,7 +19,7 @@ from flashinfer_bench.data import (
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot
+from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot, flush_stdio_streams
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -303,29 +301,21 @@ def gen_inputs(
 _MAX_EMBEDDED_LOG_BYTES = 5 * 1024 * 1024
 
 
-def _read_and_cleanup_log(
+def _read_log_file(
     log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES
 ) -> Optional[str]:
-    """Read log file content and delete it. Returns None if path is None or file missing."""
     if not log_path:
         return None
 
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.flush()
-        except Exception:
-            pass
+    flush_stdio_streams()
 
     try:
         with open(log_path, "rb") as fh:
             data = fh.read(limit + 1)
-    except (FileNotFoundError, OSError):
+    except FileNotFoundError:
         return None
-    finally:
-        try:
-            os.remove(log_path)
-        except OSError:
-            pass
+    except OSError:
+        return None
 
     truncated = len(data) > limit
     if truncated:
@@ -340,12 +330,12 @@ def _read_and_cleanup_log(
 def make_eval(
     status: EvaluationStatus,
     device: str,
-    log_path: Optional[str] = None,
+    log_path: Optional[str],
     correctness: Optional[Correctness] = None,
     performance: Optional[Performance] = None,
     extra_msg: Optional[str] = None,
 ) -> Evaluation:
-    log_text = _read_and_cleanup_log(log_path) or ""
+    log_text = _read_log_file(log_path) or ""
     if extra_msg:
         log_text = log_text + "\n" + extra_msg if log_text else extra_msg
     return Evaluation(

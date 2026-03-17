@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -19,7 +20,7 @@ from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
 from flashinfer_bench.compile import BuilderRegistry, BuildError
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
-from flashinfer_bench.utils import redirect_stdio_to_tempfile
+from flashinfer_bench.utils import redirect_stdio_to_file
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
@@ -52,15 +53,18 @@ class SolutionFailureRecord:
 
 
 class PersistentSubprocessWorker:
-    def __init__(self, device: str) -> None:
+    def __init__(self, device: str, log_dir: str) -> None:
         """Per device persistent subprocess worker
 
         Parameters
         ----------
         device : str
             Device string (e.g. "cuda:0").
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
         """
         self._device = device
+        self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
         self._registry = BuilderRegistry.get_instance()
 
@@ -81,7 +85,9 @@ class PersistentSubprocessWorker:
         self._parent_conn, child_conn = ctx.Pipe(duplex=True)
 
         self._worker_proc = ctx.Process(
-            target=_persistent_worker_main, args=(child_conn, self._device), daemon=True
+            target=_persistent_worker_main,
+            args=(child_conn, self._device, self._log_dir),
+            daemon=True,
         )
         self._worker_proc.start()
 
@@ -273,6 +279,7 @@ class PersistentSubprocessWorker:
             return make_eval(
                 status=failure_record.last_status,
                 device=self._device,
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                 extra_msg=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
             )
 
@@ -290,7 +297,10 @@ class PersistentSubprocessWorker:
         if self._parent_conn is None or self._parent_conn.closed:
             error_msg = "Connection is closed or invalid"
             return make_eval(
-                status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
 
         try:
@@ -321,6 +331,9 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
+                            log_path=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             extra_msg=error_msg,
                         )
                     else:
@@ -331,6 +344,9 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
+                            log_path=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             extra_msg=error_msg,
                         )
 
@@ -339,6 +355,7 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
+                        log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                         extra_msg=error_msg,
                     )
                 except Exception as e:
@@ -354,23 +371,33 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
+                        log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                         extra_msg=error_msg,
                     )
             else:
                 error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}"
                 return make_eval(
-                    status=EvaluationStatus.TIMEOUT, device=self._device, extra_msg=error_msg
+                    status=EvaluationStatus.TIMEOUT,
+                    device=self._device,
+                    log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                    extra_msg=error_msg,
                 )
 
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             error_msg = f"Connection broken during evaluation: {e}"
             return make_eval(
-                status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
         except Exception as e:
             error_msg = f"Failed to communicate with worker: {e}"
             return make_eval(
-                status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
+                extra_msg=error_msg,
             )
 
     def release(self, baseline: BaselineHandle) -> None:
@@ -383,14 +410,24 @@ class PersistentSubprocessWorker:
 
 
 class PersistentRunner(Runner):
-    def __init__(self) -> None:
-        """Initialize the persistent runner with multiple workers."""
+    def __init__(self, log_dir) -> None:
+        """Initialize the persistent runner with multiple workers.
+
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger instance for output.
+        log_dir : str, optional
+            Directory for log files, by default "/tmp/flashinfer_bench".
+        """
+        self._log_dir = log_dir
+
         # Track retry attempts for each device
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
 
         self._available_devices = fib_utils.list_cuda_devices()
-        self._workers = [PersistentSubprocessWorker(d) for d in self._available_devices]
+        self._workers = [PersistentSubprocessWorker(d, log_dir) for d in self._available_devices]
 
         self._curr_worker_idx = 0
 
@@ -552,6 +589,9 @@ class PersistentRunner(Runner):
                             return make_eval(
                                 status=EvaluationStatus.RUNTIME_ERROR,
                                 device=worker._device,
+                                log_path=os.path.join(
+                                    self._log_dir, f"{solution.name}_{time.time()}.log"
+                                ),
                                 extra_msg=f"Failed to rebuild baseline after restart: {e}",
                             )
                     else:
@@ -559,6 +599,9 @@ class PersistentRunner(Runner):
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=worker._device,
+                            log_path=os.path.join(
+                                self._log_dir, f"{solution.name}_{time.time()}.log"
+                            ),
                             extra_msg="Worker restart failed",
                         )
 
@@ -570,6 +613,7 @@ class PersistentRunner(Runner):
                 return make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR,
                     device=worker._device,
+                    log_path=os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log"),
                     extra_msg=f"Unexpected error: {e}",
                 )
 
@@ -609,7 +653,7 @@ class PersistentRunner(Runner):
         self._workers.clear()
 
 
-def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None:
+def _persistent_worker_main(conn: mp.connection.Connection, device: str, log_dir: str) -> None:
     """Long-lived worker process that handles solution evaluations.
 
     Caches compiled solutions to avoid recompilation (handled in builder registry).
@@ -620,6 +664,8 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
         Multiprocessing connection for communication with parent process.
     device : str
         Device string (e.g. "cuda:0").
+    log_dir : str
+        Directory for log files.
     """
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
@@ -656,8 +702,10 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
                     ref_outputs_bl = msg["ref_outputs"]
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
                     cfg = msg["config"]
+                    solution_name = msg["solution_name"]
 
-                    log_path = redirect_stdio_to_tempfile()
+                    log_path = os.path.join(log_dir, f"{solution_name}_{time.time()}.log")
+                    redirect_stdio_to_file(log_path)
 
                     try:
                         # Use registry to build/get cached solution

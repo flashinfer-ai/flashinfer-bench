@@ -5,9 +5,8 @@ from __future__ import annotations
 import os
 import platform
 import sys
-import tempfile
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     import torch
@@ -166,18 +165,30 @@ def hardware_from_device(device: str) -> str:
     return d.type
 
 
-def redirect_stdio_to_tempfile() -> str:
-    """Redirect stdout/stderr to a temporary file.
+def redirect_stdio_to_file(log_path: str) -> tuple[int, int]:
+    """Redirect stdout/stderr to log file.
 
-    Returns the path to the temporary file.
+    Returns original stdout and stderr file descriptors for printing to terminal.
     """
-
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
     sys.stdout.flush()
     sys.stderr.flush()
-    fd, path = tempfile.mkstemp(suffix=".log", prefix="fib_")
+    original_stdout_fd = os.dup(1)
+    original_stderr_fd = os.dup(2)
+    fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+    # Redirect stdout/stderr to log file
     os.dup2(fd, 1)  # stdout -> fd
     os.dup2(fd, 2)  # stderr -> fd
     os.close(fd)
     sys.stdout = open(1, "w", encoding="utf-8", buffering=1, closefd=False)
     sys.stderr = open(2, "w", encoding="utf-8", buffering=1, closefd=False)
-    return path
+    return original_stdout_fd, original_stderr_fd
+
+
+def flush_stdio_streams() -> None:
+    """Best-effort flush of redirected stdout/stderr streams."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass

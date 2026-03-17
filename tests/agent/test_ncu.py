@@ -6,7 +6,7 @@ import pytest
 
 from flashinfer_bench.agents.ncu import flashinfer_bench_run_ncu
 from flashinfer_bench.data import Solution, TraceSet
-from flashinfer_bench.data.workload import Workload
+from flashinfer_bench.data.workload import RandomInput, Workload
 
 TRACE_SET_PATH = str(Path(__file__).resolve().parents[2] / "tmp-repos" / "flashinfer-trace")
 DEFN_NAME = "gemm_n128_k2048"
