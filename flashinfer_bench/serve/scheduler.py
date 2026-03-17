@@ -107,7 +107,7 @@ class _GPUWorkerThread(threading.Thread):
 
     def run(self) -> None:
         try:
-            self._gpu_worker = PersistentSubprocessWorker(self._device, self._config.log_dir)
+            self._gpu_worker = PersistentSubprocessWorker(self._device)
         except Exception as e:
             logger.error(f"Failed to start GPU worker on {self._device}: {e}")
             return
