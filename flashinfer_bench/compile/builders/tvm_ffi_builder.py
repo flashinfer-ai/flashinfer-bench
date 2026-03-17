@@ -3,10 +3,12 @@ CUDA and C++ kernels."""
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import os
 import shutil
 from pathlib import Path
-from typing import Callable, ClassVar, List, Tuple
+from typing import Callable, ClassVar, List, Optional, Tuple
 
 from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
@@ -52,6 +54,27 @@ class TVMFFIBuilder(Builder):
     def __init__(self) -> None:
         """Initialize the TVMFFIBuilder."""
         super().__init__(self._PACKAGE_PREFIX, self._BUILD_DIR_NAME)
+
+    @staticmethod
+    def _find_cuda_lib_path() -> Optional[str]:
+        """Find the CUDA library directory (cublas, cufft, curand, etc.)."""
+        nvcc = shutil.which("nvcc")
+        if nvcc:
+            cuda_home = Path(nvcc).resolve().parent.parent
+            for candidate in [
+                cuda_home / "targets" / "x86_64-linux" / "lib",
+                cuda_home / "lib64",
+                cuda_home / "lib",
+            ]:
+                if (candidate / "libcudart.so").exists():
+                    return str(candidate)
+
+        for prefix in ["/usr/local/cuda", "/usr/local/cuda-12", "/usr/local/cuda-13"]:
+            for sub in ["targets/x86_64-linux/lib", "lib64", "lib"]:
+                p = Path(prefix) / sub
+                if (p / "libcudart.so").exists():
+                    return str(p)
+        return None
 
     @staticmethod
     def is_available() -> bool:
@@ -259,6 +282,10 @@ class TVMFFIBuilder(Builder):
                     src_paths = write_sources_to_path(build_path, solution.sources)
                     cpp_files, cuda_files = self._filter_sources(src_paths)
                     extra_include_paths = [str(build_path)]
+                    extra_ldflags = ["-lcuda", "-lcublas"]
+                    cuda_lib_path = self._find_cuda_lib_path()
+                    if cuda_lib_path:
+                        extra_ldflags.insert(0, f"-L{cuda_lib_path}")
                     try:
                         # Compile sources to shared library
                         output_lib_path = tvm_ffi.cpp.build(
@@ -266,13 +293,20 @@ class TVMFFIBuilder(Builder):
                             cpp_files=cpp_files,
                             cuda_files=cuda_files,
                             extra_include_paths=extra_include_paths,
-                            extra_ldflags=["-lcuda"],
+                            extra_ldflags=extra_ldflags,
                             build_directory=build_path,
                         )
                     except Exception as e:
                         raise BuildError(
                             f"TVM-FFI compilation failed for '{solution.name}': {e}"
                         ) from e
+
+        # Validate all symbols resolve before loading via tvm_ffi
+        try:
+            _probe = ctypes.CDLL(output_lib_path, mode=os.RTLD_NOW)
+            del _probe
+        except OSError as e:
+            raise BuildError(f"Shared library has unresolved symbols: {e}") from e
 
         # Load the compiled module
         try:
