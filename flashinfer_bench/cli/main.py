@@ -25,6 +25,7 @@ def cli_config_logging(args: argparse.Namespace):
             )
         )
         pkg_logger.addHandler(handler)
+    pkg_logger.propagate = False
 
 
 def best(args: argparse.Namespace):
@@ -288,11 +289,8 @@ def run(args: argparse.Namespace):
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
     trace_sets = []
-    if not args.local and not args.hub:
-        raise ValueError("A data source is required. Please use --local <PATH> or --hub.")
-
-    if args.hub:
-        raise NotImplementedError("Loading from --hub is not implemented yet.")
+    if not args.local:
+        raise ValueError("A data source is required. Please use --local <PATH>.")
 
     if args.local:
         loaded_paths: List[Path] = args.local
@@ -373,9 +371,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    run_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     run_parser.set_defaults(func=run)
 
     report_parser = command_subparsers.add_parser(
@@ -395,9 +390,6 @@ def cli():
         help="Specifies one or more local paths to load traces from.",
     )
     summary_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
-    summary_parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -411,9 +403,6 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
-    )
-    best_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     best_parser.add_argument(
         "--log-level",
@@ -431,9 +420,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    merge_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     merge_parser.set_defaults(func=merge)
 
     visualize_parser = report_subparsers.add_parser(
@@ -444,9 +430,6 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
-    )
-    visualize_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     visualize_parser.set_defaults(func=visualize)
 
