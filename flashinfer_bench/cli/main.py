@@ -7,25 +7,25 @@ from typing import List
 
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
-from flashinfer_bench.logging import configure_logging, get_logger
 
-logger = get_logger("CLI")
+logger = logging.getLogger(__name__)
 pkg_name = __name__.split(".")[0]
 
 
 def cli_config_logging(args: argparse.Namespace):
-    """Configure logging for the CLI. Now we have two set of loggers:
-    - package logger: obtained by logging.getLogger(__name__)
-    - custom logger: obtained by get_logger("ModuleName")
-
-    In the future we will deprecate the custom logger and use the package logger only.
-    Now we need to configure both loggers to the same level.
-    """
+    """Configure package-level logging from CLI args."""
     log_level = getattr(args, "log_level", "WARNING")
     pkg_logger = logging.getLogger(pkg_name)
     pkg_logger.setLevel(log_level)
-    pkg_logger.addHandler(logging.StreamHandler())
-    configure_logging(level=log_level)
+    if not pkg_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="[%(asctime)s] %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S"
+            )
+        )
+        pkg_logger.addHandler(handler)
+    pkg_logger.propagate = False
 
 
 def best(args: argparse.Namespace):
@@ -289,11 +289,8 @@ def run(args: argparse.Namespace):
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
     trace_sets = []
-    if not args.local and not args.hub:
-        raise ValueError("A data source is required. Please use --local <PATH> or --hub.")
-
-    if args.hub:
-        raise NotImplementedError("Loading from --hub is not implemented yet.")
+    if not args.local:
+        raise ValueError("A data source is required. Please use --local <PATH>.")
 
     if args.local:
         loaded_paths: List[Path] = args.local
@@ -374,9 +371,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    run_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     run_parser.set_defaults(func=run)
 
     report_parser = command_subparsers.add_parser(
@@ -396,9 +390,6 @@ def cli():
         help="Specifies one or more local paths to load traces from.",
     )
     summary_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
-    summary_parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -412,9 +403,6 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
-    )
-    best_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     best_parser.add_argument(
         "--log-level",
@@ -432,9 +420,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    merge_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     merge_parser.set_defaults(func=merge)
 
     visualize_parser = report_subparsers.add_parser(
@@ -445,9 +430,6 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
-    )
-    visualize_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     visualize_parser.set_defaults(func=visualize)
 

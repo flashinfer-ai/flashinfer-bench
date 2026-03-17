@@ -22,6 +22,7 @@
               "index",
               "start/installation",
               "start/quickstart",
+              "start/cli",
               "model_coverage"
             ]
           },
