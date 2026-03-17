@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 import platform
 import sys
+import tempfile
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     import torch
@@ -170,7 +171,6 @@ def redirect_stdio_to_tempfile() -> str:
 
     Returns the path to the temporary file.
     """
-    import tempfile
 
     sys.stdout.flush()
     sys.stderr.flush()

@@ -656,7 +656,6 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
                     ref_outputs_bl = msg["ref_outputs"]
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
                     cfg = msg["config"]
-                    solution_name = msg["solution_name"]
 
                     log_path = redirect_stdio_to_tempfile()
 
