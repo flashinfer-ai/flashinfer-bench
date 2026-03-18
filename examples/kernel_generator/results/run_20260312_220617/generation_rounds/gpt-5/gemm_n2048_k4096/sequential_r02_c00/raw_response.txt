@@ -1,0 +1,282 @@
+<header_file name="kernel.h">
+#ifndef GEMM_N2048_K4096_KERNEL_H_
+#define GEMM_N2048_K4096_KERNEL_H_
+
+#include <torch/extension.h>
+#include <cuda_runtime.h>
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+#include <cstdio>
+
+#define CUDA_CHECK(err) do { \
+  cudaError_t err_ = (err);  \
+  if (err_ != cudaSuccess) { \
+    fprintf(stderr, "CUDA error %s at %s:%d\n", cudaGetErrorString(err_), __FILE__, __LINE__); \
+    throw std::runtime_error(std::string("CUDA error: ") + cudaGetErrorString(err_)); \
+  } \
+} while (0)
+
+namespace gemm_n2048_k4096 {
+
+constexpr int GEMM_N = 2048;
+constexpr int GEMM_K = 4096;
+
+// CUDA launcher
+void gemm_n2048_k4096_cuda(const at::Half* A, const at::Half* B, at::Half* C, int64_t M, cudaStream_t stream);
+
+// PyTorch entry point
+torch::Tensor run(torch::Tensor A, torch::Tensor B);
+
+}  // namespace gemm_n2048_k4096
+
+#endif  // GEMM_N2048_K4096_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <mma.h>
+#include <cuda_fp16.h>
+
+using namespace nvcuda;
+
+namespace gemm_n2048_k4096 {
+
+// Kernel tiling tuned for A800 (SM80) and small M: BM=32, BN=128, BK=16 (WMMA k)
+constexpr int BM = 32;    // block tile in M
+constexpr int BN = 128;   // block tile in N
+constexpr int BK = 16;    // must equal WMMA k
+constexpr int WARP_SIZE = 32;
+
+// 16 warps per block (512 threads): (BM/16) * (BN/16) = 2 * 8 = 16
+constexpr int WARPS_PER_BLOCK = (BM / 16) * (BN / 16);
+constexpr int THREADS_PER_BLOCK = WARPS_PER_BLOCK * WARP_SIZE;
+
+static __host__ __device__ inline int div_up_int(int a, int b) {
+  return (a + b - 1) / b;
+}
+
+__global__ __launch_bounds__(THREADS_PER_BLOCK, 2)
+void gemm_wmma_bm32_bn128_bk16(
+    const __half* __restrict__ A,  // [M, K] row-major
+    const __half* __restrict__ B,  // [N, K] row-major (we multiply with B^T)
+    __half* __restrict__ C,        // [M, N] row-major
+    int M)
+{
+    constexpr int N = GEMM_N;
+    constexpr int K = GEMM_K;
+
+    // Block coordinates
+    const int block_m = blockIdx.y; // along M
+    const int block_n = blockIdx.x; // along N
+
+    // Thread/warp identifiers
+    const int tid = threadIdx.x;
+    const int warp_id = tid / WARP_SIZE;               // 0..15
+    const int lane_id = tid & (WARP_SIZE - 1);         // 0..31
+
+    // Warp tile coordinates within the block: 2 (M) x 8 (N)
+    const int warp_m = warp_id % (BM / 16);            // 0..1
+    const int warp_n = warp_id / (BM / 16);            // 0..7
+
+    // Shared memory layout:
+    // smemA: BM x BK   (row-major)
+    // smemB: BK x BN   (stored column-major for WMMA matrix_b col_major)
+    // smemC: WARPS_PER_BLOCK x (16x16) floats (per-warp staging for store)
+    extern __shared__ unsigned char smem_raw[];
+    __half* smemA = reinterpret_cast<__half*>(smem_raw);
+    __half* smemB = smemA + (BM * BK);
+    float*  smemC = reinterpret_cast<float*>(smemB + (BK * BN));
+
+    // Accumulator fragment for this warp's 16x16 C tile
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc;
+    wmma::fill_fragment(acc, 0.0f);
+
+    // Global base coordinates for this block
+    const int m_block_base = block_m * BM;
+    const int n_block_base = block_n * BN;
+
+    // Loop over K in chunks of BK=16
+#pragma unroll 1
+    for (int k0 = 0; k0 < K; k0 += BK) {
+        // Cooperative load A tile: [BM x BK] into shared (row-major)
+        const int a_elems = BM * BK; // 32 * 16 = 512
+        for (int idx = tid; idx < a_elems; idx += blockDim.x) {
+            int row = idx / BK;      // 0..BM-1
+            int col = idx % BK;      // 0..BK-1
+            int gm = m_block_base + row;
+            __half v = __float2half(0.0f);
+            if (gm < M) {
+                v = A[gm * K + (k0 + col)];
+            }
+            smemA[row * BK + col] = v;
+        }
+
+        // Cooperative load B tile: [BK x BN] into shared as column-major (K x N)
+        const int b_elems = BK * BN; // 16 * 128 = 2048
+        for (int idx = tid; idx < b_elems; idx += blockDim.x) {
+            int colN = idx / BK;     // 0..BN-1
+            int rowK = idx % BK;     // 0..BK-1
+            int gn = n_block_base + colN;
+            // B is [N, K] row-major; element at (gn, k0+rowK)
+            __half v = B[gn * K + (k0 + rowK)];
+            // Store as column-major (K x N) tile for WMMA col_major load of matrix_b
+            smemB[colN * BK + rowK] = v;
+        }
+
+        __syncthreads();
+
+        // Compute this warp's 16x16 tile for current K-slice
+        // A tile row offset in shared
+        const __half* a_tile_ptr = smemA + (warp_m * 16) * BK;
+        // B tile column offset in shared (col-major)
+        const __half* b_tile_ptr = smemB + (warp_n * 16) * BK;
+
+        wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a_frag;
+        wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b_frag;
+
+        wmma::load_matrix_sync(a_frag, a_tile_ptr, BK);
+        wmma::load_matrix_sync(b_frag, b_tile_ptr, BK);
+        wmma::mma_sync(acc, a_frag, b_frag, acc);
+
+        __syncthreads(); // reuse smem for next K-slice
+    }
+
+    // Epilogue: store accumulator to global C with conversion to half
+    // Compute global base for this warp's tile
+    const int c_row_base = m_block_base + warp_m * 16;
+    const int c_col_base = n_block_base + warp_n * 16;
+
+    // Stage to per-warp shared memory (16x16 floats)
+    float* warp_smemC = smemC + warp_id * 16 * 16;
+    wmma::store_matrix_sync(warp_smemC, acc, 16, wmma::mem_row_major);
+
+    // Each warp converts and writes its 16x16 tile to global memory
+    // Use warp-level strided loop for coalesced stores
+    for (int e = lane_id; e < 256; e += WARP_SIZE) {
+        int r = e / 16; // 0..15
+        int c = e % 16; // 0..15
+        int gm = c_row_base + r;
+        int gn = c_col_base + c; // always < N
+        if (gm < M) {
+            __half hv = __float2half_rn(warp_smemC[e]);
+            C[gm * N + gn] = hv;
+        }
+    }
+}
+
+// CUDA launcher
+void gemm_n2048_k4096_cuda(const at::Half* A_h, const at::Half* B_h, at::Half* C_h, int64_t M, cudaStream_t stream) {
+    const __half* A = reinterpret_cast<const __half*>(A_h);
+    const __half* B = reinterpret_cast<const __half*>(B_h);
+    __half* C = reinterpret_cast<__half*>(C_h);
+
+    // Grid/block configuration
+    dim3 block(THREADS_PER_BLOCK, 1, 1);
+    dim3 grid(GEMM_N / BN, div_up_int(static_cast<int>(M), BM), 1);
+
+    // Dynamic shared memory size
+    // A: BM*BK half, B: BK*BN half, C: WARPS*(16*16) floats
+    size_t smem_bytes = sizeof(__half) * (BM * BK + BK * BN) + sizeof(float) * (WARPS_PER_BLOCK * 16 * 16);
+
+    gemm_wmma_bm32_bn128_bk16<<<grid, block, smem_bytes, stream>>>(A, B, C, static_cast<int>(M));
+    CUDA_CHECK(cudaGetLastError());
+}
+
+} // namespace gemm_n2048_k4096
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAGuard.h>
+#include <vector>
+#include <stdexcept>
+#include <sstream>
+
+namespace gemm_n2048_k4096 {
+
+static void validate_inputs(const torch::Tensor& A, const torch::Tensor& B) {
+    if (A.dim() != 2) {
+        throw std::invalid_argument("A must be a 2D tensor of shape [M, K].");
+    }
+    if (B.dim() != 2) {
+        throw std::invalid_argument("B must be a 2D tensor of shape [N, K].");
+    }
+    if (A.dtype() != torch::kFloat16) {
+        throw std::invalid_argument("A must be of dtype torch.float16.");
+    }
+    if (B.dtype() != torch::kFloat16) {
+        throw std::invalid_argument("B must be of dtype torch.float16.");
+    }
+    if (B.size(0) != GEMM_N) {
+        std::ostringstream oss;
+        oss << "B must have N=" << GEMM_N << " as its first dimension, but got " << B.size(0) << ".";
+        throw std::invalid_argument(oss.str());
+    }
+    if (A.size(1) != GEMM_K) {
+        std::ostringstream oss;
+        oss << "A's K dimension must be " << GEMM_K << " but got " << A.size(1) << ".";
+        throw std::invalid_argument(oss.str());
+    }
+    if (B.size(1) != GEMM_K) {
+        std::ostringstream oss;
+        oss << "B's K dimension must be " << GEMM_K << " but got " << B.size(1) << ".";
+        throw std::invalid_argument(oss.str());
+    }
+}
+
+torch::Tensor run(torch::Tensor A_in, torch::Tensor B_in) {
+    // Validate
+    validate_inputs(A_in, B_in);
+
+    // Ensure tensors are on the same CUDA device
+    torch::Device device = A_in.device().is_cuda() ? A_in.device() : torch::Device(torch::kCUDA, 0);
+    if (B_in.device().is_cuda()) {
+        if (!A_in.device().is_cuda() || A_in.device().index() != B_in.device().index()) {
+            // Move to the same device index as B if A is CPU or on different GPU
+            device = B_in.device();
+        }
+    }
+
+    c10::cuda::CUDAGuard device_guard(device);
+
+    // Make contiguous and move to device if needed
+    torch::Tensor A = A_in.to(device, /*non_blocking=*/false, /*copy=*/!A_in.is_cuda()).contiguous();
+    torch::Tensor B = B_in.to(device, /*non_blocking=*/false, /*copy=*/!B_in.is_cuda()).contiguous();
+
+    // Check contiguous dtype after move
+    if (A.dtype() != torch::kFloat16 || B.dtype() != torch::kFloat16) {
+        throw std::invalid_argument("A and B must be torch.float16.");
+    }
+    if (B.size(0) != GEMM_N || A.size(1) != GEMM_K || B.size(1) != GEMM_K) {
+        throw std::invalid_argument("Input shapes must be A:[M,4096], B:[2048,4096].");
+    }
+
+    int64_t M = A.size(0);
+    auto options = torch::TensorOptions().dtype(torch::kFloat16).device(device);
+    torch::Tensor C = torch::empty({M, static_cast<int64_t>(GEMM_N)}, options);
+
+    auto stream = at::cuda::getCurrentCUDAStream();
+    gemm_n2048_k4096_cuda(
+        reinterpret_cast<const at::Half*>(A.data_ptr<at::Half>()),
+        reinterpret_cast<const at::Half*>(B.data_ptr<at::Half>()),
+        reinterpret_cast<at::Half*>(C.data_ptr<at::Half>()),
+        M,
+        stream.stream());
+
+    // Error check and sync (caller may choose to overlap further work, but we ensure correctness here)
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaStreamSynchronize(stream.stream()));
+
+    return C;
+}
+
+} // namespace gemm_n2048_k4096
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("run", &gemm_n2048_k4096::run, "Kernel execution function");
+}
+</cpp_file>

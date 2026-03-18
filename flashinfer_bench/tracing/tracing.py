@@ -52,14 +52,14 @@ def enable_tracing(
 
     >>> enable_tracing("/path/to/trace_set")
     >>> # Tracing is now enabled
-    >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> out = apply("rmsnorm_d4096", kwargs={...}, fallback=ref_fn)
     >>> disable_tracing()
     >>> # Tracing is now disabled
 
     Context manager usage (recommended):
 
     >>> with enable_tracing("/path/to/trace_set"):
-    ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    ...     out = apply("rmsnorm_d4096", kwargs={...}, fallback=ref_fn)
     >>> # Tracing is automatically flushed and disabled
 
     Custom tracing configuration:
@@ -72,7 +72,7 @@ def enable_tracing(
     ...     ),
     ... }
     >>> with enable_tracing("/path/to/trace_set", configs):
-    ...     out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    ...     out = apply("rmsnorm_d4096", kwargs={...}, fallback=ref_fn)
 
     Nested tracing with different configs:
 
@@ -106,7 +106,7 @@ def disable_tracing():
     Manual disable after enable:
 
     >>> enable_tracing("/path/to/trace_set")
-    >>> out = apply("rmsnorm_d4096", runtime_kwargs={...}, fallback=ref_fn)
+    >>> out = apply("rmsnorm_d4096", kwargs={...}, fallback=ref_fn)
     >>> disable_tracing()
     >>> # Tracing is now disabled and all traces are flushed to disk
 

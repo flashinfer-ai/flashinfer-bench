@@ -1,6 +1,7 @@
 """Tests for compile/utils.py."""
 
 import sys
+import time
 
 import pytest
 
@@ -22,6 +23,21 @@ def test_write_sources_to_path(tmp_path):
     assert (tmp_path / "main.py").read_text() == "print('hello')"
     assert (tmp_path / "pkg" / "helper.py").exists()
     assert (tmp_path / "pkg" / "helper.py").read_text() == "def helper(): pass"
+
+
+def test_write_sources_to_path_preserves_mtime_for_unchanged_content(tmp_path):
+    """Unchanged source files should not be rewritten, so build caches stay valid."""
+    source = SourceFile(path="main.py", content="print('hello')")
+
+    [path] = write_sources_to_path(tmp_path, [source])
+    before_mtime = path.stat().st_mtime_ns
+
+    time.sleep(0.01)
+    [same_path] = write_sources_to_path(tmp_path, [source])
+    after_mtime = same_path.stat().st_mtime_ns
+
+    assert same_path == path
+    assert after_mtime == before_mtime
 
 
 def test_create_package_name():

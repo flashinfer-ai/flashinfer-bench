@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sys
+import time
 from importlib import resources
 from pathlib import Path
 from typing import Callable, ClassVar, Dict, List, Optional, Tuple
@@ -107,6 +108,29 @@ class TorchBuilder(Builder):
 
         return cleaner
 
+    def _clear_stale_lock_if_safe(self, build_dir: Path, package_name: str) -> None:
+        """Remove an abandoned torch extension lock when the compiled binary already exists.
+
+        PyTorch's cpp_extension loader uses a `lock` file in the build directory and waits
+        indefinitely if that file exists. If a previous run was interrupted after a successful
+        compile, the `.so` can remain alongside a stale lock, causing future builds to hang in
+        `FileBaton.wait()`. In that case it is safe to delete the lock and reuse the cached build.
+        """
+        lock_path = build_dir / "lock"
+        binary_path = build_dir / f"{package_name}.so"
+        if not lock_path.exists() or not binary_path.exists():
+            return
+
+        lock_age_s = time.time() - lock_path.stat().st_mtime
+        logger.warning(
+            "Removing stale torch extension lock at %s because %s already exists "
+            "(lock age %.1fs).",
+            lock_path,
+            binary_path,
+            lock_age_s,
+        )
+        lock_path.unlink(missing_ok=True)
+
     def build(self, definition: Definition, solution: Solution) -> Runnable:
         """Build a CUDA solution into a runnable.
 
@@ -143,6 +167,7 @@ class TorchBuilder(Builder):
         symbol = solution.get_entry_symbol()
         package_name, build_dir = self._get_package_name_and_build_path(solution)
         source_paths = write_sources_to_path(build_dir, solution.sources)
+        self._clear_stale_lock_if_safe(build_dir, package_name)
 
         cpp_cuda_paths = self._filter_sources(source_paths)
 

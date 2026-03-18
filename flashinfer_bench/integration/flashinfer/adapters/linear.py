@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import torch
 
 from flashinfer_bench.apply import apply
 from flashinfer_bench.integration.patch_manager import PatchSpec
+
+
+_LINEAR_APPLY_DEPTH: ContextVar[int] = ContextVar("fib_linear_apply_depth", default=0)
 
 
 def _resolve_def_name(weight: torch.Tensor) -> str:
@@ -38,6 +42,9 @@ class LinearAdapter:
 
     def make_wrapper(self, spec: PatchSpec, orig: Callable[..., Any]) -> Callable[..., Any]:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if _LINEAR_APPLY_DEPTH.get() > 0:
+                return orig(*args, **kwargs)
+
             input_tensor = _extract_arg("input", 0, args, kwargs)
             weight = _extract_arg("weight", 1, args, kwargs)
             bias = _extract_arg("bias", 2, args, kwargs)
@@ -66,10 +73,13 @@ class LinearAdapter:
             def _fb(**_rk):
                 return orig(*args, **kwargs)
 
+            token = _LINEAR_APPLY_DEPTH.set(_LINEAR_APPLY_DEPTH.get() + 1)
             try:
-                out_2d = apply(_resolve_def_name(weight), runtime_kwargs=rk, fallback=_fb)
+                out_2d = apply(_resolve_def_name(weight), kwargs=rk, fallback=_fb)
             except Exception:
                 return orig(*args, **kwargs)
+            finally:
+                _LINEAR_APPLY_DEPTH.reset(token)
 
             if not isinstance(out_2d, torch.Tensor):
                 return out_2d

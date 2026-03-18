@@ -1,0 +1,8 @@
+definition	attempt	result	exit_code	log_file
+gemm_n128_k2048	1	SUCCESS	0	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n128_k2048_attempt1.log
+gemm_n2048_k4096	1	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n2048_k4096_attempt1.log
+gemm_n2048_k4096	2	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n2048_k4096_attempt2.log
+rmsnorm_h5120	1	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/rmsnorm_h5120_attempt1.log
+rmsnorm_h5120	2	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/rmsnorm_h5120_attempt2.log
+gemm_n5120_k5120	1	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n5120_k5120_attempt1.log
+gemm_n5120_k5120	2	FAIL	1	/data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n5120_k5120_attempt2.log

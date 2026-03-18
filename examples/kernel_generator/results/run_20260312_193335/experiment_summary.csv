@@ -1,0 +1,2 @@
+model,definition,solution,solution_path,feedback_workload_uuid,experiment_status,total_traces,passed_traces,compile_errors,runtime_errors,correctness_errors,timeouts,pass_rate,best_speedup,avg_speedup,top_error_bucket,error_message
+gpt-5,gemm_n4096_k14336,gpt-5_gemm_n4096_k14336_cuda_optimized_r10_c0_high,/data1/workspace/airulan/bench/flashinfer-trace/solutions/gpt-5/gemm/gemm_n4096_k14336/gpt-5_gemm_n4096_k14336_cuda_optimized_r10_c0_high.json,501f81c6-97cd-477c-b091-5068a52c385d,OK,43,18,0,0,25,0,0.4186046511627907,0.016467432187427147,0.00926363490560786,passed,

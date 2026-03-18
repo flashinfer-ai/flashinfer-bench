@@ -8,6 +8,7 @@ import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -33,6 +34,18 @@ if TYPE_CHECKING:
 
 
 class KernelGenerator:
+    @staticmethod
+    def _normalize_base_url(base_url: Optional[str]) -> Optional[str]:
+        if base_url is None:
+            return None
+
+        parts = urlsplit(base_url)
+        path = parts.path.rstrip("/")
+        if not path:
+            path = "/v1"
+
+        return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+
     def __init__(
         self,
         model_name: str,
@@ -62,7 +75,7 @@ class KernelGenerator:
         self.model_name = model_name
         self.language = language
         self.target_gpu = target_gpu
-        self.base_url = base_url
+        self.base_url = self._normalize_base_url(base_url)
         self.reasoning_effort = reasoning_effort
         self.api_mode = api_mode
         self.temperature = temperature
@@ -84,8 +97,8 @@ class KernelGenerator:
                 )
 
         client_kwargs = {"api_key": api_key}
-        if base_url is not None:
-            client_kwargs["base_url"] = base_url
+        if self.base_url is not None:
+            client_kwargs["base_url"] = self.base_url
 
         self.client = openai.AsyncOpenAI(**client_kwargs)
         self.sync_client = openai.OpenAI(**client_kwargs)
@@ -673,7 +686,23 @@ class KernelGenerator:
                 if self.temperature is not None:
                     request_kwargs["temperature"] = self.temperature
                 response = await self.client.chat.completions.create(**request_kwargs)
-                generated_code = response.choices[0].message.content.strip()
+                if isinstance(response, str):
+                    response_prefix = response.strip().replace("\n", " ")[:200]
+                    raise RuntimeError(
+                        "Provider returned plain text/HTML instead of an OpenAI-compatible "
+                        f"chat completion payload. base_url={self.base_url!r}. "
+                        "If you passed a bare domain, use the API root ending in '/v1'. "
+                        f"Response prefix: {response_prefix!r}"
+                    )
+                if not hasattr(response, "choices"):
+                    raise RuntimeError(
+                        "Provider returned an unexpected chat completion response type: "
+                        f"{type(response).__name__}"
+                    )
+                message_content = response.choices[0].message.content
+                if message_content is None:
+                    raise RuntimeError("Provider returned an empty assistant message.")
+                generated_code = message_content.strip()
 
             cleaned_code = self._clean_generated_code(generated_code)
 

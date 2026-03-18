@@ -1,0 +1,285 @@
+<header_file name="kernel.h">
+#ifndef FUSED_ADD_RMSNORM_H4096_KERNEL_H
+#define FUSED_ADD_RMSNORM_H4096_KERNEL_H
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cstdint>
+
+// Fixed hidden size per specification
+constexpr int HIDDEN_SIZE = 4096;
+
+// Kernel launcher declaration.
+// Launches a fused add + RMSNorm kernel specialized for hidden_size = 4096.
+// All pointers must reside on the same CUDA device and point to device memory.
+void fused_add_rmsnorm_h4096_launcher(
+    const __nv_bfloat16* hidden_states,   // [batch_size, 4096]
+    const __nv_bfloat16* residual,        // [batch_size, 4096]
+    const __nv_bfloat16* weight,          // [4096]
+    __nv_bfloat16* output,                // [batch_size, 4096]
+    int batch_size,
+    cudaStream_t stream);
+
+#endif // FUSED_ADD_RMSNORM_H4096_KERNEL_H
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+#include <cuda.h>
+#include <cuda_bf16.h>
+#include <cuda_runtime.h>
+#include <cstdio>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(call)                                                                 \
+    do {                                                                                 \
+        cudaError_t err__ = (call);                                                      \
+        if (err__ != cudaSuccess) {                                                      \
+            fprintf(stderr, "CUDA error at %s:%d code=%d(%s)\n", __FILE__, __LINE__,     \
+                    static_cast<int>(err__), cudaGetErrorString(err__));                 \
+        }                                                                                \
+    } while (0)
+#endif
+
+constexpr float EPS = 1e-5f;
+
+static __forceinline__ __device__ float warp_sum(float val) {
+    unsigned mask = 0xffffffffu;
+    val += __shfl_down_sync(mask, val, 16);
+    val += __shfl_down_sync(mask, val, 8);
+    val += __shfl_down_sync(mask, val, 4);
+    val += __shfl_down_sync(mask, val, 2);
+    val += __shfl_down_sync(mask, val, 1);
+    return val;
+}
+
+// Each block processes one row (batch element). BLOCK_SIZE must divide HIDDEN_SIZE.
+template <int BLOCK_SIZE>
+__launch_bounds__(BLOCK_SIZE, 2)
+__global__ void fused_add_rmsnorm_h4096_kernel(
+    const __nv_bfloat16* __restrict__ hidden_states, // [B, 4096]
+    const __nv_bfloat16* __restrict__ residual,      // [B, 4096]
+    const __nv_bfloat16* __restrict__ weight,        // [4096]
+    __nv_bfloat16* __restrict__ output,              // [B, 4096]
+    int batch_size)
+{
+    const int b = blockIdx.x;
+    if (b >= batch_size) return;
+
+    constexpr int ITEMS_PER_THREAD = HIDDEN_SIZE / BLOCK_SIZE;
+    static_assert(HIDDEN_SIZE % BLOCK_SIZE == 0, "BLOCK_SIZE must divide HIDDEN_SIZE");
+
+    const int tid = threadIdx.x;
+    const int lane = tid & 31;
+    const int wid = tid >> 5;
+    constexpr int NUM_WARPS = BLOCK_SIZE / 32;
+
+    const int base = b * HIDDEN_SIZE;
+
+    // Shared memory for warp partial sums (pad to 32 to avoid conditionals)
+    __shared__ float warp_sums[32];
+
+    // Register buffer for partial x values
+    float xvals[ITEMS_PER_THREAD];
+
+    // Accumulate sum of squares in FP32 while computing x = hs + res
+    float local_sum = 0.0f;
+
+#pragma unroll
+    for (int k = 0; k < ITEMS_PER_THREAD; ++k) {
+        const int idx = tid + k * BLOCK_SIZE;
+        const float x = __bfloat162float(hidden_states[base + idx]) + __bfloat162float(residual[base + idx]);
+        xvals[k] = x;
+        // Use FMA for better throughput/precision
+        local_sum = fmaf(x, x, local_sum);
+    }
+
+    // Intra-warp reduction
+    float sum = warp_sum(local_sum);
+
+    // Write warp sums to shared memory
+    if (lane == 0) {
+        warp_sums[wid] = sum;
+    }
+    __syncthreads();
+
+    // Final reduction by warp 0
+    if (wid == 0) {
+        float v = (lane < NUM_WARPS) ? warp_sums[lane] : 0.0f;
+        v = warp_sum(v);
+        if (lane == 0) {
+            warp_sums[0] = v;
+        }
+    }
+    __syncthreads();
+
+    const float total_sum = warp_sums[0];
+    const float mean = total_sum * (1.0f / static_cast<float>(HIDDEN_SIZE));
+    const float inv_rms = rsqrtf(mean + EPS);
+
+    // Normalize, scale by weight, store as BF16
+#pragma unroll
+    for (int k = 0; k < ITEMS_PER_THREAD; ++k) {
+        const int idx = tid + k * BLOCK_SIZE;
+        const float w = __bfloat162float(weight[idx]);
+        const float y = xvals[k] * inv_rms * w;
+        output[base + idx] = __float2bfloat16(y);
+    }
+}
+
+// Launcher function
+void fused_add_rmsnorm_h4096_launcher(
+    const __nv_bfloat16* hidden_states,
+    const __nv_bfloat16* residual,
+    const __nv_bfloat16* weight,
+    __nv_bfloat16* output,
+    int batch_size,
+    cudaStream_t stream)
+{
+    if (batch_size <= 0) return;
+
+    // Tuned for A800 (SM80). 512 threads/block gives a good balance.
+    constexpr int BLOCK_SIZE = 512;
+
+    dim3 grid(batch_size);
+    dim3 block(BLOCK_SIZE);
+
+    fused_add_rmsnorm_h4096_kernel<BLOCK_SIZE><<<grid, block, 0, stream>>>(
+        hidden_states, residual, weight, output, batch_size
+    );
+    CUDA_CHECK(cudaGetLastError());
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+
+#include <sstream>
+#include <stdexcept>
+#include "kernel.h"
+
+static void check_shapes_and_types(const torch::Tensor& hidden_states,
+                                   const torch::Tensor& residual,
+                                   const torch::Tensor& weight) {
+    if (hidden_states.dtype() != torch::kBFloat16 ||
+        residual.dtype() != torch::kBFloat16 ||
+        weight.dtype() != torch::kBFloat16) {
+        throw std::invalid_argument("All tensors must have dtype torch.bfloat16.");
+    }
+
+    if (hidden_states.dim() != 2) {
+        throw std::invalid_argument("hidden_states must be 2D [batch_size, 4096].");
+    }
+    if (hidden_states.size(1) != HIDDEN_SIZE) {
+        std::ostringstream oss;
+        oss << "hidden_states second dimension must be " << HIDDEN_SIZE
+            << ", but got " << hidden_states.size(1);
+        throw std::invalid_argument(oss.str());
+    }
+    if (residual.sizes() != hidden_states.sizes()) {
+        throw std::invalid_argument("residual must have the same shape as hidden_states.");
+    }
+    if (weight.dim() != 1 || weight.size(0) != HIDDEN_SIZE) {
+        std::ostringstream oss;
+        oss << "weight must be 1D with size " << HIDDEN_SIZE;
+        throw std::invalid_argument(oss.str());
+    }
+}
+
+torch::Tensor run(torch::Tensor hidden_states,
+                  torch::Tensor residual,
+                  torch::Tensor weight) {
+    // Validate shapes and dtypes
+    check_shapes_and_types(hidden_states, residual, weight);
+
+    // Determine device handling:
+    // - If inputs are on CPU, move to current CUDA device for compute and return result on CPU.
+    // - If on CUDA, compute in-place on that device and return CUDA tensor.
+    bool inputs_on_cuda = hidden_states.device().is_cuda() &&
+                          residual.device().is_cuda() &&
+                          weight.device().is_cuda();
+
+    // Choose target CUDA device
+    int target_device = inputs_on_cuda ? hidden_states.device().index() : at::cuda::current_device();
+
+    // Move to CUDA if necessary
+    torch::Tensor hs_dev, rs_dev, wt_dev;
+    if (!inputs_on_cuda) {
+        auto options = hidden_states.options().device(torch::kCUDA, target_device);
+        hs_dev = hidden_states.to(options, /*non_blocking=*/true);
+        rs_dev = residual.to(options, /*non_blocking=*/true);
+        wt_dev = weight.to(options, /*non_blocking=*/true);
+    } else {
+        // Ensure all tensors are on the same CUDA device
+        if (hidden_states.device().index() != residual.device().index() ||
+            hidden_states.device().index() != weight.device().index()) {
+            throw std::invalid_argument("All CUDA tensors must be on the same device.");
+        }
+        hs_dev = hidden_states;
+        rs_dev = residual;
+        wt_dev = weight;
+    }
+
+    // Contiguity for coalesced access
+    hs_dev = hs_dev.contiguous();
+    rs_dev = rs_dev.contiguous();
+    wt_dev = wt_dev.contiguous();
+
+    // Prepare output on device
+    auto out_dev = torch::empty_like(hs_dev);
+
+    const int64_t batch_size = hs_dev.size(0);
+    if (batch_size == 0) {
+        // Return empty tensor on same device as inputs
+        if (!inputs_on_cuda) {
+            return out_dev.to(hidden_states.options().device(hidden_states.device()), /*non_blocking=*/true);
+        }
+        return out_dev;
+    }
+
+    // Type-size compatibility
+    static_assert(sizeof(at::BFloat16) == sizeof(__nv_bfloat16), "BFloat16 size mismatch with __nv_bfloat16");
+
+    // Raw pointers
+    const __nv_bfloat16* hs_ptr = reinterpret_cast<const __nv_bfloat16*>(hs_dev.data_ptr<at::BFloat16>());
+    const __nv_bfloat16* rs_ptr = reinterpret_cast<const __nv_bfloat16*>(rs_dev.data_ptr<at::BFloat16>());
+    const __nv_bfloat16* wt_ptr = reinterpret_cast<const __nv_bfloat16*>(wt_dev.data_ptr<at::BFloat16>());
+    __nv_bfloat16* out_ptr = reinterpret_cast<__nv_bfloat16*>(out_dev.data_ptr<at::BFloat16>());
+
+    // Launch on current stream
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream(target_device);
+
+    fused_add_rmsnorm_h4096_launcher(
+        hs_ptr, rs_ptr, wt_ptr, out_ptr,
+        static_cast<int>(batch_size),
+        stream
+    );
+
+    // Error handling
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::ostringstream oss;
+        oss << "CUDA kernel launch error: " << cudaGetErrorString(err);
+        throw std::runtime_error(oss.str());
+    }
+
+    // If original inputs were on CPU, move result back to CPU
+    if (!inputs_on_cuda) {
+        auto out_cpu = out_dev.to(hidden_states.options().device(torch::kCPU), /*non_blocking=*/false);
+        return out_cpu;
+    }
+
+    return out_dev;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("run", &run, "Kernel execution function",
+          pybind11::arg("hidden_states"),
+          pybind11::arg("residual"),
+          pybind11::arg("weight"));
+}
+</cpp_file>
