@@ -153,34 +153,24 @@ class Builder(ABC):
         except (ValueError, TypeError):
             return
 
-        # Count parameters, handling variadic arguments:
-        # - **kwargs (VAR_KEYWORD): ignored, allows extra keyword arguments
-        # - *args (VAR_POSITIONAL): enables range matching (num_params <= expected)
-        params = signature.parameters.values()
-        has_var_positional = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
-        num_params = sum(
-            p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-            for p in params
-        )
-
         dps = solution.spec.destination_passing_style
         expected_nparam = (
             len(definition.inputs) + len(definition.outputs) if dps else len(definition.inputs)
         )
 
-        if has_var_positional:
-            if num_params > expected_nparam:
-                style = "Destination-passing" if dps else "Value-returning"
-                raise BuildError(
-                    f"{style} style callable: expected {expected_nparam} parameters, "
-                    f"but got at least {num_params}"
-                )
-        elif num_params != expected_nparam:
+        # Validate against the actual call shape used by benchmark/apply runtime: a fixed number
+        # of positional arguments derived from the definition. This accepts extra optional
+        # parameters with defaults while still rejecting missing required or keyword-only
+        # parameters that cannot be satisfied by positional calling.
+        sample_args = [object() for _ in range(expected_nparam)]
+        try:
+            signature.bind(*sample_args)
+        except TypeError as e:
             style = "Destination-passing" if dps else "Value-returning"
             raise BuildError(
-                f"{style} style callable: expected {expected_nparam} parameters, but got "
-                f"{num_params}"
-            )
+                f"{style} style callable: expected {expected_nparam} positional parameters, "
+                f"but signature '{signature}' is incompatible: {e}"
+            ) from e
 
         # Check return annotation (only for value-returning style)
         if not solution.spec.destination_passing_style:
