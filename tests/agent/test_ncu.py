@@ -1,14 +1,13 @@
 """Integration tests for NCU profiling agent API."""
 
-from pathlib import Path
-
 import pytest
 
 from flashinfer_bench.agents.ncu import flashinfer_bench_run_ncu
 from flashinfer_bench.data import Solution, TraceSet
 from flashinfer_bench.data.workload import Workload
+from flashinfer_bench.env import get_fib_dataset_path
 
-TRACE_SET_PATH = str(Path(__file__).resolve().parents[2] / "tmp-repos" / "flashinfer-trace")
+TRACE_SET_PATH = str(get_fib_dataset_path())
 DEFN_NAME = "gemm_n128_k2048"
 
 
