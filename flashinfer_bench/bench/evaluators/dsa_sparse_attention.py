@@ -64,9 +64,20 @@ class DsaSparseAttentionEvaluator(DefaultEvaluator):
                 )
 
             ref_out = ref_outputs[trial]
-            n_compare = min(len(out), len(ref_out))
+            if len(ref_out) != 2:
+                return None, make_eval(
+                    status=EvaluationStatus.RUNTIME_ERROR,
+                    device=device,
+                    log_path=log_path,
+                    extra_msg="DSA sparse attention reference must return exactly 2 outputs.",
+                )
 
-            for sol_tensor, ref_tensor in zip(out[:n_compare], ref_out[:n_compare]):
+            if len(out) not in (1, 2):
+                return None, make_eval(
+                    status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
+                )
+
+            for sol_tensor, ref_tensor in zip(out, ref_out[: len(out)], strict=True):
                 if tuple(sol_tensor.shape) != tuple(ref_tensor.shape):
                     return None, make_eval(
                         status=EvaluationStatus.INCORRECT_SHAPE, device=device, log_path=log_path
@@ -122,6 +133,9 @@ def _flexible_normalize(result: Any, device: str) -> List[torch.Tensor]:
         if isinstance(v, torch.Tensor):
             return v.to(device) if str(v.device) != device else v
         return torch.tensor(v, device=device)
+
+    if result is None:
+        return []
 
     if isinstance(result, (tuple, list)):
         return [to_tensor(v) for v in result]

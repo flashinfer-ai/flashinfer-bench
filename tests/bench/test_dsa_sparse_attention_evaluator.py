@@ -263,3 +263,71 @@ def test_wrong_output(tmp_path, tmp_cache_dir):
     assert correctness is not None
     assert evaluation is not None
     assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+
+
+@pytest.mark.requires_torch_cuda
+def test_empty_output(tmp_path, tmp_cache_dir):
+    definition = _make_dsa_sparse_attention_def(
+        "dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64"
+    )
+    device = "cuda:0"
+    registry, inputs, ref_outputs = _make_trial(definition, device)
+    solution = _make_solution(
+        definition.name,
+        "empty_output",
+        (
+            "def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):\n"
+            "    return ()\n"
+        ),
+    )
+    sol_runnable = registry.build(definition, solution)
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+
+    correctness, evaluation = DsaSparseAttentionEvaluator.check_correctness(
+        definition=definition,
+        sol_runnable=sol_runnable,
+        inputs=inputs,
+        ref_outputs=ref_outputs,
+        cfg=cfg,
+        log_path=str(tmp_path / "log"),
+        device=device,
+    )
+
+    assert correctness is None
+    assert evaluation is not None
+    assert evaluation.status == EvaluationStatus.INCORRECT_SHAPE
+
+
+@pytest.mark.requires_torch_cuda
+def test_too_many_outputs(tmp_path, tmp_cache_dir):
+    definition = _make_dsa_sparse_attention_def(
+        "dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64"
+    )
+    device = "cuda:0"
+    registry, inputs, ref_outputs = _make_trial(definition, device)
+    solution = _make_solution(
+        definition.name,
+        "too_many_outputs",
+        (
+            "import torch\n\n"
+            "def run(q_nope, q_pe, ckv_cache, kpe_cache, sparse_indices, sm_scale):\n"
+            "    extra = torch.zeros((), dtype=torch.float32, device=q_nope.device)\n"
+            "    return q_nope, torch.zeros(q_nope.shape[:2], dtype=torch.float32, device=q_nope.device), extra\n"
+        ),
+    )
+    sol_runnable = registry.build(definition, solution)
+    cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+
+    correctness, evaluation = DsaSparseAttentionEvaluator.check_correctness(
+        definition=definition,
+        sol_runnable=sol_runnable,
+        inputs=inputs,
+        ref_outputs=ref_outputs,
+        cfg=cfg,
+        log_path=str(tmp_path / "log"),
+        device=device,
+    )
+
+    assert correctness is None
+    assert evaluation is not None
+    assert evaluation.status == EvaluationStatus.INCORRECT_SHAPE
