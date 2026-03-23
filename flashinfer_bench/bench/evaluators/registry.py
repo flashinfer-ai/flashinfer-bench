@@ -7,13 +7,14 @@ from typing import List, Type
 from flashinfer_bench.data import Definition
 
 from .default import DefaultEvaluator
+from .dsa_sparse_attention import DsaSparseAttentionEvaluator
 from .evaluator import Evaluator
 from .lowbit import LowBitEvaluator
 from .sampling import SamplingEvaluator
 
 EvaluatorType = Type[Evaluator]
 
-_EVALUATORS: List[EvaluatorType] = [SamplingEvaluator, LowBitEvaluator]
+_EVALUATORS: List[EvaluatorType] = [SamplingEvaluator, LowBitEvaluator, DsaSparseAttentionEvaluator]
 _DEFAULT_EVALUATOR: EvaluatorType = DefaultEvaluator
 
 

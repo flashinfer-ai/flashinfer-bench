@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from flashinfer_bench.compile import BuildError, Builder, Runnable, RunnableMetadata
+from flashinfer_bench.compile import Builder, BuildError, Runnable, RunnableMetadata
 from flashinfer_bench.compile.registry import BuilderRegistry
 from flashinfer_bench.data import (
     AxisConst,
@@ -323,14 +323,18 @@ def test_validate_signature_dps_optional_definition_params():
     def func(A=None, B=None, out=None):
         pass
 
-    _make_signature_builder()._try_validate_signature(func, _make_dps_definition(), _make_dps_solution())
+    _make_signature_builder()._try_validate_signature(
+        func, _make_dps_definition(), _make_dps_solution()
+    )
 
 
 def test_validate_signature_dps_optional_extra():
     def func(A, B, out, stream=None):
         pass
 
-    _make_signature_builder()._try_validate_signature(func, _make_dps_definition(), _make_dps_solution())
+    _make_signature_builder()._try_validate_signature(
+        func, _make_dps_definition(), _make_dps_solution()
+    )
 
 
 def test_validate_signature_dps_required_extra():
