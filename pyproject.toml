@@ -41,7 +41,9 @@ Issues = "https://github.com/flashinfer-ai/flashinfer-bench/issues"
 [project.optional-dependencies]
 dev = [
   "pytest>=7.0.0",
+  "pytest-asyncio",
   "pytest-cov>=4.0.0",
+  "httpx",
   "black>=22.0.0",
   "isort>=5.0.0",
   "mypy>=1.0.0",
