@@ -26,8 +26,6 @@ try:
 except ImportError:
     pytest.skip("httpx not installed", allow_module_level=True)
 
-pytest_plugins = ("pytest_asyncio",)
-
 
 # ── Helpers ──
 
