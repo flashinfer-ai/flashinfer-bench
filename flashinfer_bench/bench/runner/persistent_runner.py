@@ -218,7 +218,7 @@ class PersistentSubprocessWorker:
     def _record_failure(self, solution_name: str, error: str, status: EvaluationStatus) -> None:
         if solution_name in self._failure_records:
             record = self._failure_records[solution_name]
-            if status == EvaluationStatus.COMPILE_ERROR:
+            if status in (EvaluationStatus.COMPILE_ERROR, EvaluationStatus.TIMEOUT):
                 record.failure_count = self._max_failures
             else:
                 record.failure_count += 1
@@ -226,7 +226,11 @@ class PersistentSubprocessWorker:
             record.last_status = status
             record.last_failure_time = time.time()
         else:
-            failure_count = self._max_failures if status == EvaluationStatus.COMPILE_ERROR else 1
+            failure_count = (
+                self._max_failures
+                if status in (EvaluationStatus.COMPILE_ERROR, EvaluationStatus.TIMEOUT)
+                else 1
+            )
             self._failure_records[solution_name] = SolutionFailureRecord(
                 solution_name=solution_name,
                 failure_count=failure_count,
@@ -358,6 +362,7 @@ class PersistentSubprocessWorker:
                     )
             else:
                 error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}"
+                self._record_failure(solution.name, error_msg, EvaluationStatus.TIMEOUT)
                 return make_eval(
                     status=EvaluationStatus.TIMEOUT, device=self._device, extra_msg=error_msg
                 )
