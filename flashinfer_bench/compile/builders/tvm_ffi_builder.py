@@ -282,10 +282,13 @@ class TVMFFIBuilder(Builder):
                     src_paths = write_sources_to_path(build_path, solution.sources)
                     cpp_files, cuda_files = self._filter_sources(src_paths)
                     extra_include_paths = [str(build_path)]
-                    extra_ldflags = ["-lcuda", "-lcublas"]
-                    cuda_lib_path = self._find_cuda_lib_path()
-                    if cuda_lib_path:
-                        extra_ldflags.insert(0, f"-L{cuda_lib_path}")
+                    extra_ldflags: List[str] = []
+                    needs_cuda_link = bool(cuda_files) or "cuda" in solution.spec.target_hardware
+                    if needs_cuda_link:
+                        extra_ldflags = ["-lcuda", "-lcublas"]
+                        cuda_lib_path = self._find_cuda_lib_path()
+                        if cuda_lib_path:
+                            extra_ldflags.insert(0, f"-L{cuda_lib_path}")
                     try:
                         # Compile sources to shared library
                         output_lib_path = tvm_ffi.cpp.build(
