@@ -1,11 +1,13 @@
 ---
 name: extract-kernel-definitions
-description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for flashinfer_trace.
+description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM) or generating Definition JSON files for `flashinfer_trace/`. For end-to-end model onboarding, use `add-new-model` first.
 ---
 
 # Extract Kernel Definitions
 
 Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
+
+For end-to-end model onboarding, use [add-new-model](../add-new-model/SKILL.md). This skill is the extraction substep only.
 
 ## Description
 
@@ -42,6 +44,8 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 ## Prerequisites
 
 Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, and sgl-cookbook (the `flashinfer_trace/` directory is already part of this repository).
+
+If the task is broader than extraction, such as full model onboarding or model metadata updates, start with [add-new-model](../add-new-model/SKILL.md).
 
 ## What This Skill Does
 
@@ -671,21 +675,11 @@ def run(q, k, v, ...):
 - **Error**: Definition exists with different parameters
 - **Handling**: Create new versioned definition, flag for review
 
-## Integration with Other Skills
+## Integration With Other Skills
 
-```bash
-# Complete workflow
-/clone-repos
-
-# Extract from multiple models
-/extract-kernel-definitions --model-name deepseek_v3
-/extract-kernel-definitions --model-name llama
-/extract-kernel-definitions --model-name qwen2_moe
-
-# Add tests for new definitions
-/add-reference-tests --op-type mla_paged
-/add-reference-tests --op-type moe
-```
+- Use [add-new-model](../add-new-model/SKILL.md) for the full model onboarding workflow.
+- Use [clone-repos](../clone-repos/SKILL.md) before extraction when the required external repositories are missing or stale.
+- Use [add-reference-tests](../add-reference-tests/SKILL.md) after extraction to validate new definitions.
 
 ## Notes
 
@@ -701,5 +695,6 @@ Update this file when adding new op_types, changing Definition JSON schema, or m
 
 ## See Also
 
+- [add-new-model](../add-new-model/SKILL.md)
 - [clone-repos](../clone-repos/SKILL.md)
 - [add-reference-tests](../add-reference-tests/SKILL.md)
