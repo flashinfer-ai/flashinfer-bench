@@ -3,7 +3,6 @@
 This document gives Claude and other agents repo-level context for working in `flashinfer-bench`.
 
 Use this file for repository structure, trace data boundaries, and source-of-truth guidance.
-Do not use this file as the detailed procedure for adding a model. End-to-end model onboarding lives in `.claude/skills/add-new-model/SKILL.md`.
 
 ## Project Overview
 
