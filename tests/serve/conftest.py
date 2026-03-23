@@ -4,8 +4,6 @@ import pytest
 import pytest_asyncio
 import torch
 
-pytest_plugins = ("pytest_asyncio",)
-
 from flashinfer_bench.bench import BenchmarkConfig
 from flashinfer_bench.data import (
     AxisConst,
@@ -27,6 +25,8 @@ try:
     from httpx import ASGITransport, AsyncClient
 except ImportError:
     pytest.skip("httpx not installed", allow_module_level=True)
+
+pytest_plugins = ("pytest_asyncio",)
 
 
 # ── Helpers ──
