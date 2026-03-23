@@ -283,7 +283,9 @@ class TVMFFIBuilder(Builder):
                     cpp_files, cuda_files = self._filter_sources(src_paths)
                     extra_include_paths = [str(build_path)]
                     extra_ldflags: List[str] = []
-                    needs_cuda_link = bool(cuda_files) or "cuda" in solution.spec.target_hardware
+                    needs_cuda_link = bool(cuda_files) or any(
+                        target.lower() == "cuda" for target in solution.spec.target_hardware
+                    )
                     if needs_cuda_link:
                         extra_ldflags = ["-lcuda", "-lcublas"]
                         cuda_lib_path = self._find_cuda_lib_path()
