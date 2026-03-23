@@ -226,7 +226,11 @@ class PersistentSubprocessWorker:
             record.last_status = status
             record.last_failure_time = time.time()
         else:
-            failure_count = self._max_failures if status in (EvaluationStatus.COMPILE_ERROR, EvaluationStatus.TIMEOUT) else 1
+            failure_count = (
+                self._max_failures
+                if status in (EvaluationStatus.COMPILE_ERROR, EvaluationStatus.TIMEOUT)
+                else 1
+            )
             self._failure_records[solution_name] = SolutionFailureRecord(
                 solution_name=solution_name,
                 failure_count=failure_count,
