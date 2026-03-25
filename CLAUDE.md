@@ -1,417 +1,326 @@
-# FlashInfer-Bench Automated Model Addition Guide
+# FlashInfer-Bench Repo Guide
 
-This document explains how to automatically extract model information from HuggingFace and SGLang codebase, and integrate them into FlashInfer-Bench.
+This document gives Claude and other agents repo-level context for working in `flashinfer-bench`.
+
+Use this file for repository structure, trace data boundaries, and source-of-truth guidance.
 
 ## Project Overview
 
-FlashInfer-Bench is a GPU kernel optimization benchmarking framework for:
-- Standardizing FlashInfer Trace format
-- Real-time workload tracing and collection
-- Automated kernel optimization and replacement
-- Performance leaderboards and tracking
-
-### Core Concepts
-
-1. **Definition**: Specifies an operation's interface (inputs/outputs, axes, reference implementation)
-2. **Solution**: Concrete implementation of a Definition (Python/Triton/CUDA)
-3. **Workload**: Specific input configuration and test case
-4. **Trace**: Execution record containing correctness and performance data
-5. **Model**: Hierarchical module structure mapping model components to Definitions
-
-## Project Architecture
-
-```
-flashinfer-bench/
-├── flashinfer_bench/           # Main source code
-│   ├── data/                   # Definition, Solution, Trace data structures
-│   ├── compile/                # Build system (Python/Triton/CUDA)
-│   ├── bench/                  # Benchmarking engine
-│   ├── apply/                  # Kernel auto-replacement API
-│   └── integration/            # FlashInfer integration
-├── web/apps/web/data/          # Model definitions (TypeScript)
-│   └── models.ts               # DeepSeek/Llama/Qwen model definitions
-├── examples/                   # Example code
-│   └── kernel_generator/       # AI-driven kernel generator
-└── skills/                     # Automated workflow scripts
-    └── add-new-model/          # New model addition workflow
-```
-
-## Model Definition Structure
-
-Models are defined in `web/apps/web/data/models.ts` with a hierarchical structure:
-
-```typescript
-{
-  id: "model-id",                    // Unique model identifier
-  name: "Display Name",              // Display name
-  description: "Model description",  // Description
-  modules: {                         // Hierarchical modules
-    ModuleName: {
-      count: 32,                     // Repetition count
-      parent: "ParentModule",        // Parent module
-      type: "block" | "layer",       // Type
-      definitions: [                 // Associated kernel definitions
-        "rmsnorm_h4096",
-        "gqa_paged_decode_h32_kv8_d128_ps1"
-      ]
-    }
-  }
-}
-```
-
-### Existing Model Examples
-
-- **DeepSeek V3/R1**: MLA architecture, 61 layers, MoE
-- **Llama 3.1 8B**: Standard GQA architecture, 32 layers
-- **Qwen3 30B A3B**: MoE architecture, 32 layers
-
-## Supported Operation Types
-
-FlashInfer-Bench supports the following op_types (corresponding to different Definition types):
-
-| Operation Type | Description | Example |
-|---------------|-------------|---------|
-| `rmsnorm` | RMS Layer Normalization | `rmsnorm_h4096` |
-| `gemm` | General Matrix Multiplication | `gemm_n_6144_k_4096` |
-| `gqa_ragged` | Group Query Attention (ragged) | `gqa_ragged_prefill_causal_h32_kv8_d128` |
-| `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
-| `mla_paged` | Multi-Head Latent Attention (paged) | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
-| `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
-| `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
-| `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
-| `sampling` | Sampling operations | - |
-
-### Tensor/Expert Parallelism and Multiple Definitions
-
-Different serving configurations (TP/EP flags) can require separate kernel definitions for the same operation type:
-
-**Affected by TP (Tensor Parallelism)**:
-- **Attention kernels** (GQA, MLA, GDN): Head counts are divided by TP value
-  - Example: Qwen3-Next GDN with original q_heads=16, v_heads=32
-    - TP=2: `gdn_decode_qk8_v16_d128_k_last` (16/2=8, 32/2=16)
-    - TP=4: `gdn_decode_qk4_v8_d128_k_last` (16/4=4, 32/4=8)
-  - Example: DeepSeek V3 MLA with original num_heads=128
-    - TP=8: `mla_paged_decode_h16_ckv512_kpe64_ps1` (128/8=16)
-
-**Affected by EP (Expert Parallelism)**:
-- **MoE kernels**: Local expert count = total_experts / EP
-  - Example: DeepSeek V3 with 256 total experts
-    - EP=1: `num_local_experts=256`
-    - EP=8: `num_local_experts=32`
-
-**NOT affected by TP/EP**:
-- Normalization kernels (RMSNorm)
-- GEMM kernels (shape changes handled at runtime)
-- Sampling operations
-
-## Automated Workflow
+`flashinfer-bench` is a framework for:
 
-### Using Skills to Add New Models
+- standardizing the FlashInfer Trace schema
+- collecting real workloads from model serving
+- benchmarking candidate kernel implementations
+- storing benchmark traces
+- applying the best known implementation at runtime
 
-We provide a suite of skills to automate the model addition process:
+In short:
 
-```bash
-# 1. Clone required repositories (SGLang, FlashInfer, sgl-cookbook)
-claude-code run clone-repos
+1. define kernel contracts
+2. collect workloads
+3. benchmark solutions
+4. store traces
+5. dispatch future calls using measured results
 
-# 2. Extract kernel definitions from model implementation
-#    This will automatically:
-#    - Parse SGLang model implementation
-#    - Find serving configs from sgl-cookbook (TP/EP flags)
-#    - Generate multiple definitions for different parallelism settings
-claude-code run extract-kernel-definitions --model-name deepseek_v3
+## Core Concepts
 
-# 3. Add reference tests to validate definitions
-claude-code run add-reference-tests --op-type mla_paged
-```
+### Definition
 
-**Key Feature**: The `extract-kernel-definitions` skill now automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
+A `Definition` is the formal contract for a kernel-like operation.
 
-### Manual Model Addition Process
+It specifies:
 
-If you need to add manually, follow these steps:
+- the operation name and `op_type`
+- symbolic axes
+- input and output signatures
+- constraints
+- a reference implementation
 
-#### 1. Obtain Model Architecture Information
+### Workload
 
-Get the model's `config.json` from HuggingFace:
+A `Workload` is a concrete instantiation of a `Definition`.
+It binds runtime axis values and input data needed to replay the computation.
 
-```python
-from huggingface_hub import hf_hub_download
+### Solution
 
-config_path = hf_hub_download(
-    repo_id="moonshot-ai/kimi-k2",
-    filename="config.json"
-)
-```
+A `Solution` is a concrete implementation of a `Definition`.
+It may be written in Python, Triton, CUDA/C++, TileLang, or other supported forms.
 
-Key configuration items:
-- `num_hidden_layers`: Number of layers
-- `hidden_size`: Hidden dimension
-- `num_attention_heads`: Number of attention heads
-- `num_key_value_heads`: Number of KV heads (for GQA)
-- `intermediate_size`: MLP intermediate size
+### Trace
 
-#### 2. Find SGLang Baseline Implementation
+A `Trace` records the result of evaluating a `Solution` on a `Workload`.
+It links definition, workload, solution, correctness, and performance.
 
-Locate the corresponding model implementation in SGLang codebase:
+### TraceSet
 
-```bash
-# Clone SGLang
-git clone https://github.com/sgl-project/sglang.git
-cd sglang
+`TraceSet` is the main dataset abstraction in Python.
+It bridges on-disk dataset layout and in-memory runtime logic, and many subsystems use it as their entry point.
 
-# Search for model implementation
-grep -r "class.*ForCausalLM" python/sglang/srt/models/
-```
+### Model
 
-Files to examine:
-- `python/sglang/srt/models/{model_name}.py`
-- Kernel calls in forward pass
-- attention/MLP/normalization implementations
+A `Model` is the web-layer mapping from model modules to definitions.
+Model metadata lives in `web/apps/web/data/models.ts`.
 
-#### 3. Create Model Definition
+## Internal And External Trace
 
-Add new model to `web/apps/web/data/models.ts`:
+There are two distinct trace-related locations:
 
-```typescript
-{
-  id: "kimi-k2",
-  name: "Kimi K2",
-  description: "Moonshot AI Kimi K2 model",
-  modules: {
-    // Reference DeepSeek/Llama/Qwen structure
-    // Fill based on config.json and SGLang implementation
-  }
-}
-```
+### Internal trace folder
 
-#### 4. Map Modules to Definitions
+`flashinfer_trace/` is the repo-local internal trace folder.
 
-**IMPORTANT**: When creating definitions for new kernels:
-1. Refer to the HuggingFace model page (`https://huggingface.co/{org}/{model-name}`) to obtain authoritative model constants from `config.json`
-2. Check sgl-cookbook (`tmp/sgl-cookbook/data/models/generated/v0.5.6/{model}.yaml`) for recommended TP/EP configurations across different hardware platforms
-3. Generate multiple definitions for each TP/EP configuration that affects kernel parameters
-4. Cross-reference with SGLang implementation for runtime-specific values like `page_size`
+Use it for:
 
-Associate each module with corresponding Definitions:
+- definition JSON files reviewed in this repository
+- reference tests for definition reference implementations
+- schema-adjacent assets that should live in source control
 
-- **Normalization layers**: `rmsnorm_h{hidden_size}`, `fused_add_rmsnorm_h{hidden_size}`
-- **Attention layers**:
-  - GQA: `gqa_paged_decode_h{num_heads}_kv{kv_heads}_d{head_dim}_ps1`
-  - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
-  - DSA: `dsa_sparse_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_topk{topk}_ps1` (sparse MLA)
-  - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
-- **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
-- **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
+### External trace dataset
 
-#### 5. Validation and Testing
+The canonical external trace dataset is [`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace).
 
-```bash
-# Start web interface to view model
-cd web/apps/web
-pnpm install
-pnpm dev
+Use it for the published dataset view of:
 
-# Run benchmarks
-flashinfer-bench run --local /path/to/dataset --definitions <your-definitions>
-```
-
-## Skills Detailed Documentation
-
-### add-new-model
+- `definitions/`
+- `solutions/`
+- `workloads/`
+- `traces/`
 
-Main workflow skill that integrates all steps.
-
-**Parameters**:
-- `--model-name`: Model name (e.g., "kimi-k2")
-- `--hf-repo-id`: HuggingFace repo ID (e.g., "moonshot-ai/kimi-k2")
-- `--sglang-path`: SGLang codebase path (optional, default ./sglang)
-
-**Output**:
-- Updated `web/apps/web/data/models.ts`
-- Model architecture analysis report
-- Definition mapping suggestions
-
-### extract-model-from-hf
-
-Extract model configuration from HuggingFace.
-
-**Parameters**:
-- `--model-id`: HuggingFace model ID
-- `--output`: Output JSON path (optional)
-
-**Output**:
-- `model_config.json`: Model configuration file
-- `model_architecture.json`: Parsed architecture information
-
-### find-sglang-baseline
-
-Find baseline implementation from SGLang codebase.
-
-**Parameters**:
-- `--model-name`: Model name or class name keyword
-- `--sglang-path`: SGLang codebase path
-
-**Output**:
-- `sglang_implementation.json`: Implementation details
-- Model file paths and key code snippets
-
-### generate-model-definition
-
-Generate TypeScript model definition.
-
-**Parameters**:
-- `--config`: Model config JSON path
-- `--sglang-impl`: SGLang implementation JSON path (optional)
-- `--output`: Output path (default web/apps/web/data/models.ts)
+Do not treat any workspace-local clone path as canonical. Local clones are environment-specific and should not be documented here as fixed locations.
 
-**Output**:
-- Updated models.ts file
-- TypeScript code for module definitions
+## Current Definition Lifecycle
 
-## Common Model Architecture Patterns
+The current definition lifecycle is:
 
-### Standard Transformer (e.g., Llama)
+1. a skill extracts definitions from SGLang
+2. generated definitions are written into internal `flashinfer_trace/`
+3. changes are reviewed through a PR in this repository
+4. after merge, the internal definitions are manually synced to the external dataset
 
-```
-Model
-├── embed_tokens
-├── layers (n x DecoderLayer)
-│   ├── input_layernorm → rmsnorm
-│   ├── self_attn
-│   │   ├── qkv_proj → gemm
-│   │   ├── rotary_emb
-│   │   ├── attn → gqa_paged_decode/prefill
-│   │   └── o_proj → gemm
-│   ├── post_attention_layernorm → rmsnorm
-│   └── mlp
-│       ├── gate_up_proj → gemm
-│       ├── act_fn
-│       └── down_proj → gemm
-├── norm → rmsnorm
-└── lm_head
-```
+This means:
 
-### MoE Architecture (e.g., DeepSeek, Qwen)
+- definition generation and review happen in this repository first
+- the external dataset is not the primary review surface for new definitions
+- the external dataset receives synced results after repository review
 
-MLP layer replaced with:
-```
-mlp
-├── moe_gate → moe (routing)
-├── moe_topk → moe (selection)
-└── moe_experts → moe (execution)
-```
+## Runtime Mental Model
 
-### MLA Architecture (e.g., DeepSeek V3)
+The core runtime pipeline is:
 
-Attention replaced with:
-```
-self_attn
-├── fused_qkv_a_proj_with_mqa
-├── q_a_layernorm → rmsnorm
-├── q_b_proj → gemm
-├── kv_a_layernorm → rmsnorm
-├── kv_b_proj → gemm
-├── rotary_emb
-├── attn_mla → mla_paged_decode/prefill
-└── o_proj → gemm
-```
+1. `Definition` describes the contract
+2. tracing turns real execution into replayable `Workload` data
+3. benchmark runs `Solution` candidates on those workloads and records `Trace` results
+4. apply uses existing traces to dispatch future calls to the best known implementation
 
-### GDN Architecture (e.g., Qwen3 Next)
+Two relationships matter:
 
-Linear attention layers using Gated Delta Net:
-```
-self_attn
-├── q_proj → gemm
-├── k_proj → gemm
-├── v_proj → gemm
-├── gating_proj → gemm (produces a, b for gating)
-├── attn_gdn → gdn_prefill/gdn_decode
-└── o_proj → gemm
-```
+- benchmark is where correctness and performance become measured data
+- `apply(...)` is the shared front door for workload collection and optimized dispatch
 
-Where GDN maintains a recurrent state [B, H, K, V] and uses:
-- `A_log`: learnable log decay parameter
-- `a`: input-dependent decay (combined with dt_bias)
-- `b`: update gate input (transformed via sigmoid)
+The internal trace folder is source-controlled and reviewable.
+The external dataset is the published dataset-shaped artifact consumed by tracing, benchmark, and apply workflows.
 
-## Extension and Contributing
+## Repository Structure
 
-### Adding New Operation Types
+### `flashinfer_bench/`
 
-To support new operation types (beyond existing rmsnorm/gemm/gqa/mla/moe):
+The main Python package and runtime core.
 
-1. Create operation documentation in `docs/op_type_schema/`
-2. Create Definition JSON (input/output/axes specification)
-3. Provide Python reference implementation
-4. Create Solution (Triton/CUDA optimized implementation)
-5. Optional: Create FlashInfer Adapter
+Important subpackages:
 
-### Contributing to Official Dataset
+- `data/`: core data structures such as `Definition`, `Workload`, `Solution`, `Trace`, and `TraceSet`
+- `tracing/`: workload collection runtime
+- `bench/`: benchmark orchestration, runners, evaluators, timing
+- `compile/`: builders and build registry
+- `apply/`: runtime dispatch to the best known implementation
+- `integration/`: framework-specific integration glue
+- `serve/`: HTTP evaluation service
+- `agents/`: agent-facing helpers
+- `cli/`: command line entry points
 
-Optimized kernels can be submitted to:
-```
-https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace
-```
+### `flashinfer_trace/`
 
-## Maintaining Documentation
+Repo-managed internal trace assets.
 
-**When making architectural changes, update these files accordingly:**
-- `CLAUDE.md` - project overview, supported op_types, architecture patterns
-- `.claude/skills/*.md` - skill-specific documentation
+Think of this as the internal, reviewable trace layer in source control, especially:
 
-## References
+- `flashinfer_trace/definitions/`
+- `flashinfer_trace/tests/references/`
 
-- [FlashInfer Documentation](https://docs.flashinfer.ai)
-- [SGLang GitHub](https://github.com/sgl-project/sglang)
-- [HuggingFace Hub](https://huggingface.co/models)
-- [Definition Schema Documentation](docs/flashinfer_trace/definition.md)
-- [Operation Type Schema](docs/op_type_schema/)
+### `tests/`
 
-## Troubleshooting
+Repository tests for runtime behavior and infrastructure.
+These are different from reference tests under `flashinfer_trace/tests/references/`.
 
-### Issue: Cannot find corresponding Definition
+### `web/apps/web/`
 
-**Solution**:
-1. Check existing definitions directory for similar definitions
-2. Use kernel_generator to generate new optimized implementations
-3. Start from flashinfer baseline solution
+Web UI for browsing kernels, traces, and models.
+`web/apps/web/data/models.ts` is the source of truth for model metadata shown in the app.
 
-### Issue: Model architecture doesn't match existing patterns
+### `docs/`
 
-**Solution**:
-1. Reference the most similar existing model (DeepSeek/Llama/Qwen)
-2. Create new operation type schema
-3. Contact FlashInfer team for support
+Published documentation source.
 
-### Issue: Model not implemented in SGLang
+### `serve/`
 
-**Solution**:
-1. Check HuggingFace transformers library
-2. Use generic transformer architecture as baseline
-3. Infer architecture from model config
+Benchmark evaluation service.
+This is not a general model inference server; it schedules and executes benchmark work over dataset-backed workloads.
 
-## Example: Adding Kimi K2
+## Supported `op_type`
 
-Complete example workflow:
+Supported `op_type` information may be summarized here, but the source of truth is the trace dataset structure itself.
 
-```bash
-# 1. Run automated workflow
-claude-code run add-new-model \
-  --model-name kimi-k2 \
-  --hf-repo-id moonshot-ai/kimi-k2
+When you need the current set of supported `op_type` values, inspect:
 
-# 2. View generated definition
-cat web/apps/web/data/models.ts
+- internal definitions under `flashinfer_trace/definitions/`
+- external dataset definitions under `definitions/` in [`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
 
-# 3. Start web interface for validation
-cd web/apps/web && pnpm dev
+At the time of writing, the internal definitions currently include directories such as:
 
-# 4. Run benchmarks
-flashinfer-bench run --local ./data --definitions <generated-defs>
-```
+- `dsa_paged`
+- `gdn`
+- `gemm`
+- `gqa_paged`
+- `gqa_ragged`
+- `mla_paged`
+- `moe`
+- `rmsnorm`
+- `sampling`
 
-Expected output:
-- New kimi-k2 entry in `web/apps/web/data/models.ts`
-- `model_analysis_kimi-k2.json` containing architecture analysis
-- List of Definition mapping suggestions
+Treat the dataset structure, not this prose list, as the source of truth.
+
+## Benchmark Usage
+
+Benchmarking evaluates candidate solutions against definition-backed workloads and writes trace results.
+
+Conceptually, benchmark does the following:
+
+1. load a dataset through `TraceSet`
+2. select definitions, workloads, and solutions
+3. build candidate solutions through the builder registry
+4. run them with correctness and performance evaluation
+5. store the resulting traces
+
+The main CLI entry points are:
+
+- `flashinfer-bench run` for local benchmark execution
+- `flashinfer-bench serve` for HTTP-based benchmark evaluation
+- `flashinfer-bench report ...` for analyzing stored trace results
+
+## Where To Look By Task
+
+### Tracing workloads
+
+Start with:
+
+- `flashinfer_bench/tracing/tracing.py`
+- `flashinfer_bench/tracing/runtime.py`
+- `flashinfer_bench/tracing/config.py`
+- `flashinfer_bench/tracing/policy.py`
+
+Then inspect:
+
+- `flashinfer_bench/integration/flashinfer/`
+
+Why: tracing converts runtime kernel calls into structured workload materialization.
+
+### Running benchmarks
+
+Start with:
+
+- `flashinfer_bench/bench/benchmark.py`
+- `flashinfer_bench/bench/config.py`
+- `flashinfer_bench/bench/runner/`
+- `flashinfer_bench/bench/evaluators/`
+
+Why: this is where definitions, workloads, and solutions become measured traces.
+
+### Runtime dispatch or apply behavior
+
+Start with:
+
+- `flashinfer_bench/apply/apply_api.py`
+- `flashinfer_bench/apply/runtime.py`
+- `flashinfer_bench/apply/key.py`
+- `flashinfer_bench/apply/table.py`
+
+Why: apply consumes benchmark evidence and decides which implementation runs at runtime.
+
+### Definition correctness or reference behavior
+
+Start with:
+
+- `flashinfer_trace/definitions/`
+- `flashinfer_trace/tests/references/`
+
+Why: this is the internal, reviewable source-controlled layer for definition contracts and reference validation.
+
+### Model coverage or web metadata
+
+Start with:
+
+- `web/apps/web/data/models.ts`
+- `web/apps/web/lib/data-loader.ts`
+- `docs/`
+
+Why: this is where model metadata and dataset visualization are surfaced.
+
+### Benchmark service behavior
+
+Start with:
+
+- `flashinfer_bench/serve/app.py`
+- `flashinfer_bench/serve/scheduler.py`
+- `flashinfer_bench/serve/task_store.py`
+
+Why: the serve subsystem exposes benchmark orchestration as a service, not end-user inference.
+
+### Dataset-facing questions
+
+When the question is about published trace contents, workload coverage, submitted solutions, or synced definitions, reason against the external dataset [`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace).
+
+## Common Misunderstandings
+
+### `flashinfer_trace/` is the whole dataset
+
+Not necessarily.
+`flashinfer_trace/` is the internal repo-managed trace layer, while the canonical published dataset lives in [`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace).
+
+### Tracing and apply are unrelated entry points
+
+They are different runtimes, but they share the `apply(...)` call path.
+This matters when reading runtime interception logic.
+
+### Benchmark only measures speed
+
+Benchmark also validates correctness against the reference implementation and stores evaluation results as traces.
+
+### `serve/` is for generic inference traffic
+
+It is not.
+The serve subsystem is a benchmark orchestration service over dataset-backed workloads.
+
+## Available Skills
+
+Project skills live under `.claude/skills/`.
+
+Use:
+
+- `add-new-model` for end-to-end model onboarding
+- `clone-repos` to prepare SGLang, FlashInfer, and sgl-cookbook under `tmp/`
+- `extract-kernel-definitions` to extract definitions from a chosen model implementation
+- `add-reference-tests` to add reference tests for definitions
+- `track-models` to update model coverage tracking
+
+## Maintenance Notes
+
+Update `CLAUDE.md` when any of the following change:
+
+- the internal vs external trace boundary
+- the definition review and sync lifecycle
+- the canonical external dataset location
+- repository structure relevant to agent navigation
+
+Keep this file concise. Prefer high-value repo navigation guidance over long task procedures or duplicated reference material.
+
+Update the relevant skill files when task procedures change.
