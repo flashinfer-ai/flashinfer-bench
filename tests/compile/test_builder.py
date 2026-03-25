@@ -202,12 +202,20 @@ def test_build_registry_cache_hit():
 
 
 def test_build_registry_cache_miss():
-    """Test that building different solutions results in a cache miss."""
+    """Test that building solutions with different content results in a cache miss."""
     builder = _create_mock_builder("builder", can_build_result=True)
     registry = BuilderRegistry([builder])
     definition = _make_test_definition()
     solution1 = _make_test_solution("solution1")
-    solution2 = _make_test_solution("solution2")
+    solution2 = Solution(
+        name="solution2",
+        definition="test_def",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+        ),
+        sources=[SourceFile(path="main.py", content="def run(A):\n    return A + 1\n")],
+    )
 
     runnable1 = registry.build(definition, solution1)
     runnable2 = registry.build(definition, solution2)
