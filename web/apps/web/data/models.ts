@@ -668,15 +668,25 @@ const models: Model[] = [
         count: 62,
         parent: "MiniMaxM2DecoderLayer",
         type: "block",
-        definitions: [
-          "moe_fp8_block_scale_sigmoid_routing_topk8_e256_h3072_i1536",
-        ],
+        definitions: [],
       },
       moe_gate: {
         count: 62,
         parent: "block_sparse_moe",
         type: "layer",
         definitions: ["gemm_n256_k3072"],
+      },
+      moe_topk: {
+        count: 62,
+        parent: "block_sparse_moe",
+        type: "layer",
+        definitions: [],
+      },
+      moe_experts: {
+        count: 62,
+        parent: "block_sparse_moe",
+        type: "layer",
+        definitions: [],
       },
       norm: {
         count: 1,
