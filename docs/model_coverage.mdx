@@ -38,7 +38,8 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Llama 4 Maverick 17B-128E | GQA + MoE | 🟡 Partial |
 | Mistral Small 3.1 24B | GQA + Dense | 🟡 Partial |
 | GLM-4.6 | GQA + Dense | ❌ Not covered |
-| MiniMax M2 / Text-01 | Lightning Attn + MoE | ❌ Not covered |
+| MiniMax-Text-01 | Lightning Attn + MoE | ❌ Not covered |
+| MiniMax M2 | GQA + MoE | 🟡 Partial |
 | Gemma 3 27B | GQA + Dense | 🟡 Partial |
 | Qwen3 14B | GQA + Dense | 🟡 Partial |
 | NemotronH 47B | GQA + Mamba2 Hybrid | ❌ Not covered |
@@ -612,22 +613,49 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 ---
 
-## MiniMax M2 / Text-01
+## MiniMax-Text-01
 
-**Architecture**: Hybrid linear + softmax attention with MoE FFN. Uses a 7:1 ratio of Lightning Attention (linear) to standard Softmax Attention layers per 8-layer block, plus sparse MoE (32 experts, top-2 routing). Total parameters: ~456B with ~45.9B activated. 80 decoder layers, 64 attention heads, head_dim=128 (hidden≈8192).
+**Architecture**: Hybrid linear + softmax attention with MoE FFN. Uses a 7:1 ratio of Lightning Attention (linear) to standard Softmax Attention layers per 8-layer block, plus sparse MoE (32 experts, top-2 routing). Total parameters: ~456B with ~45.9B activated. 80 decoder layers, 64 attention heads, head_dim=128, hidden_size=6144.
 
 **Lightning Attention** is a novel linear attention variant that does not use the standard softmax attention mechanism. It is **not currently supported by FlashInfer** and requires a new op type.
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h8192` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
+| `rmsnorm_h6144` | rmsnorm | ❌ |
+| `fused_add_rmsnorm_h6144` | rmsnorm | ❌ |
 | Lightning Attention layers (7/8 of all layers) | lightning_attn | ❌ (op type not supported) |
 | Softmax Attention layers (1/8 of all layers) | gqa_paged | ❌ |
 | MoE experts (top-2, 32 experts) | moe | — |
 | Sampling (vocab TBD) | sampling | — |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is Lightning Attention — a linear attention variant not yet in FlashInfer. The softmax attention layers (GQA-style) also require new definitions for this model's specific dimensions. To add support, a new `lightning_attn` op type would first need to be defined.
+
+---
+
+## MiniMax M2
+
+**Architecture**: 62 decoder layers, GQA attention (6:1 ratio, 48 q-heads / 8 kv-heads, head_dim=128, hidden_size=3072), MoE FFN with sigmoid routing (256 experts, top-8, FP8 block-scale quantization). Total parameters: ~230B with ~10B activated.
+
+Note: MiniMax M2 is a separate model from MiniMax-Text-01 (which uses Lightning Attention). M2 uses standard GQA attention.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h3072` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h3072` | rmsnorm | 🟡 |
+| `gqa_paged_prefill_causal_h48_kv8_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_prefill_causal_h48_kv8_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h48_kv8_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_decode_h48_kv8_d128_ps64` | gqa_paged | 🟡 |
+| `gqa_ragged_prefill_causal_h48_kv8_d128` | gqa_ragged | 🟡 |
+| `gemm_n8192_k3072` | gemm (fused qkv_proj) | 🟡 |
+| `gemm_n3072_k6144` | gemm (o_proj) | 🟡 |
+| `gemm_n256_k3072` | gemm (MoE gate) | 🟡 |
+| MoE gate / topk / experts | moe | — |
+| `top_k_sampling_from_probs_v200064` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v200064` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v200064` | sampling | 🟡 |
+
+**Coverage**: 13 / 14 definitions present. Workloads not yet collected. 
 
 ---
 
@@ -698,6 +726,6 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | MLP / MoE FFN | gemm / moe | ❌ |
 | Sampling | sampling | ❌ |
 
-**Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax M2's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
+**Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax-Text-01's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
 
 ---

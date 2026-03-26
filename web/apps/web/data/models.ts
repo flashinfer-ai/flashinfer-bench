@@ -581,6 +581,117 @@ const models: Model[] = [
       },
     },
   },
+  {
+    id: "minimax-m2",
+    name: "MiniMax M2",
+    description:
+      "MiniMax M2 model. 62 decoder layers, GQA attention (48 q-heads / 8 kv-heads), sparse MoE (256 experts, top-8 sigmoid routing).",
+    modules: {
+      MiniMaxM2ForCausalLM: {
+        count: 1,
+        type: "block",
+        definitions: [],
+      },
+      embed_tokens: {
+        count: 1,
+        parent: "MiniMaxM2ForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+      MiniMaxM2DecoderLayer: {
+        count: 62,
+        parent: "MiniMaxM2ForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm: {
+        count: 62,
+        parent: "MiniMaxM2DecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h3072", "fused_add_rmsnorm_h3072"],
+      },
+      self_attn: {
+        count: 62,
+        parent: "MiniMaxM2DecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      qkv_proj: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["gemm_n8192_k3072"],
+      },
+      q_norm: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      k_norm: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      rotary_emb: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      attn: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [
+          "gqa_paged_prefill_causal_h48_kv8_d128_ps1",
+          "gqa_paged_prefill_causal_h48_kv8_d128_ps64",
+          "gqa_paged_decode_h48_kv8_d128_ps1",
+          "gqa_paged_decode_h48_kv8_d128_ps64",
+          "gqa_ragged_prefill_causal_h48_kv8_d128",
+        ],
+      },
+      o_proj: {
+        count: 62,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["gemm_n3072_k6144"],
+      },
+      post_attention_layernorm: {
+        count: 62,
+        parent: "MiniMaxM2DecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h3072", "fused_add_rmsnorm_h3072"],
+      },
+      block_sparse_moe: {
+        count: 62,
+        parent: "MiniMaxM2DecoderLayer",
+        type: "block",
+        definitions: [
+          "moe_fp8_block_scale_sigmoid_routing_topk8_e256_h3072_i1536",
+        ],
+      },
+      moe_gate: {
+        count: 62,
+        parent: "block_sparse_moe",
+        type: "layer",
+        definitions: ["gemm_n256_k3072"],
+      },
+      norm: {
+        count: 1,
+        parent: "MiniMaxM2ForCausalLM",
+        type: "layer",
+        definitions: ["rmsnorm_h3072", "fused_add_rmsnorm_h3072"],
+      },
+      lm_head: {
+        count: 1,
+        parent: "MiniMaxM2ForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+    },
+  },
 ] satisfies Model[]
 
 export default models
