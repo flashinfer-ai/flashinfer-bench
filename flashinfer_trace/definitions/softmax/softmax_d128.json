@@ -1,0 +1,35 @@
+{
+  "name": "softmax_d128",
+  "op_type": "softmax",
+  "description": "Softmax over dimension 128. Used for attention score normalization.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1",
+    "model:qwen3"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size (can include sequence dimensions)"
+    },
+    "dim": {
+      "type": "const",
+      "value": 128
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "float32",
+      "description": "Input tensor"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "float32",
+      "description": "Softmax output (probabilities)"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input):\n    batch_size, dim = input.shape\n    \n    # Check constants\n    assert dim == 128\n    \n    output = torch.softmax(input, dim=-1)\n    return output"
+}

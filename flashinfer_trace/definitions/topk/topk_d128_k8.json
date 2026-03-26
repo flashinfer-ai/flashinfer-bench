@@ -1,0 +1,44 @@
+{
+  "name": "topk_d128_k8",
+  "op_type": "topk",
+  "description": "Top-k selection with k=8 from dimension 128. Used for sparse attention or expert routing.",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1",
+    "model:qwen3"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Batch size"
+    },
+    "dim": {
+      "type": "const",
+      "value": 128
+    },
+    "k": {
+      "type": "const",
+      "value": 8
+    }
+  },
+  "inputs": {
+    "input": {
+      "shape": ["batch_size", "dim"],
+      "dtype": "float32",
+      "description": "Input tensor"
+    }
+  },
+  "outputs": {
+    "values": {
+      "shape": ["batch_size", "k"],
+      "dtype": "float32",
+      "description": "Top-k values"
+    },
+    "indices": {
+      "shape": ["batch_size", "k"],
+      "dtype": "int64",
+      "description": "Top-k indices"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(input):\n    batch_size, dim = input.shape\n    k = 8\n    \n    # Check constants\n    assert dim == 128\n    \n    values, indices = torch.topk(input, k, dim=-1)\n    return values, indices"
+}
