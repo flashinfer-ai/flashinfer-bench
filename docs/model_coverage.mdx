@@ -538,11 +538,12 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 16 experts, standard routing) | moe | — |
+| `trtllm_fp8_per_tensor_scale_moe_topk2_e8_h2048_i1024` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Missing: all GQA defs (h=5 per device is unusual), MoE (standard top-1 routing not yet supported), sampling v202048.
+**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Missing: all GQA defs (h=5 per device is unusual), MoE (standard top-1 routing not yet supported), sampling v202048. TRT-LLM FP8 per-tensor scale MoE kernel (Llama4-style routing) now available; benchmark definition uses H=2048 — a production definition with H=5120 is needed for full coverage.
 
 ---
 
@@ -562,11 +563,12 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
+| `trtllm_fp8_per_tensor_scale_moe_topk2_e8_h2048_i1024` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Same base dimensions as Llama 4 Scout; remaining definitions are shared once created. More experts (128 vs 16) affects MoE but not attention or normalization kernels.
+**Coverage**: 2 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. Same base dimensions as Llama 4 Scout; remaining definitions are shared once created. TRT-LLM FP8 per-tensor scale MoE kernel (Llama4-style routing) now available; production definition needs H=5120 variant.
 
 ---
 

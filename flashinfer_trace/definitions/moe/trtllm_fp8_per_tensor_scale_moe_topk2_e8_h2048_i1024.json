@@ -4,8 +4,11 @@
   "op_type": "moe",
   "tags": [
     "status:verified",
+    "model:llama-4-scout",
+    "model:llama-4-maverick",
+    "model:qwen3-30b-a3b",
     "quantization:float8_e4m3fn",
-    "routing:softmax_topk"
+    "fi_api:flashinfer.fused_moe.trtllm_fp8_per_tensor_scale_moe"
   ],
   "axes": {
     "seq_len": {
