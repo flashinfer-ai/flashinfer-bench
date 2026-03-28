@@ -49,3 +49,5 @@ AGENTS.md
 
 .env
 .coverage
+
+workload_dumps_*
