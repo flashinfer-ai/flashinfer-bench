@@ -147,7 +147,9 @@ def test_correctness(batch_size=4, atol=1e-2, rtol=1e-2):
     """Test that definition reference matches FlashInfer kernel output."""
     print(f"\n{'='*60}")
     print(f"Testing mamba_ssu_decode_h64_d64_s128_ng4, batch_size={batch_size}")
-    print(f"NemotronH-8B (TP=2): nheads={NHEADS}, head_dim={HEAD_DIM}, dstate={DSTATE}, ngroups={NGROUPS}")
+    print(
+        f"NemotronH-8B (TP=2): nheads={NHEADS}, head_dim={HEAD_DIM}, dstate={DSTATE}, ngroups={NGROUPS}"
+    )
     print(f"{'='*60}")
 
     device = "cuda"
