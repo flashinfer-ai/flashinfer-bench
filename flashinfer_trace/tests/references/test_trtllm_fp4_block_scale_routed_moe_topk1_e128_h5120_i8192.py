@@ -23,6 +23,7 @@ TILE_M = 128  # epilogue tile size
 
 device = "cuda"
 
+
 def load_definition(name: str) -> Definition:
     for op_dir in DEFINITIONS_DIR.iterdir():
         if op_dir.is_dir():
@@ -37,6 +38,7 @@ def compile_reference(reference_code: str):
     exec(reference_code, namespace)
     return namespace["run"]
 
+
 def _skip_if_low_vram(min_gb: float = 64.0):
     if not torch.cuda.is_available():
         return pytest.mark.skip("CUDA not available")
@@ -44,6 +46,7 @@ def _skip_if_low_vram(min_gb: float = 64.0):
     if free_gb < min_gb:
         return pytest.mark.skip(f"Insufficient VRAM: {free_gb:.1f}GB free, need {min_gb}GB")
     return lambda f: f
+
 
 ROUTED_SCALING_FACTOR = 2.5
 
@@ -63,6 +66,7 @@ def generate_random_inputs(seq_len: int, dev: str = "cuda"):
         "gemm2_weights": torch.randn(E, H, I, dtype=torch.float32, device=dev) * 0.01,
     }
 
+
 def _quantize_and_shuffle_weights(gemm1_f32: torch.Tensor, gemm2_f32: torch.Tensor):
     from flashinfer import fp4_quantize
     from flashinfer.fp4_quantization import block_scale_interleave
@@ -70,6 +74,7 @@ def _quantize_and_shuffle_weights(gemm1_f32: torch.Tensor, gemm2_f32: torch.Tens
         _maybe_get_cached_w3_w1_permute_indices,
         get_w2_permute_indices_with_cache,
     )
+
     E, H, I = gemm1_f32.shape[0], hidden_size, intermediate_size
     cache = {}
     g1_fp4_list, g1_sf_list, g2_fp4_list, g2_sf_list = [], [], [], []
@@ -94,8 +99,10 @@ def _quantize_and_shuffle_weights(gemm1_f32: torch.Tensor, gemm2_f32: torch.Tens
     ones = torch.ones(E, dtype=torch.float32, device=device)
     return G1K, G1SK, G2K, G2SK, ones
 
+
 def run_kernel(inputs: dict) -> torch.Tensor:
     from flashinfer.fused_moe import trtllm_fp4_block_scale_routed_moe
+
     T = inputs["topk_ids"].shape[0]
     G1K, G1SK, G2K, G2SK, ones = _quantize_and_shuffle_weights(
         inputs["gemm1_weights"], inputs["gemm2_weights"]
@@ -129,6 +136,7 @@ def run_kernel(inputs: dict) -> torch.Tensor:
         tune_max_num_tokens=max(8, T * top_k),
     )
     return result[0].to(torch.bfloat16) if isinstance(result, list) else result.to(torch.bfloat16)
+
 
 @_skip_if_low_vram(64.0)
 @pytest.mark.parametrize("seq_len", [1, 4, 8, 16, 32, 64])
@@ -168,10 +176,10 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
         inputs = generate_random_inputs(seq_len, device)
         ref = run(
-        inputs["topk_ids"],
-        inputs["hidden_states"],
-        inputs["gemm1_weights"],
-        inputs["gemm2_weights"],
+            inputs["topk_ids"],
+            inputs["hidden_states"],
+            inputs["gemm1_weights"],
+            inputs["gemm2_weights"],
         )
         kernel_out = run_kernel(inputs)
         ref_f = ref.to(torch.float32)
