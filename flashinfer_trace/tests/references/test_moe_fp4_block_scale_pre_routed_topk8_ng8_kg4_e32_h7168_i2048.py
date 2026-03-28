@@ -69,13 +69,13 @@ def skip_if_no_sm100():
 def try_import_flashinfer_fp4():
     """Try to import FlashInfer FP4 MoE functions."""
     try:
-        from flashinfer import GatedActType, RoutingMethodType, fp4_quantize
-        from flashinfer.fused_moe import trtllm_fp4_block_scale_routed_moe
+        from flashinfer import fp4_quantize
+        from flashinfer.fused_moe import ActivationType, RoutingMethodType, trtllm_fp4_block_scale_routed_moe
 
         return {
             "fp4_routed_moe": trtllm_fp4_block_scale_routed_moe,
             "fp4_quantize": fp4_quantize,
-            "GatedActType": GatedActType,
+            "GatedActType": ActivationType,
             "RoutingMethodType": RoutingMethodType,
         }
     except ImportError as e:
@@ -104,9 +104,10 @@ def dequant_nvfp4_activations(packed: torch.Tensor, scale: torch.Tensor) -> torc
     T, packed_size = packed.shape
     H = packed_size * 2
 
-    # Unpack uint8 to two FP4 values (low nibble first, then high)
-    low_nibble = (packed & 0x0F).to(torch.int64)
-    high_nibble = ((packed >> 4) & 0x0F).to(torch.int64)
+    # Unpack uint8 to two FP4 values (low nibble first, then high).
+    # Use int32 (not int64) to halve memory usage — FP4 nibbles are 0-15.
+    low_nibble = (packed & 0x0F).to(torch.int32)
+    high_nibble = ((packed >> 4) & 0x0F).to(torch.int32)
 
     # Interleave: [low0, high0, low1, high1, ...]
     unpacked = torch.stack([low_nibble, high_nibble], dim=-1).reshape(T, H)
@@ -122,33 +123,25 @@ def dequant_nvfp4_activations(packed: torch.Tensor, scale: torch.Tensor) -> torc
     return unpacked_fp32 * scale_expanded
 
 
-def dequant_nvfp4_weights(packed: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+def dequant_nvfp4_weight_single(packed: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """
-    Dequantize NvFP4 packed weights.
+    Dequantize a single expert's NvFP4 packed weights [out_dim, in_dim/2] -> [out_dim, in_dim].
 
-    Args:
-        packed: [E, out_dim, in_dim/2] uint8 tensor
-        scale: [E, out_dim, in_dim/SF_VEC_SIZE] float8_e4m3fn scale factors
-
-    Returns:
-        Dequantized [E, out_dim, in_dim] float32 tensor
+    Uses int32 indices (not int64) to keep peak memory at ~2x the output tensor size.
     """
     device = packed.device
-    E, out_dim, in_dim_packed = packed.shape
+    out_dim, in_dim_packed = packed.shape
     in_dim = in_dim_packed * 2
 
-    low_nibble = (packed & 0x0F).to(torch.int64)
-    high_nibble = ((packed >> 4) & 0x0F).to(torch.int64)
-
-    unpacked = torch.stack([low_nibble, high_nibble], dim=-1).reshape(E, out_dim, in_dim)
+    low_nibble = (packed & 0x0F).to(torch.int32)
+    high_nibble = ((packed >> 4) & 0x0F).to(torch.int32)
+    unpacked = torch.stack([low_nibble, high_nibble], dim=-1).reshape(out_dim, in_dim)
 
     lut = FP4_LUT.to(device)
     unpacked_fp32 = lut[unpacked]
 
     scale_fp32 = scale.to(torch.float32)
-    scale_expanded = (
-        scale_fp32.unsqueeze(-1).repeat(1, 1, 1, SF_VEC_SIZE).reshape(E, out_dim, in_dim)
-    )
+    scale_expanded = scale_fp32.unsqueeze(-1).repeat(1, 1, SF_VEC_SIZE).reshape(out_dim, in_dim)
 
     return unpacked_fp32 * scale_expanded
 
@@ -193,19 +186,16 @@ def run(
     expert_weights_packed = (topk_ids & 0xFFFF).to(torch.int16)
     expert_weights = expert_weights_packed.view(torch.bfloat16).to(torch.float32)
 
-    # Dequantize hidden states
+    # Dequantize hidden states (small: T rows only)
     A = dequant_nvfp4_activations(hidden_states, hidden_states_scale)
-
-    # Dequantize weights
-    W13 = dequant_nvfp4_weights(gemm1_weights, gemm1_weights_scale)
-    W2 = dequant_nvfp4_weights(gemm2_weights, gemm2_weights_scale)
 
     # Initialize output
     output = torch.zeros((T, HIDDEN_SIZE), dtype=torch.float32, device=device)
 
     local_start = int(local_expert_offset)
 
-    # For each local expert: find selected tokens, run GEMM1 -> SwiGLU -> GEMM2
+    # For each local expert: dequantize weights on-the-fly to avoid pre-allocating
+    # all E * out_dim * in_dim float32 tensors simultaneously (would be ~3.5+ GB).
     for le in range(E_local):
         ge = local_start + le  # Global expert index
         if ge < 0 or ge >= NUM_EXPERTS_GLOBAL:
@@ -224,8 +214,10 @@ def run(
 
         # Gather inputs
         A_e = A.index_select(0, token_idx)
-        W13_e = W13[le]
-        W2_e = W2[le]
+
+        # Dequantize this expert's weights on-the-fly
+        W13_e = dequant_nvfp4_weight_single(gemm1_weights[le], gemm1_weights_scale[le])
+        W2_e = dequant_nvfp4_weight_single(gemm2_weights[le], gemm2_weights_scale[le])
 
         # Apply output scale factors
         scale1 = output1_scale_scalar[le].item()
@@ -247,6 +239,8 @@ def run(
         # Accumulate with routing weights
         output.index_add_(0, token_idx, O * weights.unsqueeze(1))
 
+        del W13_e, W2_e, G1, C, O
+
     return output.to(torch.bfloat16)
 
 
@@ -266,47 +260,44 @@ def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, de
     fp4_quantize = fi["fp4_quantize"]
 
     T = num_tokens
+    amax = torch.tensor([448.0 * 6.0], device=device)
 
     # Generate random hidden states and quantize
     hidden_states_bf16 = torch.randn(T, HIDDEN_SIZE, device=device, dtype=torch.bfloat16) * 0.1
     hidden_states, hidden_states_scale = fp4_quantize(
         hidden_states_bf16,
-        torch.tensor([448.0 * 6.0], device=device),
+        amax,
         sf_vec_size=SF_VEC_SIZE,
         sf_use_ue8m0=False,
         is_sf_swizzled_layout=False,
     )
     hidden_states_scale = hidden_states_scale.view(torch.float8_e4m3fn).reshape(T, -1)
+    del hidden_states_bf16
+    torch.cuda.empty_cache()
 
-    # Generate weights for local experts and quantize
-    w13_bf16 = (
-        torch.randn(
-            NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, HIDDEN_SIZE, device=device, dtype=torch.bfloat16
-        )
-        * 0.1
-    )
-    w2_bf16 = (
-        torch.randn(
-            NUM_LOCAL_EXPERTS, HIDDEN_SIZE, INTERMEDIATE_SIZE, device=device, dtype=torch.bfloat16
-        )
-        * 0.1
-    )
+    # Generate weights per-expert to avoid OOM.
+    # Allocating all experts at once in BF16 (~1.75 GB for W13) may OOM on a busy GPU.
+    # Per-expert allocation peaks at ~56 MB/expert for W13, well within limits.
+    w13_list, w13_scale_list, w2_list, w2_scale_list = [], [], [], []
+    for _ in range(NUM_LOCAL_EXPERTS):
+        w_bf16 = torch.randn(GEMM1_OUT_SIZE, HIDDEN_SIZE, device=device, dtype=torch.bfloat16) * 0.1
+        w, ws = fp4_quantize(w_bf16, amax, sf_vec_size=SF_VEC_SIZE, sf_use_ue8m0=False)
+        w13_list.append(w)
+        w13_scale_list.append(ws.view(torch.float8_e4m3fn).reshape(GEMM1_OUT_SIZE, -1))
+        del w_bf16, w, ws
 
-    w13, w13_scale = fp4_quantize(
-        w13_bf16,
-        torch.tensor([448.0 * 6.0], device=device),
-        sf_vec_size=SF_VEC_SIZE,
-        sf_use_ue8m0=False,
-    )
-    w13_scale = w13_scale.view(torch.float8_e4m3fn).reshape(NUM_LOCAL_EXPERTS, GEMM1_OUT_SIZE, -1)
+        w_bf16 = torch.randn(HIDDEN_SIZE, INTERMEDIATE_SIZE, device=device, dtype=torch.bfloat16) * 0.1
+        w, ws = fp4_quantize(w_bf16, amax, sf_vec_size=SF_VEC_SIZE, sf_use_ue8m0=False)
+        w2_list.append(w)
+        w2_scale_list.append(ws.view(torch.float8_e4m3fn).reshape(HIDDEN_SIZE, -1))
+        del w_bf16, w, ws
 
-    w2, w2_scale = fp4_quantize(
-        w2_bf16,
-        torch.tensor([448.0 * 6.0], device=device),
-        sf_vec_size=SF_VEC_SIZE,
-        sf_use_ue8m0=False,
-    )
-    w2_scale = w2_scale.view(torch.float8_e4m3fn).reshape(NUM_LOCAL_EXPERTS, HIDDEN_SIZE, -1)
+    w13 = torch.stack(w13_list)
+    w13_scale = torch.stack(w13_scale_list)
+    w2 = torch.stack(w2_list)
+    w2_scale = torch.stack(w2_scale_list)
+    del w13_list, w13_scale_list, w2_list, w2_scale_list
+    torch.cuda.empty_cache()
 
     # Global scales
     global_scale = 1.0 / 448.0 / 6.0
@@ -331,6 +322,8 @@ def generate_random_fp4_inputs(num_tokens: int, local_expert_offset: int = 0, de
     packed_tensor = (topk_indices.to(torch.int32) << 16) | (
         topk_weights.view(torch.int16).to(torch.int32) & 0xFFFF
     )
+    del routing_logits, topk_weights, topk_indices
+    torch.cuda.empty_cache()
 
     return {
         "topk_ids": packed_tensor,
@@ -413,7 +406,7 @@ def _compare_reference_vs_kernel(
         RoutingMethodType.TopK.value,  # routing_method_type
         True,  # do_finalize
         enable_pdl,  # enable_pdl
-        int(GatedActType.SwiGlu),  # gated_act_type
+        int(GatedActType.Swiglu),  # activation_type
         None,  # output
         max(8, min(64, num_tokens)),  # tune_max_num_tokens
     )[0]
