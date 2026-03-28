@@ -77,5 +77,6 @@ def time_runnable(fn: Runnable, args: List[Any], warmup: int, iters: int, device
                 repeat_iters=iters,
                 input_args=tuple(args),
                 cold_l2_cache=True,
+                use_cuda_graph=False,
             )
             return statistics.median(times)

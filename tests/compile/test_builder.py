@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-from flashinfer_bench.compile import Builder, Runnable, RunnableMetadata
+from flashinfer_bench.compile import Builder, BuildError, Runnable, RunnableMetadata
 from flashinfer_bench.compile.registry import BuilderRegistry
 from flashinfer_bench.data import (
     AxisConst,
@@ -106,6 +106,53 @@ def _make_test_definition(name: str = "test_def") -> Definition:
     )
 
 
+def _make_signature_builder() -> Builder:
+    class TestBuilder(Builder):
+        def __init__(self):
+            super().__init__("test_", "test")
+
+        @staticmethod
+        def is_available():
+            return True
+
+        def can_build(self, solution):
+            return True
+
+        def build(self, definition, solution):
+            raise NotImplementedError
+
+    return TestBuilder()
+
+
+def _make_dps_definition() -> Definition:
+    return Definition(
+        name="test_def",
+        op_type="op",
+        axes={"M": AxisConst(value=1)},
+        inputs={
+            "A": TensorSpec(shape=["M"], dtype="float32"),
+            "B": TensorSpec(shape=["M"], dtype="float32"),
+        },
+        outputs={"out": TensorSpec(shape=["M"], dtype="float32")},
+        reference="def run(A, B): pass",
+    )
+
+
+def _make_dps_solution() -> Solution:
+    return Solution(
+        name="s",
+        definition="test_def",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=True,
+        ),
+        sources=[SourceFile(path="main.py", content="pass")],
+    )
+
+
 def test_dispatch_by_can_build():
     """Test that registry dispatches to the first builder where can_build returns True."""
     builder1 = _create_mock_builder("builder1", can_build_result=False)
@@ -155,12 +202,20 @@ def test_build_registry_cache_hit():
 
 
 def test_build_registry_cache_miss():
-    """Test that building different solutions results in a cache miss."""
+    """Test that building solutions with different content results in a cache miss."""
     builder = _create_mock_builder("builder", can_build_result=True)
     registry = BuilderRegistry([builder])
     definition = _make_test_definition()
     solution1 = _make_test_solution("solution1")
-    solution2 = _make_test_solution("solution2")
+    solution2 = Solution(
+        name="solution2",
+        definition="test_def",
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON, target_hardware=["cpu"], entry_point="main.py::run"
+        ),
+        sources=[SourceFile(path="main.py", content="def run(A):\n    return A + 1\n")],
+    )
 
     runnable1 = registry.build(definition, solution1)
     runnable2 = registry.build(definition, solution2)
@@ -270,6 +325,54 @@ def test_validate_signature_return_none():
             raise NotImplementedError
 
     TestBuilder()._try_validate_signature(func, definition, solution)  # Should not raise
+
+
+def test_validate_signature_dps_optional_definition_params():
+    def func(A=None, B=None, out=None):
+        pass
+
+    _make_signature_builder()._try_validate_signature(
+        func, _make_dps_definition(), _make_dps_solution()
+    )
+
+
+def test_validate_signature_dps_optional_extra():
+    def func(A, B, out, stream=None):
+        pass
+
+    _make_signature_builder()._try_validate_signature(
+        func, _make_dps_definition(), _make_dps_solution()
+    )
+
+
+def test_validate_signature_dps_required_extra():
+    def func(A, B, out, stream):
+        pass
+
+    with pytest.raises(BuildError):
+        _make_signature_builder()._try_validate_signature(
+            func, _make_dps_definition(), _make_dps_solution()
+        )
+
+
+def test_validate_signature_dps_missing():
+    def func(A, B):
+        pass
+
+    with pytest.raises(BuildError):
+        _make_signature_builder()._try_validate_signature(
+            func, _make_dps_definition(), _make_dps_solution()
+        )
+
+
+def test_validate_signature_dps_required_kwonly():
+    def func(A, B, *, out):
+        pass
+
+    with pytest.raises(BuildError):
+        _make_signature_builder()._try_validate_signature(
+            func, _make_dps_definition(), _make_dps_solution()
+        )
 
 
 if __name__ == "__main__":

@@ -7,25 +7,25 @@ from typing import List
 
 from flashinfer_bench.bench import Benchmark, BenchmarkConfig
 from flashinfer_bench.data import TraceSet, save_json_file, save_jsonl_file
-from flashinfer_bench.logging import configure_logging, get_logger
 
-logger = get_logger("CLI")
+logger = logging.getLogger(__name__)
 pkg_name = __name__.split(".")[0]
 
 
 def cli_config_logging(args: argparse.Namespace):
-    """Configure logging for the CLI. Now we have two set of loggers:
-    - package logger: obtained by logging.getLogger(__name__)
-    - custom logger: obtained by get_logger("ModuleName")
-
-    In the future we will deprecate the custom logger and use the package logger only.
-    Now we need to configure both loggers to the same level.
-    """
+    """Configure package-level logging from CLI args."""
     log_level = getattr(args, "log_level", "WARNING")
     pkg_logger = logging.getLogger(pkg_name)
     pkg_logger.setLevel(log_level)
-    pkg_logger.addHandler(logging.StreamHandler())
-    configure_logging(level=log_level)
+    if not pkg_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                fmt="[%(asctime)s] %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S"
+            )
+        )
+        pkg_logger.addHandler(handler)
+    pkg_logger.propagate = False
 
 
 def best(args: argparse.Namespace):
@@ -44,16 +44,54 @@ def best(args: argparse.Namespace):
                 f"- Errors:   abs={trace.evaluation.correctness.max_absolute_error:.2e}, "
                 f"rel={trace.evaluation.correctness.max_relative_error:.2e}"
             )
-            if trace.evaluation.log:
-                logger.info("- Log snippet:")
-                for line in trace.evaluation.log.splitlines()[:5]:
-                    logger.info("  %s", line)
 
 
 def summary(args: argparse.Namespace):
     trace_sets = _load_traces(args)
-    for trace_set in trace_sets:
-        logger.info("%s", trace_set.summary())
+    for i, trace_set in enumerate(trace_sets):
+        s = trace_set.summary()
+
+        if len(trace_sets) > 1:
+            logger.info("Dataset %d:", i + 1)
+
+        logger.info("Traces: %d total, %d passed, %d failed", s["total"], s["passed"], s["failed"])
+        if s["avg_latency_ms"] is not None:
+            logger.info(
+                "Latency (ms): avg=%.3f  min=%.3f  max=%.3f",
+                s["avg_latency_ms"],
+                s["min_latency_ms"],
+                s["max_latency_ms"],
+            )
+
+        rankings = s.get("rankings", [])
+        if rankings:
+            logger.info("")
+            logger.info("Author Rankings (by area under fast@p curve):")
+            logger.info(
+                "  %-4s  %-24s  %-10s  %-14s  %-12s",
+                "Rank",
+                "Author",
+                "AUC Score",
+                "Fast@1x (>base)",
+                "Comparisons",
+            )
+            logger.info("  " + "-" * 70)
+            for rank, entry in enumerate(rankings, start=1):
+                logger.info(
+                    "  %-4d  %-24s  %-10.4f  %-14.1f  %-12d",
+                    rank,
+                    entry["author"],
+                    entry["auc"],
+                    entry["fast_at_1x"] * 100,
+                    entry["n_comparisons"],
+                )
+            logger.info("")
+            logger.info(
+                "  AUC: area under fast@p curve (higher = faster vs baseline across workloads)"
+            )
+            logger.info("  Fast@1x: fraction of workloads where this author beats the baseline")
+        else:
+            logger.info("(No author ranking data available — run with multiple solutions)")
 
 
 def merge_trace_sets(trace_sets):
@@ -207,6 +245,47 @@ def visualize(args: argparse.Namespace):
                 logger.warning(f"{def_name}: No valid solution found")
 
 
+def serve(args: argparse.Namespace):
+    """Start the benchmark HTTP server."""
+    try:
+        import uvicorn
+    except ImportError:
+        raise RuntimeError(
+            "uvicorn is required for the serve command. "
+            "Install with: pip install flashinfer-bench[serve]"
+        )
+
+    from flashinfer_bench.bench import BenchmarkConfig
+    from flashinfer_bench.data import TraceSet
+    from flashinfer_bench.serve.app import init_app
+    from flashinfer_bench.serve.scheduler import Scheduler
+
+    trace_set = TraceSet.from_path(str(args.local))
+
+    devices = args.devices.split(",") if args.devices else None
+    if devices is None:
+        import flashinfer_bench.utils as fib_utils
+
+        devices = fib_utils.list_cuda_devices()
+    if not devices:
+        raise RuntimeError("No CUDA devices available")
+
+    config = BenchmarkConfig(
+        warmup_runs=args.warmup_runs,
+        iterations=args.iterations,
+        num_trials=args.num_trials,
+        rtol=args.rtol,
+        atol=args.atol,
+        timeout_seconds=args.timeout,
+    )
+
+    scheduler = Scheduler(trace_set=trace_set, config=config, devices=devices)
+    app = init_app(scheduler)
+
+    logger.info(f"Starting server on {args.host}:{args.port} with devices {devices}")
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
 def run(args: argparse.Namespace):
     """Benchmark run: executes benchmarks and writes results."""
     if not args.local:
@@ -251,11 +330,8 @@ def run(args: argparse.Namespace):
 
 def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
     trace_sets = []
-    if not args.local and not args.hub:
-        raise ValueError("A data source is required. Please use --local <PATH> or --hub.")
-
-    if args.hub:
-        raise NotImplementedError("Loading from --hub is not implemented yet.")
+    if not args.local:
+        raise ValueError("A data source is required. Please use --local <PATH>.")
 
     if args.local:
         loaded_paths: List[Path] = args.local
@@ -272,6 +348,29 @@ def cli():
     command_subparsers = parser.add_subparsers(
         dest="command", required=True, help="Primary commands"
     )
+
+    serve_parser = command_subparsers.add_parser("serve", help="Start the benchmark HTTP server.")
+    serve_parser.add_argument(
+        "--local", type=Path, required=True, help="Path to the trace set dataset."
+    )
+    serve_parser.add_argument(
+        "--devices",
+        type=str,
+        default=None,
+        help="Comma-separated CUDA devices (e.g. cuda:0,cuda:1). Default: all available.",
+    )
+    serve_parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Server port")
+    serve_parser.add_argument("--warmup-runs", type=int, default=10)
+    serve_parser.add_argument("--iterations", type=int, default=50)
+    serve_parser.add_argument("--num-trials", type=int, default=3)
+    serve_parser.add_argument("--rtol", type=float, default=1e-2)
+    serve_parser.add_argument("--atol", type=float, default=1e-2)
+    serve_parser.add_argument("--timeout", type=int, default=300)
+    serve_parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+    serve_parser.set_defaults(func=serve)
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
     run_parser.add_argument(
@@ -336,9 +435,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    run_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     run_parser.set_defaults(func=run)
 
     report_parser = command_subparsers.add_parser(
@@ -358,7 +454,10 @@ def cli():
         help="Specifies one or more local paths to load traces from.",
     )
     summary_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)",
     )
     summary_parser.set_defaults(func=summary)
 
@@ -370,7 +469,10 @@ def cli():
         help="Specifies one or more local paths to load traces from.",
     )
     best_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO)",
     )
     best_parser.set_defaults(func=best)
 
@@ -382,9 +484,6 @@ def cli():
         action="append",
         help="Specifies one or more local paths to load traces from.",
     )
-    merge_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
-    )
     merge_parser.set_defaults(func=merge)
 
     visualize_parser = report_subparsers.add_parser(
@@ -395,9 +494,6 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
-    )
-    visualize_parser.add_argument(
-        "--hub", action="store_true", help="Load the latest traces from the FlashInfer Hub."
     )
     visualize_parser.set_defaults(func=visualize)
 
