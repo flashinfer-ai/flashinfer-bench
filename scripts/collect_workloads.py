@@ -34,13 +34,14 @@ import tempfile
 import time
 from pathlib import Path
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _find_definitions(trace_dir: Path, def_names: list[str] | None, op_type: str | None) -> list[Path]:
+def _find_definitions(
+    trace_dir: Path, def_names: list[str] | None, op_type: str | None
+) -> list[Path]:
     """Resolve definition files from names or op_type."""
     def_files = []
     if op_type:
@@ -89,7 +90,7 @@ def _build_fi_include_pattern(def_files: list[Path]) -> str:
             defn = json.load(f)
         for tag in defn.get("tags", []):
             if tag.startswith("fi_api:"):
-                api_to_defs[tag[len("fi_api:"):]].append(defn)
+                api_to_defs[tag[len("fi_api:") :]].append(defn)
 
     if not api_to_defs:
         return ""
@@ -130,80 +131,66 @@ def _build_fi_include_pattern(def_files: list[Path]) -> str:
 # "seq_len > 1") are enforced automatically before calling the API.
 OP_TYPE_VAR_CONFIGS: dict[str, list[dict]] = {
     "gdn": [
-        {"batch_size": 1,  "seq_len": 1,  "pool_size": 1},
-        {"batch_size": 1,  "seq_len": 2,  "pool_size": 1},
-        {"batch_size": 1,  "seq_len": 4,  "pool_size": 1},
-        {"batch_size": 4,  "seq_len": 1,  "pool_size": 4},
-        {"batch_size": 4,  "seq_len": 2,  "pool_size": 4},
-        {"batch_size": 8,  "seq_len": 1,  "pool_size": 8},
-        {"batch_size": 8,  "seq_len": 2,  "pool_size": 8},
-        {"batch_size": 8,  "seq_len": 4,  "pool_size": 8},
-        {"batch_size": 16, "seq_len": 1,  "pool_size": 16},
-        {"batch_size": 16, "seq_len": 2,  "pool_size": 16},
-        {"batch_size": 32, "seq_len": 1,  "pool_size": 32},
-        {"batch_size": 32, "seq_len": 2,  "pool_size": 32},
-        {"batch_size": 64, "seq_len": 1,  "pool_size": 64},
-        {"batch_size": 64, "seq_len": 2,  "pool_size": 64},
-        {"batch_size": 1,  "seq_len": 4,  "pool_size": 49},
-        {"batch_size": 4,  "seq_len": 4,  "pool_size": 49},
-        {"batch_size": 8,  "seq_len": 4,  "pool_size": 49},
-        {"batch_size": 16, "seq_len": 4,  "pool_size": 49},
-        {"batch_size": 32, "seq_len": 4,  "pool_size": 49},
-        {"batch_size": 2,  "seq_len": 16, "pool_size": 4},
-        {"batch_size": 4,  "seq_len": 8,  "pool_size": 8},
+        {"batch_size": 1, "seq_len": 1, "pool_size": 1},
+        {"batch_size": 1, "seq_len": 2, "pool_size": 1},
+        {"batch_size": 1, "seq_len": 4, "pool_size": 1},
+        {"batch_size": 4, "seq_len": 1, "pool_size": 4},
+        {"batch_size": 4, "seq_len": 2, "pool_size": 4},
+        {"batch_size": 8, "seq_len": 1, "pool_size": 8},
+        {"batch_size": 8, "seq_len": 2, "pool_size": 8},
+        {"batch_size": 8, "seq_len": 4, "pool_size": 8},
+        {"batch_size": 16, "seq_len": 1, "pool_size": 16},
+        {"batch_size": 16, "seq_len": 2, "pool_size": 16},
+        {"batch_size": 32, "seq_len": 1, "pool_size": 32},
+        {"batch_size": 32, "seq_len": 2, "pool_size": 32},
+        {"batch_size": 64, "seq_len": 1, "pool_size": 64},
+        {"batch_size": 64, "seq_len": 2, "pool_size": 64},
+        {"batch_size": 1, "seq_len": 4, "pool_size": 49},
+        {"batch_size": 4, "seq_len": 4, "pool_size": 49},
+        {"batch_size": 8, "seq_len": 4, "pool_size": 49},
+        {"batch_size": 16, "seq_len": 4, "pool_size": 49},
+        {"batch_size": 32, "seq_len": 4, "pool_size": 49},
+        {"batch_size": 2, "seq_len": 16, "pool_size": 4},
+        {"batch_size": 4, "seq_len": 8, "pool_size": 8},
     ],
     "gqa_paged": [
-        {"batch_size": 1,  "num_pages": 16},
-        {"batch_size": 4,  "num_pages": 64},
-        {"batch_size": 8,  "num_pages": 128},
+        {"batch_size": 1, "num_pages": 16},
+        {"batch_size": 4, "num_pages": 64},
+        {"batch_size": 8, "num_pages": 128},
         {"batch_size": 16, "num_pages": 256},
         {"batch_size": 32, "num_pages": 512},
     ],
     "gqa_ragged": [
-        {"batch_size": 1,  "seq_len": 16},
-        {"batch_size": 4,  "seq_len": 128},
-        {"batch_size": 8,  "seq_len": 512},
+        {"batch_size": 1, "seq_len": 16},
+        {"batch_size": 4, "seq_len": 128},
+        {"batch_size": 8, "seq_len": 512},
         {"batch_size": 16, "seq_len": 64},
     ],
     "mla_paged": [
-        {"batch_size": 1,  "num_pages": 16},
-        {"batch_size": 4,  "num_pages": 64},
-        {"batch_size": 8,  "num_pages": 128},
+        {"batch_size": 1, "num_pages": 16},
+        {"batch_size": 4, "num_pages": 64},
+        {"batch_size": 8, "num_pages": 128},
         {"batch_size": 16, "num_pages": 256},
     ],
     "rmsnorm": [
-        {"batch_size": 1,  "seq_len": 1},
-        {"batch_size": 4,  "seq_len": 32},
+        {"batch_size": 1, "seq_len": 1},
+        {"batch_size": 4, "seq_len": 32},
         {"batch_size": 16, "seq_len": 128},
         {"batch_size": 64, "seq_len": 512},
     ],
-    "gemm": [
-        {"batch_size": 1},
-        {"batch_size": 8},
-        {"batch_size": 32},
-        {"batch_size": 128},
-    ],
-    "sampling": [
-        {"batch_size": 1},
-        {"batch_size": 8},
-        {"batch_size": 32},
-        {"batch_size": 128},
-    ],
+    "gemm": [{"batch_size": 1}, {"batch_size": 8}, {"batch_size": 32}, {"batch_size": 128}],
+    "sampling": [{"batch_size": 1}, {"batch_size": 8}, {"batch_size": 32}, {"batch_size": 128}],
     # fallback for unknown op_types
-    "_default": [
-        {"batch_size": 1},
-        {"batch_size": 4},
-        {"batch_size": 16},
-    ],
+    "_default": [{"batch_size": 1}, {"batch_size": 4}, {"batch_size": 16}],
 }
 
 _DTYPE_MAP = {
     "bfloat16": "torch.bfloat16",
-    "float32":  "torch.float32",
-    "float16":  "torch.float16",
-    "int32":    "torch.int32",
-    "int64":    "torch.int64",
-    "bool":     "torch.bool",
+    "float32": "torch.float32",
+    "float16": "torch.float16",
+    "int32": "torch.int32",
+    "int64": "torch.int64",
+    "bool": "torch.bool",
 }
 
 
@@ -216,10 +203,7 @@ def _check_constraint(constraint: str, axes: dict) -> bool:
 
 
 def _build_generator_code(
-    defn: dict,
-    var_configs: list[dict],
-    dump_dir: Path,
-    include_pattern: str,
+    defn: dict, var_configs: list[dict], dump_dir: Path, include_pattern: str
 ) -> str:
     """
     Build a self-contained Python script that sets FlashInfer env vars before
@@ -227,8 +211,7 @@ def _build_generator_code(
     the API.  Must be executed in a subprocess so env vars are read at import.
     """
     fi_api = next(
-        (t[len("fi_api:"):] for t in defn.get("tags", []) if t.startswith("fi_api:")),
-        None,
+        (t[len("fi_api:") :] for t in defn.get("tags", []) if t.startswith("fi_api:")), None
     )
     if not fi_api:
         return ""
@@ -242,8 +225,7 @@ def _build_generator_code(
         if spec.get("type") == "const"
     }
     var_axis_names = [
-        name for name, spec in defn.get("axes", {}).items()
-        if spec.get("type") != "const"
+        name for name, spec in defn.get("axes", {}).items() if spec.get("type") != "const"
     ]
     constraints = defn.get("constraints", [])
 
@@ -269,31 +251,30 @@ def _build_generator_code(
         if shape is None:
             # Scalar — use 0.0 (scale=0 triggers 1/sqrt(head_size) default)
             input_lines.append(
-                f'    {inp_name} = torch.tensor(0.0, dtype={torch_dtype}, device=device)'
+                f"    {inp_name} = torch.tensor(0.0, dtype={torch_dtype}, device=device)"
             )
         else:
-            shape_expr = "[" + ", ".join(
-                f'axes["{d}"]' if isinstance(d, str) else str(d)
-                for d in shape
-            ) + "]"
+            shape_expr = (
+                "["
+                + ", ".join(f'axes["{d}"]' if isinstance(d, str) else str(d) for d in shape)
+                + "]"
+            )
             is_int = torch_dtype in ("torch.int32", "torch.int64")
             if is_int:
                 # Index tensors: fill with arange % pool_size (or zeros if no pool)
                 input_lines.append(
-                    f'    _shape = {shape_expr}\n'
-                    f'    {inp_name} = (torch.arange(_shape[0], dtype={torch_dtype}, device=device)'
+                    f"    _shape = {shape_expr}\n"
+                    f"    {inp_name} = (torch.arange(_shape[0], dtype={torch_dtype}, device=device)"
                     f' % axes.get("pool_size", 1)).reshape(_shape) if len(_shape) == 1 '
-                    f'else torch.zeros(_shape, dtype={torch_dtype}, device=device)'
+                    f"else torch.zeros(_shape, dtype={torch_dtype}, device=device)"
                 )
             else:
                 input_lines.append(
-                    f'    {inp_name} = torch.randn({shape_expr}, dtype={torch_dtype}, device=device)'
+                    f"    {inp_name} = torch.randn({shape_expr}, dtype={torch_dtype}, device=device)"
                 )
 
     input_block = "\n".join(input_lines)
-    kwarg_names = [
-        n for n in defn.get("inputs", {}) if not defn["inputs"][n].get("optional")
-    ]
+    kwarg_names = [n for n in defn.get("inputs", {}) if not defn["inputs"][n].get("optional")]
     kwargs_str = ", ".join(f"{n}={n}" for n in kwarg_names)
 
     combos_repr = repr(concrete_combos)
@@ -322,12 +303,7 @@ for axes in combos:
 """
 
 
-def run_direct_mode(
-    def_files: list[Path],
-    trace_dir: Path,
-    dump_dir: Path,
-    replace: bool,
-) -> None:
+def run_direct_mode(def_files: list[Path], trace_dir: Path, dump_dir: Path, replace: bool) -> None:
     """Run direct API call mode: spawn a subprocess per definition with FlashInfer logging env."""
     include_pattern = _build_fi_include_pattern(def_files)
     if not include_pattern:
@@ -367,9 +343,12 @@ def run_direct_mode(
     cmd = [
         sys.executable,
         str(sanitize_script),
-        "--dump-dir", str(dump_dir),
-        "--definitions", *def_names,
-        "--flashinfer-trace-dir", str(trace_dir),
+        "--dump-dir",
+        str(dump_dir),
+        "--definitions",
+        *def_names,
+        "--flashinfer-trace-dir",
+        str(trace_dir),
     ]
     if replace:
         cmd.append("--replace")
@@ -410,9 +389,13 @@ def _tp_ep_from_definitions(def_files: list[Path]) -> tuple[int, int]:
                     pass
 
     if len(tp_values) > 1:
-        print(f"WARNING: conflicting tp values across definitions: {tp_values}. Using max={max(tp_values)}")
+        print(
+            f"WARNING: conflicting tp values across definitions: {tp_values}. Using max={max(tp_values)}"
+        )
     if len(ep_values) > 1:
-        print(f"WARNING: conflicting ep values across definitions: {ep_values}. Using max={max(ep_values)}")
+        print(
+            f"WARNING: conflicting ep values across definitions: {ep_values}. Using max={max(ep_values)}"
+        )
 
     tp = max(tp_values) if tp_values else 1
     ep = max(ep_values) if ep_values else 1
@@ -456,24 +439,24 @@ def _run_sglang_offline_batched(
     # 24 distinct (batch_size, kv_len) combos per batch_size — enough for
     # the deduplication/diversity filter to select 20 representative entries.
     rounds = [
-        (1,   50, 8),
-        (1,  300, 8),
-        (1,  800, 8),
-        (2,   50, 8),
-        (2,  300, 8),
-        (2,  800, 8),
-        (4,   50, 8),
-        (4,  300, 8),
-        (4,  800, 8),
-        (8,   50, 8),
-        (8,  300, 8),
-        (8,  800, 8),
-        (16,  50, 8),
+        (1, 50, 8),
+        (1, 300, 8),
+        (1, 800, 8),
+        (2, 50, 8),
+        (2, 300, 8),
+        (2, 800, 8),
+        (4, 50, 8),
+        (4, 300, 8),
+        (4, 800, 8),
+        (8, 50, 8),
+        (8, 300, 8),
+        (8, 800, 8),
+        (16, 50, 8),
         (16, 300, 8),
         (16, 800, 8),
-        (32,  50, 8),
+        (32, 50, 8),
         (32, 300, 8),
-        (64,  50, 8),
+        (64, 50, 8),
     ]
 
     # Write a self-contained script that is launched as a subprocess.
@@ -573,20 +556,27 @@ if __name__ == '__main__':
 """
 
     import tempfile
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script)
         script_path = f.name
 
     # Pass FlashInfer env vars as JSON so the subprocess sets them before importing sglang
     fi_env_keys = [
-        "FLASHINFER_LOGLEVEL", "FLASHINFER_DUMP_DIR", "FLASHINFER_DUMP_SAFETENSORS",
-        "FLASHINFER_DUMP_INCLUDE", "FLASHINFER_DUMP_EXCLUDE", "FLASHINFER_DUMP_MAX_COUNT",
-        "FLASHINFER_DUMP_MAX_SIZE_GB", "FLASHINFER_USE_CUDA_NORM",
+        "FLASHINFER_LOGLEVEL",
+        "FLASHINFER_DUMP_DIR",
+        "FLASHINFER_DUMP_SAFETENSORS",
+        "FLASHINFER_DUMP_INCLUDE",
+        "FLASHINFER_DUMP_EXCLUDE",
+        "FLASHINFER_DUMP_MAX_COUNT",
+        "FLASHINFER_DUMP_MAX_SIZE_GB",
+        "FLASHINFER_USE_CUDA_NORM",
     ]
     fi_env_json = json.dumps({k: env[k] for k in fi_env_keys if k in env})
 
     cmd = [
-        sys.executable, script_path,
+        sys.executable,
+        script_path,
         fi_env_json,
         model_path,
         str(tp),
@@ -598,6 +588,7 @@ if __name__ == '__main__':
     subprocess.run(cmd, check=True, env=env)
 
     import os as _os
+
     _os.unlink(script_path)
 
 
@@ -660,24 +651,43 @@ def run_sglang_mode(
     # time and does not reliably produce multi-sequence decode batches for small B.
     use_offline = not force_paged_prefill
     if use_offline:
-        print(f"  Using SGLang offline Engine (decode-only, batch-controlled) — model={model_path}, {desc}")
-        _run_sglang_offline_batched(model_path, tp, page_size, env, dump_dir,
-                                    quantization=quantization, cpu_offload_gb=cpu_offload_gb)
+        print(
+            f"  Using SGLang offline Engine (decode-only, batch-controlled) — model={model_path}, {desc}"
+        )
+        _run_sglang_offline_batched(
+            model_path,
+            tp,
+            page_size,
+            env,
+            dump_dir,
+            quantization=quantization,
+            cpu_offload_gb=cpu_offload_gb,
+        )
     else:
         print(f"  Launching SGLang server (model={model_path}, {desc})")
         # Start SGLang server
         server_cmd = [
-            sys.executable, "-m", "sglang.launch_server",
-            "--model-path", model_path,
-            "--host", "0.0.0.0",
-            "--port", "30000",
-            "--tp", str(tp),
-            "--attention-backend", "flashinfer",
+            sys.executable,
+            "-m",
+            "sglang.launch_server",
+            "--model-path",
+            model_path,
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "30000",
+            "--tp",
+            str(tp),
+            "--attention-backend",
+            "flashinfer",
             "--disable-cuda-graph",
             "--disable-piecewise-cuda-graph",
-            "--log-level", "info",
-            "--page-size", str(page_size),
-            "--max-running-requests", "256",
+            "--log-level",
+            "info",
+            "--page-size",
+            str(page_size),
+            "--max-running-requests",
+            "256",
             # Force use_ragged=False so all prefill goes through BatchPrefillWithPagedKVCacheWrapper
             "--enable-deterministic-inference",
         ]
@@ -691,9 +701,12 @@ def run_sglang_mode(
         server_log_path = dump_dir / "sglang_server.log"
         server_log_file = open(server_log_path, "w")
         print(f"  SGLang server log: {server_log_path}  (tail -f {server_log_path})")
-        server_proc = subprocess.Popen(server_cmd, env=env, stdout=server_log_file, stderr=server_log_file)
+        server_proc = subprocess.Popen(
+            server_cmd, env=env, stdout=server_log_file, stderr=server_log_file
+        )
         print("  Waiting for server to start (polling health endpoint)...")
         import requests as _requests
+
         deadline = time.time() + 1800
         while time.time() < deadline:
             time.sleep(10)
@@ -723,10 +736,14 @@ def run_sglang_mode(
     sanitize_script = Path(__file__).parent / "sanitize_dumps.py"
     def_names = [f.stem for f in def_files]
     cmd = [
-        sys.executable, str(sanitize_script),
-        "--dump-dir", str(dump_dir),
-        "--definitions", *def_names,
-        "--flashinfer-trace-dir", str(trace_dir),
+        sys.executable,
+        str(sanitize_script),
+        "--dump-dir",
+        str(dump_dir),
+        "--definitions",
+        *def_names,
+        "--flashinfer-trace-dir",
+        str(trace_dir),
     ]
     if replace:
         cmd.append("--replace")
@@ -735,7 +752,9 @@ def run_sglang_mode(
     subprocess.run(cmd, check=True)
 
 
-def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_prefill: bool = False) -> None:
+def _run_sglang_inference(
+    num_samples: int, dataset_path: str | None, paged_prefill: bool = False
+) -> None:
     """Send ShareGPT inference requests to a running SGLang server.
 
     Sends requests in concurrent bursts of varying sizes (1, 2, 4, 8, 16, 32)
@@ -746,8 +765,9 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
     workloads: a long shared system prompt is prepended to every request, producing
     varied (num_tokens, prefix_len) pairs for the paged prefill wrapper.
     """
-    import requests
     import threading
+
+    import requests
 
     # Load dataset
     conversations = []
@@ -764,6 +784,7 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
         # Try to load from HuggingFace datasets
         try:
             from datasets import load_dataset
+
             ds = load_dataset("anon8231489123/ShareGPT_Vicuna_unfiltered", split="train")
             for item in ds:
                 conversations.append(item)
@@ -793,12 +814,14 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
                 "How do you optimize batch size for LLM inference throughput? Discuss continuous batching, dynamic batching, and request scheduling.",
             ]
             for i in range(num_samples + 10):
-                conversations.append({
-                    "conversations": [
-                        {"from": "human", "value": _TOPICS[i % len(_TOPICS)]},
-                        {"from": "gpt", "value": ""},
-                    ]
-                })
+                conversations.append(
+                    {
+                        "conversations": [
+                            {"from": "human", "value": _TOPICS[i % len(_TOPICS)]},
+                            {"from": "gpt", "value": ""},
+                        ]
+                    }
+                )
 
     # Ensure we have enough samples; repeat if needed for burst scheduling
     while len(conversations) < num_samples:
@@ -846,7 +869,7 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
         repeated = (base + " ") * max(1, approx_tokens // max(len(base.split()), 1))
         padded = list(msgs)
         padded[-1] = dict(padded[-1])
-        padded[-1]["content"] = repeated[:approx_tokens * 6]  # ~6 chars/token
+        padded[-1]["content"] = repeated[: approx_tokens * 6]  # ~6 chars/token
         return padded
 
     # Send all requests concurrently with varying prompt lengths.
@@ -874,32 +897,55 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
         #   out larger-batch shapes after the 20-entry dedup cap).
         # - Include large batches (64, 128) for divergent problem shapes.
         _ROUNDS = [
-            (1,   128), (1,   512),
-            (2,    64), (2,   512), (2,  1024),
-            (4,    64), (4,   256), (4,   768),
-            (8,    32), (8,   256), (8,  1024),
-            (16,   64), (16,  256), (16,  768),
-            (32,   32), (32,  256), (32,  512),
-            (64,   64), (64,  256), (64,  768),
-            (128,  32), (128, 128), (128, 512),
+            (1, 128),
+            (1, 512),
+            (2, 64),
+            (2, 512),
+            (2, 1024),
+            (4, 64),
+            (4, 256),
+            (4, 768),
+            (8, 32),
+            (8, 256),
+            (8, 1024),
+            (16, 64),
+            (16, 256),
+            (16, 768),
+            (32, 32),
+            (32, 256),
+            (32, 512),
+            (64, 64),
+            (64, 256),
+            (64, 768),
+            (128, 32),
+            (128, 128),
+            (128, 512),
         ]
         total_success = 0
         total_sent = 0
         conv_offset = 0
         for round_idx, (num_concurrent, prefix_tokens) in enumerate(_ROUNDS):
-            shared_prefix = (_BASE_SENTENCE * max(1, prefix_tokens // max(len(_BASE_SENTENCE.split()), 1)))[:prefix_tokens * 6]
+            shared_prefix = (
+                _BASE_SENTENCE * max(1, prefix_tokens // max(len(_BASE_SENTENCE.split()), 1))
+            )[: prefix_tokens * 6]
             system_msg = {"role": "user", "content": shared_prefix}
             msgs_batch = []
             for j in range(num_concurrent):
                 base_msgs = all_msgs[(conv_offset + j) % len(all_msgs)]
-                user_turn = base_msgs[-1] if base_msgs else {"role": "user", "content": "Please explain this concept in detail."}
+                user_turn = (
+                    base_msgs[-1]
+                    if base_msgs
+                    else {"role": "user", "content": "Please explain this concept in detail."}
+                )
                 # Vary query length per request for diverse total_q
                 target_tokens = 20 + j * 30
                 padded_user = _pad_to_tokens([user_turn], target_tokens)[-1]
                 msgs_batch.append([system_msg, padded_user])
             conv_offset += num_concurrent
 
-            print(f"  Round {round_idx + 1}/{len(_ROUNDS)}: {num_concurrent} concurrent requests (prefix ~{prefix_tokens} tokens)...")
+            print(
+                f"  Round {round_idx + 1}/{len(_ROUNDS)}: {num_concurrent} concurrent requests (prefix ~{prefix_tokens} tokens)..."
+            )
             with ThreadPoolExecutor(max_workers=num_concurrent) as pool:
                 # max_tokens=1: we only need the prefill dump, not decode steps
                 futs = [pool.submit(_send_one, m, 1) for m in msgs_batch]
@@ -924,24 +970,24 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
         # decode phase is captured cleanly before the batch size drops.
         rounds = [
             # (batch_size, prompt_tokens, max_tokens)
-            (1,   50, 128),
-            (1,  300, 128),
-            (1,  800, 128),
-            (2,   50, 128),
-            (2,  300, 128),
-            (2,  800, 128),
-            (4,   50, 128),
-            (4,  300, 128),
-            (4,  800, 128),
-            (8,   50, 128),
-            (8,  300, 128),
-            (8,  800, 128),
-            (16,  50, 128),
+            (1, 50, 128),
+            (1, 300, 128),
+            (1, 800, 128),
+            (2, 50, 128),
+            (2, 300, 128),
+            (2, 800, 128),
+            (4, 50, 128),
+            (4, 300, 128),
+            (4, 800, 128),
+            (8, 50, 128),
+            (8, 300, 128),
+            (8, 800, 128),
+            (16, 50, 128),
             (16, 300, 128),
             (16, 800, 128),
-            (32,  50, 128),
+            (32, 50, 128),
             (32, 300, 128),
-            (64,  50, 128),
+            (64, 50, 128),
         ]
 
         conv_idx = 0
@@ -956,7 +1002,11 @@ def _run_sglang_inference(num_samples: int, dataset_path: str | None, paged_pref
                 msgs_group.append((msgs, max_tokens))
                 conv_idx += 1
 
-            print(f"  batch_size={B:2d}, prompt~{prompt_tokens:4d}t, max_tokens={max_tokens}: ", end="", flush=True)
+            print(
+                f"  batch_size={B:2d}, prompt~{prompt_tokens:4d}t, max_tokens={max_tokens}: ",
+                end="",
+                flush=True,
+            )
             with ThreadPoolExecutor(max_workers=B) as pool:
                 futs = [pool.submit(lambda a: _send_one(a[0], a[1]), arg) for arg in msgs_group]
                 success = sum(f.result() for f in as_completed(futs))
@@ -989,14 +1039,12 @@ def _install_latest_packages() -> None:
         # Pull latest commits
         for repo, name in [(fi_repo, "flashinfer"), (sg_repo, "sglang")]:
             print(f"  git pull {name}...")
-            subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
-                           capture_output=False)
+            subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"], capture_output=False)
 
         # Install FlashInfer from source (pyproject.toml is at repo root)
         print("  Installing FlashInfer from source...")
         r = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e",
-             str(fi_repo), "--no-build-isolation"],
+            [sys.executable, "-m", "pip", "install", "-e", str(fi_repo), "--no-build-isolation"],
             capture_output=False,
         )
         if r.returncode != 0:
@@ -1005,8 +1053,7 @@ def _install_latest_packages() -> None:
         # Install SGLang from source (no extras to avoid outlines_core which needs Rust)
         print("  Installing SGLang from source...")
         r = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e",
-             f"{sg_repo}/python"],
+            [sys.executable, "-m", "pip", "install", "-e", f"{sg_repo}/python"],
             capture_output=False,
         )
         if r.returncode != 0:
@@ -1020,9 +1067,12 @@ def _install_latest_packages() -> None:
 
     # Print installed versions
     subprocess.run(
-        [sys.executable, "-c",
-         "import sglang, flashinfer; "
-         "print(f'  SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')"],
+        [
+            sys.executable,
+            "-c",
+            "import sglang, flashinfer; "
+            "print(f'  SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')",
+        ],
         capture_output=False,
     )
 
@@ -1035,7 +1085,9 @@ def main():
     direct_p = sub.add_parser("direct", help="Call FlashInfer APIs directly (no model needed)")
     direct_p.add_argument("--definitions", nargs="+", help="Definition names")
     direct_p.add_argument("--op-type", help="Op type to collect all definitions for")
-    direct_p.add_argument("--flashinfer-trace-dir", required=True, help="Path to flashinfer_trace directory")
+    direct_p.add_argument(
+        "--flashinfer-trace-dir", required=True, help="Path to flashinfer_trace directory"
+    )
     direct_p.add_argument("--dump-dir", help="Override dump directory path")
     direct_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
 
@@ -1044,13 +1096,30 @@ def main():
     sglang_p.add_argument("--model-path", required=True, help="Model path or HuggingFace repo ID")
     sglang_p.add_argument("--definitions", nargs="+", help="Definition names")
     sglang_p.add_argument("--op-type", help="Op type to collect all definitions for")
-    sglang_p.add_argument("--flashinfer-trace-dir", required=True, help="Path to flashinfer_trace directory")
+    sglang_p.add_argument(
+        "--flashinfer-trace-dir", required=True, help="Path to flashinfer_trace directory"
+    )
     sglang_p.add_argument("--num-samples", type=int, default=100)
     sglang_p.add_argument("--dataset", help="Path to ShareGPT JSONL dataset")
-    sglang_p.add_argument("--tp", type=int, default=None, help="Tensor parallel degree (default: auto-detected from definition tags)")
+    sglang_p.add_argument(
+        "--tp",
+        type=int,
+        default=None,
+        help="Tensor parallel degree (default: auto-detected from definition tags)",
+    )
     sglang_p.add_argument("--quantization", help="Quantization method (e.g. fp8, awq, gptq)")
-    sglang_p.add_argument("--cpu-offload-gb", type=float, default=0.0, help="GB of model weights to offload to CPU (e.g. 32)")
-    sglang_p.add_argument("--page-size", type=int, default=None, help="KV cache page size (default: auto from definition tags, fallback 1)")
+    sglang_p.add_argument(
+        "--cpu-offload-gb",
+        type=float,
+        default=0.0,
+        help="GB of model weights to offload to CPU (e.g. 32)",
+    )
+    sglang_p.add_argument(
+        "--page-size",
+        type=int,
+        default=None,
+        help="KV cache page size (default: auto from definition tags, fallback 1)",
+    )
     sglang_p.add_argument("--dump-dir", help="Override dump directory path")
     sglang_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
     sglang_p.add_argument(
@@ -1061,10 +1130,16 @@ def main():
             "from TP=1 SGLang for a TP=2 definition (e.g. h20 from Qwen3-14B TP=1)."
         ),
     )
-    sglang_p.add_argument("--skip-install", action="store_true",
-                          help="Skip Phase 0 package install (use when env already has correct versions)")
-    direct_p.add_argument("--skip-install", action="store_true",
-                          help="Skip Phase 0 package install (use when env already has correct versions)")
+    sglang_p.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Skip Phase 0 package install (use when env already has correct versions)",
+    )
+    direct_p.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Skip Phase 0 package install (use when env already has correct versions)",
+    )
 
     args = parser.parse_args()
 
@@ -1073,9 +1148,12 @@ def main():
     else:
         print("Phase 0: Skipping package install (--skip-install)")
         subprocess.run(
-            [sys.executable, "-c",
-             "import sglang, flashinfer; "
-             "print(f'  SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')"],
+            [
+                sys.executable,
+                "-c",
+                "import sglang, flashinfer; "
+                "print(f'  SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')",
+            ],
             capture_output=False,
         )
 
@@ -1101,6 +1179,7 @@ def main():
         dump_dir.mkdir(parents=True, exist_ok=True)
     else:
         from datetime import datetime
+
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         dump_dir = Path(f"workload_dumps_{ts}").resolve()
         dump_dir.mkdir(parents=True, exist_ok=True)

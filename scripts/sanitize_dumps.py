@@ -63,8 +63,16 @@ _PLAN_KWARG_TO_DEF: dict[str, str] = {
 }
 
 _INT_DTYPES = {"torch.int32", "torch.int64", "int32", "int64"}
-_FLOAT_DTYPES = {"torch.float32", "torch.float16", "torch.bfloat16", "torch.float64",
-                 "float32", "float16", "bfloat16", "float64"}
+_FLOAT_DTYPES = {
+    "torch.float32",
+    "torch.float16",
+    "torch.bfloat16",
+    "torch.float64",
+    "float32",
+    "float16",
+    "bfloat16",
+    "float64",
+}
 
 
 def _parse_param_names(sig_str: str) -> list[str]:
@@ -90,7 +98,13 @@ def _parse_param_names(sig_str: str) -> list[str]:
             if token:
                 # Extract param name before ':', '=', or whitespace
                 name = re.split(r"[:\s=]", token)[0].strip()
-                if name and name != "*" and name != "/" and not name.startswith("**") and not name.startswith("*"):
+                if (
+                    name
+                    and name != "*"
+                    and name != "/"
+                    and not name.startswith("**")
+                    and not name.startswith("*")
+                ):
                     params.append(name)
             current = ""
         else:
@@ -135,7 +149,9 @@ def _get_tensor_from_dump(
     return None
 
 
-def _get_scalar_from_dump(metadata: dict, param_names: list[str], param_name: str, def_input_index: int | None = None):
+def _get_scalar_from_dump(
+    metadata: dict, param_names: list[str], param_name: str, def_input_index: int | None = None
+):
     """Get a non-tensor scalar value from dump metadata."""
     input_meta = metadata.get("input_metadata", {})
 
@@ -165,6 +181,7 @@ def _load_input_tensors(call_dir: Path) -> dict[str, torch.Tensor]:
 
     if safetensors_path.exists():
         from safetensors.torch import load_file
+
         return load_file(str(safetensors_path), device="cpu")
     elif pt_path.exists():
         return torch.load(str(pt_path), map_location="cpu")
@@ -194,7 +211,9 @@ def _infer_axis_value(
             continue
         for dim_idx, dim_name in enumerate(shape_template):
             if dim_name == axis_name:
-                tensor = _get_tensor_from_dump(tensors, metadata, param_names, input_name, def_input_index=def_idx)
+                tensor = _get_tensor_from_dump(
+                    tensors, metadata, param_names, input_name, def_input_index=def_idx
+                )
                 if tensor is not None and dim_idx < len(tensor.shape):
                     candidates.append(tensor.shape[dim_idx])
 
@@ -232,7 +251,9 @@ def _verify_constant_axis(
             continue
         for dim_idx, dim_name in enumerate(shape_template):
             if dim_name == axis_name:
-                tensor = _get_tensor_from_dump(tensors, metadata, param_names, input_name, def_input_index=def_idx)
+                tensor = _get_tensor_from_dump(
+                    tensors, metadata, param_names, input_name, def_input_index=def_idx
+                )
                 if tensor is not None and dim_idx < len(tensor.shape):
                     actual = tensor.shape[dim_idx]
                     if actual != expected_val:
@@ -321,7 +342,9 @@ def process_call_dump(
                 plan_injected = {}
                 for plan_param, def_key in _PLAN_KWARG_TO_DEF.items():
                     if def_key not in plan_injected:
-                        t = _get_tensor_from_dump(plan_tensors, plan_record, plan_param_names, plan_param)
+                        t = _get_tensor_from_dump(
+                            plan_tensors, plan_record, plan_param_names, plan_param
+                        )
                         if t is not None and str(t.dtype) in _INT_DTYPES:
                             plan_injected[def_key] = t
 
@@ -363,14 +386,23 @@ def process_call_dump(
     skip_check = _SKIP_CONST_AXIS_CHECK or (plan_dir is not None)
     for axis_name, axis_def in definition.get("axes", {}).items():
         if axis_def["type"] == "var":
-            val = _infer_axis_value(tensors, last_record, param_names, axis_name, axis_def, definition)
+            val = _infer_axis_value(
+                tensors, last_record, param_names, axis_name, axis_def, definition
+            )
             if val is None:
                 print(f"  WARNING: could not infer variable axis '{axis_name}'")
             else:
                 axes[axis_name] = int(val)
         elif axis_def["type"] == "const":
-            if not _verify_constant_axis(tensors, last_record, param_names, axis_name, axis_def, definition,
-                                          skip_const_axis_check=skip_check):
+            if not _verify_constant_axis(
+                tensors,
+                last_record,
+                param_names,
+                axis_name,
+                axis_def,
+                definition,
+                skip_const_axis_check=skip_check,
+            ):
                 valid = False
                 break
 
@@ -408,14 +440,16 @@ def process_call_dump(
 
         if shape_template is None:
             # Scalar input (shape is null)
-            scalar_val = _get_scalar_from_dump(last_record, param_names, input_name, def_input_index=def_idx)
+            scalar_val = _get_scalar_from_dump(
+                last_record, param_names, input_name, def_input_index=def_idx
+            )
             if scalar_val is not None:
                 # Unwrap if it was serialized as a dict
                 if isinstance(scalar_val, dict):
                     scalar_val = scalar_val.get("value", scalar_val)
                 workload_inputs[input_name] = {
                     "type": "scalar",
-                    "value": float(scalar_val) if scalar_val is not None else 1.0 / (128 ** 0.5),
+                    "value": float(scalar_val) if scalar_val is not None else 1.0 / (128**0.5),
                 }
             else:
                 # Fallback: use default scale 1/sqrt(head_size)
@@ -438,7 +472,9 @@ def process_call_dump(
 
         if tensor is None and plan_dir is None:
             # Plain function path: allow def_input_index fallback
-            tensor = _get_tensor_from_dump(tensors, last_record, param_names, input_name, def_input_index=def_idx)
+            tensor = _get_tensor_from_dump(
+                tensors, last_record, param_names, input_name, def_input_index=def_idx
+            )
 
         if tensor is None:
             if is_optional:
@@ -465,38 +501,26 @@ def process_call_dump(
         return {
             "definition": def_name,
             "solution": None,
-            "workload": {
-                "uuid": workload_uuid,
-                "axes": axes,
-                "inputs": workload_inputs,
-            },
+            "workload": {"uuid": workload_uuid, "axes": axes, "inputs": workload_inputs},
             "evaluation": None,
         }
 
     # Save all tensors to a single safetensors file
     # Clone to ensure no shared storage (safetensors rejects shared-memory tensors)
     from safetensors.torch import save_file
+
     tensors_to_save = {k: v.contiguous().clone() for k, v in tensors_to_save.items()}
     save_file(tensors_to_save, str(blob_path))
 
     return {
         "definition": def_name,
         "solution": None,
-        "workload": {
-            "uuid": workload_uuid,
-            "axes": axes,
-            "inputs": workload_inputs,
-        },
+        "workload": {"uuid": workload_uuid, "axes": axes, "inputs": workload_inputs},
         "evaluation": None,
     }
 
 
-def _cleanup_orphaned_blobs(
-    jsonl_path: Path,
-    trace_dir: Path,
-    def_name: str,
-    op_type: str,
-) -> None:
+def _cleanup_orphaned_blobs(jsonl_path: Path, trace_dir: Path, def_name: str, op_type: str) -> None:
     """Delete blob safetensors files no longer referenced by the existing JSONL."""
     blob_dir = trace_dir / "blob" / "workloads" / op_type / def_name
     if not blob_dir.exists():
@@ -529,10 +553,7 @@ def _cleanup_orphaned_blobs(
 
 
 def sanitize_dumps(
-    dump_dir: Path,
-    definition_files: list[Path],
-    flashinfer_trace_dir: Path,
-    replace: bool = False,
+    dump_dir: Path, definition_files: list[Path], flashinfer_trace_dir: Path, replace: bool = False
 ) -> dict[str, list[dict]]:
     """
     Process all call dumps in dump_dir for matching definitions.
@@ -555,7 +576,7 @@ def sanitize_dumps(
         # index both so the lookup works regardless.
         for tag in defn.get("tags", []):
             if tag.startswith("fi_api:"):
-                api_path = tag[len("fi_api:"):]
+                api_path = tag[len("fi_api:") :]
                 last = api_path.split(".")[-1]
                 if last[0].isupper():
                     # Qualified name (e.g. "BatchPrefillWithPagedKVCacheWrapper.run")
@@ -661,17 +682,12 @@ def sanitize_dumps(
             defn = definitions[def_name]
 
             entry = process_call_dump(
-                call_dir,
-                defn,
-                def_name,
-                blob_base_dir,
-                func_name,
-                plan_dir=plan_dir,
+                call_dir, defn, def_name, blob_base_dir, func_name, plan_dir=plan_dir
             )
 
             if entry is not None:
                 # Deduplicate: skip if we already have MAX_DUPS_PER_AXES entries with same axes
-                axes_key = json.dumps(entry['workload']['axes'], sort_keys=True)
+                axes_key = json.dumps(entry["workload"]["axes"], sort_keys=True)
                 if seen_axes_count[def_name][axes_key] < MAX_DUPS_PER_AXES:
                     seen_axes_count[def_name][axes_key] += 1
                     candidates[def_name].append(entry)
@@ -685,8 +701,7 @@ def sanitize_dumps(
             return entries
 
         var_axes = [
-            name for name, spec in definition.get("axes", {}).items()
-            if spec.get("type") == "var"
+            name for name, spec in definition.get("axes", {}).items() if spec.get("type") == "var"
         ]
         if not var_axes:
             return entries[:max_count]
@@ -704,7 +719,7 @@ def sanitize_dumps(
                 for v1, v2 in zip(vec, sv):
                     norm = max(abs(v1), abs(v2), 1.0)
                     d += ((v1 - v2) / norm) ** 2
-                min_d = min(min_d, d ** 0.5)
+                min_d = min(min_d, d**0.5)
             return min_d
 
         # Phase 1: seed with one representative per distinct batch_size so all
@@ -712,6 +727,7 @@ def sanitize_dumps(
         # Within each batch_size group, pick the entry with the highest min-distance
         # to the already-selected set (greedy farthest-point within the group).
         from collections import defaultdict as _dd
+
         by_bs = _dd(list)
         for e in entries:
             bs = e["workload"]["axes"].get("batch_size", 0)
@@ -788,12 +804,12 @@ def sanitize_dumps(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sanitize FlashInfer tensor dumps into workload JSONL")
+    parser = argparse.ArgumentParser(
+        description="Sanitize FlashInfer tensor dumps into workload JSONL"
+    )
     parser.add_argument("--dump-dir", required=True, help="FlashInfer dump directory")
     parser.add_argument(
-        "--definitions",
-        nargs="+",
-        help="Definition names (e.g. gdn_mtp_qk4_v8_d128_k_last)",
+        "--definitions", nargs="+", help="Definition names (e.g. gdn_mtp_qk4_v8_d128_k_last)"
     )
     parser.add_argument("--op-type", help="Process all definitions of this op_type")
     parser.add_argument(
@@ -868,7 +884,7 @@ def main():
     print(f"Summary: {total} workloads across {len(results)} definitions")
     for def_name, entries in results.items():
         print(f"  {def_name}: {len(entries)} workloads")
-    print("="*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
