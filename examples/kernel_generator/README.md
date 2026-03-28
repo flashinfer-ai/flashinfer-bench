@@ -28,4 +28,4 @@ A multi-turn kernel generating agent that uses FlashInfer-Bench for evaluation f
    python kernel_generator_example.py
    ```
 
-Generated solutions are saved to `{traceset_path}/solutions/{op_type}/{definition_name}/{solution_name}.json`
+Generated solutions are saved to `{traceset_path}/solutions/{author}/{op_type}/{definition_name}/{solution_name}.json`

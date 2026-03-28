@@ -5,11 +5,13 @@ description: Extract kernel schemas and definitions from SGLang model implementa
 
 # Extract Kernel Definitions
 
-Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations.
+Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
 
 ## Description
 
 This skill analyzes SGLang model implementations to extract the complete set of GPU kernels used during inference. It identifies kernel types (MLA, MOE, GQA, RMSNorm, GEMM), extracts their parameters, generates Definition JSON schemas with Python reference implementations, and handles deduplication across multiple models.
+
+**Key Feature**: Uses sgl-cookbook repository to find recommended serving configurations (tensor parallel, expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
 
 ## Usage
 
@@ -39,7 +41,7 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer (the `flashinfer_trace/` directory is already part of this repository).
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, and sgl-cookbook (the `flashinfer_trace/` directory is already part of this repository).
 
 ## What This Skill Does
 
@@ -50,39 +52,69 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
    - Identify model class (e.g., `DeepseekV3ForCausalLM`, `LlamaForCausalLM`)
    - Parse model architecture from config
 
-2. **Identify Layer Components**:
-   - Attention mechanism (GQA, MHA, MLA)
+2. **Find Serving Configurations (NEW)**:
+   - Search `tmp/sgl-cookbook/data/models/generated/v0.5.6/` for model-specific YAML configs
+   - Identify all recommended TP (tensor parallel) and EP (expert parallel) settings across different hardware platforms
+   - Parse YAML files to extract `tp` and `ep` values from hardware configurations
+   - **Example**: Qwen3-Next (qwen3next.yaml) has:
+     - H100: tp=4 (requires definitions with heads split by 4)
+     - H200/B200: tp=2 (requires definitions with heads split by 2)
+   - **Example**: DeepSeek V3.2 (deepseek.yaml) has:
+     - All platforms: tp=8 (base config)
+     - high-throughput-ep: tp=8, ep=8 (affects num_local_experts)
+
+3. **Identify Layer Components**:
+   - Attention mechanism (GQA, MHA, MLA, GDN)
    - MLP/FFN structure (Dense, MoE)
    - Normalization layers (RMSNorm, LayerNorm)
    - Embedding and output projections
 
-3. **Extract Execution Paths**:
+4. **Extract Execution Paths**:
    - Prefill path (batch processing, variable sequence length)
    - Decode path (single token, paged KV cache)
 
-### Phase 2: Kernel Extraction
+### Phase 2: Kernel Extraction with Parallelism Variants
 
-For each layer component, extract:
+For each layer component AND each serving configuration (TP/EP setting), extract:
 
-#### Attention Kernels
+#### Attention Kernels (Affected by TP)
 - **GQA**: `gqa_paged_decode`, `gqa_paged_prefill`, `gqa_ragged_prefill`
+  - **TP Impact**: `num_qo_heads` = original_heads / TP, `num_kv_heads` = original_kv_heads / TP
 - **MLA**: `mla_paged_decode`, `mla_paged_prefill`
+  - **TP Impact**: `num_qo_heads` = original_heads / TP
+- **GDN**: `gdn_decode`, `gdn_prefill`
+  - **TP Impact**: `num_q_heads` = original_q_heads / TP, `num_v_heads` = original_v_heads / TP
+  - **Example**: Qwen3-Next with TP=2 → `gdn_decode_qk8_v16_d128_k_last`
+  - **Example**: Qwen3-Next with TP=4 → `gdn_decode_qk4_v8_d128_k_last`
 - **Parameters**: num_heads, num_kv_heads, head_dim, page_size, ckv_dim, kpe_dim
 
-#### MoE Kernels
+#### MoE Kernels (Affected by EP)
 - Expert routing and selection
 - Expert execution (FP8 quantized, block-scaled)
-- **Parameters**: num_experts, topk, hidden_size, intermediate_size, group_size
+- **EP Impact**: `num_local_experts` = num_experts / EP
+- **Example**: DeepSeek V3 has 256 experts
+  - EP=1 → `num_local_experts=256`
+  - EP=2 → `num_local_experts=128`
+  - EP=4 → `num_local_experts=64`
+  - EP=8 → `num_local_experts=32`
+- **Parameters**: num_experts (global), num_local_experts (per device), topk, hidden_size, intermediate_size, group_size
 
-#### Normalization Kernels
+#### Normalization Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - `rmsnorm_h{hidden_size}`
 - `fused_add_rmsnorm_h{hidden_size}`
 - **Parameters**: hidden_size, epsilon
+- **Note**: Same definition across all TP/EP configs. Do NOT add `tp:N` or `ep:N` tags. Refer to sgl-cookbook to confirm the serving config, but the kernel definition itself is parallelism-agnostic.
 
-#### GEMM Kernels
+#### GEMM Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - QKV projection, O projection
 - Gate/Up projection, Down projection
 - **Parameters**: M (variable), N (output dim), K (input dim)
+- **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
+
+#### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
+- `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.
+- **Parameters**: vocab_size, batch_size
+- **Note**: Sampling operates on per-token logits after all-reduce; the vocab dimension is never split. Do NOT add `tp:N` or `ep:N` tags.
 
 ### Phase 3: Deduplication
 
@@ -99,9 +131,15 @@ For each layer component, extract:
    - Kernels like `rmsnorm_h4096` may be used by multiple models
    - Only create once, add model tags to existing definitions
 
-### Phase 4: Definition Generation
+### Phase 4: Definition Generation with Parallelism Tags
 
-For each new kernel, generate a Definition JSON following the standards below.
+For each new kernel AND each TP/EP configuration, generate a Definition JSON following the standards below.
+
+**IMPORTANT**: When generating multiple definitions for different TP/EP configs:
+1. Create separate JSON files with parameters reflecting the parallelism split
+2. Add `tp:N` / `ep:N` tags **only for kernels whose input sizes are affected by parallelism** (attention/GDN kernels for TP; MoE kernels for EP). **Skip these tags for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — instead, refer to sgl-cookbook to confirm the serving config.
+3. Update constant axes to reflect post-split values
+4. Include TP/EP info in the description field
 
 ## Definition JSON Standards
 
@@ -138,8 +176,30 @@ Tags follow the pattern `{category}:{value}`:
 | `status` | `verified`, `unverified` | Whether reference implementation is validated |
 | `stage` | `decode`, `prefill` | Inference execution mode |
 | `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
+| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — refer to sgl-cookbook to confirm TP but do not add this tag. |
+| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling). |
 | `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
 | `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
+| `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
+
+**FlashInfer API Name Mapping by op_type:**
+
+| op_type | FlashInfer API | Notes |
+|---------|----------------|-------|
+| `rmsnorm` | `flashinfer.norm.rmsnorm` | |
+| `rmsnorm` (fused_add) | `flashinfer.norm.fused_add_rmsnorm` | |
+| `gqa_paged` (decode) | `flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper` | |
+| `gqa_paged` (prefill) | `flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper` | |
+| `gqa_ragged` | `flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper` | |
+| `mla_paged` | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | |
+| `dsa_paged` | `flashinfer.sparse.BlockSparseAttentionWrapper` | Verify in `tmp/flashinfer/python/flashinfer/` |
+| `gdn` (prefill) | `flashinfer.gdn.chunk_gated_delta_rule` | Defined in `gdn_prefill.py` |
+| `gdn` (decode) | `flashinfer.gdn.gated_delta_rule_decode` | Defined in `gdn_decode.py` |
+| `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
+| `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
+| `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
+| `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
+| `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
 
 **Example tags array:**
 ```json
@@ -148,7 +208,9 @@ Tags follow the pattern `{category}:{value}`:
   "status:verified",
   "model:deepseek-v3",
   "model:deepseek-r1",
-  "quantization:float8_e4m3fn"
+  "quantization:float8_e4m3fn",
+  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+  "tp:8"
 ]
 ```
 
@@ -241,7 +303,9 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "stage:decode",
     "status:verified",
     "model:deepseek-v3",
-    "model:deepseek-r1"
+    "model:deepseek-r1",
+    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
+    "tp:8"
   ],
   "axes": {
     "batch_size": { "type": "var" },
@@ -321,7 +385,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
     "status:verified",
     "model:deepseek-v3",
     "model:deepseek-r1",
-    "quantization:float8_e4m3fn"
+    "quantization:float8_e4m3fn",
+    "ep:8"
   ],
   "axes": {
     "seq_len": { "type": "var", "description": "Sequence length (number of tokens)" },
@@ -379,6 +444,8 @@ Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
 }
 ```
 
+> **Note**: The MoE FP8 block-scale variant has a FlashInfer API (`flashinfer.fused_moe.trtllm_fp8_block_scale_moe`); update the `tags` array accordingly. Other MoE variants without FlashInfer support should omit the `fi_api:` tag and use SGLang as ground truth. In general, omit `fi_api:` whenever no FlashInfer API covers the kernel.
+
 ## Implementation Steps
 
 When executing this skill:
@@ -388,26 +455,55 @@ When executing this skill:
    ls tmp/sglang/python/sglang/srt/models/ | grep -i {model_name}
    ```
 
-2. **Read model implementation**:
+2. **Find sgl-cookbook configs for the model**:
+   ```bash
+   # Find the matching YAML config file
+   find tmp/sgl-cookbook/data/models/generated/v0.5.6/ -name "*{model_name}*.yaml"
+
+   # Example: for qwen3-next
+   cat tmp/sgl-cookbook/data/models/generated/v0.5.6/qwen3next.yaml
+   ```
+
+3. **Parse YAML to extract TP/EP configurations**:
+   - Read YAML file and parse hardware configurations
+   - Extract all unique `tp` values across all hardware platforms and configurations
+   - Extract all unique `ep` values (if model uses MoE)
+   - **Example parsing result for Qwen3-Next**:
+     ```
+     TP configs: [2, 4]
+     EP configs: [null] (no MoE)
+     ```
+   - **Example parsing result for DeepSeek-V3.2**:
+     ```
+     TP configs: [8]
+     EP configs: [null, 8]
+     ```
+
+4. **Read model implementation**:
    - Parse the Python file
    - Identify forward() methods
    - Extract kernel calls (attention, MoE, norm, GEMM)
 
-3. **Extract kernel parameters from model config**:
+5. **Extract kernel parameters from model config**:
    - Look for config class (e.g., `DeepseekV3Config`)
    - Extract: num_hidden_layers, hidden_size, num_attention_heads, num_key_value_heads, intermediate_size, etc.
 
-4. **Check existing definitions**:
+6. **Check existing definitions**:
    ```bash
    ls flashinfer_trace/definitions/*/
    ```
 
-5. **Generate new definition JSONs**:
+7. **Generate definition JSONs for each TP/EP config**:
+   - For each unique TP value, calculate split head counts
+   - For each unique EP value, calculate local expert counts
    - Create directory if needed: `mkdir -p flashinfer_trace/definitions/{op_type}/`
    - Write JSON file with reference implementation
+   - **Example**: For Qwen3-Next GDN kernel with original q_heads=16, v_heads=32:
+     - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
+     - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
 
-6. **Report results**:
-   - List new definitions created
+8. **Report results**:
+   - List new definitions created (grouped by TP/EP config)
    - List existing definitions skipped (deduplication)
    - List kernels shared across models
 

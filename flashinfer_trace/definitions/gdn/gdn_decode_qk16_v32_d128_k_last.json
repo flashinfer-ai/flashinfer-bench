@@ -1,12 +1,14 @@
 {
   "name": "gdn_decode_qk16_v32_d128_k_last",
-  "description": "Gated Delta Net decode with GVA configuration and k-last state layout. Single-token generation with recurrent state update. Captured from Qwen3 Next linear attention layers.",
+  "description": "Gated Delta Net decode with GVA configuration and k-last state layout. Single-token generation with recurrent state update. Captured from Qwen3 Next linear attention layers (TP=1).",
   "op_type": "gdn",
   "tags": [
     "stage:decode",
     "status:verified",
     "model:qwen3-next",
-    "layout:k-last"
+    "layout:k-last",
+    "fi_api:flashinfer.gdn.gated_delta_rule_decode",
+    "tp:1"
   ],
   "axes": {
     "batch_size": {
@@ -21,21 +23,22 @@
     "num_q_heads": {
       "type": "const",
       "value": 16,
-      "description": "Number of query heads (same as key heads in GVA mode)."
+      "description": "Number of query heads (same as key heads in GVA mode, TP=1, 16/1=16)."
     },
     "num_k_heads": {
       "type": "const",
       "value": 16,
-      "description": "Number of key heads."
+      "description": "Number of key heads (TP=1, 16/1=16)."
     },
     "num_v_heads": {
       "type": "const",
       "value": 32,
-      "description": "Number of value heads (GVA: more value heads than query heads)."
+      "description": "Number of value heads (GVA: more value heads than query heads, TP=1, 32/1=32)."
     },
     "head_size": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head (K dimension in query/key space, V dimension in value space)."
     }
   },
   "constraints": [

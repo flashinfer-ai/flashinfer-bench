@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -17,7 +21,7 @@ from flashinfer_bench.data import (
     Performance,
     Workload,
 )
-from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot, flush_stdio_streams
+from flashinfer_bench.utils import dtype_str_to_torch_dtype, env_snapshot
 
 
 def _rand_tensor(shape: List[int], dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -167,6 +171,51 @@ def compute_frequency_distribution(
     return frequency
 
 
+_LFS_MAGIC = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _ensure_lfs_downloaded(
+    file_path: Path,
+    repo_root: Optional[Path],
+    tensor_name: Optional[str] = None,
+    workload_id: Optional[str] = None,
+) -> None:
+    """If *file_path* is a Git LFS pointer, pull the real content via git lfs."""
+    if repo_root is None:
+        return
+    try:
+        with open(file_path, "rb") as fh:
+            header = fh.read(len(_LFS_MAGIC))
+    except OSError:
+        return
+    if header != _LFS_MAGIC:
+        return
+    try:
+        rel = file_path.resolve().relative_to(repo_root.resolve())
+    except ValueError as e:
+        raise ValueError(
+            f"Input safetensors path '{file_path}' is outside trace repo root '{repo_root}'"
+        ) from e
+    include_path = str(rel).replace("\\", "/")
+    tensor_label = f" tensor '{tensor_name}'" if tensor_name else ""
+    workload_label = f" for workload '{workload_id}'" if workload_id else ""
+    print(f"[lfs] Downloading{tensor_label}{workload_label}: {include_path} …")
+    git_exe = shutil.which("git")
+    if git_exe is None:
+        raise RuntimeError("`git` is required for on-demand Git LFS downloads")
+    try:
+        subprocess.run(
+            [git_exe, "lfs", "pull", "--include", include_path],
+            cwd=str(repo_root),
+            check=True,
+            timeout=500,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"Timed out downloading LFS object: {include_path}") from e
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"`git lfs pull` failed for: {include_path}") from e
+
+
 def load_safetensors(
     definition: Definition, workload: Workload, trace_set_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
@@ -188,6 +237,9 @@ def load_safetensors(
         if trace_set_root is not None and not Path(path).is_absolute():
             path = str(trace_set_root / path)
 
+        _ensure_lfs_downloaded(
+            Path(path), trace_set_root, tensor_name=name, workload_id=workload.uuid
+        )
         tensors = st.load_file(path)
         if input_spec.tensor_key not in tensors:
             raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
@@ -251,21 +303,29 @@ def gen_inputs(
 _MAX_EMBEDDED_LOG_BYTES = 5 * 1024 * 1024
 
 
-def _read_log_file(
+def _read_and_cleanup_log(
     log_path: Optional[str], *, limit: int = _MAX_EMBEDDED_LOG_BYTES
 ) -> Optional[str]:
+    """Read log file content and delete it. Returns None if path is None or file missing."""
     if not log_path:
         return None
 
-    flush_stdio_streams()
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass
 
     try:
         with open(log_path, "rb") as fh:
             data = fh.read(limit + 1)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         return None
-    except OSError:
-        return None
+    finally:
+        try:
+            os.remove(log_path)
+        except OSError:
+            pass
 
     truncated = len(data) > limit
     if truncated:
@@ -280,12 +340,12 @@ def _read_log_file(
 def make_eval(
     status: EvaluationStatus,
     device: str,
-    log_path: Optional[str],
+    log_path: Optional[str] = None,
     correctness: Optional[Correctness] = None,
     performance: Optional[Performance] = None,
     extra_msg: Optional[str] = None,
 ) -> Evaluation:
-    log_text = _read_log_file(log_path) or ""
+    log_text = _read_and_cleanup_log(log_path) or ""
     if extra_msg:
         log_text = log_text + "\n" + extra_msg if log_text else extra_msg
     return Evaluation(
