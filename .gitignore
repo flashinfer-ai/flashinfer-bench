@@ -45,7 +45,6 @@ web/**/public
 # .claude
 .vscode
 
-tmp/
 AGENTS.md
 
 .env
