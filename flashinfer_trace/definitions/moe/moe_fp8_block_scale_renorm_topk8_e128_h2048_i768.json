@@ -28,10 +28,30 @@
       "value": 768,
       "description": "MoE expert intermediate size."
     },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 1536,
+      "description": "Output size of the first GEMM (W13). Should be 2 * intermediate_size."
+    },
     "top_k": {
       "type": "const",
       "value": 8,
       "description": "Number of experts selected per token."
+    },
+    "num_hidden_blocks": {
+      "type": "const",
+      "value": 16,
+      "description": "Number of quantized blocks along hidden_size (block_size=128, 2048/128=16)."
+    },
+    "num_intermediate_blocks": {
+      "type": "const",
+      "value": 6,
+      "description": "Number of quantized blocks along intermediate_size (block_size=128, 768/128=6)."
+    },
+    "num_gemm1_out_blocks": {
+      "type": "const",
+      "value": 12,
+      "description": "Number of quantized blocks along gemm1_out_size (block_size=128, 1536/128=12)."
     }
   },
   "inputs": {
@@ -53,16 +73,16 @@
     },
     "hidden_states_scale": {
       "shape": [
-        "16",
+        "num_hidden_blocks",
         "seq_len"
       ],
-      "dtype": "float8_e4m3fn",
-      "description": "Block scales for hidden_states, shape [16, seq_len] (transposed)."
+      "dtype": "float32",
+      "description": "Block scales for hidden_states, shape [num_hidden_blocks, seq_len] (transposed)."
     },
     "gemm1_weights": {
       "shape": [
         "num_local_experts",
-        "2*768",
+        "gemm1_out_size",
         "hidden_size"
       ],
       "dtype": "float8_e4m3fn",
@@ -71,17 +91,17 @@
     "gemm1_weights_scale": {
       "shape": [
         "num_local_experts",
-        "12",
-        "16"
+        "num_gemm1_out_blocks",
+        "num_hidden_blocks"
       ],
-      "dtype": "float8_e4m3fn",
-      "description": "Block scales for gemm1_weights, shape [E, 12, 16]."
+      "dtype": "float32",
+      "description": "Block scales for gemm1_weights."
     },
     "gemm2_weights": {
       "shape": [
         "num_local_experts",
         "hidden_size",
-        "768"
+        "intermediate_size"
       ],
       "dtype": "float8_e4m3fn",
       "description": "FC2 weights (down), FP8 block-scale."
@@ -89,11 +109,11 @@
     "gemm2_weights_scale": {
       "shape": [
         "num_local_experts",
-        "16",
-        "6"
+        "num_hidden_blocks",
+        "num_intermediate_blocks"
       ],
-      "dtype": "float8_e4m3fn",
-      "description": "Block scales for gemm2_weights, shape [E, 16, 6]."
+      "dtype": "float32",
+      "description": "Block scales for gemm2_weights."
     }
   },
   "outputs": {
