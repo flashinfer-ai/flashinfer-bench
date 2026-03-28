@@ -126,6 +126,85 @@ def test_cpu_add_one() -> None:
 
 
 @pytest.mark.requires_torch_cuda
+def test_cuda_cublas_gemm() -> None:
+    """Test building and running a cuBLAS GEMM kernel."""
+
+    CUDA_CUBLAS_GEMM_SOURCE = """
+    #include <cublas_v2.h>
+    #include <cuda_fp16.h>
+    #include <tvm/ffi/container/tensor.h>
+    #include <tvm/ffi/function.h>
+
+    static cublasHandle_t g_handle = nullptr;
+
+    void cublas_gemm(tvm::ffi::TensorView A, tvm::ffi::TensorView B, tvm::ffi::TensorView C) {
+        if (!g_handle) {
+            cublasCreate(&g_handle);
+            cublasSetMathMode(g_handle, CUBLAS_TENSOR_OP_MATH);
+        }
+        int M = A.size(0);
+        int K = A.size(1);
+        int N = B.size(0);
+        __half alpha_h = __float2half(1.0f);
+        __half beta_h = __float2half(0.0f);
+        // C[M,N] = A[M,K] @ B[N,K].T  (row-major)
+        // col-major: C_col[N,M] = B_col[K,N]^T * A_col[K,M]
+        cublasHgemm(g_handle,
+                    CUBLAS_OP_T, CUBLAS_OP_N,
+                    N, M, K, &alpha_h,
+                    (const __half*)B.data_ptr(), K,
+                    (const __half*)A.data_ptr(), K,
+                    &beta_h,
+                    (__half*)C.data_ptr(), N);
+    }
+
+    TVM_FFI_DLL_EXPORT_TYPED_FUNC(cublas_gemm, cublas_gemm);
+    """
+
+    GEMM_DEFINITION = Definition(
+        name="test_gemm",
+        op_type="gemm",
+        axes={
+            "M": {"type": "const", "value": 64},
+            "N": {"type": "const", "value": 128},
+            "K": {"type": "const", "value": 32},
+        },
+        inputs={
+            "A": TensorSpec(shape=["M", "K"], dtype="float16"),
+            "B": TensorSpec(shape=["N", "K"], dtype="float16"),
+        },
+        outputs={"C": TensorSpec(shape=["M", "N"], dtype="float16")},
+        reference="import torch\n\ndef run(A, B):\n    return torch.matmul(A, B.T)\n",
+    )
+
+    solution = Solution(
+        name="test_cublas_gemm",
+        definition=GEMM_DEFINITION.name,
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.CUDA,
+            target_hardware=["cuda"],
+            entry_point="kernel.cu::cublas_gemm",
+            destination_passing_style=True,
+        ),
+        sources=[SourceFile(path="kernel.cu", content=CUDA_CUBLAS_GEMM_SOURCE)],
+    )
+
+    builder = TVMFFIBuilder()
+    runnable = builder.build(GEMM_DEFINITION, solution)
+
+    M, N, K = 64, 128, 32
+    A = torch.randn(M, K, device="cuda", dtype=torch.float16)
+    B = torch.randn(N, K, device="cuda", dtype=torch.float16)
+    C = torch.empty(M, N, device="cuda", dtype=torch.float16)
+    runnable(A, B, C)
+    torch.cuda.synchronize()
+
+    expected = torch.matmul(A, B.T)
+    torch.testing.assert_close(C, expected, rtol=1e-2, atol=1e-2)
+
+
+@pytest.mark.requires_torch_cuda
 def test_cuda_add_one() -> None:
     """Test building and running a simple CUDA kernel."""
     solution = Solution(
@@ -353,6 +432,37 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(actual_function, actual_function);
     builder = TVMFFIBuilder()
     with pytest.raises(BuildError):
         builder.build(definition, invalid_solution)
+
+
+def test_unresolved_symbol() -> None:
+    """Test that a .so with unresolved symbols raises BuildError at load time."""
+    source_with_bad_symbol = """
+#include <tvm/ffi/container/tensor.h>
+#include <tvm/ffi/function.h>
+
+extern "C" void some_nonexistent_library_func();
+
+void bad_kernel(tvm::ffi::TensorView x, tvm::ffi::TensorView output) {
+    some_nonexistent_library_func();
+}
+
+TVM_FFI_DLL_EXPORT_TYPED_FUNC(bad_kernel, bad_kernel);
+"""
+    solution = Solution(
+        name="test_unresolved_symbol",
+        definition=ADD_ONE_DEFINITION.name,
+        author="test",
+        spec=BuildSpec(
+            language=SupportedLanguages.CPP,
+            target_hardware=["cpu"],
+            entry_point="kernel.cpp::bad_kernel",
+        ),
+        sources=[SourceFile(path="kernel.cpp", content=source_with_bad_symbol)],
+    )
+
+    builder = TVMFFIBuilder()
+    with pytest.raises(BuildError, match="unresolved symbols"):
+        builder.build(ADD_ONE_DEFINITION, solution)
 
 
 def test_no_sources() -> None:

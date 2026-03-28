@@ -118,9 +118,13 @@ def main():
 
         if solution:
             try:
-                # Create directory structure: solutions/definition-type/definition-name/
+                # Create directory structure: solutions/author/op_type/definition-name/
                 solutions_dir = (
-                    Path(trace_set_path) / "solutions" / definition.op_type / definition_name
+                    Path(trace_set_path)
+                    / "solutions"
+                    / solution.author
+                    / definition.op_type
+                    / definition_name
                 )
                 solutions_dir.mkdir(parents=True, exist_ok=True)
 

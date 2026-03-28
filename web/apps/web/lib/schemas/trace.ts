@@ -59,6 +59,8 @@ export const SolutionSchema = z.object({
     entry_point: z.string(),
     dependencies: z.array(z.string()).optional(),
     build_commands: z.array(z.string()).optional(),
+    destination_passing_style: z.boolean().default(true),
+    binding: z.enum(["tvm-ffi", "torch"]).nullable().optional(),
   }),
   sources: z.array(z.object({
     path: z.string(),

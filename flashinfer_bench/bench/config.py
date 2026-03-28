@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import List, Optional
-
-from flashinfer_bench.env import get_fib_cache_path
 
 
 @dataclass
@@ -20,7 +19,7 @@ class BenchmarkConfig:
     num_trials: int = field(default=3)
     rtol: float = field(default=1e-2)
     atol: float = field(default=1e-2)
-    log_dir: str = field(default_factory=lambda: str(get_fib_cache_path() / "logs"))
+    log_dir: Optional[str] = field(default=None)
     use_isolated_runner: bool = field(default=False)
     required_matched_ratio: Optional[float] = field(default=None)
     sampling_validation_trials: int = field(default=100)
@@ -31,6 +30,12 @@ class BenchmarkConfig:
     profile_baseline: bool = field(default=True)
 
     def __post_init__(self):
+        if self.log_dir is not None:
+            warnings.warn(
+                "log_dir is deprecated and ignored; logs are embedded in trace evaluations",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if self.warmup_runs < 0:
             raise ValueError("warmup_runs must be >= 0")
         if self.iterations <= 0:
