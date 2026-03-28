@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional
 
 import safetensors.torch
 import torch
@@ -18,6 +18,155 @@ from .definition import Definition
 from .json_utils import append_jsonl_file, load_json_file, load_jsonl_file
 from .solution import Solution
 from .trace import EvaluationStatus, Trace
+
+
+def _build_ranking_groups(
+    traces_dict: Dict[str, List[Trace]],
+    solution_by_name: Dict[str, Solution],
+    def_names: Optional[Collection[str]] = None,
+) -> Dict[tuple, Dict[str, float]]:
+    """Build ``(def_name, workload_uuid) -> {author -> min_latency_ms}`` groups.
+
+    Parameters
+    ----------
+    traces_dict:
+        Map from definition name to list of Trace objects (``TraceSet.traces``).
+    solution_by_name:
+        Fast lookup index from solution name to Solution object.
+    def_names:
+        If provided, only traces whose definition name is in this collection are
+        included. ``None`` means all definitions.
+
+    Returns
+    -------
+    Dict[tuple, Dict[str, float]]
+        Nested mapping where each key is ``(def_name, workload_uuid)`` and each
+        value maps author names to their best (minimum) observed latency in ms.
+    """
+    groups: Dict[tuple, Dict[str, float]] = defaultdict(dict)
+    items = (
+        ((k, v) for k, v in traces_dict.items() if k in def_names)
+        if def_names is not None
+        else traces_dict.items()
+    )
+    for def_name, traces in items:
+        for trace in traces:
+            if not (
+                trace.evaluation
+                and trace.evaluation.status == EvaluationStatus.PASSED
+                and trace.solution
+                and trace.evaluation.performance
+                and trace.evaluation.performance.latency_ms > 0
+            ):
+                continue
+            sol = solution_by_name.get(trace.solution)
+            if sol is None:
+                continue
+            author = sol.author
+            key = (def_name, trace.workload.uuid)
+            lat = trace.evaluation.performance.latency_ms
+            if author not in groups[key] or lat < groups[key][author]:
+                groups[key][author] = lat
+    return dict(groups)
+
+
+def _compute_ranking_from_groups(
+    groups: Dict[tuple, Dict[str, float]],
+    baseline_author: str = "flashinfer",
+    sample_count: int = 200,
+) -> List[Dict[str, Any]]:
+    """Compute author fast@p AUC rankings from pre-built workload groups.
+
+    Parameters
+    ----------
+    groups:
+        Output of :func:`_build_ranking_groups`.
+    baseline_author:
+        Author whose latency is used as the baseline. Falls back to the fastest
+        author in each group when the baseline author is absent.
+    sample_count:
+        Number of evenly-spaced p values used for AUC integration.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of dicts sorted by ``auc`` descending. Each dict contains:
+
+        - ``author`` – author name
+        - ``auc`` – area under the fast@p curve (1.0 = always faster than baseline)
+        - ``n_comparisons`` – number of workload groups included
+        - ``fast_at_1x`` – fraction of groups where this author beats the baseline
+    """
+    if not groups:
+        return []
+
+    import numpy as np
+
+    ratios_by_author: Dict[str, List[float]] = defaultdict(list)
+    totals_by_author: Dict[str, int] = defaultdict(int)
+    baseline_ci = baseline_author.lower()
+
+    for _key, best_by_author in groups.items():
+        if not best_by_author:
+            continue
+        bl_key = next((a for a in best_by_author if a.lower() == baseline_ci), None)
+        if bl_key is None:
+            bl_key = min(best_by_author, key=lambda a: best_by_author[a])
+        bl_lat = best_by_author[bl_key]
+
+        for author, lat in best_by_author.items():
+            if author == bl_key:
+                continue
+            totals_by_author[author] += 1
+            if bl_lat > 0 and lat > 0:
+                ratios_by_author[author].append(bl_lat / lat)
+
+    if not ratios_by_author:
+        return []
+
+    all_ratios = sorted({r for rs in ratios_by_author.values() for r in rs})
+    p_min = 0.0
+    p_max = max(all_ratios) if all_ratios else 2.0
+    sample_pts = sorted(set(np.linspace(p_min, p_max, sample_count).tolist()) | set(all_ratios))
+
+    def _auc(ratios: List[float], p_grid: List[float], total: int) -> float:
+        if not ratios or total == 0 or len(p_grid) < 2:
+            return 0.0
+        rs = sorted(ratios)
+        n = len(rs)
+        points = []
+        idx = 0
+        for p in p_grid:
+            while idx < n and rs[idx] <= p:
+                idx += 1
+            points.append((p, (n - idx) / total))
+        area = 0.0
+        for i in range(1, len(points)):
+            p1, w1 = points[i - 1]
+            p2, w2 = points[i]
+            area += (p2 - p1) * (w1 + w2) / 2
+        span = p_grid[-1] - p_grid[0]
+        return area / span if span > 0 else 0.0
+
+    def _fast_at_p(ratios: List[float], p: float, total: int) -> float:
+        if not ratios or total == 0:
+            return 0.0
+        return sum(1 for r in ratios if r > p) / total
+
+    rankings = []
+    for author, ratios in ratios_by_author.items():
+        total = totals_by_author[author]
+        rankings.append(
+            {
+                "author": author,
+                "auc": _auc(ratios, sample_pts, total),
+                "n_comparisons": total,
+                "fast_at_1x": _fast_at_p(ratios, 1.0, total),
+            }
+        )
+
+    rankings.sort(key=lambda x: x["auc"], reverse=True)
+    return rankings
 
 
 @dataclass
@@ -297,7 +446,7 @@ class TraceSet:
 
         return None
 
-    def summary(self) -> Dict[str, any]:
+    def summary(self) -> Dict[str, Any]:
         """Get a comprehensive summary of all traces in the TraceSet.
 
         Computes aggregate statistics across all execution traces including success rates,
@@ -313,6 +462,7 @@ class TraceSet:
             - min_latency_ms: Minimum latency among successful traces (None if no successful traces)
             - max_latency_ms: Maximum latency among successful traces (None if no successful traces)
             - avg_latency_ms: Average latency among successful traces (None if no successful traces)
+            - rankings: List of dicts with author ranking by AUC of fast@p curve
         """
         all_traces = [t for traces in self.traces.values() for t in traces]
 
@@ -324,6 +474,7 @@ class TraceSet:
                 "min_latency_ms": None,
                 "max_latency_ms": None,
                 "avg_latency_ms": None,
+                "rankings": [],
             }
 
         passed = [
@@ -336,6 +487,8 @@ class TraceSet:
         max_latency = max(latencies) if latencies else None
         avg_latency = sum(latencies) / len(latencies) if latencies else None
 
+        rankings = self.compute_fast_at_p_ranking()
+
         return {
             "total": len(all_traces),
             "passed": len(passed),
@@ -343,7 +496,99 @@ class TraceSet:
             "min_latency_ms": min_latency,
             "max_latency_ms": max_latency,
             "avg_latency_ms": avg_latency,
+            "rankings": rankings,
         }
+
+    def compute_fast_at_p_ranking(
+        self, baseline_author: str = "flashinfer", sample_count: int = 200
+    ) -> List[Dict[str, Any]]:
+        """Compute author rankings based on area under the fast@p curve (all kernels).
+
+        For each workload group (same definition + workload.uuid), a baseline latency is
+        identified (preferring the baseline_author; falling back to the fastest run).
+        For each other author A with latency L_A and baseline L_B, the ratio r = L_B / L_A
+        is computed. fast@p is the fraction of groups where r > p. The AUC of this curve
+        (integrated over p) is used as the ranking score ("avg speedup").
+
+        Parameters
+        ----------
+        baseline_author : str
+            Author name to use as baseline (default: 'flashinfer').
+        sample_count : int
+            Number of evenly-spaced p values for AUC integration (default: 200).
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            List of dicts sorted by auc descending, each containing:
+            - author: str
+            - auc: float  (area under fast@p curve; 1.0 means always faster than baseline)
+            - n_comparisons: int  (number of workload groups compared)
+            - fast_at_1x: float  (fraction of groups faster than baseline, i.e. win@1.0)
+        """
+        groups = _build_ranking_groups(self.traces, self._solution_by_name)
+        return _compute_ranking_from_groups(groups, baseline_author, sample_count)
+
+    def compute_fast_at_p_ranking_by_name(
+        self, def_name: str, baseline_author: str = "flashinfer", sample_count: int = 200
+    ) -> List[Dict[str, Any]]:
+        """Compute author rankings scoped to a single kernel definition.
+
+        Same algorithm as :meth:`compute_fast_at_p_ranking` but only workloads
+        belonging to *def_name* are included in the comparison.
+
+        Parameters
+        ----------
+        def_name : str
+            Name of the kernel definition (must exist in ``self.definitions``).
+        baseline_author : str
+            Author name to use as baseline (default: 'flashinfer').
+        sample_count : int
+            Number of evenly-spaced p values for AUC integration (default: 200).
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Same structure as :meth:`compute_fast_at_p_ranking`.
+
+        Raises
+        ------
+        KeyError
+            If *def_name* is not found in the loaded definitions.
+        """
+        if def_name not in self.definitions:
+            raise KeyError(f"Unknown definition: {def_name!r}")
+        groups = _build_ranking_groups(self.traces, self._solution_by_name, def_names={def_name})
+        return _compute_ranking_from_groups(groups, baseline_author, sample_count)
+
+    def compute_fast_at_p_ranking_by_op_type(
+        self, op_type: str, baseline_author: str = "flashinfer", sample_count: int = 200
+    ) -> List[Dict[str, Any]]:
+        """Compute author rankings scoped to all kernels of a given op_type.
+
+        Same algorithm as :meth:`compute_fast_at_p_ranking` but only workloads
+        whose definition has ``op_type == op_type`` are included.
+
+        Parameters
+        ----------
+        op_type : str
+            Operation type string (e.g. ``'gqa_paged'``, ``'moe'``, ``'rmsnorm'``).
+        baseline_author : str
+            Author name to use as baseline (default: 'flashinfer').
+        sample_count : int
+            Number of evenly-spaced p values for AUC integration (default: 200).
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Same structure as :meth:`compute_fast_at_p_ranking`. Returns an empty
+            list if no definitions with the given op_type exist.
+        """
+        def_names = {name for name, d in self.definitions.items() if d.op_type == op_type}
+        if not def_names:
+            return []
+        groups = _build_ranking_groups(self.traces, self._solution_by_name, def_names=def_names)
+        return _compute_ranking_from_groups(groups, baseline_author, sample_count)
 
     def backup_traces(self) -> None:
         """Backup the traces directory to a new directory. This is useful when we want to keep the

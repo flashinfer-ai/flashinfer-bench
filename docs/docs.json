@@ -21,7 +21,10 @@
             "pages": [
               "index",
               "start/installation",
-              "start/quickstart"
+              "start/quickstart",
+              "start/cli",
+              "start/server-api",
+              "model_coverage"
             ]
           },
           {

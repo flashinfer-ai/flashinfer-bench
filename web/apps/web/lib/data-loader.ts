@@ -1,10 +1,22 @@
-import { promises as fs } from "fs"
+import { promises as fs, existsSync } from "fs"
 import path from "path"
 import modelsData from "@/data/models"
 import type { Definition, Solution, Trace, Model } from "./schemas"
 
-// Get the flashinfer-trace path from environment or use default
-const FLASHINFER_TRACE_PATH = process.env.FLASHINFER_TRACE_PATH || "/tmp/flashinfer-trace"
+// Resolve the data path in priority order:
+//   1. FLASHINFER_TRACE_PATH env var (explicit override)
+//   2. FIB_DATASET_PATH env var (set by prebuild script)
+//   3. Local repo's flashinfer_trace/ dir (web/apps/web → ../../../flashinfer_trace)
+//   4. /tmp/flashinfer-trace (fallback, produced by pnpm build prebuild)
+function resolveTracePath(): string {
+  if (process.env.FLASHINFER_TRACE_PATH) return process.env.FLASHINFER_TRACE_PATH
+  if (process.env.FIB_DATASET_PATH)      return process.env.FIB_DATASET_PATH
+  const localPath = path.resolve(process.cwd(), "../../../flashinfer_trace")
+  if (existsSync(localPath))             return localPath
+  return "/tmp/flashinfer-trace"
+}
+
+const FLASHINFER_TRACE_PATH = resolveTracePath()
 // Helper to resolve paths relative to the project root
 function getDataPath(subPath: string): string {
   const basePath = path.resolve(FLASHINFER_TRACE_PATH)
@@ -63,33 +75,43 @@ export async function getSolutionsForDefinition(definitionName: string): Promise
       return []
     }
 
-    // Read all subdirectories (gemm, decode, prefill, etc.)
-    const types = await fs.readdir(solutionsDir)
+    // Read all author directories
+    const authors = await fs.readdir(solutionsDir)
     const solutions: Solution[] = []
 
-    for (const type of types) {
-      const typePath = path.join(solutionsDir, type)
-      const stat = await fs.stat(typePath).catch(() => null)
+    for (const author of authors) {
+      const authorPath = path.join(solutionsDir, author)
+      const authorStat = await fs.stat(authorPath).catch(() => null)
 
-      if (stat && stat.isDirectory()) {
-        // Check if there's a subdirectory with the definition name
-        const definitionPath = path.join(typePath, definitionName)
-        const definitionStat = await fs.stat(definitionPath).catch(() => null)
+      if (authorStat && authorStat.isDirectory()) {
+        // Read all op_type directories under this author
+        const types = await fs.readdir(authorPath)
 
-        if (definitionStat && definitionStat.isDirectory()) {
-          // Read solution files from the definition subdirectory
-          const files = await fs.readdir(definitionPath)
+        for (const type of types) {
+          const typePath = path.join(authorPath, type)
+          const typeStat = await fs.stat(typePath).catch(() => null)
 
-          for (const file of files) {
-            if (file.endsWith(".json")) {
-              const content = await fs.readFile(path.join(definitionPath, file), "utf-8")
-              try {
-                const solution = JSON.parse(content) as Solution
-                if (solution.definition === definitionName) {
-                  solutions.push(solution)
+          if (typeStat && typeStat.isDirectory()) {
+            // Check if there's a subdirectory with the definition name
+            const definitionPath = path.join(typePath, definitionName)
+            const definitionStat = await fs.stat(definitionPath).catch(() => null)
+
+            if (definitionStat && definitionStat.isDirectory()) {
+              // Read solution files from the definition subdirectory
+              const files = await fs.readdir(definitionPath)
+
+              for (const file of files) {
+                if (file.endsWith(".json")) {
+                  const content = await fs.readFile(path.join(definitionPath, file), "utf-8")
+                  try {
+                    const solution = JSON.parse(content) as Solution
+                    if (solution.definition === definitionName) {
+                      solutions.push(solution)
+                    }
+                  } catch (e) {
+                    console.error(`Failed to parse solution ${file}:`, e)
+                  }
                 }
-              } catch (e) {
-                console.error(`Failed to parse solution ${file}:`, e)
               }
             }
           }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -18,8 +17,7 @@ from flashinfer_bench.bench.evaluators import resolve_evaluator
 from flashinfer_bench.bench.utils import make_eval
 from flashinfer_bench.compile import BuilderRegistry, Runnable
 from flashinfer_bench.data import Definition, Evaluation, EvaluationStatus, Solution, Workload
-from flashinfer_bench.logging import get_logger
-from flashinfer_bench.utils import redirect_stdio_to_file
+from flashinfer_bench.utils import redirect_stdio_to_tempfile
 
 from .runner import BaselineHandle, DeviceBaseline, Runner, RunnerError, RunnerFatalError
 
@@ -29,18 +27,15 @@ logger = logging.getLogger(__name__)
 class SubprocessWorker:
     """Each instance binds to a CUDA device; the baseline resides in the main process; each Solution starts an independent Worker process for strong isolation."""
 
-    def __init__(self, device: str, log_dir: str = "/tmp/flashinfer_bench") -> None:
+    def __init__(self, device: str) -> None:
         """Per device subprocess worker
 
         Parameters
         ----------
         device : str
             Device string (e.g. "cuda:0").
-        log_dir : str, optional
-            Directory for log files, by default "/tmp/flashinfer_bench".
         """
         self._device = device
-        self._log_dir = log_dir
         self._baselines: Dict[BaselineHandle, DeviceBaseline] = {}
 
     def run_ref(
@@ -84,14 +79,12 @@ class SubprocessWorker:
             raise RunnerError(f"Baseline handle not found: {baseline}")
         bl = self._baselines[baseline]
 
-        log_path = os.path.join(self._log_dir, f"{solution.name}_{time.time()}.log")
-        # New process for each solution run
         ctx = mp.get_context("spawn")
         parent_conn, child_conn = ctx.Pipe(duplex=True)
 
         proc = ctx.Process(
             target=_solution_worker_main,
-            args=(child_conn, self._device, bl.definition, solution, cfg, log_path),
+            args=(child_conn, self._device, bl.definition, solution, cfg),
             daemon=True,
         )
         proc.start()
@@ -108,7 +101,6 @@ class SubprocessWorker:
                 evaluation = make_eval(
                     status=EvaluationStatus.TIMEOUT,
                     device=self._device,
-                    log_path=log_path,
                     extra_msg="Worker failed to start within 30 seconds",
                 )
                 return evaluation
@@ -122,7 +114,6 @@ class SubprocessWorker:
                     evaluation = make_eval(
                         status=EvaluationStatus.TIMEOUT,
                         device=self._device,
-                        log_path=log_path,
                         extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}",
                     )
                     break
@@ -132,11 +123,9 @@ class SubprocessWorker:
                     msg = parent_conn.recv()
                     cmd = msg.get("cmd")
                 else:
-                    # Timeout
                     evaluation = make_eval(
                         status=EvaluationStatus.TIMEOUT,
                         device=self._device,
-                        log_path=log_path,
                         extra_msg=f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}",
                     )
                     break
@@ -161,7 +150,6 @@ class SubprocessWorker:
                     evaluation = make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
-                        log_path=log_path,
                         extra_msg=error_msg,
                     )
                     break
@@ -193,7 +181,6 @@ class SubprocessWorker:
             evaluation = make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR,
                 device=self._device,
-                log_path=log_path,
                 extra_msg="Worker process failed unexpectedly",
             )
 
@@ -212,7 +199,6 @@ def _solution_worker_main(
     definition: Definition,
     solution: Solution,
     cfg: BenchmarkConfig,
-    log_path: str,
 ) -> None:
     """Worker process: strong isolation for single Solution.
 
@@ -230,10 +216,8 @@ def _solution_worker_main(
         Solution to evaluate.
     cfg : BenchmarkConfig
         Benchmark configuration.
-    log_path : str
-        Path to log file.
     """
-    original_stdout_fd, original_stderr_fd = redirect_stdio_to_file(log_path)
+    log_path = redirect_stdio_to_tempfile()
     try:
         torch.cuda.set_device(int(device.split(":")[1]))
         registry = BuilderRegistry.get_instance()
@@ -296,23 +280,14 @@ def _solution_worker_main(
 
 
 class IsolatedRunner(Runner):
-    def __init__(self, log_dir: str) -> None:
-        """Initialize the isolated runner with per device workers.
-
-        Parameters
-        ----------
-        log_dir : str, optional
-            Directory for log files, by default "/tmp/flashinfer_bench".
-        """
-        # Track retry attempts for each device
+    def __init__(self) -> None:
+        """Initialize the isolated runner with per device workers."""
         self._device_retry_counts: Dict[str, int] = {}
         self._worker_max_retries = 3
 
-        # Initialize workers for all available CUDA devices
         self._available_devices = fib_utils.list_cuda_devices()
-        self._workers = [SubprocessWorker(d, log_dir) for d in self._available_devices]
+        self._workers = [SubprocessWorker(d) for d in self._available_devices]
         self._curr_worker_idx = 0
-        self._log_dir = log_dir
 
         if len(self._workers) == 0:
             raise RuntimeError("No CUDA devices available")
@@ -357,7 +332,7 @@ class IsolatedRunner(Runner):
             New worker instance for the device.
         """
         logger.info(f"Relaunching worker for device {device}")
-        return SubprocessWorker(device, self._log_dir)
+        return SubprocessWorker(device)
 
     def _handle_failed_workers(self, failed_workers: List[SubprocessWorker]) -> None:
         """Handle failed workers by attempting to relaunch them or removing them.

@@ -191,6 +191,7 @@ def save_test_results(
                 f.write(f"Error: {error_msg}\n")
 
 
+@pytest.mark.skip(reason="Requires API keys. Disabled by default.")
 def test_llm_code_generation_compilation(model_name, output_dir):
     """Test that the LLM can generate compilable CUDA code with TVM FFI bindings."""
     print(f"\n{'='*80}")

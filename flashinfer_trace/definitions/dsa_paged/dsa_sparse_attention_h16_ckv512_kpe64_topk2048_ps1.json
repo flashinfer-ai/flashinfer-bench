@@ -5,7 +5,9 @@
   "tags": [
     "status:verified",
     "model:deepseek-v3.2",
-    "sparse:topk"
+    "sparse:topk",
+    "fi_api:flashinfer.decode.trtllm_batch_decode_with_kv_cache_mla",
+    "tp:8"
   ],
   "axes": {
     "num_tokens": {
