@@ -21,6 +21,7 @@ intermediate_size = 8192
 
 device = "cuda"
 
+
 def load_definition(name: str) -> Definition:
     for op_dir in DEFINITIONS_DIR.iterdir():
         if op_dir.is_dir():
@@ -34,6 +35,7 @@ def compile_reference(reference_code: str):
     namespace = {"torch": torch, "math": math, "F": F}
     exec(reference_code, namespace)
     return namespace["run"]
+
 
 def _quantize_fp8_per_tensor(x: torch.Tensor):
     FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
@@ -70,11 +72,13 @@ def generate_random_inputs(seq_len: int, dev: str = "cuda"):
         "output2_scales_scalar": torch.tensor(out2_scales, dtype=torch.float32, device=dev),
     }
 
+
 def _shuffle_weights(gemm1_fp8: torch.Tensor, gemm2_fp8: torch.Tensor):
     from flashinfer.fused_moe.core import (
         _maybe_get_cached_w3_w1_permute_indices,
         get_w2_permute_indices_with_cache,
     )
+
     E = gemm1_fp8.shape[0]
     TILE_M = 128
     cache = {}
@@ -91,8 +95,10 @@ def _shuffle_weights(gemm1_fp8: torch.Tensor, gemm2_fp8: torch.Tensor):
         torch.stack(g2_shuffled).view(torch.float8_e4m3fn),
     )
 
+
 def run_kernel(inputs: dict) -> torch.Tensor:
     from flashinfer.fused_moe import trtllm_fp8_per_tensor_scale_moe
+
     T = inputs["routing_logits"].shape[0]
     g1s, g2s = _shuffle_weights(inputs["gemm1_weights"], inputs["gemm2_weights"])
     result = trtllm_fp8_per_tensor_scale_moe(
@@ -117,6 +123,7 @@ def run_kernel(inputs: dict) -> torch.Tensor:
         tune_max_num_tokens=max(8, T * top_k),
     )
     return result[0].to(torch.bfloat16) if isinstance(result, list) else result.to(torch.bfloat16)
+
 
 @pytest.mark.parametrize("seq_len", [1, 4, 8, 16, 32, 64])
 def test_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192(seq_len):
@@ -154,14 +161,14 @@ if __name__ == "__main__":
         torch.manual_seed(seq_len)
         inputs = generate_random_inputs(seq_len, device)
         ref = run(
-        inputs["routing_logits"],
-        inputs["routing_bias"],
-        inputs["hidden_states"],
-        inputs["gemm1_weights"],
-        inputs["output1_scales_scalar"],
-        inputs["output1_scales_gate_scalar"],
-        inputs["gemm2_weights"],
-        inputs["output2_scales_scalar"],
+            inputs["routing_logits"],
+            inputs["routing_bias"],
+            inputs["hidden_states"],
+            inputs["gemm1_weights"],
+            inputs["output1_scales_scalar"],
+            inputs["output1_scales_gate_scalar"],
+            inputs["gemm2_weights"],
+            inputs["output2_scales_scalar"],
         )
         kernel_out = run_kernel(inputs)
         ref_f = ref.to(torch.float32)
