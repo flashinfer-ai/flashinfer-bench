@@ -47,9 +47,9 @@ class Benchmark:
 
         # Create runner
         if self._config.use_isolated_runner:
-            self._runner = IsolatedRunner(self._config.log_dir)
+            self._runner = IsolatedRunner()
         else:
-            self._runner = PersistentRunner(self._config.log_dir)
+            self._runner = PersistentRunner()
 
     def get_trace_set(self) -> TraceSet:
         """Get the TraceSet associated with this benchmark.
@@ -150,7 +150,7 @@ class Benchmark:
                     if ev.status == EvaluationStatus.PASSED:
                         logger.info(
                             f"Solution '{sol_name}' for workload {workload.uuid}: PASSED with "
-                            f"{ev.performance.speedup_factor:.2f}x speedup"
+                            f"{ev.performance.speedup_factor:.2f}x speedup vs. mathematical reference"
                         )
                     else:
                         logger.warning(

@@ -140,7 +140,10 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
     // Extract tags for display
     const tags = def.tags || []
     const modelTags = tags.filter(tag => tag.startsWith('model:'))
+    const tpTags = tags.filter(tag => tag.startsWith('tp:'))
+    const epTags = tags.filter(tag => tag.startsWith('ep:'))
     const statusTags = tags.filter(tag => tag.startsWith('status:'))
+
 
     return (
       <Link key={def.name} href={`/kernels/${def.name}`}>
@@ -183,6 +186,24 @@ export function KernelsSection({ definitions }: KernelsSectionProps) {
                       className="text-xs font-medium"
                     >
                       {tag.replace("model:", "")}
+                    </Badge>
+                  ))}
+                  {tpTags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className="text-xs border-violet-400 text-violet-700 dark:text-violet-300"
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                  {epTags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className="text-xs border-violet-400 text-violet-700 dark:text-violet-300"
+                    >
+                      {tag}
                     </Badge>
                   ))}
                   {statusTags.map((tag) => (

@@ -85,9 +85,10 @@ function ViewerContent() {
     <div className={containerClass}>
       {!parsedData && (
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2"> Viewer</h1>
+          <h1 className="text-3xl font-bold mb-2">FlashInfer Trace Viewer</h1>
           <p className="text-muted-foreground">
-            Inspect definitions, solutions, and traces in a friendly layout. Paste a complete JSON payload or open items directly from the results page.
+            Inspect definitions, workloads, solutions, and traces in a friendly layout. Paste a complete JSON payload or open items directly from the results page. These JSONs conform to the{" "}
+            <a href="https://bench.flashinfer.ai/docs/flashinfer-trace" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">FlashInfer Trace Schema</a>.
           </p>
         </div>
       )}
