@@ -1,0 +1,109 @@
+{
+  "name": "trtllm_fp4_block_scale_routed_moe_topk2_e8_h2048_i1024",
+  "description": "TensorRT-LLM FP4 block scale MoE with pre-computed routing (routed variant). MxFP4 weights and BF16 activations. Accepts packed topk_ids instead of raw routing logits. Targets SM100 (Blackwell) GPUs.",
+  "op_type": "moe",
+  "tags": [
+    "status:verified",
+    "backend:trtllm-gen",
+    "quantization:float4_e2m1fn_mxfp4",
+    "gpu:sm100"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Sequence length (number of tokens)"
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 8,
+      "description": "Total number of experts."
+    },
+    "top_k": {
+      "type": "const",
+      "value": 2,
+      "description": "Number of top experts selected per token."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 1024,
+      "description": "MoE intermediate layer size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 2048,
+      "description": "Output size of the first GEMM (gate + up projections). Should be 2 * intermediate_size."
+    },
+    "sf_vec_size": {
+      "type": "const",
+      "value": 32,
+      "description": "Block size for MxFP4 scale factors (one scale per 32 elements)."
+    },
+    "num_hidden_sf_blocks": {
+      "type": "const",
+      "value": 64,
+      "description": "Number of scale factor blocks along the hidden_size dimension (hidden_size / sf_vec_size = 2048 / 32)."
+    },
+    "num_intermediate_sf_blocks": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of scale factor blocks along the intermediate_size dimension (intermediate_size / sf_vec_size = 1024 / 32)."
+    },
+    "num_gemm1_sf_blocks": {
+      "type": "const",
+      "value": 64,
+      "description": "Number of scale factor blocks along the gemm1_out_size dimension (gemm1_out_size / sf_vec_size = 2048 / 32)."
+    }
+  },
+  "inputs": {
+    "topk_ids": {
+      "shape": [
+        "seq_len",
+        "top_k"
+      ],
+      "dtype": "int32",
+      "description": "Pre-computed packed routing tensor. Each int32 encodes: bits[31:16]=expert_index, bits[15:0]=expert_weight (bfloat16 bits). Routing must be performed externally before calling this kernel."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Input hidden states tensor (BF16)."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_experts",
+        "gemm1_out_size",
+        "hidden_size"
+      ],
+      "dtype": "float32",
+      "description": "First GEMM weights for all experts (gate and up projections), in float32 for reference. Kernel uses MxFP4-quantized and shuffled weights."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_experts",
+        "hidden_size",
+        "intermediate_size"
+      ],
+      "dtype": "float32",
+      "description": "Second GEMM weights for all experts (down projection), in float32 for reference. Kernel uses MxFP4-quantized and shuffled weights."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor."
+    }
+  },
+  "reference": "import torch\r\n\r\n\r\n@torch.no_grad()\r\ndef run(\r\n    topk_ids: torch.Tensor,\r\n    hidden_states: torch.Tensor,\r\n    gemm1_weights: torch.Tensor,\r\n    gemm2_weights: torch.Tensor,\r\n):\r\n    \"\"\"\r\n    Reference implementation for TensorRT-LLM FP4 block scale routed MoE.\r\n\r\n    • Routing: pre-computed (topk_ids are packed int32 with expert_idx<<16 | weight_bf16)\r\n    • Activation: SwiGLU (silu(gate) * act)\r\n    • Weights: float32 for reference (kernel uses MxFP4-quantized + shuffled weights)\r\n    • Hidden states: bfloat16 input\r\n\r\n    Fixed geometry:\r\n        E=8 experts, H=2048, I=1024, TOP_K=2\r\n    \"\"\"\r\n\r\n    E = 8\r\n    H = 2048\r\n    I = 1024\r\n    TOP_K = 2\r\n\r\n    T = topk_ids.shape[0]\r\n    device = topk_ids.device\r\n\r\n    assert topk_ids.shape == (T, TOP_K)\r\n    assert hidden_states.shape == (T, H)\r\n    assert gemm1_weights.shape == (E, 2 * I, H)\r\n    assert gemm2_weights.shape == (E, H, I)\r\n\r\n    # Unpack topk_ids: bits[31:16]=expert_idx, bits[15:0]=weight_bf16_bits\r\n    expert_idx = (topk_ids >> 16).to(torch.int32)                    # [T, TOP_K]\r\n    weight_bits = (topk_ids & 0xFFFF).to(torch.int16)                # [T, TOP_K] int16\r\n    expert_weights = weight_bits.view(torch.bfloat16).to(torch.float32)  # [T, TOP_K]\r\n\r\n    A = hidden_states.to(torch.float32)      # [T, H]\r\n    W13 = gemm1_weights.to(torch.float32)    # [E, 2I, H]\r\n    W2 = gemm2_weights.to(torch.float32)     # [E, H, I]\r\n\r\n    output = torch.zeros((T, H), dtype=torch.float32, device=device)\r\n\r\n    for e in range(E):\r\n        # Find tokens and their expert weights for expert e\r\n        tok_k_mask = (expert_idx == e)          # [T, TOP_K] bool\r\n        tok_has_e = tok_k_mask.any(dim=1)       # [T] bool\r\n        if not tok_has_e.any():\r\n            continue\r\n\r\n        tok_idx = torch.nonzero(tok_has_e, as_tuple=False).squeeze(1)  # [Tk]\r\n        A_e = A[tok_idx]                         # [Tk, H]\r\n        W13_e = W13[e]                           # [2I, H]\r\n        W2_e = W2[e]                             # [H, I]\r\n\r\n        # GEMM1: [Tk, H] @ [H, 2I] = [Tk, 2I]\r\n        g1 = A_e @ W13_e.t()\r\n\r\n        # SwiGLU: act=first half, gate=second half\r\n        act = g1[:, :I]\r\n        gate = g1[:, I:]\r\n        c = torch.nn.functional.silu(gate) * act   # [Tk, I]\r\n\r\n        # GEMM2: [Tk, I] @ [I, H] = [Tk, H]\r\n        o = c @ W2_e.t()\r\n\r\n        # Get per-token weights for this expert (sum over the k dimension)\r\n        # Each token selects expert e at most once\r\n        w_tok = (expert_weights[tok_idx] * tok_k_mask[tok_idx].float()).sum(dim=1)  # [Tk]\r\n        output.index_add_(0, tok_idx, o * w_tok.unsqueeze(1))\r\n\r\n    return output.to(torch.bfloat16)"
+}
