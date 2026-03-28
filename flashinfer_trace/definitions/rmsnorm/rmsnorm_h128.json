@@ -4,7 +4,8 @@
   "description": "Root Mean Square Normalization with hidden_size=128. Captured from Qwen3-30B-A3B. Epsilon is fixed at 1e-6.",
   "tags": [
     "status:verified",
-    "model:qwen3-30b-a3b"
+    "model:qwen3-30b-a3b",
+    "fi_api:flashinfer.norm.rmsnorm"
   ],
   "axes": {
     "batch_size": {

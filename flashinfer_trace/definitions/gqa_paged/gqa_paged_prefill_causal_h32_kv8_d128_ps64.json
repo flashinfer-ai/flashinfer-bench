@@ -5,7 +5,9 @@
   "tags": [
     "stage:prefill",
     "status:verified",
-    "model:llama-3.1-8b"
+    "model:llama-3.1-8b",
+    "fi_api:flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper",
+    "tp:1"
   ],
   "axes": {
     "num_qo_heads": {

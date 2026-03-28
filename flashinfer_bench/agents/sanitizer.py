@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Literal, Optional, Union
 
-from flashinfer_bench.data import Definition, Solution, TraceSet, Workload
+from flashinfer_bench.data import Solution, TraceSet, Workload
 
 logger = logging.getLogger(__name__)
 

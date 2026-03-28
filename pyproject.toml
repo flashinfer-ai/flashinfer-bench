@@ -27,7 +27,7 @@ dependencies = [
   "torch>=2.8.0",
   "pydantic>=2.0.0",
   "safetensors>=0.5.0",
-  "flashinfer-python>=0.3.1",
+  "flashinfer-python>=0.6.4",
   "apache-tvm-ffi>=0.1.2",
   "docstring-parser>=0.16",
 ]
@@ -41,7 +41,9 @@ Issues = "https://github.com/flashinfer-ai/flashinfer-bench/issues"
 [project.optional-dependencies]
 dev = [
   "pytest>=7.0.0",
+  "pytest-asyncio",
   "pytest-cov>=4.0.0",
+  "httpx",
   "black>=22.0.0",
   "isort>=5.0.0",
   "mypy>=1.0.0",
@@ -51,6 +53,7 @@ dev = [
   # as a dependency on python <= 3.11
   "setuptools",
 ]
+serve = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0"]
 cuda12 = ["nvidia-cublas-cu12>=12.3", "nvidia-cudnn-cu12>=9.0"]
 
 [project.scripts]

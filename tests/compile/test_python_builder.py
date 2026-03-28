@@ -99,5 +99,47 @@ def run(X: torch.Tensor, Y: torch.Tensor):
     assert torch.allclose(out, expected)
 
 
+def test_python_builder_dps_optional_extra_param():
+    definition = Definition(
+        name="copy_dps",
+        op_type="op",
+        axes={"M": AxisConst(value=2), "N": AxisConst(value=2)},
+        inputs={
+            "A": TensorSpec(shape=["M", "N"], dtype="float32"),
+            "B": TensorSpec(shape=["M", "N"], dtype="float32"),
+        },
+        outputs={"C": TensorSpec(shape=["M", "N"], dtype="float32")},
+        reference="import torch\n\ndef run(A, B):\n    return A",
+    )
+    solution = Solution(
+        name="copy_dps_py",
+        definition="copy_dps",
+        author="tester",
+        spec=BuildSpec(
+            language=SupportedLanguages.PYTHON,
+            target_hardware=["cpu"],
+            entry_point="main.py::run",
+            destination_passing_style=True,
+        ),
+        sources=[
+            SourceFile(
+                path="main.py",
+                content="""
+def run(A=None, B=None, C=None, stream=None):
+    C.copy_(A)
+""",
+            )
+        ],
+    )
+
+    builder = PythonBuilder()
+    runnable = builder.build(definition, solution)
+    A = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
+    B = torch.tensor([[0, 0], [0, 0]], dtype=torch.float32)
+    C = torch.empty_like(A)
+    runnable(A, B, C)
+    assert torch.allclose(C, A)
+
+
 if __name__ == "__main__":
     pytest.main(sys.argv)

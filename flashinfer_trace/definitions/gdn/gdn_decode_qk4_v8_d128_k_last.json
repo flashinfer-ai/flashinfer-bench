@@ -6,7 +6,9 @@
     "stage:decode",
     "status:verified",
     "model:qwen3-next",
-    "layout:k-last"
+    "layout:k-last",
+    "fi_api:flashinfer.gdn.gated_delta_rule_decode",
+    "tp:4"
   ],
   "axes": {
     "batch_size": {
@@ -35,7 +37,8 @@
     },
     "head_size": {
       "type": "const",
-      "value": 128
+      "value": 128,
+      "description": "Dimension of each attention head (K dimension in query/key space, V dimension in value space)."
     }
   },
   "constraints": [
