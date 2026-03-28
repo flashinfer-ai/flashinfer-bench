@@ -1,16 +1,16 @@
 """
 Test Mamba2 SSU decode reference implementation against FlashInfer kernel.
 
-Definition: mamba_ssu_decode_h128_d64_s128_ng8
-Model: NVIDIA NemotronH-8B (TP=1)
-  - nheads=128, head_dim=64, dstate=128, ngroups=8
+Definition: mamba_ssu_decode_h64_d64_s128_ng4
+Model: NVIDIA NemotronH-8B (TP=2)
+  - nheads=64, head_dim=64, dstate=128, ngroups=4
   - nheads/ngroups=16 (supported by FlashInfer)
 
 FlashInfer kernel: flashinfer.mamba.selective_state_update
 
 Run with:
-    pytest test_mamba_ssu_decode_h128_d64_s128_ng8.py -v
-    python test_mamba_ssu_decode_h128_d64_s128_ng8.py
+    pytest test_mamba_ssu_decode_h64_d64_s128_ng4.py -v
+    python test_mamba_ssu_decode_h64_d64_s128_ng4.py
 """
 
 from pathlib import Path
@@ -24,11 +24,11 @@ from flashinfer_bench.data import Definition, load_json_file
 # Paths
 DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
-# Kernel constants (NemotronH-8B, TP=1)
-NHEADS = 128
+# Kernel constants (NemotronH-8B, TP=2)
+NHEADS = 64
 HEAD_DIM = 64
 DSTATE = 128
-NGROUPS = 8
+NGROUPS = 4
 RATIO = NHEADS // NGROUPS  # = 16, supported by FlashInfer
 
 
@@ -51,7 +51,7 @@ def compile_reference(reference_code: str):
 
 def generate_inputs(batch_size, seed=42, device="cuda"):
     """
-    Generate test inputs matching NemotronH-8B Mamba layer parameters.
+    Generate test inputs matching NemotronH-8B Mamba layer parameters (TP=2).
 
     Tensor shapes and dtypes match the FlashInfer kernel requirements:
       - state: (state_cache_size, nheads, head_dim, dstate), bfloat16
@@ -70,7 +70,7 @@ def generate_inputs(batch_size, seed=42, device="cuda"):
     perm = torch.randperm(state_cache_size, device=device)
     slot_idx = perm[:batch_size].to(torch.int32)
 
-    # SSM state cache: bfloat16 (user-configurable; bfloat16 is common deployment)
+    # SSM state cache: bfloat16
     state = (
         torch.randn(state_cache_size, NHEADS, HEAD_DIM, DSTATE, dtype=torch.bfloat16, device=device)
         * 0.01
@@ -146,14 +146,14 @@ def run_flashinfer_kernel(inputs):
 def test_correctness(batch_size=4, atol=1e-2, rtol=1e-2):
     """Test that definition reference matches FlashInfer kernel output."""
     print(f"\n{'='*60}")
-    print(f"Testing mamba_ssu_decode_h128_d64_s128_ng8, batch_size={batch_size}")
-    print(f"NemotronH-8B: nheads={NHEADS}, head_dim={HEAD_DIM}, dstate={DSTATE}, ngroups={NGROUPS}")
+    print(f"Testing mamba_ssu_decode_h64_d64_s128_ng4, batch_size={batch_size}")
+    print(f"NemotronH-8B (TP=2): nheads={NHEADS}, head_dim={HEAD_DIM}, dstate={DSTATE}, ngroups={NGROUPS}")
     print(f"{'='*60}")
 
     device = "cuda"
 
     # Load definition and compile reference
-    definition = load_definition("mamba_ssu_decode_h128_d64_s128_ng8")
+    definition = load_definition("mamba_ssu_decode_h64_d64_s128_ng4")
     run = compile_reference(definition.reference)
 
     inputs = generate_inputs(batch_size=batch_size, device=device)
@@ -208,12 +208,12 @@ def test_correctness(batch_size=4, atol=1e-2, rtol=1e-2):
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 4, 8, 16, 32, 64, 128, 256])
-def test_mamba_ssu_decode_h128_d64_s128_ng8(batch_size: int):
+def test_mamba_ssu_decode_h64_d64_s128_ng4(batch_size: int):
     """Pytest parametrized test for mamba_ssu_decode across batch sizes."""
     device = "cuda"
     atol, rtol = 1e-2, 1e-2
 
-    definition = load_definition("mamba_ssu_decode_h128_d64_s128_ng8")
+    definition = load_definition("mamba_ssu_decode_h64_d64_s128_ng4")
     run = compile_reference(definition.reference)
 
     inputs = generate_inputs(batch_size=batch_size, device=device)
@@ -253,13 +253,13 @@ def test_mamba_ssu_decode_h128_d64_s128_ng8(batch_size: int):
         msg=f"State mismatch for batch_size={batch_size}",
     )
 
-    print(f"✓ mamba_ssu_decode_h128_d64_s128_ng8 passed (batch_size={batch_size})")
+    print(f"✓ mamba_ssu_decode_h64_d64_s128_ng4 passed (batch_size={batch_size})")
 
 
 def main():
     """Run standalone tests."""
     print("Testing Mamba2 SSU Decode Reference Implementation")
-    print("Definition: mamba_ssu_decode_h128_d64_s128_ng8 (NemotronH-8B, TP=1)")
+    print("Definition: mamba_ssu_decode_h64_d64_s128_ng4 (NemotronH-8B, TP=2)")
 
     test_configs = [1, 4, 16, 64, 256]
 
