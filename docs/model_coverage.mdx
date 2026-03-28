@@ -137,8 +137,9 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | MoE gate / topk / experts | moe | — |
+| `trtllm_fp4_block_scale_routed_moe_topk2_e8_h2048_i1024` | moe (TRT-LLM FP4 routed) | 🟡 |
 
-**Coverage**: 14 / 14 referenced definitions present. MoE kernels are not yet mapped in `models.ts`.
+**Coverage**: 14 / 14 referenced definitions present. MoE kernels are not yet mapped in `models.ts`. TRT-LLM FP4 block scale routed MoE kernel added (H=2048, I=1024 match Qwen3-30B-A3B dimensions; E=8, topk=2 are benchmark shapes; pre-computed packed topk_ids routing).
 
 ---
 
