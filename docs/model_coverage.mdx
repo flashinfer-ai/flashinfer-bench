@@ -137,10 +137,9 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | MoE gate / topk / experts | moe | — |
-| `trtllm_fp4_block_scale_moe_topk2_e8_h2048_i1024` | moe (TRT-LLM FP4, benchmark) | 🟡 |
-| `trtllm_fp4_block_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4, production) | 🟡 |
+| `trtllm_fp4_block_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4) | 🟡 |
 
-**Coverage**: 14 / 14 referenced definitions present. MoE kernels are not yet mapped in `models.ts`. TRT-LLM FP4 block scale MoE kernel added — benchmark shape (E=8, topk=2) and production shape (E=128, topk=8, I=768).
+**Coverage**: 14 / 14 referenced definitions present. MoE kernels are not yet mapped in `models.ts`. TRT-LLM FP4 block scale MoE kernel added (E=128, topk=8, I=768).
 
 ---
 
@@ -166,8 +165,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ❌ |
 | MoE gate / topk / experts (GDN layers) | moe | — |
 | MoE gate / topk / experts (GQA layers) | moe | — |
-| `trtllm_fp4_block_scale_moe_topk2_e8_h2048_i1024` | moe (TRT-LLM FP4, benchmark) | 🟡 |
-| `trtllm_fp4_block_scale_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4, production EP=4) | 🟡 |
+| `trtllm_fp4_block_scale_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4, EP=4) | 🟡 |
 
 **Coverage**: 9 / 14 referenced definitions present.
 
