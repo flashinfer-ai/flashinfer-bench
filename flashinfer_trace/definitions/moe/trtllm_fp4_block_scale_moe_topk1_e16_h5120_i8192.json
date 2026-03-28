@@ -7,7 +7,9 @@
     "model:llama-4-scout",
     "quantization:float4_e2m1fn_mxfp4",
     "fi_api:flashinfer.fused_moe.trtllm_fp4_block_scale_moe",
-    "gpu:sm100"
+    "gpu:sm100",
+    "ep:1",
+    "tp:8"
   ],
   "axes": {
     "seq_len": {

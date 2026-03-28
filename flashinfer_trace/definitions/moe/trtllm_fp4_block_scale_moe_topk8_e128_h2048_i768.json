@@ -7,7 +7,9 @@
     "model:qwen3-30b-a3b",
     "quantization:float4_e2m1fn_mxfp4",
     "fi_api:flashinfer.fused_moe.trtllm_fp4_block_scale_moe",
-    "gpu:sm100"
+    "gpu:sm100",
+    "ep:1",
+    "tp:1"
   ],
   "axes": {
     "seq_len": {
@@ -91,5 +93,5 @@
     "gemm2_weights.shape[1] == hidden_size",
     "gemm2_weights.shape[2] == intermediate_size"
   ],
-  "reference": "import torch\n\n\n@torch.no_grad()\ndef run(\n    routing_logits: torch.Tensor,\n    hidden_states: torch.Tensor,\n    gemm1_weights: torch.Tensor,\n    gemm2_weights: torch.Tensor,\n):\n    \"\"\"\n    FP4 block scale MoE reference \u2014 Renormalize routing (routing_method_type=1).\n    Routing: TopK -> Softmax.\n    Weights: float32 (kernel uses MxFP4-quantized + shuffled weights).\n    Activation: SwiGLU.\n    \"\"\"\n    E = 128\n    H = 2048\n    I = 768\n    TOP_K = 8\n\n    T = routing_logits.shape[0]\n    device = routing_logits.device\n\n    logits_f32 = routing_logits.to(torch.float32)\n    topk_logits, topk_idx = torch.topk(logits_f32, k=TOP_K, dim=-1)\n    probs_topk = torch.softmax(topk_logits, dim=-1)\n    probs = torch.zeros(T, E, dtype=torch.float32, device=device)\n    probs.scatter_(1, topk_idx, probs_topk)\n\n    A = hidden_states.to(torch.float32)\n    W13 = gemm1_weights.to(torch.float32)\n    W2 = gemm2_weights.to(torch.float32)\n    output = torch.zeros(T, H, dtype=torch.float32, device=device)\n\n    for e in range(E):\n        tok_mask = (topk_idx == e).any(dim=1)\n        if not tok_mask.any():\n            continue\n        tok_idx = torch.nonzero(tok_mask, as_tuple=False).squeeze(1)\n        A_e = A[tok_idx]\n        g1 = A_e @ W13[e].t()\n        act = g1[:, :I]\n        gate = g1[:, I:]\n        c = torch.nn.functional.silu(gate) * act\n        o = c @ W2[e].t()\n        w_tok = probs[tok_idx][:, e]\n        output.index_add_(0, tok_idx, o * w_tok.unsqueeze(1))\n\n    return output.to(torch.bfloat16)\n"
+  "reference": "import torch\n\n\n@torch.no_grad()\ndef run(\n    routing_logits: torch.Tensor,\n    hidden_states: torch.Tensor,\n    gemm1_weights: torch.Tensor,\n    gemm2_weights: torch.Tensor,\n):\n    \"\"\"\n    FP4 block scale MoE reference — Renormalize routing (routing_method_type=1).\n    Routing: TopK -> Softmax.\n    Weights: float32 (kernel uses MxFP4-quantized + shuffled weights).\n    Activation: SwiGLU.\n    \"\"\"\n    E = 128\n    H = 2048\n    I = 768\n    TOP_K = 8\n\n    T = routing_logits.shape[0]\n    device = routing_logits.device\n\n    logits_f32 = routing_logits.to(torch.float32)\n    topk_logits, topk_idx = torch.topk(logits_f32, k=TOP_K, dim=-1)\n    probs_topk = torch.softmax(topk_logits, dim=-1)\n    probs = torch.zeros(T, E, dtype=torch.float32, device=device)\n    probs.scatter_(1, topk_idx, probs_topk)\n\n    A = hidden_states.to(torch.float32)\n    W13 = gemm1_weights.to(torch.float32)\n    W2 = gemm2_weights.to(torch.float32)\n    output = torch.zeros(T, H, dtype=torch.float32, device=device)\n\n    for e in range(E):\n        tok_mask = (topk_idx == e).any(dim=1)\n        if not tok_mask.any():\n            continue\n        tok_idx = torch.nonzero(tok_mask, as_tuple=False).squeeze(1)\n        A_e = A[tok_idx]\n        g1 = A_e @ W13[e].t()\n        act = g1[:, :I]\n        gate = g1[:, I:]\n        c = torch.nn.functional.silu(gate) * act\n        o = c @ W2[e].t()\n        w_tok = probs[tok_idx][:, e]\n        output.index_add_(0, tok_idx, o * w_tok.unsqueeze(1))\n\n    return output.to(torch.bfloat16)\n"
 }
