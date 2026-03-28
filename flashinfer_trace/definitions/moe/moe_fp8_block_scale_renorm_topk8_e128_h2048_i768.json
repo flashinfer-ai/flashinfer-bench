@@ -6,7 +6,9 @@
     "status:verified",
     "model:qwen3-30b-a3b",
     "quantization:float8_e4m3fn",
-    "fi_api:flashinfer.fused_moe.trtllm_fp8_block_scale_moe"
+    "fi_api:flashinfer.fused_moe.trtllm_fp8_block_scale_moe",
+    "ep:1",
+    "tp:1"
   ],
   "axes": {
     "seq_len": {
