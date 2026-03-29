@@ -79,7 +79,10 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         inputs["sm_scale"],
     )
 
-    fi_kv_heads = NUM_KV_HEADS
+    # group_size=16 is not supported; expand KV heads to Q heads (group_size=1)
+    k_cache_exp = inputs["k_cache"].repeat_interleave(NUM_QO_HEADS, dim=2)
+    v_cache_exp = inputs["v_cache"].repeat_interleave(NUM_QO_HEADS, dim=2)
+    fi_kv_heads = NUM_QO_HEADS
     workspace = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace, kv_layout="NHD")
     wrapper.plan(
@@ -95,7 +98,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run((inputs["k_cache"], inputs["v_cache"]), return_lse=True)
+    fi_o, fi_lse = wrapper.run(inputs["q"], (k_cache_exp, v_cache_exp), return_lse=True)
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
