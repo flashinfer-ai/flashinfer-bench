@@ -209,6 +209,104 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
 """
 
 
+DECODE_TEMPLATE_WITH_LAST_PAGE_LEN = """\
+import torch
+import flashinfer
+
+_WORKSPACE_SIZE_BYTES = 128 * 1024 * 1024
+_workspace_cache = {}
+_wrapper_cache = {}
+_plan_state = {}
+
+
+def _get_workspace(device):
+    key = str(device)
+    buffer = _workspace_cache.get(key)
+    if buffer is None or buffer.device != device or buffer.numel() < _WORKSPACE_SIZE_BYTES:
+        buffer = torch.empty(_WORKSPACE_SIZE_BYTES, dtype=torch.uint8, device=device)
+        _workspace_cache[key] = buffer
+    return buffer
+
+
+def _get_wrapper(key, device):
+    wrapper = _wrapper_cache.get(key)
+    if wrapper is None:
+        workspace = _get_workspace(device)
+        wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(
+            workspace,
+            kv_layout="NHD",
+        )
+        _wrapper_cache[key] = wrapper
+    return wrapper
+
+
+def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
+    batch_size, num_qo_heads, head_dim = q.shape
+    _, page_size, num_kv_heads, _ = k_cache.shape
+    # kv_last_page_len may have an extra trailing element from workload capture;
+    # always clamp to batch_size.
+    kv_last_page_len = kv_last_page_len[:batch_size]
+    len_indptr = kv_indptr.shape[0]
+    num_kv_indices = kv_indices.shape[0]
+
+    device = q.device
+    wrapper_key = (
+        str(device),
+        num_qo_heads,
+        num_kv_heads,
+        head_dim,
+        page_size,
+        q.dtype,
+        k_cache.dtype,
+    )
+
+    wrapper = _get_wrapper(wrapper_key, device)
+    state = _plan_state.get(wrapper_key)
+
+    needs_plan = True
+    if state is not None:
+        needs_plan = (
+            state.get("batch_size") != batch_size
+            or state.get("len_indptr") != len_indptr
+            or state.get("num_kv_indices") != num_kv_indices
+            or state.get("sm_scale") != sm_scale
+            or state.get("kv_indptr_ptr") != kv_indptr.data_ptr()
+            or state.get("kv_indices_ptr") != kv_indices.data_ptr()
+        )
+
+    if needs_plan:
+        wrapper.plan(
+            indptr=kv_indptr,
+            indices=kv_indices,
+            last_page_len=kv_last_page_len,
+            num_qo_heads=num_qo_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            page_size=page_size,
+            pos_encoding_mode="NONE",
+            q_data_type=q.dtype,
+            kv_data_type=k_cache.dtype,
+            sm_scale=sm_scale,
+        )
+        _plan_state[wrapper_key] = {
+            "batch_size": batch_size,
+            "len_indptr": len_indptr,
+            "num_kv_indices": num_kv_indices,
+            "sm_scale": sm_scale,
+            "kv_indptr_ptr": kv_indptr.data_ptr(),
+            "kv_indices_ptr": kv_indices.data_ptr(),
+        }
+
+    output, lse = wrapper.run(
+        q,
+        (k_cache, v_cache),
+        return_lse=True,
+    )
+
+    return output, lse
+"""
+
+
 DECODE_EXPAND_TEMPLATE = """\
 import torch
 import flashinfer
@@ -290,23 +388,117 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
     return output, lse
 """
 
+
+DECODE_EXPAND_TEMPLATE_WITH_LAST_PAGE_LEN = """\
+import torch
+import flashinfer
+
+# group_size={group_size} ({num_q} qo_heads / {num_kv} kv_heads) is not natively supported.
+# Work-around: expand KV heads from {num_kv} to {num_q} (repeat_interleave x{group_size})
+# so the wrapper sees group_size=1 (MHA), which is mathematically equivalent.
+
+_WORKSPACE_SIZE_BYTES = 128 * 1024 * 1024
+_workspace_cache = {{}}
+_wrapper_cache = {{}}
+_plan_state = {{}}
+
+
+def _get_workspace(device):
+    key = str(device)
+    buffer = _workspace_cache.get(key)
+    if buffer is None or buffer.device != device or buffer.numel() < _WORKSPACE_SIZE_BYTES:
+        buffer = torch.empty(_WORKSPACE_SIZE_BYTES, dtype=torch.uint8, device=device)
+        _workspace_cache[key] = buffer
+    return buffer
+
+
+def _get_wrapper(key, device):
+    wrapper = _wrapper_cache.get(key)
+    if wrapper is None:
+        workspace = _get_workspace(device)
+        wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace, kv_layout="NHD")
+        _wrapper_cache[key] = wrapper
+    return wrapper
+
+
+def run(q, k_cache, v_cache, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
+    batch_size, num_qo_heads, head_dim = q.shape
+    _, page_size, num_kv_heads, _ = k_cache.shape
+    # kv_last_page_len may have an extra trailing element from workload capture;
+    # always clamp to batch_size.
+    kv_last_page_len = kv_last_page_len[:batch_size]
+    group_size = num_qo_heads // num_kv_heads
+    # Expand KV heads: [pages, page_size, {num_kv}, head_dim] -> [pages, page_size, {num_q}, head_dim]
+    k_exp = k_cache.repeat_interleave(group_size, dim=2)
+    v_exp = v_cache.repeat_interleave(group_size, dim=2)
+    expanded_kv_heads = num_qo_heads  # {num_q}
+
+    device = q.device
+    wkey = (str(device), num_qo_heads, expanded_kv_heads, head_dim, page_size, q.dtype, k_exp.dtype)
+    wrapper = _get_wrapper(wkey, device)
+    state = _plan_state.get(wkey)
+
+    needs_plan = True
+    if state is not None:
+        needs_plan = (
+            state.get("batch_size") != batch_size
+            or state.get("kv_indptr_ptr") != kv_indptr.data_ptr()
+            or state.get("kv_indices_ptr") != kv_indices.data_ptr()
+            or state.get("sm_scale") != sm_scale
+        )
+
+    if needs_plan:
+        wrapper.plan(
+            indptr=kv_indptr,
+            indices=kv_indices,
+            last_page_len=kv_last_page_len,
+            num_qo_heads=num_qo_heads,
+            num_kv_heads=expanded_kv_heads,
+            head_dim=head_dim,
+            page_size=page_size,
+            pos_encoding_mode="NONE",
+            q_data_type=q.dtype,
+            kv_data_type=k_exp.dtype,
+            sm_scale=sm_scale,
+        )
+        _plan_state[wkey] = {{
+            "batch_size": batch_size,
+            "kv_indptr_ptr": kv_indptr.data_ptr(),
+            "kv_indices_ptr": kv_indices.data_ptr(),
+            "sm_scale": sm_scale,
+        }}
+
+    output, lse = wrapper.run(q, (k_exp, v_exp), return_lse=True)
+    return output, lse
+"""
+
 # Supported native group_sizes for BatchDecodeWithPagedKVCacheWrapper
 _DECODE_NATIVE_GROUP_SIZES = {1, 2, 4, 8}
 
 
 def gen_gqa_paged_decode(def_name: str):
-    m = re.match(r"gqa_paged_decode_h(\d+)_kv(\d+)_d(\d+)", def_name)
+    m = re.match(r"gqa_paged_decode_h(\d+)_kv(\d+)_d(\d+)_ps(\d+)", def_name)
     num_q, num_kv = int(m.group(1)), int(m.group(2))
+    page_size = int(m.group(4))
     group_size = num_q // num_kv
+    has_last_page_len = page_size > 1
     if group_size in _DECODE_NATIVE_GROUP_SIZES:
+        template = DECODE_TEMPLATE_WITH_LAST_PAGE_LEN if has_last_page_len else DECODE_TEMPLATE
         write_solution(
             "gqa_paged",
             def_name,
-            DECODE_TEMPLATE,
+            template,
             f"FlashInfer BatchDecodeWithPagedKVCacheWrapper baseline for {def_name}.",
         )
     else:
-        content = DECODE_EXPAND_TEMPLATE.format(group_size=group_size, num_q=num_q, num_kv=num_kv)
+        if has_last_page_len:
+            content = DECODE_EXPAND_TEMPLATE_WITH_LAST_PAGE_LEN.format(
+                group_size=group_size, num_q=num_q, num_kv=num_kv
+            )
+        else:
+            content = DECODE_EXPAND_TEMPLATE.format(
+                group_size=group_size, num_q=num_q, num_kv=num_kv
+            )
         write_solution(
             "gqa_paged",
             def_name,
@@ -457,6 +649,9 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len,
     total_q, num_qo_heads, head_dim = q.shape
     _, page_size, num_kv_heads, _ = k_cache.shape
     batch_size = kv_indptr.shape[0] - 1
+    # kv_last_page_len may have an extra trailing element from workload capture;
+    # always clamp to batch_size.
+    kv_last_page_len = kv_last_page_len[:batch_size]
     num_kv_indices = kv_indices.shape[0]
 
     device = q.device
