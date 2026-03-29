@@ -206,21 +206,35 @@ model_coverage.mdx) is submitted by `extract-kernel-definitions` and should alre
 before submitting workloads.
 
 For each definition with newly collected workloads, submit **one HuggingFace PR** containing
-the baseline solution, workload JSONL, and safetensors traces together:
+five things together: baseline solution, workload JSONL, safetensors traces, kernel definition
+JSON, and reference test (the last two copied from flashinfer-bench PR 1):
 
 ```bash
 cd tmp/flashinfer-trace
 BRANCH="workloads-$(date +%Y%m%d)-{definition_name}"
 git checkout -b "$BRANCH"
 
-# Baseline solution (Python reference extracted from definition JSON)
+# 1. Baseline solution (Python reference extracted from definition JSON reference_impl field)
+cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   solutions/{op_type}/{definition_name}.py
+# (extract the reference_impl field into a standalone runnable script)
 git add solutions/{op_type}/{definition_name}.py
 
-# Workload JSONL and safetensors blobs
+# 2. Workload JSONL and safetensors blobs
 git add workloads/{op_type}/{definition_name}.jsonl \
         blob/workloads/{op_type}/{definition_name}/
 
-git commit -m "Add {definition_name}: baseline solution + workloads + traces
+# 3. Kernel definition JSON (mirrored from flashinfer-bench)
+cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   definitions/{op_type}/{definition_name}.json
+git add definitions/{op_type}/{definition_name}.json
+
+# 4. Reference test (mirrored from flashinfer-bench)
+cp {REPO_ROOT}/tests/test_{op_type}_{definition_name}.py \
+   tests/{op_type}/test_{op_type}_{definition_name}.py
+git add tests/{op_type}/test_{op_type}_{definition_name}.py
+
+git commit -m "Add {definition_name}: baseline solution + workloads + traces + def + tests
 
 Model: {hf_repo_id}
 SGLang: {sglang_commit_sha}
@@ -235,7 +249,7 @@ from huggingface_hub import HfApi
 HfApi().create_pull_request(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    title='Add {definition_name}: baseline solution + workloads + traces',
+    title='Add {definition_name}: baseline solution + workloads + traces + def + tests',
     description='...',
     head='$BRANCH',
 )
@@ -243,7 +257,8 @@ HfApi().create_pull_request(
 ```
 
 **Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions into a
-single PR. The GitHub PR (definition + tests + coverage) is handled by `extract-kernel-definitions`.
+single PR. Always wait for PR 1 (GitHub) to be open before submitting PR 2, so the
+`pr1_number` cross-reference in the commit message is valid.
 
 ### Parallelizing across definitions with git worktrees
 

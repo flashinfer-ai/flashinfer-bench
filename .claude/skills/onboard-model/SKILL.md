@@ -25,7 +25,7 @@ Phase 3: Workload collection (only when FlashInfer has the kernel)
                                                   then collect-workloads (sglang mode)
 Phase 4: Submit PRs (per definition, not batched)
           ├─ PR 1 → flashinfer-bench (GitHub): definition JSON + reference tests + model_coverage.mdx
-          └─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): baseline solution + workloads + traces
+          └─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): baseline solution + workloads + traces + def JSON + reference tests
 ```
 
 ## Usage
@@ -453,7 +453,7 @@ with all definitions processed in parallel using git worktrees.
 | # | Target repo | Content | Trigger |
 |---|-------------|---------|---------|
 | 1 | `flashinfer-ai/flashinfer-bench` (GitHub) | definition JSON + reference tests + `docs/model_coverage.mdx` | after Phase 2 |
-| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | baseline solution + workload JSONL + safetensors traces | after Phase 3 (local) |
+| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | baseline solution + workload JSONL + safetensors traces + def JSON + reference tests | after PR 1 is open |
 
 Do **not** batch multiple definitions into a single PR. Each definition must be independently
 reviewable and mergeable.
@@ -526,10 +526,12 @@ Do the following in order:
    - Open PR to flashinfer-ai/flashinfer-bench
    - Record the PR number as pr1_number
 
-2. PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces):
-   - Copy baseline solution (Python reference) into tmp/worktrees/trace-{definition_name}/solutions/
+2. PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests):
+   - Copy baseline solution (Python reference) into tmp/worktrees/trace-{definition_name}/solutions/{op_type}/
    - Copy workload JSONL into tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
    - Copy safetensors blobs into tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
+   - Copy definition JSON (from flashinfer-bench) into tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
+   - Copy reference test (from flashinfer-bench) into tmp/worktrees/trace-{definition_name}/tests/{op_type}/
    - Commit all together and push
    - Open HuggingFace PR via huggingface_hub.HfApi().create_pull_request()
    - Record the PR number as pr2_number
@@ -592,12 +594,12 @@ EOF
 )"
 ```
 
-### 4b: PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces)
+### 4b: PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests)
 
 Inside `tmp/worktrees/trace-{definition_name}/`:
 
 ```bash
-# 1. Copy baseline solution (Python reference implementation)
+# 1. Copy baseline solution (extract reference_impl field from definition JSON as standalone script)
 cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
    tmp/worktrees/trace-{definition_name}/solutions/{op_type}/{definition_name}.py
 # (extract the reference_impl field from the definition JSON as a standalone script)
@@ -608,11 +610,19 @@ cp -r tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl \
 cp -r tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/ \
       tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
 
+# 3. Copy kernel definition JSON and reference test from flashinfer-bench (this repo)
+cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
+cp tests/test_{op_type}_{definition_name}.py \
+   tmp/worktrees/trace-{definition_name}/tests/{op_type}/
+
 cd tmp/worktrees/trace-{definition_name}
 git add solutions/{op_type}/{definition_name}.py \
         workloads/{op_type}/{definition_name}.jsonl \
-        blob/workloads/{op_type}/{definition_name}/
-git commit -m "Add {definition_name}: baseline solution + workloads + traces
+        blob/workloads/{op_type}/{definition_name}/ \
+        definitions/{op_type}/{definition_name}.json \
+        tests/{op_type}/test_{op_type}_{definition_name}.py
+git commit -m "Add {definition_name}: baseline solution + workloads + traces + def + tests
 
 Model: {hf_repo_id}
 SGLang: {sglang_commit_sha}
@@ -627,7 +637,7 @@ from huggingface_hub import HfApi
 HfApi().create_pull_request(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    title='Add {definition_name}: baseline solution + workloads + traces',
+    title='Add {definition_name}: baseline solution + workloads + traces + def + tests',
     description='...',
     head='workloads-{date}-{definition_name}',
 )
