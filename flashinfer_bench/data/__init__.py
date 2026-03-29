@@ -10,7 +10,7 @@ from .json_utils import (
 )
 from .solution import BuildSpec, Solution, SourceFile, SupportedBindings, SupportedLanguages
 from .trace import Correctness, Environment, Evaluation, EvaluationStatus, Performance, Trace
-from .trace_set import TraceSet
+from .trace_set import SpeedupMetrics, TraceSet, TraceSetSummary
 from .workload import InputSpec, RandomInput, SafetensorsInput, ScalarInput, Workload
 
 __all__ = [
@@ -40,7 +40,9 @@ __all__ = [
     "EvaluationStatus",
     "Trace",
     # TraceSet
+    "SpeedupMetrics",
     "TraceSet",
+    "TraceSetSummary",
     # JSON functions
     "save_json_file",
     "load_json_file",
