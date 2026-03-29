@@ -492,7 +492,6 @@ if __name__ == '__main__':
         tp_size=tp,
         attention_backend="flashinfer",
         disable_cuda_graph=True,
-        disable_piecewise_cuda_graph=True,
         page_size=page_size,
         log_level="info",
     )
@@ -681,7 +680,6 @@ def run_sglang_mode(
             "--attention-backend",
             "flashinfer",
             "--disable-cuda-graph",
-            "--disable-piecewise-cuda-graph",
             "--log-level",
             "info",
             "--page-size",
