@@ -82,10 +82,7 @@ Write this file FREQUENTLY — it is how the architect monitors your work.
 
 
 def run(cmd, cwd=None, check=True, capture=True):
-    r = subprocess.run(
-        cmd, shell=True, cwd=cwd or REPO_ROOT,
-        capture_output=capture, text=True,
-    )
+    r = subprocess.run(cmd, shell=True, cwd=cwd or REPO_ROOT, capture_output=capture, text=True)
     if check and r.returncode != 0:
         if capture and r.stderr:
             print(r.stderr, file=sys.stderr)
@@ -108,9 +105,9 @@ def get_worktrees():
     path = branch = None
     for line in raw.splitlines():
         if line.startswith("worktree "):
-            path = line[len("worktree "):]
+            path = line[len("worktree ") :]
         elif line.startswith("branch "):
-            branch = line[len("branch refs/heads/"):]
+            branch = line[len("branch refs/heads/") :]
         elif line == "":
             if path:
                 worktrees.append((path, branch or "(detached)"))
@@ -124,7 +121,9 @@ def worktree_info(wt_path):
     last = run("git log --oneline -1", cwd=wt_path, check=False)
     dirty_files = run("git status --short --ignore-submodules", cwd=wt_path, check=False)
     dirty_count = len([l for l in dirty_files.splitlines() if l.strip()])
-    commits_raw = run("git log --oneline main..HEAD 2>/dev/null || echo ''", cwd=wt_path, check=False)
+    commits_raw = run(
+        "git log --oneline main..HEAD 2>/dev/null || echo ''", cwd=wt_path, check=False
+    )
     commits = [l for l in commits_raw.splitlines() if l.strip()]
     ts = run("git log -1 --format=%ci", cwd=wt_path, check=False)
     task_spec = Path(wt_path) / ".claude" / "TASK.md"
@@ -230,20 +229,34 @@ def extract_session_id(log_path, timeout=30):
 
 def build_agent_cmd(prompt, wt_path, model=None):
     cmd = [
-        "claude", "-p", prompt,
-        "--output-format", "stream-json",
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
         "--verbose",
-        "--add-dir", str(wt_path),
-        "--add-dir", str(REPO_ROOT),
+        "--add-dir",
+        str(wt_path),
+        "--add-dir",
+        str(REPO_ROOT),
     ]
     if os.environ.get("FLASHINFER_SKIP_PERMISSIONS") == "1":
         cmd.append("--dangerously-skip-permissions")
     else:
-        cmd.extend([
-            "--allowedTools",
-            "Bash", "Read", "Write", "Edit", "Glob", "Grep",
-            "WebFetch", "WebSearch", "Task",
-        ])
+        cmd.extend(
+            [
+                "--allowedTools",
+                "Bash",
+                "Read",
+                "Write",
+                "Edit",
+                "Glob",
+                "Grep",
+                "WebFetch",
+                "WebSearch",
+                "Task",
+            ]
+        )
     if model:
         cmd.extend(["--model", model])
     return cmd
@@ -278,7 +291,7 @@ def cmd_status(args):
             print(f"{name:<28} {branch:<32} {'':>7} {'':>5} {'':12} —")
             continue
 
-        def_name = name_raw[len("bench-"):]
+        def_name = name_raw[len("bench-") :]
         info = worktree_info(wt_path)
         dirty_str = str(info["dirty_count"]) if info["dirty_count"] > 0 else "·"
         commits_str = str(info["commits_since_main"])
@@ -289,12 +302,11 @@ def cmd_status(args):
             agent_str = prog[:12]
 
         prs = extract_pr_urls(wt_path)
-        pr_str = " ".join(
-            f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}"
-            for i in [1, 2, 3]
-        )
+        pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
 
-        print(f"{def_name:<28} {branch:<32} {commits_str:>7} {dirty_str:>5} {agent_str:<12} {pr_str}")
+        print(
+            f"{def_name:<28} {branch:<32} {commits_str:>7} {dirty_str:>5} {agent_str:<12} {pr_str}"
+        )
 
 
 def cmd_create(args):
@@ -324,7 +336,9 @@ def cmd_create(args):
     claude_dir = bench_wt / ".claude"
     claude_dir.mkdir(parents=True, exist_ok=True)
     task_md = claude_dir / "TASK.md"
-    task_md.write_text(textwrap.dedent(f"""\
+    task_md.write_text(
+        textwrap.dedent(
+            f"""\
         # Task: onboard definition `{name}`
 
         ## Definition
@@ -377,7 +391,9 @@ def cmd_create(args):
         - Use `tools/gpu-lock` for any workload collection that needs the GPU
         - Do NOT modify files in the main worktree — work only in your worktrees
         - Commit frequently; each PR should be a single commit if possible
-    """))
+    """
+        )
+    )
 
     # Create trace worktree (in flashinfer-trace repo)
     if TRACE_REPO.exists():
@@ -387,12 +403,14 @@ def cmd_create(args):
         print(f"  NOTE: {TRACE_REPO} does not exist — run /clone-repos first")
         print(f"  Trace worktree ({trace_wt}) will need to be created manually.")
 
-    print(f"""
+    print(
+        f"""
 Done. Next steps:
   1. Review {task_md}
   2. Spawn an agent:  tools/architect spawn {name}
   3. Monitor:        tools/architect progress {name}
-""")
+"""
+    )
 
 
 def cmd_check(args):
@@ -415,7 +433,9 @@ def cmd_check(args):
 
     a_status, a_info = agent_status(name)
     if a_info:
-        print(f"Agent:      {a_status} (pid={a_info.get('pid')}, session={a_info.get('session_id', '?')})")
+        print(
+            f"Agent:      {a_status} (pid={a_info.get('pid')}, session={a_info.get('session_id', '?')})"
+        )
     print()
 
     prog = read_progress(str(bench_wt))
@@ -472,7 +492,7 @@ def cmd_cleanup(args):
         name_raw = os.path.basename(wt_path)
         if not name_raw.startswith("bench-"):
             continue
-        def_name = name_raw[len("bench-"):]
+        def_name = name_raw[len("bench-") :]
         prs = extract_pr_urls(wt_path)
         all_prs_open = all(prs.get(f"pr{i}") for i in [1, 3])  # PR 2 may be N/A
         info = worktree_info(wt_path)
@@ -482,7 +502,7 @@ def cmd_cleanup(args):
         elif a_status == "running":
             print(f"{'AGENT RUNNING':<22} {def_name:<30} in progress")
         else:
-            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1,2,3])
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
             print(f"{'INCOMPLETE':<22} {def_name:<30} {pr_str}")
 
 
@@ -514,7 +534,10 @@ def cmd_remove(args):
     if bench_wt.exists():
         info = worktree_info(str(bench_wt))
         if info["dirty_count"] > 0 and not args.force:
-            print(f"Error: {info['dirty_count']} uncommitted files in bench worktree. Use --force.", file=sys.stderr)
+            print(
+                f"Error: {info['dirty_count']} uncommitted files in bench worktree. Use --force.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         run(f"git worktree remove {bench_wt}" + (" --force" if args.force else ""))
         print(f"Removed bench worktree: {bench_wt}")
@@ -522,7 +545,10 @@ def cmd_remove(args):
         run(f"git branch -D feat/def-{name}", check=False)
 
     if trace_wt.exists() and TRACE_REPO.exists():
-        run(f"git worktree remove {trace_wt}" + (" --force" if args.force else ""), cwd=str(TRACE_REPO))
+        run(
+            f"git worktree remove {trace_wt}" + (" --force" if args.force else ""),
+            cwd=str(TRACE_REPO),
+        )
         print(f"Removed trace worktree: {trace_wt}")
 
     # Clean agent tracking
@@ -620,9 +646,13 @@ Important tool notes:
 
     with open(log_path, "w") as log_f:
         proc = subprocess.Popen(
-            cmd, cwd=str(bench_wt), stdout=log_f,
-            stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            env=env, start_new_session=True,
+            cmd,
+            cwd=str(bench_wt),
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            env=env,
+            start_new_session=True,
         )
 
     print(f"  PID:      {proc.pid}")
@@ -647,12 +677,14 @@ Important tool notes:
     }
     save_agents(agents)
 
-    print(f"""
+    print(
+        f"""
 Agent spawned. Monitor with:
   tools/architect progress {name}
   tools/architect check {name}
   tail -f {log_path}
-""")
+"""
+    )
 
 
 def cmd_attach(args):
@@ -701,7 +733,7 @@ def cmd_progress(args):
         name_raw = os.path.basename(wt_path)
         if not name_raw.startswith("bench-"):
             continue
-        def_name = name_raw[len("bench-"):]
+        def_name = name_raw[len("bench-") :]
         prog = read_progress(wt_path)
         if prog:
             found_any = True
@@ -738,7 +770,7 @@ def cmd_resume(args):
         name_raw = os.path.basename(wt_path)
         if not name_raw.startswith("bench-"):
             continue
-        def_name = name_raw[len("bench-"):]
+        def_name = name_raw[len("bench-") :]
         a_status, a_info = agent_status(def_name)
         info = worktree_info(wt_path)
         prs = extract_pr_urls(wt_path)
@@ -749,7 +781,7 @@ def cmd_resume(args):
         elif a_status == "running":
             print(f"  ↻ {def_name}: agent still running (pid={a_info.get('pid')})")
         else:
-            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1,2,3])
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
             dirty = f", {info['dirty_count']} dirty" if info["dirty_count"] > 0 else ""
             incomplete.append(def_name)
             print(f"  ! {def_name}: incomplete [{pr_str}]{dirty}")
@@ -779,6 +811,7 @@ def cmd_resume(args):
 
             class FakeArgs:
                 pass
+
             fa = FakeArgs()
             fa.name = name
             fa.prompt = "Resume from where you left off. Read your progress file first, then continue with the next pending PR."
@@ -851,10 +884,18 @@ def main():
 
     args = parser.parse_args()
     cmds = {
-        "status": cmd_status, "create": cmd_create, "check": cmd_check,
-        "prs": cmd_prs, "cleanup": cmd_cleanup, "remove": cmd_remove,
-        "rescue": cmd_rescue, "spawn": cmd_spawn, "attach": cmd_attach,
-        "progress": cmd_progress, "kill": cmd_kill, "resume": cmd_resume,
+        "status": cmd_status,
+        "create": cmd_create,
+        "check": cmd_check,
+        "prs": cmd_prs,
+        "cleanup": cmd_cleanup,
+        "remove": cmd_remove,
+        "rescue": cmd_rescue,
+        "spawn": cmd_spawn,
+        "attach": cmd_attach,
+        "progress": cmd_progress,
+        "kill": cmd_kill,
+        "resume": cmd_resume,
     }
     cmds[args.command](args)
 

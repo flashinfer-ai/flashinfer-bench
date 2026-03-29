@@ -22,8 +22,7 @@ from log_parser import get_log_summary, parse_agent_log
 app = Flask(__name__)
 
 REPO_ROOT = os.environ.get(
-    "REPO_ROOT",
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
 
@@ -55,12 +54,7 @@ def index():
     }
 
     return render_template(
-        "index.html",
-        tasks=tasks,
-        defs=defs,
-        stats=stats,
-        gpu=gpu,
-        model_coverage=model_coverage,
+        "index.html", tasks=tasks, defs=defs, stats=stats, gpu=gpu, model_coverage=model_coverage
     )
 
 
@@ -75,12 +69,7 @@ def task_detail(name):
     messages = parse_agent_log(log_path) if os.path.exists(log_path) else []
     summary = get_log_summary(messages) if messages else {}
 
-    return render_template(
-        "task_detail.html",
-        task=task,
-        messages=messages,
-        summary=summary,
-    )
+    return render_template("task_detail.html", task=task, messages=messages, summary=summary)
 
 
 @app.route("/definitions")

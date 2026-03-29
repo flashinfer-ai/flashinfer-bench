@@ -8,8 +8,7 @@ import time
 from pathlib import Path
 
 REPO_ROOT = os.environ.get(
-    "REPO_ROOT",
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 WORKTREES_DIR = os.path.join(REPO_ROOT, "tmp", "worktrees")
 TRACE_REPO = os.path.join(REPO_ROOT, "tmp", "flashinfer-trace")
@@ -23,8 +22,7 @@ GPU_INFOFILE = "/tmp/flashinfer-bench-gpu.info"
 def _run_git(args, cwd=None):
     try:
         result = subprocess.run(
-            ["git"] + args, cwd=cwd or REPO_ROOT,
-            capture_output=True, text=True, timeout=10,
+            ["git"] + args, cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=10
         )
         return result.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -109,15 +107,27 @@ def get_definitions():
                     data = json.load(f)
             except (json.JSONDecodeError, OSError):
                 data = {}
-            defs.append({
-                "name": def_name,
-                "op_type": op_type_dir,
-                "path": fpath,
-                "tags": data.get("tags", []),
-                "status_tag": next((t.split(":")[1] for t in data.get("tags", []) if t.startswith("status:")), "unknown"),
-                "fi_api": next((t.split(":", 1)[1] for t in data.get("tags", []) if t.startswith("fi_api:")), None),
-                "description": data.get("description", ""),
-            })
+            defs.append(
+                {
+                    "name": def_name,
+                    "op_type": op_type_dir,
+                    "path": fpath,
+                    "tags": data.get("tags", []),
+                    "status_tag": next(
+                        (t.split(":")[1] for t in data.get("tags", []) if t.startswith("status:")),
+                        "unknown",
+                    ),
+                    "fi_api": next(
+                        (
+                            t.split(":", 1)[1]
+                            for t in data.get("tags", [])
+                            if t.startswith("fi_api:")
+                        ),
+                        None,
+                    ),
+                    "description": data.get("description", ""),
+                }
+            )
     return defs
 
 
@@ -132,7 +142,7 @@ def get_worktree_tasks():
     for entry in sorted(os.listdir(WORKTREES_DIR)):
         if not entry.startswith("bench-"):
             continue
-        def_name = entry[len("bench-"):]
+        def_name = entry[len("bench-") :]
         wt_path = os.path.join(WORKTREES_DIR, entry)
         trace_wt = os.path.join(WORKTREES_DIR, f"trace-{def_name}")
 
@@ -155,28 +165,30 @@ def get_worktree_tasks():
         pid = agent_info.get("pid")
         agent_running = bool(pid) and _is_pid_alive(pid)
 
-        tasks.append({
-            "name": def_name,
-            "bench_wt": wt_path,
-            "trace_wt": trace_wt,
-            "trace_wt_exists": os.path.isdir(trace_wt),
-            "branch": branch,
-            "last_commit": last_commit,
-            "dirty_count": dirty_count,
-            "commits_since_main": commits_since_main,
-            "last_activity": last_activity,
-            "last_activity_ago": _time_ago(last_activity) if last_activity else "unknown",
-            "progress": progress,
-            "progress_status": status or ("running" if agent_running else "idle"),
-            "prs": prs,
-            "all_prs_open": bool(prs.get("pr1") and prs.get("pr3")),
-            "agent_running": agent_running,
-            "agent_pid": pid,
-            "agent_started": agent_info.get("started"),
-            "agent_session_id": agent_info.get("session_id"),
-            "has_task_spec": os.path.exists(os.path.join(wt_path, ".claude", "TASK.md")),
-            "has_agent_log": os.path.exists(os.path.join(wt_path, ".agent.log")),
-        })
+        tasks.append(
+            {
+                "name": def_name,
+                "bench_wt": wt_path,
+                "trace_wt": trace_wt,
+                "trace_wt_exists": os.path.isdir(trace_wt),
+                "branch": branch,
+                "last_commit": last_commit,
+                "dirty_count": dirty_count,
+                "commits_since_main": commits_since_main,
+                "last_activity": last_activity,
+                "last_activity_ago": _time_ago(last_activity) if last_activity else "unknown",
+                "progress": progress,
+                "progress_status": status or ("running" if agent_running else "idle"),
+                "prs": prs,
+                "all_prs_open": bool(prs.get("pr1") and prs.get("pr3")),
+                "agent_running": agent_running,
+                "agent_pid": pid,
+                "agent_started": agent_info.get("started"),
+                "agent_session_id": agent_info.get("session_id"),
+                "has_task_spec": os.path.exists(os.path.join(wt_path, ".claude", "TASK.md")),
+                "has_agent_log": os.path.exists(os.path.join(wt_path, ".agent.log")),
+            }
+        )
 
     return tasks
 
@@ -184,10 +196,10 @@ def get_worktree_tasks():
 def get_gpu_status():
     """Check GPU lock status."""
     import subprocess
+
     try:
         result = subprocess.run(
-            ["flock", "-n", GPU_LOCKFILE, "true"],
-            capture_output=True, timeout=2,
+            ["flock", "-n", GPU_LOCKFILE, "true"], capture_output=True, timeout=2
         )
         locked = result.returncode != 0
     except (subprocess.TimeoutExpired, FileNotFoundError):

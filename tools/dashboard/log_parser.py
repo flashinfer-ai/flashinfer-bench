@@ -102,11 +102,7 @@ def _parse_system(entry: dict) -> dict | None:
             },
         }
 
-    return {
-        "type": "system",
-        "subtype": subtype,
-        "content": entry.get("message", str(entry)),
-    }
+    return {"type": "system", "subtype": subtype, "content": entry.get("message", str(entry))}
 
 
 def _parse_assistant(entry: dict) -> list[dict]:
@@ -121,12 +117,7 @@ def _parse_assistant(entry: dict) -> list[dict]:
         if block_type == "text":
             text = block.get("text", "").strip()
             if text:
-                messages.append(
-                    {
-                        "type": "assistant_text",
-                        "content": text,
-                    }
-                )
+                messages.append({"type": "assistant_text", "content": text})
 
         elif block_type == "tool_use":
             tool_name = block.get("name", "unknown")
@@ -156,12 +147,7 @@ def _parse_user(entry: dict) -> list[dict]:
     # Content can be a string or a list of blocks
     if isinstance(content, str):
         if content.strip():
-            messages.append(
-                {
-                    "type": "user_text",
-                    "content": content.strip(),
-                }
-            )
+            messages.append({"type": "user_text", "content": content.strip()})
         return messages
 
     for block in content:
@@ -198,12 +184,7 @@ def _parse_user(entry: dict) -> list[dict]:
         elif block_type == "text":
             text = block.get("text", "").strip()
             if text:
-                messages.append(
-                    {
-                        "type": "user_text",
-                        "content": text,
-                    }
-                )
+                messages.append({"type": "user_text", "content": text})
 
     return messages
 
