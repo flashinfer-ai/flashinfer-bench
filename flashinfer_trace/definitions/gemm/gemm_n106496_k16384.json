@@ -1,0 +1,48 @@
+{
+  "name": "gemm_n106496_k16384",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Llama 405B gate_up_proj (106496=53248*2).",
+  "op_type": "gemm",
+  "tags": [
+    "status:reference",
+    "model:llama-3.1-405b"
+  ],
+  "axes": {
+    "M": {
+      "type": "var"
+    },
+    "N": {
+      "type": "const",
+      "value": 106496
+    },
+    "K": {
+      "type": "const",
+      "value": 16384
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": [
+        "M",
+        "K"
+      ],
+      "dtype": "float16"
+    },
+    "B": {
+      "shape": [
+        "N",
+        "K"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": [
+        "M",
+        "N"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
+}

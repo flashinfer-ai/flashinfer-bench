@@ -1,0 +1,51 @@
+{
+  "name": "fused_add_rmsnorm_h3584",
+  "op_type": "rmsnorm",
+  "description": "Fused Add + RMSNorm with hidden_size=3584. Used in Qwen2.5 7B. Epsilon is fixed at 1e-5.",
+  "tags": [
+    "status:reference",
+    "fused",
+    "fi_api:flashinfer.norm.fused_add_rmsnorm"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var"
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 3584
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "residual": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    },
+    "weight": {
+      "shape": [
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16"
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, residual, weight):\n    _, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 3584\n\n    EPS = 1e-5\n\n    x = hidden_states.to(torch.float32) + residual.to(torch.float32)\n    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    y = (x * inv_rms) * weight.to(torch.float32)\n    return y.to(hidden_states.dtype)"
+}

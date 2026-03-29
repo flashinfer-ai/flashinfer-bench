@@ -1,0 +1,114 @@
+{
+  "name": "gqa_paged_decode_h5_kv1_d128_ps1",
+  "description": "Batched Grouped Query Attention decode with a paged KV cache (page_size=1). Captured from Llama 4 Scout/Maverick at TP=8. 5 q-heads, 1 kv-heads, head_dim=128.",
+  "op_type": "gqa_paged",
+  "tags": [
+    "stage:decode",
+    "status:reference",
+    "model:llama-4-scout",
+    "fi_api:flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+    "tp:8"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var"
+    },
+    "num_qo_heads": {
+      "type": "const",
+      "value": 5
+    },
+    "num_kv_heads": {
+      "type": "const",
+      "value": 1
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128
+    },
+    "num_pages": {
+      "type": "var"
+    },
+    "page_size": {
+      "type": "const",
+      "value": 1
+    },
+    "len_indptr": {
+      "type": "var",
+      "description": "Length of kv_indptr array."
+    },
+    "num_kv_indices": {
+      "type": "var",
+      "description": "Total number of KV page indices."
+    }
+  },
+  "constraints": [
+    "len_indptr == batch_size + 1",
+    "num_kv_indices == kv_indptr[-1].item()"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "batch_size",
+        "num_qo_heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "k_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "num_kv_heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "v_cache": {
+      "shape": [
+        "num_pages",
+        "page_size",
+        "num_kv_heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "kv_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32",
+      "description": "KV page offsets for each sequence."
+    },
+    "kv_indices": {
+      "shape": [
+        "num_kv_indices"
+      ],
+      "dtype": "int32",
+      "description": "Page IDs for KV cache lookups."
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale. Default is (1/sqrt(head_dim))."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "batch_size",
+        "num_qo_heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "lse": {
+      "shape": [
+        "batch_size",
+        "num_qo_heads"
+      ],
+      "dtype": "float32",
+      "description": "The 2-based log-sum-exp of attention logits."
+    }
+  },
+  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):\n    batch_size, num_qo_heads, head_dim = q.shape\n    _, page_size, num_kv_heads, _ = k_cache.shape\n\n    # Check constants\n    assert num_qo_heads == 5\n    assert num_kv_heads == 1\n    assert head_dim == 128\n    assert page_size == 1\n\n    device = q.device\n    output = torch.zeros(\n        (batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (batch_size, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    gqa_ratio = num_qo_heads // num_kv_heads\n    # page_size=1: squeeze page dim -> [num_pages, num_kv_heads, head_dim]\n    k_flat = k_cache.squeeze(1).to(torch.float32)\n    v_flat = v_cache.squeeze(1).to(torch.float32)\n    q_f32 = q.to(torch.float32)\n\n    for b in range(batch_size):\n        ps = int(kv_indptr[b].item())\n        pe = int(kv_indptr[b + 1].item())\n        if ps >= pe:\n            output[b].zero_()\n            continue\n\n        idx = kv_indices[ps:pe].to(torch.long)\n        k = k_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        v = v_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        q_b = q_f32[b].unsqueeze(1)  # [num_qo_heads, 1, head_dim]\n\n        logits = torch.bmm(q_b, k.transpose(1, 2)).squeeze(1) * sm_scale  # [H, T]\n        lse[b] = torch.logsumexp(logits, dim=-1) / math.log(2.0)\n        attn = torch.softmax(logits, dim=-1)\n        output[b] = torch.bmm(attn.unsqueeze(1), v).squeeze(1).to(torch.bfloat16)\n\n    return output, lse"
+}

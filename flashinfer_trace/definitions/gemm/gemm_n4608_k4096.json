@@ -1,0 +1,48 @@
+{
+  "name": "gemm_n4608_k4096",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Qwen3 235B A22B qkv_proj (4608=(64+4+4)*64 at TP=4 with d=64).",
+  "op_type": "gemm",
+  "tags": [
+    "status:reference",
+    "model:qwen3-235b"
+  ],
+  "axes": {
+    "M": {
+      "type": "var"
+    },
+    "N": {
+      "type": "const",
+      "value": 4608
+    },
+    "K": {
+      "type": "const",
+      "value": 4096
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": [
+        "M",
+        "K"
+      ],
+      "dtype": "float16"
+    },
+    "B": {
+      "shape": [
+        "N",
+        "K"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": [
+        "M",
+        "N"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
+}

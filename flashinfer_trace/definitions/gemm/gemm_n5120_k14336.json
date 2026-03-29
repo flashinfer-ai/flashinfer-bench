@@ -1,0 +1,48 @@
+{
+  "name": "gemm_n5120_k14336",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Mistral Nemo 12B down_proj.",
+  "op_type": "gemm",
+  "tags": [
+    "status:reference",
+    "model:mistral-nemo-12b"
+  ],
+  "axes": {
+    "M": {
+      "type": "var"
+    },
+    "N": {
+      "type": "const",
+      "value": 5120
+    },
+    "K": {
+      "type": "const",
+      "value": 14336
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": [
+        "M",
+        "K"
+      ],
+      "dtype": "float16"
+    },
+    "B": {
+      "shape": [
+        "N",
+        "K"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": [
+        "M",
+        "N"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
+}
