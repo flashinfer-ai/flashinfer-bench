@@ -77,10 +77,10 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
         inputs["v_cache"],
         inputs["kv_indptr"],
         inputs["kv_indices"],
+        inputs["kv_last_page_len"],
         inputs["sm_scale"],
     )
 
-    fi_kv_heads = NUM_KV_HEADS
     workspace = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace, kv_layout="NHD")
     wrapper.plan(
@@ -88,7 +88,7 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
         indices=inputs["kv_indices"],
         last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
-        num_kv_heads=fi_kv_heads,
+        num_kv_heads=NUM_KV_HEADS,
         head_dim=HEAD_DIM,
         page_size=PAGE_SIZE,
         pos_encoding_mode="NONE",
@@ -96,11 +96,15 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
         kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run((inputs["k_cache"], inputs["v_cache"]), return_lse=True)
+    fi_o, fi_lse = wrapper.run(
+        inputs["q"], (inputs["k_cache"], inputs["v_cache"]), return_lse=True
+    )
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
-    return out_ok and lse_ok
+    assert out_ok, f"Output mismatch: max diff {(ref_o.float() - fi_o.float()).abs().max().item():.6e}"
+    assert lse_ok, f"LSE mismatch: max diff {(ref_lse - fi_lse).abs().max().item():.6e}"
+    return True
 
 
 def main():
