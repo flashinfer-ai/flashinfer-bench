@@ -429,7 +429,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 |-----------|---------|:------:|
 | `rmsnorm_h4096` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h4096` | rmsnorm | ✅ |
-| `gqa_paged_prefill_causal_h16_kv1_d64_ps1` | gqa_paged TP=4 | ❌ |
+| `gqa_paged_prefill_causal_h16_kv1_d64_ps1` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h16_kv1_d64_ps64` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_decode_h16_kv1_d64_ps1` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_decode_h16_kv1_d64_ps64` | gqa_paged TP=4 | ❌ |
