@@ -514,7 +514,7 @@ PREFILL_TEMPLATE = """\
 import torch
 import flashinfer
 
-_WORKSPACE_SIZE_BYTES = 128 * 1024 * 1024
+_WORKSPACE_SIZE_BYTES = 512 * 1024 * 1024
 _workspace_cache = {}
 _wrapper_cache = {}
 _plan_state = {}
@@ -618,7 +618,7 @@ PREFILL_TEMPLATE_WITH_LAST_PAGE_LEN = """\
 import torch
 import flashinfer
 
-_WORKSPACE_SIZE_BYTES = 128 * 1024 * 1024
+_WORKSPACE_SIZE_BYTES = 512 * 1024 * 1024
 _workspace_cache = {}
 _wrapper_cache = {}
 _plan_state = {}
