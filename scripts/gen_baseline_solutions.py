@@ -2,6 +2,7 @@
 Generate baseline FlashInfer solutions for all definitions missing one.
 Writes solutions to tmp/flashinfer-trace/solutions/baseline/{op_type}/{def_name}/{name}.json
 """
+
 import hashlib
 import json
 import os
@@ -11,13 +12,8 @@ import sys
 BASELINE_DIR = "tmp/flashinfer-trace/solutions/baseline"
 DEF_DIR = "flashinfer_trace/definitions"
 
-HARDWARE = [
-    "NVIDIA A100",
-    "NVIDIA H20",
-    "NVIDIA H100",
-    "NVIDIA H200",
-    "NVIDIA B200",
-]
+HARDWARE = ["NVIDIA A100", "NVIDIA H20", "NVIDIA H100", "NVIDIA H200", "NVIDIA B200"]
+
 
 def sol_name(def_name: str) -> str:
     h = hashlib.sha256(def_name.encode()).hexdigest()[:6]
@@ -50,6 +46,7 @@ def write_solution(op_type: str, def_name: str, content: str, description: str):
 
 # ── rmsnorm ──────────────────────────────────────────────────────────────────
 
+
 def gen_rmsnorm(def_name: str):
     m = re.match(r"rmsnorm_h(\d+)", def_name)
     hidden = int(m.group(1))
@@ -69,8 +66,7 @@ def run(hidden_states, weight):
 
     return output
 """
-    write_solution("rmsnorm", def_name, content,
-                   f"FlashInfer rmsnorm baseline for {def_name}.")
+    write_solution("rmsnorm", def_name, content, f"FlashInfer rmsnorm baseline for {def_name}.")
 
 
 def gen_fused_add_rmsnorm(def_name: str):
@@ -93,11 +89,13 @@ def run(hidden_states, residual, weight):
 
     return hidden_states
 """
-    write_solution("rmsnorm", def_name, content,
-                   f"FlashInfer fused_add_rmsnorm baseline for {def_name}.")
+    write_solution(
+        "rmsnorm", def_name, content, f"FlashInfer fused_add_rmsnorm baseline for {def_name}."
+    )
 
 
 # ── gemm ─────────────────────────────────────────────────────────────────────
+
 
 def gen_gemm(def_name: str):
     content = """\
@@ -108,8 +106,9 @@ import torch.nn.functional as F
 def run(A: torch.Tensor, B: torch.Tensor):
     return F.linear(A, B)
 """
-    write_solution("gemm", def_name, content,
-                   f"torch.nn.functional.linear baseline for {def_name}.")
+    write_solution(
+        "gemm", def_name, content, f"torch.nn.functional.linear baseline for {def_name}."
+    )
 
 
 # ── gqa_paged decode ─────────────────────────────────────────────────────────
@@ -300,13 +299,21 @@ def gen_gqa_paged_decode(def_name: str):
     num_q, num_kv = int(m.group(1)), int(m.group(2))
     group_size = num_q // num_kv
     if group_size in _DECODE_NATIVE_GROUP_SIZES:
-        write_solution("gqa_paged", def_name, DECODE_TEMPLATE,
-                       f"FlashInfer BatchDecodeWithPagedKVCacheWrapper baseline for {def_name}.")
+        write_solution(
+            "gqa_paged",
+            def_name,
+            DECODE_TEMPLATE,
+            f"FlashInfer BatchDecodeWithPagedKVCacheWrapper baseline for {def_name}.",
+        )
     else:
         content = DECODE_EXPAND_TEMPLATE.format(group_size=group_size, num_q=num_q, num_kv=num_kv)
-        write_solution("gqa_paged", def_name, content,
-                       f"FlashInfer BatchDecodeWithPagedKVCacheWrapper baseline for {def_name}. "
-                       f"KV heads expanded x{group_size} for unsupported group_size.")
+        write_solution(
+            "gqa_paged",
+            def_name,
+            content,
+            f"FlashInfer BatchDecodeWithPagedKVCacheWrapper baseline for {def_name}. "
+            f"KV heads expanded x{group_size} for unsupported group_size.",
+        )
 
 
 # ── gqa_paged prefill ────────────────────────────────────────────────────────
@@ -415,12 +422,127 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
 """
 
 
+PREFILL_TEMPLATE_WITH_LAST_PAGE_LEN = """\
+import torch
+import flashinfer
+
+_WORKSPACE_SIZE_BYTES = 128 * 1024 * 1024
+_workspace_cache = {}
+_wrapper_cache = {}
+_plan_state = {}
+
+
+def _get_workspace(device):
+    key = str(device)
+    buffer = _workspace_cache.get(key)
+    if buffer is None or buffer.device != device or buffer.numel() < _WORKSPACE_SIZE_BYTES:
+        buffer = torch.empty(_WORKSPACE_SIZE_BYTES, dtype=torch.uint8, device=device)
+        _workspace_cache[key] = buffer
+    return buffer
+
+
+def _get_wrapper(key, device):
+    wrapper = _wrapper_cache.get(key)
+    if wrapper is None:
+        workspace = _get_workspace(device)
+        wrapper = flashinfer.BatchPrefillWithPagedKVCacheWrapper(
+            workspace,
+            kv_layout="NHD",
+        )
+        _wrapper_cache[key] = wrapper
+    return wrapper
+
+
+def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len, sm_scale):
+    total_q, num_qo_heads, head_dim = q.shape
+    _, page_size, num_kv_heads, _ = k_cache.shape
+    batch_size = kv_indptr.shape[0] - 1
+    num_kv_indices = kv_indices.shape[0]
+
+    device = q.device
+    wrapper_key = (
+        str(device),
+        num_qo_heads,
+        num_kv_heads,
+        head_dim,
+        page_size,
+        q.dtype,
+        k_cache.dtype,
+    )
+
+    wrapper = _get_wrapper(wrapper_key, device)
+    state = _plan_state.get(wrapper_key)
+
+    if isinstance(sm_scale, torch.Tensor):
+        sm_scale_value = float(sm_scale.item())
+    else:
+        sm_scale_value = float(sm_scale)
+
+    needs_plan = True
+    if state is not None:
+        needs_plan = (
+            state.get("total_q") != total_q
+            or state.get("batch_size") != batch_size
+            or state.get("num_kv_indices") != num_kv_indices
+            or state.get("sm_scale") != sm_scale_value
+            or state.get("qo_indptr_ptr") != qo_indptr.data_ptr()
+            or state.get("kv_indptr_ptr") != kv_indptr.data_ptr()
+            or state.get("kv_indices_ptr") != kv_indices.data_ptr()
+        )
+
+    if needs_plan:
+        wrapper.plan(
+            qo_indptr=qo_indptr,
+            paged_kv_indptr=kv_indptr,
+            paged_kv_indices=kv_indices,
+            paged_kv_last_page_len=kv_last_page_len,
+            num_qo_heads=num_qo_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim_qk=head_dim,
+            page_size=page_size,
+            causal=True,
+            sm_scale=sm_scale,
+            q_data_type=q.dtype,
+            kv_data_type=k_cache.dtype,
+        )
+        _plan_state[wrapper_key] = {
+            "total_q": total_q,
+            "batch_size": batch_size,
+            "num_kv_indices": num_kv_indices,
+            "sm_scale": sm_scale_value,
+            "qo_indptr_ptr": qo_indptr.data_ptr(),
+            "kv_indptr_ptr": kv_indptr.data_ptr(),
+            "kv_indices_ptr": kv_indices.data_ptr(),
+        }
+
+    output, lse = wrapper.run(
+        q,
+        (k_cache, v_cache),
+        return_lse=True,
+    )
+
+    return output, lse
+"""
+
+
 def gen_gqa_paged_prefill(def_name: str):
-    write_solution("gqa_paged", def_name, PREFILL_TEMPLATE,
-                   f"FlashInfer BatchPrefillWithPagedKVCacheWrapper baseline for {def_name}.")
+    # ps>1 definitions include kv_last_page_len as an explicit input
+    m = re.match(r"gqa_paged_prefill_causal_.*_ps(\d+)$", def_name)
+    page_size = int(m.group(1)) if m else 1
+    if page_size > 1:
+        template = PREFILL_TEMPLATE_WITH_LAST_PAGE_LEN
+    else:
+        template = PREFILL_TEMPLATE
+    write_solution(
+        "gqa_paged",
+        def_name,
+        template,
+        f"FlashInfer BatchPrefillWithPagedKVCacheWrapper baseline for {def_name}.",
+    )
 
 
 # ── gqa_ragged prefill ───────────────────────────────────────────────────────
+
 
 def _is_pow2(n: int) -> bool:
     return n > 0 and (n & (n - 1)) == 0
@@ -695,8 +817,13 @@ def gen_sampling(def_name: str):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+
 def get_missing(op_type: str):
-    defs = {f.replace(".json", "") for f in os.listdir(os.path.join(DEF_DIR, op_type)) if f.endswith(".json")}
+    defs = {
+        f.replace(".json", "")
+        for f in os.listdir(os.path.join(DEF_DIR, op_type))
+        if f.endswith(".json")
+    }
     baselines_dir = os.path.join(BASELINE_DIR, op_type)
     existing = set(os.listdir(baselines_dir)) if os.path.isdir(baselines_dir) else set()
     return sorted(defs - existing)
