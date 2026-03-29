@@ -269,6 +269,33 @@ Generate TypeScript model definition.
 - Updated models.ts file
 - TypeScript code for module definitions
 
+### collect-workloads
+
+Auto-collect real-world workloads from SGLang inference runs using FlashInfer Level 10 logging API.
+
+**Parameters**:
+- `--definition-names`: List of specific definition names to collect workloads for (optional)
+- `--op-type`: Collect workloads for all definitions of a specific op_type (optional)
+- `--all`: Collect workloads for ALL definitions (optional)
+- `--model-name`: Model to run inference on (required, e.g., "deepseek-v3", "llama-3.1-8b")
+- `--dataset`: Path to ShareGPT-format JSONL dataset (optional)
+- `--num-samples`: Number of inference samples to process (default: 100)
+- `--submit-pr`: Whether to submit PR to flashinfer-trace repo (default: true)
+
+**Output**:
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl`
+- Safetensors blobs in `tmp/flashinfer-trace/blob/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset repo
+
+**Workflow**:
+1. Setup FlashInfer Level 10 logging (tensor dump mode)
+2. Run SGLang inference with ShareGPT dataset
+3. Dump tensors locally from FlashInfer logs
+4. Sanitize tensors according to kernel definitions
+5. Convert to workload JSONL format with deduplication
+6. Submit PR to flashinfer-trace HuggingFace dataset repo
+
+
 ## Common Model Architecture Patterns
 
 ### Standard Transformer (e.g., Llama)
@@ -415,3 +442,5 @@ Expected output:
 - New kimi-k2 entry in `web/apps/web/data/models.ts`
 - `model_analysis_kimi-k2.json` containing architecture analysis
 - List of Definition mapping suggestions
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset
