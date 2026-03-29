@@ -525,6 +525,7 @@ When executing this skill:
    New {op_type} kernel definition for {model_display_name}.
    Reference implementation sourced from {source}.
    "
+   pre-commit run --all-files
    git push origin feat/def-{definition_name}
    gh pr create \
      --repo flashinfer-ai/flashinfer-bench \

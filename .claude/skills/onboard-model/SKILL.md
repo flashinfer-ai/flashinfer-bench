@@ -389,6 +389,7 @@ Needed for: flashinfer-ai/flashinfer-bench (workload collection)
 FlashInfer API: {fi_api}
 "
 
+pre-commit run --all-files
 git push origin HEAD
 
 gh pr create \
@@ -557,6 +558,7 @@ New {op_type} kernel definition for {model_display_name}.
 Reference implementation sourced from {FlashInfer tests | SGLang vanilla}.
 {If fi_missing: FlashInfer issue: flashinfer-ai/flashinfer#{issue_number}}
 "
+pre-commit run --all-files
 git push origin feat/def-{definition_name}
 gh pr create \
   --repo flashinfer-ai/flashinfer-bench \
@@ -611,6 +613,7 @@ git commit -m "chore: update coverage for {definition_name}
 HuggingFace workload PR: flashinfer-ai/flashinfer-trace#{pr2_number}
 Definition PR: flashinfer-ai/flashinfer-bench#{pr1_number}
 "
+pre-commit run --all-files
 git push origin chore/coverage-{definition_name}
 gh pr create \
   --repo flashinfer-ai/flashinfer-bench \

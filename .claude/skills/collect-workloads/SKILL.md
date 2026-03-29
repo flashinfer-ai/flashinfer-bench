@@ -216,6 +216,7 @@ git commit -m "Add workloads for {definition_name}
 Collected from {model} via SGLang + FlashInfer logging API.
 Entries: {num_workload_entries}
 "
+pre-commit run --all-files
 git push origin "$BRANCH"
 # Submit via HuggingFace Hub API or huggingface-cli
 python -c "
@@ -243,6 +244,7 @@ git commit -m "chore: update coverage for {definition_name}
 
 Workloads now collected; update model_coverage.mdx status.
 "
+pre-commit run --all-files
 git push origin "$BRANCH"
 gh pr create \
   --repo flashinfer-ai/flashinfer-bench \
