@@ -58,18 +58,29 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
         "kv_indices": kv_indices,
         "kv_last_page_len": kv_last_page_len,
         "sm_scale": sm_scale,
+        "seq_lens": seq_lens,
     }
 
 
 def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
+    print(f"\n{'='*60}")
+    print(
+        f"Testing GQA Paged Decode h32/kv2 ps1 (Llama 3.1 405B TP=4): batch_size={batch_size}, max_seq_len={max_seq_len}"
+    )
+    print(f"{'='*60}")
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
+        print("WARNING: CUDA not available, skipping test")
         return False
 
     definition = load_definition("gqa_paged_decode_h32_kv2_d128_ps1")
     run = compile_reference(definition.reference)
     inputs = generate_random_inputs(batch_size, max_seq_len, device)
+    print(f"Sequence lengths: {inputs['seq_lens'].cpu().numpy()}")
 
+    # Run reference
+    print("\nRunning reference implementation...")
     ref_o, ref_lse = run(
         inputs["q"],
         inputs["k_cache"],
@@ -79,7 +90,14 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         inputs["sm_scale"],
     )
 
-    fi_kv_heads = NUM_KV_HEADS
+    # FlashInfer only supports power-of-2 group sizes up to 8. Since group_size =
+    # 32/2 = 16 is unsupported, expand KV heads from 2 to 32 (group_size=1, MHA),
+    # which gives mathematically equivalent results.
+    group_size = NUM_QO_HEADS // NUM_KV_HEADS  # 16
+    k_cache_expanded = inputs["k_cache"].repeat_interleave(group_size, dim=2)
+    v_cache_expanded = inputs["v_cache"].repeat_interleave(group_size, dim=2)
+
+    print("\nSetting up FlashInfer...")
     workspace = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace, kv_layout="NHD")
     wrapper.plan(
@@ -87,7 +105,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         indices=inputs["kv_indices"],
         last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
-        num_kv_heads=fi_kv_heads,
+        num_kv_heads=NUM_QO_HEADS,  # expanded to match q heads (group_size=1)
         head_dim=HEAD_DIM,
         page_size=PAGE_SIZE,
         pos_encoding_mode="NONE",
@@ -95,11 +113,31 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run((inputs["k_cache"], inputs["v_cache"]), return_lse=True)
+
+    print("Running FlashInfer...")
+    fi_o, fi_lse = wrapper.run(
+        inputs["q"], (k_cache_expanded, v_cache_expanded), return_lse=True
+    )
+
+    # Compare
+    print("\nComparing outputs...")
+    abs_diff = torch.abs(ref_o.float() - fi_o.float())
+    print(f"Output max abs diff: {abs_diff.max().item():.6e}")
+    print(f"Output mean abs diff: {abs_diff.mean().item():.6e}")
+
+    lse_abs_diff = torch.abs(ref_lse - fi_lse)
+    print(f"LSE max abs diff: {lse_abs_diff.max().item():.6e}")
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
-    return out_ok and lse_ok
+    all_close = out_ok and lse_ok
+
+    if all_close:
+        print(f"\n✓ PASSED: Outputs match within tolerance (atol={atol}, rtol={rtol})")
+    else:
+        print(f"\n✗ FAILED: out_ok={out_ok}, lse_ok={lse_ok}")
+
+    return all_close
 
 
 def main():
