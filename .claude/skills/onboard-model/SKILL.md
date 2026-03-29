@@ -24,9 +24,8 @@ Phase 3: Workload collection (only when FlashInfer has the kernel)
           └─ kernel NOT integrated into SGLang → draft + submit SGLang PR,
                                                   then collect-workloads (sglang mode)
 Phase 4: Submit PRs (per definition, not batched)
-          ├─ PR 1 → flashinfer-bench (GitHub): definition JSON
-          ├─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): workloads
-          └─ PR 3 → flashinfer-bench (GitHub): model_coverage.mdx update
+          ├─ PR 1 → flashinfer-bench (GitHub): definition JSON + reference tests + model_coverage.mdx
+          └─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): baseline solution + workloads + traces
 ```
 
 ## Usage
@@ -449,13 +448,12 @@ ls tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/
 **Goal**: Publish collected workloads and kernel definitions, one PR per definition,
 with all definitions processed in parallel using git worktrees.
 
-**Rule: one definition = three atomic PRs (opened in sequence per definition):**
+**Rule: one definition = two atomic PRs (opened in sequence per definition):**
 
 | # | Target repo | Content | Trigger |
 |---|-------------|---------|---------|
-| 1 | `flashinfer-ai/flashinfer-bench` (GitHub) | definition JSON file | after Phase 2 |
-| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | workload JSONL + safetensors blobs | after Phase 3 (local) |
-| 3 | `flashinfer-ai/flashinfer-bench` (GitHub) | `docs/model_coverage.mdx` update | after PR 2 is open |
+| 1 | `flashinfer-ai/flashinfer-bench` (GitHub) | definition JSON + reference tests + `docs/model_coverage.mdx` | after Phase 2 |
+| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | baseline solution + workload JSONL + safetensors traces | after Phase 3 (local) |
 
 Do **not** batch multiple definitions into a single PR. Each definition must be independently
 reviewable and mergeable.
@@ -519,106 +517,121 @@ Workload files already collected at:
 
 Do the following in order:
 
-1. PR 1 — Definition JSON → flashinfer-bench:
+1. PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage):
    - Copy flashinfer_trace/definitions/{op_type}/{definition_name}.json
      into tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
-   - Commit and push the branch
+   - Add or update reference test in tests/ for this definition
+   - Update docs/model_coverage.mdx to reflect definition status
+   - Commit all three changes together and push
    - Open PR to flashinfer-ai/flashinfer-bench
    - Record the PR number as pr1_number
 
-2. PR 2 — Workloads → flashinfer-trace (HuggingFace):
-   - Copy workload files into tmp/worktrees/trace-{definition_name}/
-   - Commit and push the branch
+2. PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces):
+   - Copy baseline solution (Python reference) into tmp/worktrees/trace-{definition_name}/solutions/
+   - Copy workload JSONL into tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
+   - Copy safetensors blobs into tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
+   - Commit all together and push
    - Open HuggingFace PR via huggingface_hub.HfApi().create_pull_request()
    - Record the PR number as pr2_number
 
-3. PR 3 — Coverage update → flashinfer-bench:
-   - In tmp/worktrees/bench-{definition_name}/, update docs/model_coverage.mdx
-     to mark {definition_name} as having workloads (reference pr2_number)
-   - Commit and push (amend or new commit on the same branch, or open a separate
-     branch chore/coverage-{definition_name})
-   - Open PR to flashinfer-ai/flashinfer-bench referencing pr1_number and pr2_number
-
-Report the three PR URLs when done.
+Report the two PR URLs when done.
 ```
 
-### 4a: PR 1 — Definition JSON → flashinfer-bench (each agent)
+### 4a: PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage)
 
 Inside `tmp/worktrees/bench-{definition_name}/`:
 
 ```bash
+# 1. Copy definition JSON
 cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
    tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
 
-cd tmp/worktrees/bench-{definition_name}
-git add flashinfer_trace/definitions/{op_type}/{definition_name}.json
-git commit -m "feat: add definition {definition_name}
+# 2. Add or update reference test
+# Write tests/test_{op_type}_{definition_name}.py with pytest test calling
+# the reference implementation from the definition JSON
 
-New {op_type} kernel definition for {model_display_name}.
-Reference implementation sourced from {FlashInfer tests | SGLang vanilla}.
+# 3. Update model coverage doc
+# Edit docs/model_coverage.mdx: mark {definition_name} row as "definition added"
+
+cd tmp/worktrees/bench-{definition_name}
+git add flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+        tests/test_{op_type}_{definition_name}.py \
+        docs/model_coverage.mdx
+git commit -m "feat: add {definition_name}
+
+- Definition JSON for {op_type} ({model_display_name})
+- Reference test validating the implementation
+- Model coverage doc updated
 {If fi_missing: FlashInfer issue: flashinfer-ai/flashinfer#{issue_number}}
 "
+# Run reference test and capture output for PR description
+pytest tests/test_{op_type}_{definition_name}.py -v 2>&1 | tee /tmp/test_{definition_name}.txt
+
 pre-commit run --all-files
 git push origin feat/def-{definition_name}
 gh pr create \
   --repo flashinfer-ai/flashinfer-bench \
-  --title "feat: add definition {definition_name}" \
-  --body "..."
+  --title "feat: add {definition_name}" \
+  --body "$(cat <<'EOF'
+## Summary
+- Adds kernel definition for `{definition_name}` ({op_type})
+- Model: {model_display_name}
+- Reference implementation sourced from: {source}
+{If fi_missing: - ⚠️ FlashInfer kernel missing — tracking issue: flashinfer-ai/flashinfer#{issue_number}}
+
+## Reference Test Results
+\`\`\`
+$(cat /tmp/test_{definition_name}.txt)
+\`\`\`
+
+## Files changed
+- `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
+- `tests/test_{op_type}_{definition_name}.py`
+- `docs/model_coverage.mdx`
+EOF
+)"
 ```
 
-### 4b: PR 2 — Workloads → flashinfer-trace (each agent, run locally)
+### 4b: PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces)
 
 Inside `tmp/worktrees/trace-{definition_name}/`:
 
 ```bash
+# 1. Copy baseline solution (Python reference implementation)
+cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   tmp/worktrees/trace-{definition_name}/solutions/{op_type}/{definition_name}.py
+# (extract the reference_impl field from the definition JSON as a standalone script)
+
+# 2. Copy workload JSONL and safetensors blobs
 cp -r tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl \
       tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
 cp -r tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/ \
       tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
 
 cd tmp/worktrees/trace-{definition_name}
-git add workloads/{op_type}/{definition_name}.jsonl \
+git add solutions/{op_type}/{definition_name}.py \
+        workloads/{op_type}/{definition_name}.jsonl \
         blob/workloads/{op_type}/{definition_name}/
-git commit -m "Add workloads for {definition_name}
+git commit -m "Add {definition_name}: baseline solution + workloads + traces
 
 Model: {hf_repo_id}
 SGLang: {sglang_commit_sha}
 FlashInfer: {flashinfer_commit_sha}
-Entries: {num_workload_entries}
+Workload entries: {num_workload_entries}
+GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
 "
+pre-commit run --all-files
 git push origin workloads-{date}-{definition_name}
 python -c "
 from huggingface_hub import HfApi
 HfApi().create_pull_request(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    title='Add workloads for {definition_name}',
+    title='Add {definition_name}: baseline solution + workloads + traces',
     description='...',
     head='workloads-{date}-{definition_name}',
 )
 "
-```
-
-### 4c: PR 3 — Coverage update → flashinfer-bench (each agent)
-
-Still inside `tmp/worktrees/bench-{definition_name}/`, on a new branch:
-
-```bash
-cd tmp/worktrees/bench-{definition_name}
-git checkout -b chore/coverage-{definition_name}
-# Edit docs/model_coverage.mdx to update status for {definition_name}
-git add docs/model_coverage.mdx
-git commit -m "chore: update coverage for {definition_name}
-
-HuggingFace workload PR: flashinfer-ai/flashinfer-trace#{pr2_number}
-Definition PR: flashinfer-ai/flashinfer-bench#{pr1_number}
-"
-pre-commit run --all-files
-git push origin chore/coverage-{definition_name}
-gh pr create \
-  --repo flashinfer-ai/flashinfer-bench \
-  --title "chore: update coverage for {definition_name}" \
-  --body "..."
 ```
 
 ### 4-cleanup: Remove worktrees after PRs are open

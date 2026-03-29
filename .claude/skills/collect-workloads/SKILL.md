@@ -199,62 +199,51 @@ Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the AP
 6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
 7. **Deduplication**: at most 2 entries per unique axes combination per definition
 
-### Phase 5: Submit Pull Requests (2 PRs per definition)
+### Phase 5: Submit Pull Request (1 HuggingFace PR per definition)
 
-For each definition that has newly collected workloads, submit exactly **two PRs**:
+This skill produces **PR 2** in the two-PR workflow. PR 1 (definition JSON + reference tests +
+model_coverage.mdx) is submitted by `extract-kernel-definitions` and should already be open
+before submitting workloads.
 
-**PR 1 — HuggingFace `flashinfer-ai/flashinfer-trace`** (workload data):
+For each definition with newly collected workloads, submit **one HuggingFace PR** containing
+the baseline solution, workload JSONL, and safetensors traces together:
 
 ```bash
 cd tmp/flashinfer-trace
 BRANCH="workloads-$(date +%Y%m%d)-{definition_name}"
 git checkout -b "$BRANCH"
+
+# Baseline solution (Python reference extracted from definition JSON)
+git add solutions/{op_type}/{definition_name}.py
+
+# Workload JSONL and safetensors blobs
 git add workloads/{op_type}/{definition_name}.jsonl \
         blob/workloads/{op_type}/{definition_name}/
-git commit -m "Add workloads for {definition_name}
 
-Collected from {model} via SGLang + FlashInfer logging API.
-Entries: {num_workload_entries}
+git commit -m "Add {definition_name}: baseline solution + workloads + traces
+
+Model: {hf_repo_id}
+SGLang: {sglang_commit_sha}
+FlashInfer: {flashinfer_commit_sha}
+Workload entries: {num_workload_entries}
+GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
 "
 pre-commit run --all-files
 git push origin "$BRANCH"
-# Submit via HuggingFace Hub API or huggingface-cli
 python -c "
 from huggingface_hub import HfApi
 HfApi().create_pull_request(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    title='Add workloads for {definition_name}',
+    title='Add {definition_name}: baseline solution + workloads + traces',
     description='...',
-    head='{BRANCH}',
+    head='$BRANCH',
 )
 "
 ```
 
-**PR 2 — GitHub `flashinfer-ai/flashinfer-bench`** (model coverage update):
-
-```bash
-# Update model_coverage.mdx to reflect new workload availability
-/track-models --model-name {model_name} --refresh-status
-
-BRANCH="chore/coverage-{definition_name}-$(date +%Y%m%d)"
-git checkout -b "$BRANCH"
-git add docs/model_coverage.mdx
-git commit -m "chore: update coverage for {definition_name}
-
-Workloads now collected; update model_coverage.mdx status.
-"
-pre-commit run --all-files
-git push origin "$BRANCH"
-gh pr create \
-  --repo flashinfer-ai/flashinfer-bench \
-  --title "chore: update coverage for {definition_name}" \
-  --body "..."
-```
-
-**Rule: one definition = one HuggingFace PR + one GitHub PR.** Do not batch multiple
-definitions into a single PR. This keeps each PR reviewable in isolation and allows
-individual definitions to be merged or reverted independently.
+**Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions into a
+single PR. The GitHub PR (definition + tests + coverage) is handled by `extract-kernel-definitions`.
 
 ### Parallelizing across definitions with git worktrees
 
@@ -264,21 +253,15 @@ in parallel — one worktree per definition in each repo, one agent per definiti
 ```bash
 DATE=$(date +%Y%m%d)
 
-# Create worktrees up front for all definitions
+# Create trace worktrees up front for all definitions
 for DEF in {definition_name_1} {definition_name_2} ...; do
-  # HuggingFace flashinfer-trace worktree (PR 2)
   git -C tmp/flashinfer-trace worktree add \
     ../worktrees/trace-${DEF} \
     -b workloads-${DATE}-${DEF}
-
-  # flashinfer-bench worktree (PR 3 — coverage update)
-  git worktree add \
-    tmp/worktrees/bench-${DEF} \
-    -b chore/coverage-${DEF}
 done
 
 # Spawn one agent per definition — all run simultaneously
-# Each agent: copies workload files into its worktree, commits, pushes, creates both PRs
+# Each agent: copies solution + workload files into its worktree, commits, pushes, creates HF PR
 # Clean up after all agents report their PR URLs:
 for DEF in {definition_names}; do
   git -C tmp/flashinfer-trace worktree remove ../worktrees/trace-${DEF}

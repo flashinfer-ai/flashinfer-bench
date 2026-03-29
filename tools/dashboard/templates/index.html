@@ -81,9 +81,8 @@
         <th>Agent</th>
         <th>Status</th>
         <th>Commits</th>
-        <th>PR 1<br><small>def JSON</small></th>
-        <th>PR 2<br><small>workloads HF</small></th>
-        <th>PR 3<br><small>coverage</small></th>
+        <th>PR 1<br><small>def+tests+cov → GH</small></th>
+        <th>PR 2<br><small>solution+wl+traces → HF</small></th>
         <th>Last Activity</th>
         <th>Actions</th>
       </tr>
@@ -129,13 +128,6 @@
             <a href="{{ task.prs['pr2'] }}" class="pr-badge pr-open">✓ open</a>
           {% elif task.prs.get('pr2') == 'N/A' %}
             <span class="pr-badge pr-na">N/A</span>
-          {% else %}
-            <span class="pr-badge pr-pending">pending</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if task.prs.get('pr3') %}
-            <a href="{{ task.prs['pr3'] }}" class="pr-badge pr-open">✓ open</a>
           {% else %}
             <span class="pr-badge pr-pending">pending</span>
           {% endif %}

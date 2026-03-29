@@ -68,7 +68,7 @@
 
     <div class="card">
       <h2>PR Status</h2>
-      {% for i, label in [(1, "Definition JSON → flashinfer-bench"), (2, "Workloads → flashinfer-trace (HF)"), (3, "Coverage → flashinfer-bench")] %}
+      {% for i, label in [(1, "def JSON + ref tests + coverage → flashinfer-bench (GitHub)"), (2, "baseline solution + workloads + traces → flashinfer-trace (HuggingFace)")] %}
       <div style="margin-bottom:8px;">
         <div style="color:#8b949e; font-size:11px; margin-bottom:2px;">PR {{ i }}: {{ label }}</div>
         {% set url = task.prs.get('pr' ~ i) %}

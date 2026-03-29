@@ -9,7 +9,7 @@ Worktree management:
   status              Show all worktrees with branch, commits, dirty state, agent status
   create <name>       Create bench+trace worktrees and scaffold .claude/TASK.md
   check <name>        Detailed progress for a specific definition task
-  prs <name>          Show PR status for a definition (pr1/pr2/pr3 URLs)
+  prs <name>          Show PR status for a definition (pr1/pr2 URLs)
   cleanup             List definitions where all PRs are open (safe to remove)
   remove <name>       Remove both worktrees for a definition
   rescue <name>       Commit or stash uncommitted work in bench worktree
@@ -73,9 +73,8 @@ Status: in_progress | completed | blocked
 <any issues, or "None">
 
 ## PRs
-- PR 1 (definition JSON → flashinfer-bench): <URL or "pending">
-- PR 2 (workloads → flashinfer-trace HF): <URL or "pending" or "N/A — fi_missing">
-- PR 3 (coverage → flashinfer-bench): <URL or "pending">
+- PR 1 (def JSON + ref tests + coverage → flashinfer-bench GitHub): <URL or "pending">
+- PR 2 (baseline solution + workloads + traces → flashinfer-trace HF): <URL or "pending" or "N/A — fi_missing">
 
 Write this file FREQUENTLY — it is how the architect monitors your work.
 """.strip()
@@ -200,9 +199,6 @@ def extract_pr_urls(wt_path):
         elif line.strip().startswith("- PR 2"):
             url = line.split(":", 1)[1].strip() if ":" in line else ""
             prs["pr2"] = url if url.startswith("http") else None
-        elif line.strip().startswith("- PR 3"):
-            url = line.split(":", 1)[1].strip() if ":" in line else ""
-            prs["pr3"] = url if url.startswith("http") else None
     return prs
 
 
@@ -300,7 +296,7 @@ def cmd_status(args):
             agent_str = prog[:12]
 
         prs = extract_pr_urls(wt_path)
-        pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
+        pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
 
         print(
             f"{def_name:<28} {branch:<32} {commits_str:>7} {dirty_str:>5} {agent_str:<12} {pr_str}"
@@ -349,34 +345,30 @@ def cmd_create(args):
         - **Trace worktree** (flashinfer-trace HF repo): `{trace_wt}` → branch `workloads-{date}-{name}`
 
         ## Objective
-        Submit three PRs for this definition, in order:
+        Submit two PRs for this definition, in order:
 
-        ### PR 1 — Definition JSON → flashinfer-bench (GitHub)
+        ### PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage)
         - Copy `flashinfer_trace/definitions/{op_type}/{name}.json` into this worktree
-        - Commit and push branch `feat/def-{name}`
+        - Add reference test at `tests/test_{op_type}_{name}.py`
+        - Update `docs/model_coverage.mdx` to reflect definition status
+        - Commit all three together, push branch `feat/def-{name}`
         - Open PR to flashinfer-ai/flashinfer-bench
         - Record PR URL in {PROGRESS_FILE} under "PR 1"
 
-        ### PR 2 — Workloads → flashinfer-trace (HuggingFace)
+        ### PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces)
         - Workload files are in `tmp/flashinfer-trace/workloads/{op_type}/{name}.jsonl`
           and `tmp/flashinfer-trace/blob/workloads/{op_type}/{name}/`
         - If workload files DO NOT EXIST yet:
           - Run: `tools/gpu-lock python scripts/collect_workloads.py sglang --definitions {name} --flashinfer-trace-dir tmp/flashinfer-trace`
-          - If GPU not available or SGLang not integrated: note as "N/A — collect manually" and skip to PR 3
-        - Copy workload files into `{trace_wt}/`
-        - Commit, push branch `workloads-{date}-{name}`, open HuggingFace PR
+          - If GPU not available or SGLang not integrated: note as "N/A — collect manually" and stop here
+        - Copy baseline solution (extracted from definition JSON reference_impl) into `{trace_wt}/solutions/{op_type}/{name}.py`
+        - Copy workload JSONL and safetensors blobs into `{trace_wt}/`
+        - Commit all together, push branch `workloads-{date}-{name}`, open HuggingFace PR
         - Record PR URL in {PROGRESS_FILE} under "PR 2"
 
-        ### PR 3 — Coverage update → flashinfer-bench (GitHub)
-        - In this worktree, update `docs/model_coverage.mdx` to reflect definition status
-        - Create new branch `chore/coverage-{name}` from this worktree
-        - Commit, push, open PR to flashinfer-ai/flashinfer-bench
-        - Record PR URL in {PROGRESS_FILE} under "PR 3"
-
         ## Acceptance Criteria
-        - [ ] PR 1 open: definition JSON reviewed and PR URL recorded
+        - [ ] PR 1 open: definition JSON + reference test + coverage update, PR URL recorded
         - [ ] PR 2 open (or N/A noted if kernel not yet in FlashInfer/SGLang)
-        - [ ] PR 3 open: coverage doc updated and PR URL recorded
         - [ ] All PR URLs recorded in {PROGRESS_FILE}
 
         ## Key files
@@ -447,7 +439,7 @@ def cmd_check(args):
 
     prs = extract_pr_urls(str(bench_wt))
     print("─── PR Status ───")
-    for i in [1, 2, 3]:
+    for i in [1, 2]:
         url = prs.get(f"pr{i}")
         print(f"  PR {i}: {url or '(pending)'}")
     print()
@@ -472,12 +464,11 @@ def cmd_prs(args):
 
     print(f"PRs for definition: {name}")
     print()
-    for i in [1, 2, 3]:
-        labels = {
-            1: "Definition JSON → flashinfer-bench (GitHub)",
-            2: "Workloads → flashinfer-trace (HuggingFace)",
-            3: "Coverage update → flashinfer-bench (GitHub)",
-        }
+    labels = {
+        1: "def JSON + ref tests + coverage → flashinfer-bench (GitHub)",
+        2: "baseline solution + workloads + traces → flashinfer-trace (HuggingFace)",
+    }
+    for i in [1, 2]:
         url = prs.get(f"pr{i}") or agent_prs.get(f"pr{i}_url")
         status = "✓ open" if url else "pending"
         print(f"  PR {i} [{labels[i]}]: {status}")
@@ -495,7 +486,7 @@ def cmd_cleanup(args):
             continue
         def_name = name_raw[len("bench-") :]
         prs = extract_pr_urls(wt_path)
-        all_prs_open = all(prs.get(f"pr{i}") for i in [1, 3])  # PR 2 may be N/A
+        all_prs_open = prs.get("pr1")  # PR 2 (HF) may be N/A
         info = worktree_info(wt_path)
         a_status, _ = agent_status(def_name)
         if all_prs_open and info["dirty_count"] == 0 and a_status != "running":
@@ -503,7 +494,7 @@ def cmd_cleanup(args):
         elif a_status == "running":
             print(f"{'AGENT RUNNING':<22} {def_name:<30} in progress")
         else:
-            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
             print(f"{'INCOMPLETE':<22} {def_name:<30} {pr_str}")
 
 
@@ -677,7 +668,6 @@ Important tool notes:
         "model": args.model,
         "pr1_url": None,
         "pr2_url": None,
-        "pr3_url": None,
     }
     save_agents(agents)
 
@@ -778,14 +768,14 @@ def cmd_resume(args):
         a_status, a_info = agent_status(def_name)
         info = worktree_info(wt_path)
         prs = extract_pr_urls(wt_path)
-        all_done = all(prs.get(f"pr{i}") for i in [1, 3])
+        all_done = prs.get("pr1")  # PR 2 (HF) may be N/A
 
         if all_done:
             print(f"  ✓ {def_name}: all PRs open — safe to remove")
         elif a_status == "running":
             print(f"  ↻ {def_name}: agent still running (pid={a_info.get('pid')})")
         else:
-            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2, 3])
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
             dirty = f", {info['dirty_count']} dirty" if info["dirty_count"] > 0 else ""
             incomplete.append(def_name)
             print(f"  ! {def_name}: incomplete [{pr_str}]{dirty}")
