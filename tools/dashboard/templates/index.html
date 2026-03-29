@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}FlashInfer-Bench Dashboard{% endblock %}
+
+{% block content %}
+<h1>FlashInfer-Bench Dashboard</h1>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat">
+    <div class="stat-value">{{ stats.total_defs }}</div>
+    <div class="stat-label">Definitions</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.verified }}</div>
+    <div class="stat-label">Verified</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.with_workload }}</div>
+    <div class="stat-label">With Workload</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.active_tasks }}</div>
+    <div class="stat-label">Active Tasks</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value {% if stats.running_agents > 0 %}gpu-free{% endif %}">
+      {{ stats.running_agents }}
+    </div>
+    <div class="stat-label">Running Agents</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.prs_open }}</div>
+    <div class="stat-label">PRs Complete</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value {% if gpu.locked %}gpu-locked{% else %}gpu-free{% endif %}">
+      {{ "LOCKED" if gpu.locked else "FREE" }}
+    </div>
+    <div class="stat-label">GPU Lock</div>
+  </div>
+</div>
+
+{% if gpu.locked and gpu.info %}
+<div class="card" style="border-color: #da3633;">
+  <h2>⚠ GPU Locked</h2>
+  <pre>{{ gpu.info }}</pre>
+</div>
+{% endif %}
+
+<!-- Active Tasks -->
+{% if tasks %}
+<div class="card" {% if stats.running_agents > 0 %}data-running="1"{% endif %}>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2>Active Onboarding Tasks ({{ tasks|length }})</h2>
+    <button class="refresh-btn" onclick="refreshPage()">Refresh</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Definition</th>
+        <th>Agent</th>
+        <th>Status</th>
+        <th>Commits</th>
+        <th>PR 1<br><small>def JSON</small></th>
+        <th>PR 2<br><small>workloads HF</small></th>
+        <th>PR 3<br><small>coverage</small></th>
+        <th>Last Activity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr>
+        <td><a href="/task/{{ task.name }}">{{ task.name }}</a>
+            {% if task.dirty_count > 0 %}
+              <span class="badge badge-yellow">{{ task.dirty_count }} dirty</span>
+            {% endif %}
+        </td>
+        <td>
+          {% if task.agent_running %}
+            <span class="badge badge-green">running</span>
+          {% elif task.agent_pid %}
+            <span class="badge badge-gray">stopped</span>
+          {% else %}
+            <span class="badge badge-gray">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if task.progress_status == "completed" %}
+            <span class="badge badge-green">completed</span>
+          {% elif task.progress_status == "blocked" %}
+            <span class="badge badge-red">blocked</span>
+          {% elif task.progress_status == "in_progress" or task.agent_running %}
+            <span class="badge badge-blue">in progress</span>
+          {% else %}
+            <span class="badge badge-gray">{{ task.progress_status or "idle" }}</span>
+          {% endif %}
+        </td>
+        <td>{{ task.commits_since_main }}</td>
+        <td>
+          {% if task.prs.get('pr1') %}
+            <a href="{{ task.prs['pr1'] }}" class="pr-badge pr-open">✓ open</a>
+          {% else %}
+            <span class="pr-badge pr-pending">pending</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if task.prs.get('pr2') %}
+            <a href="{{ task.prs['pr2'] }}" class="pr-badge pr-open">✓ open</a>
+          {% elif task.prs.get('pr2') == 'N/A' %}
+            <span class="pr-badge pr-na">N/A</span>
+          {% else %}
+            <span class="pr-badge pr-pending">pending</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if task.prs.get('pr3') %}
+            <a href="{{ task.prs['pr3'] }}" class="pr-badge pr-open">✓ open</a>
+          {% else %}
+            <span class="pr-badge pr-pending">pending</span>
+          {% endif %}
+        </td>
+        <td style="color:#8b949e;">{{ task.last_activity_ago }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Definition Inventory -->
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h2>Definition Inventory ({{ defs|length }})</h2>
+    <span style="color:#8b949e; font-size:11px;">
+      {{ stats.verified }} verified · {{ stats.with_workload }} with workloads
+    </span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Op Type</th>
+        <th>Status</th>
+        <th>Workload</th>
+        <th>FlashInfer API</th>
+        <th>Onboarding</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in defs %}
+      <tr>
+        <td style="font-size:11px;">{{ d.name }}</td>
+        <td><span class="badge badge-gray">{{ d.op_type }}</span></td>
+        <td>
+          {% if d.status_tag == "verified" %}
+            <span class="badge badge-green">verified</span>
+          {% else %}
+            <span class="badge badge-yellow">{{ d.status_tag }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if d.has_workload %}
+            <span class="badge badge-green">✓</span>
+          {% else %}
+            <span class="badge badge-gray">—</span>
+          {% endif %}
+        </td>
+        <td style="font-size:10px; color:#8b949e;">{{ d.fi_api or "—" }}</td>
+        <td>
+          {% if d.task %}
+            <a href="/task/{{ d.name }}">
+              {% if d.task.agent_running %}
+                <span class="badge badge-blue">agent running</span>
+              {% elif d.task.all_prs_open %}
+                <span class="badge badge-green">PRs open</span>
+              {% else %}
+                <span class="badge badge-yellow">in progress</span>
+              {% endif %}
+            </a>
+          {% else %}
+            <span style="color:#6e7681;">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Model Coverage -->
+{% if model_coverage %}
+<div class="card">
+  <h2>Model Coverage</h2>
+  <table>
+    <thead>
+      <tr><th>Model</th><th>Architecture</th><th>Coverage</th></tr>
+    </thead>
+    <tbody>
+      {% for row in model_coverage %}
+      <tr>
+        <td>{{ row.model }}</td>
+        <td style="color:#8b949e; font-size:11px;">{{ row.architecture }}</td>
+        <td>
+          {% if "✅" in row.coverage or "Fully" in row.coverage %}
+            <span class="badge badge-green">{{ row.coverage }}</span>
+          {% elif "🟡" in row.coverage or "Partial" in row.coverage %}
+            <span class="badge badge-yellow">{{ row.coverage }}</span>
+          {% else %}
+            <span class="badge badge-red">{{ row.coverage }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

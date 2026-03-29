@@ -199,16 +199,92 @@ Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the AP
 6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
 7. **Deduplication**: at most 2 entries per unique axes combination per definition
 
-### Phase 5: Submit Pull Request
+### Phase 5: Submit Pull Requests (2 PRs per definition)
+
+For each definition that has newly collected workloads, submit exactly **two PRs**:
+
+**PR 1 — HuggingFace `flashinfer-ai/flashinfer-trace`** (workload data):
 
 ```bash
 cd tmp/flashinfer-trace
-git checkout -b workloads-$(date +%Y%m%d)-{op_type}
-git add workloads/ blob/
-git commit -m "Add {op_type} workloads from {model} ({num} samples)"
-git push origin HEAD
-gh pr create --repo flashinfer-ai/flashinfer-trace --title "Add {op_type} workloads" --body "..."
+BRANCH="workloads-$(date +%Y%m%d)-{definition_name}"
+git checkout -b "$BRANCH"
+git add workloads/{op_type}/{definition_name}.jsonl \
+        blob/workloads/{op_type}/{definition_name}/
+git commit -m "Add workloads for {definition_name}
+
+Collected from {model} via SGLang + FlashInfer logging API.
+Entries: {num_workload_entries}
+"
+git push origin "$BRANCH"
+# Submit via HuggingFace Hub API or huggingface-cli
+python -c "
+from huggingface_hub import HfApi
+HfApi().create_pull_request(
+    repo_id='flashinfer-ai/flashinfer-trace',
+    repo_type='dataset',
+    title='Add workloads for {definition_name}',
+    description='...',
+    head='{BRANCH}',
+)
+"
 ```
+
+**PR 2 — GitHub `flashinfer-ai/flashinfer-bench`** (model coverage update):
+
+```bash
+# Update model_coverage.mdx to reflect new workload availability
+/track-models --model-name {model_name} --refresh-status
+
+BRANCH="chore/coverage-{definition_name}-$(date +%Y%m%d)"
+git checkout -b "$BRANCH"
+git add docs/model_coverage.mdx
+git commit -m "chore: update coverage for {definition_name}
+
+Workloads now collected; update model_coverage.mdx status.
+"
+git push origin "$BRANCH"
+gh pr create \
+  --repo flashinfer-ai/flashinfer-bench \
+  --title "chore: update coverage for {definition_name}" \
+  --body "..."
+```
+
+**Rule: one definition = one HuggingFace PR + one GitHub PR.** Do not batch multiple
+definitions into a single PR. This keeps each PR reviewable in isolation and allows
+individual definitions to be merged or reverted independently.
+
+### Parallelizing across definitions with git worktrees
+
+When submitting PRs for multiple definitions, use git worktrees so all submissions happen
+in parallel — one worktree per definition in each repo, one agent per definition.
+
+```bash
+DATE=$(date +%Y%m%d)
+
+# Create worktrees up front for all definitions
+for DEF in {definition_name_1} {definition_name_2} ...; do
+  # HuggingFace flashinfer-trace worktree (PR 2)
+  git -C tmp/flashinfer-trace worktree add \
+    ../worktrees/trace-${DEF} \
+    -b workloads-${DATE}-${DEF}
+
+  # flashinfer-bench worktree (PR 3 — coverage update)
+  git worktree add \
+    tmp/worktrees/bench-${DEF} \
+    -b chore/coverage-${DEF}
+done
+
+# Spawn one agent per definition — all run simultaneously
+# Each agent: copies workload files into its worktree, commits, pushes, creates both PRs
+# Clean up after all agents report their PR URLs:
+for DEF in {definition_names}; do
+  git -C tmp/flashinfer-trace worktree remove ../worktrees/trace-${DEF}
+  git worktree remove tmp/worktrees/bench-${DEF}
+done
+```
+
+See `onboard-model` SKILL.md Phase 4 for the full agent prompt template and per-step details.
 
 ## Output Format
 
@@ -301,6 +377,21 @@ python scripts/sanitize_dumps.py \
 - Verify HuggingFace auth: `huggingface-cli login`
 - Check write permissions to flashinfer-ai/flashinfer-trace
 
+## Checking SGLang Integration Before Collection
+
+Before running `sglang` mode, verify that SGLang actually routes the target kernel through
+FlashInfer. Use the `fi_api` tag from the definition JSON as the search term:
+
+```bash
+# e.g. for fi_api:flashinfer.gdn.gated_delta_rule_decode
+grep -r "gated_delta_rule_decode" tmp/sglang/python/sglang/srt/ --include="*.py" | grep -v __pycache__
+```
+
+If the API is **not found** in SGLang:
+1. SGLang needs to be updated to wire in this FlashInfer kernel.
+2. The `onboard-model` skill (Phase 3c) handles drafting and submitting the SGLang PR.
+3. While the SGLang PR is pending, use `direct` mode if the kernel supports standalone calls.
+
 ## Integration with Other Skills
 
 ```bash
@@ -308,6 +399,9 @@ python scripts/sanitize_dumps.py \
 /extract-kernel-definitions --model-name deepseek_v3
 /collect-workloads --op-type mla_paged --model-name deepseek-v3
 /add-reference-tests --op-type mla_paged
+
+# Or use the full end-to-end pipeline (handles SGLang integration check + PR automatically)
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## References

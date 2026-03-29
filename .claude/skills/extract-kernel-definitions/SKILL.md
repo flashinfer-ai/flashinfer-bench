@@ -502,10 +502,48 @@ When executing this skill:
      - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
      - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
 
-8. **Report results**:
+8. **Submit one PR per definition to flashinfer-bench using git worktrees**:
+
+   For each newly created definition JSON file, open a separate PR to this repository.
+   Use git worktrees so multiple definitions can be submitted in parallel — one worktree
+   and one agent per definition:
+
+   ```bash
+   # Create one worktree per definition (do this up front for all definitions)
+   git worktree add \
+     tmp/worktrees/bench-{definition_name} \
+     -b feat/def-{definition_name}
+
+   # Then in each worktree (agents can run in parallel):
+   cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+      tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
+
+   cd tmp/worktrees/bench-{definition_name}
+   git add flashinfer_trace/definitions/{op_type}/{definition_name}.json
+   git commit -m "feat: add definition {definition_name}
+
+   New {op_type} kernel definition for {model_display_name}.
+   Reference implementation sourced from {source}.
+   "
+   git push origin feat/def-{definition_name}
+   gh pr create \
+     --repo flashinfer-ai/flashinfer-bench \
+     --title "feat: add definition {definition_name}" \
+     --body "..."
+
+   # Clean up worktree after PR is open
+   git worktree remove tmp/worktrees/bench-{definition_name}
+   ```
+
+   **One PR per definition file.** Do not batch multiple definition JSONs into a single PR.
+   The worktree approach ensures each agent works on an isolated branch without interfering
+   with other in-flight definition PRs.
+
+9. **Report results**:
    - List new definitions created (grouped by TP/EP config)
    - List existing definitions skipped (deduplication)
    - List kernels shared across models
+   - List PR URLs opened
 
 ## SGLang Code Patterns to Look For
 
@@ -671,6 +709,27 @@ def run(q, k, v, ...):
 - **Error**: Definition exists with different parameters
 - **Handling**: Create new versioned definition, flag for review
 
+## When FlashInfer Does Not Have the Kernel
+
+If the required kernel does not exist in `tmp/flashinfer/` (no test file, no Python API), this
+skill still generates the definition JSON but using SGLang's vanilla implementation as the
+reference `run()`. Mark the definition with `"status:unverified"` and omit the `fi_api` tag.
+
+After writing the definition, file a GitHub issue requesting the FlashInfer implementation:
+
+```bash
+gh issue create \
+  --repo flashinfer-ai/flashinfer \
+  --title "Kernel request: {op_type} for {model_name}" \
+  --label "enhancement,kernel-request" \
+  --body "..."
+```
+
+See `onboard-model` SKILL.md Phase 2a for the full issue body template.
+
+**Do not run workload collection** for fi_missing kernels — workload collection requires the
+FlashInfer kernel to be available.
+
 ## Integration with Other Skills
 
 ```bash
@@ -685,6 +744,9 @@ def run(q, k, v, ...):
 # Add tests for new definitions
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
+
+# Or use the full end-to-end pipeline (recommended for new models)
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## Notes
