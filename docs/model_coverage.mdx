@@ -669,7 +669,7 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
 | `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
-| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
+| `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | ✅ |
 | `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
 | `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | 🟡 |
 | `gemm_n7168_k5120` | gemm (qkv_proj combined) | 🟡 |
