@@ -82,7 +82,7 @@ Write this file FREQUENTLY — it is how the architect monitors your work.
 
 
 def run(cmd, cwd=None, check=True, capture=True):
-    r = subprocess.run(cmd, shell=True, cwd=cwd or REPO_ROOT, capture_output=capture, text=True)
+    r = subprocess.run(cmd, cwd=cwd or REPO_ROOT, capture_output=capture, text=True)
     if check and r.returncode != 0:
         if capture and r.stderr:
             print(r.stderr, file=sys.stderr)
@@ -100,7 +100,7 @@ def get_trace_wt(name):
 
 def get_worktrees():
     """Return list of (path, branch) for flashinfer-bench worktrees."""
-    raw = run("git worktree list --porcelain")
+    raw = run(["git", "worktree", "list", "--porcelain"])
     worktrees = []
     path = branch = None
     for line in raw.splitlines():
@@ -118,14 +118,12 @@ def get_worktrees():
 
 
 def worktree_info(wt_path):
-    last = run("git log --oneline -1", cwd=wt_path, check=False)
-    dirty_files = run("git status --short --ignore-submodules", cwd=wt_path, check=False)
+    last = run(["git", "log", "--oneline", "-1"], cwd=wt_path, check=False)
+    dirty_files = run(["git", "status", "--short", "--ignore-submodules"], cwd=wt_path, check=False)
     dirty_count = len([l for l in dirty_files.splitlines() if l.strip()])
-    commits_raw = run(
-        "git log --oneline main..HEAD 2>/dev/null || echo ''", cwd=wt_path, check=False
-    )
+    commits_raw = run(["git", "log", "--oneline", "main..HEAD"], cwd=wt_path, check=False)
     commits = [l for l in commits_raw.splitlines() if l.strip()]
-    ts = run("git log -1 --format=%ci", cwd=wt_path, check=False)
+    ts = run(["git", "log", "-1", "--format=%ci"], cwd=wt_path, check=False)
     task_spec = Path(wt_path) / ".claude" / "TASK.md"
     return {
         "last_commit": last,
@@ -330,7 +328,7 @@ def cmd_create(args):
     op_type = args.op_type or (def_json.parent.name if def_json else "<op_type>")
 
     print(f"Creating bench worktree: {bench_wt} (branch: feat/def-{name})")
-    run(f"git worktree add {bench_wt} -b feat/def-{name}")
+    run(["git", "worktree", "add", str(bench_wt), "-b", f"feat/def-{name}"])
 
     # Scaffold .claude/TASK.md
     claude_dir = bench_wt / ".claude"
@@ -398,7 +396,10 @@ def cmd_create(args):
     # Create trace worktree (in flashinfer-trace repo)
     if TRACE_REPO.exists():
         print(f"Creating trace worktree: {trace_wt} (branch: workloads-{date}-{name})")
-        run(f"git worktree add {trace_wt} -b workloads-{date}-{name}", cwd=str(TRACE_REPO))
+        run(
+            ["git", "worktree", "add", str(trace_wt), "-b", f"workloads-{date}-{name}"],
+            cwd=str(TRACE_REPO),
+        )
     else:
         print(f"  NOTE: {TRACE_REPO} does not exist — run /clone-repos first")
         print(f"  Trace worktree ({trace_wt}) will need to be created manually.")
@@ -421,7 +422,7 @@ def cmd_check(args):
         print(f"Error: bench worktree {bench_wt} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    branch = run("git branch --show-current", cwd=str(bench_wt), check=False)
+    branch = run(["git", "branch", "--show-current"], cwd=str(bench_wt), check=False)
     info = worktree_info(str(bench_wt))
 
     print(f"Definition: {name}")
@@ -539,16 +540,19 @@ def cmd_remove(args):
                 file=sys.stderr,
             )
             sys.exit(1)
-        run(f"git worktree remove {bench_wt}" + (" --force" if args.force else ""))
+        remove_cmd = ["git", "worktree", "remove", str(bench_wt)]
+        if args.force:
+            remove_cmd.append("--force")
+        run(remove_cmd)
         print(f"Removed bench worktree: {bench_wt}")
         # Delete branch
-        run(f"git branch -D feat/def-{name}", check=False)
+        run(["git", "branch", "-D", f"feat/def-{name}"], check=False)
 
     if trace_wt.exists() and TRACE_REPO.exists():
-        run(
-            f"git worktree remove {trace_wt}" + (" --force" if args.force else ""),
-            cwd=str(TRACE_REPO),
-        )
+        remove_cmd = ["git", "worktree", "remove", str(trace_wt)]
+        if args.force:
+            remove_cmd.append("--force")
+        run(remove_cmd, cwd=str(TRACE_REPO))
         print(f"Removed trace worktree: {trace_wt}")
 
     # Clean agent tracking
@@ -582,12 +586,12 @@ def cmd_rescue(args):
 
     if action == "commit":
         msg = args.message or f"WIP: rescue uncommitted work for {name}"
-        run("git add -A", cwd=str(bench_wt))
-        run(f'git commit -m "{msg}"', cwd=str(bench_wt))
+        run(["git", "add", "-A"], cwd=str(bench_wt))
+        run(["git", "commit", "-m", msg], cwd=str(bench_wt))
         print(f"Committed: {msg}")
     elif action == "stash":
         msg = args.message or f"rescue: {name}"
-        run(f'git stash push -m "{msg}"', cwd=str(bench_wt))
+        run(["git", "stash", "push", "-m", msg], cwd=str(bench_wt))
         print(f"Stashed: {msg}")
     else:
         print("Aborted.")
@@ -609,7 +613,7 @@ def cmd_spawn(args):
         print(f"  Kill:   tools/architect kill {name}")
         sys.exit(1)
 
-    branch = run("git branch --show-current", cwd=str(bench_wt), check=False)
+    branch = run(["git", "branch", "--show-current"], cwd=str(bench_wt), check=False)
     task_spec_path = bench_wt / ".claude" / "TASK.md"
     task_content = task_spec_path.read_text().strip() if task_spec_path.exists() else ""
 
@@ -798,8 +802,8 @@ def cmd_resume(args):
             info = worktree_info(str(bench_wt))
             if info["dirty_count"] > 0:
                 print(f"\nRescuing dirty work for '{name}'...")
-                run("git add -A", cwd=str(bench_wt))
-                run(f'git commit -m "WIP: auto-rescue for {name}"', cwd=str(bench_wt))
+                run(["git", "add", "-A"], cwd=str(bench_wt))
+                run(["git", "commit", "-m", f"WIP: auto-rescue for {name}"], cwd=str(bench_wt))
 
     if args.respawn:
         for name in incomplete:
