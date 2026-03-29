@@ -85,9 +85,9 @@ def test_correctness(batch_size=2, max_seq_len=256, atol=1e-2, rtol=5e-2):
         inputs["qo_indptr"],
         inputs["kv_indptr"],
         inputs["kv_indices"],
+        inputs["kv_last_page_len"],
         inputs["sm_scale"],
     ]
-    run_args.append(inputs["kv_last_page_len"])
     ref_o, ref_lse = run(*run_args)
 
     fi_kv_heads = NUM_KV_HEADS
@@ -100,14 +100,14 @@ def test_correctness(batch_size=2, max_seq_len=256, atol=1e-2, rtol=5e-2):
         paged_kv_last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
         num_kv_heads=fi_kv_heads,
-        head_dim=HEAD_DIM,
+        head_dim_qk=HEAD_DIM,
         page_size=PAGE_SIZE,
         causal=True,
         q_data_type=torch.bfloat16,
         kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run((inputs["k_cache"], inputs["v_cache"]), return_lse=True)
+    fi_o, fi_lse = wrapper.run(inputs["q"], (inputs["k_cache"], inputs["v_cache"]), return_lse=True)
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
