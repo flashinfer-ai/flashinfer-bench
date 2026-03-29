@@ -52,8 +52,28 @@
 <div class="card" {% if stats.running_agents > 0 %}data-running="1"{% endif %}>
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
     <h2>Active Onboarding Tasks ({{ tasks|length }})</h2>
-    <button class="refresh-btn" onclick="refreshPage()">Refresh</button>
+    <div style="display:flex; gap:8px;">
+      <button class="action-btn" onclick="showCreateForm()">+ Create Task</button>
+      <button class="refresh-btn" onclick="refreshPage()">Refresh</button>
+    </div>
   </div>
+
+  <!-- Create task form (hidden by default) -->
+  <div id="create-form" style="display:none; background:#161b22; border:1px solid #30363d;
+       border-radius:6px; padding:12px; margin-bottom:12px;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input id="new-def-name" placeholder="definition name (e.g. gqa_paged_decode_h32_kv8_d128_ps1)"
+             style="flex:1; min-width:280px; background:#0d1117; border:1px solid #30363d;
+                    color:#e6edf3; font-size:12px; padding:4px 8px; border-radius:4px;">
+      <input id="new-def-optype" placeholder="op_type (optional)"
+             style="width:160px; background:#0d1117; border:1px solid #30363d;
+                    color:#e6edf3; font-size:12px; padding:4px 8px; border-radius:4px;">
+      <button class="action-btn" onclick="createTask()">Create</button>
+      <button class="refresh-btn" onclick="document.getElementById('create-form').style.display='none'">Cancel</button>
+    </div>
+    <div id="create-output" style="margin-top:8px; font-size:11px; color:#8b949e; display:none;"></div>
+  </div>
+
   <table>
     <thead>
       <tr>
@@ -65,6 +85,7 @@
         <th>PR 2<br><small>workloads HF</small></th>
         <th>PR 3<br><small>coverage</small></th>
         <th>Last Activity</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -120,6 +141,16 @@
           {% endif %}
         </td>
         <td style="color:#8b949e;">{{ task.last_activity_ago }}</td>
+        <td style="white-space:nowrap;">
+          {% if task.agent_running %}
+            <button class="action-btn action-danger" onclick="killAgent('{{ task.name }}')">Kill</button>
+          {% else %}
+            <button class="action-btn" onclick="spawnAgent('{{ task.name }}')">Spawn</button>
+          {% endif %}
+          {% if task.dirty_count > 0 and not task.agent_running %}
+            <button class="action-btn action-warn" onclick="rescueTask('{{ task.name }}')">Rescue</button>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -215,4 +246,56 @@
   </table>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function apiPost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  return r.json();
+}
+
+function showCreateForm() {
+  document.getElementById('create-form').style.display = 'block';
+  document.getElementById('new-def-name').focus();
+}
+
+async function createTask() {
+  const name = document.getElementById('new-def-name').value.trim();
+  const op_type = document.getElementById('new-def-optype').value.trim();
+  if (!name) return;
+  const out = document.getElementById('create-output');
+  out.style.display = 'block';
+  out.textContent = 'Creating…';
+  const res = await apiPost('/api/tasks', {name, op_type});
+  out.textContent = res.output || (res.ok ? 'Done.' : 'Error');
+  if (res.ok) setTimeout(() => location.reload(), 1500);
+}
+
+async function spawnAgent(name) {
+  if (!confirm(`Spawn agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/spawn`);
+  alert(res.output || (res.ok ? 'Agent spawned.' : 'Error spawning agent.'));
+  if (res.ok) location.reload();
+}
+
+async function killAgent(name) {
+  if (!confirm(`Kill agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/kill`);
+  alert(res.output || (res.ok ? 'Agent killed.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+
+async function rescueTask(name) {
+  const msg = prompt(`Commit message for rescue of '${name}':`, `WIP: rescue via dashboard`);
+  if (msg === null) return;
+  const res = await apiPost(`/api/tasks/${name}/rescue`, {message: msg});
+  alert(res.output || (res.ok ? 'Rescued.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+</script>
 {% endblock %}

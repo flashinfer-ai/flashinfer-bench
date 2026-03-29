@@ -51,6 +51,19 @@
         Re-attach: <code>cd {{ task.bench_wt }} &amp;&amp; claude --resume {{ task.agent_session_id }}</code>
       </div>
       {% endif %}
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        {% if task.agent_running %}
+          <button class="action-btn action-danger" onclick="killAgent('{{ task.name }}')">Kill Agent</button>
+        {% else %}
+          <button class="action-btn" onclick="spawnAgent('{{ task.name }}')">Spawn Agent</button>
+        {% endif %}
+        {% if task.dirty_count > 0 and not task.agent_running %}
+          <button class="action-btn action-warn" onclick="rescueTask('{{ task.name }}')">Rescue (commit dirty)</button>
+        {% endif %}
+        {% if task.all_prs_open %}
+          <button class="action-btn action-danger" onclick="removeTask('{{ task.name }}')">Remove Worktrees</button>
+        {% endif %}
+      </div>
     </div>
 
     <div class="card">
@@ -123,4 +136,46 @@
   &nbsp;·&nbsp;
   <a href="#" onclick="location.reload()">Refresh</a>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function apiPost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  return r.json();
+}
+
+async function spawnAgent(name) {
+  if (!confirm(`Spawn agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/spawn`);
+  alert(res.output || (res.ok ? 'Agent spawned.' : 'Error spawning agent.'));
+  if (res.ok) location.reload();
+}
+
+async function killAgent(name) {
+  if (!confirm(`Kill agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/kill`);
+  alert(res.output || (res.ok ? 'Agent killed.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+
+async function rescueTask(name) {
+  const msg = prompt(`Commit message for rescue of '${name}':`, `WIP: rescue via dashboard`);
+  if (msg === null) return;
+  const res = await apiPost(`/api/tasks/${name}/rescue`, {message: msg});
+  alert(res.output || (res.ok ? 'Rescued.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+
+async function removeTask(name) {
+  if (!confirm(`Remove worktrees for '${name}'? This cannot be undone.`)) return;
+  const res = await apiPost(`/api/tasks/${name}/remove`);
+  alert(res.output || (res.ok ? 'Removed.' : 'Error.'));
+  if (res.ok) window.location.href = '/';
+}
+</script>
 {% endblock %}

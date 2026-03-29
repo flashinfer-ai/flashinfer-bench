@@ -3,9 +3,11 @@
 
 import json
 import os
+import re
+import subprocess
 import sys
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 
 # Add dashboard dir to path for local imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -24,6 +26,20 @@ app = Flask(__name__)
 REPO_ROOT = os.environ.get(
     "REPO_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
+ARCHITECT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "architect")
+
+_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def _valid_name(name):
+    return bool(name and _NAME_RE.match(name))
+
+
+def _run_architect(*args):
+    """Run tools/architect with the given args, return (stdout, stderr, returncode)."""
+    cmd = [ARCHITECT] + list(args)
+    r = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+    return r.stdout.strip(), r.stderr.strip(), r.returncode
 
 
 # ── HTML routes ────────────────────────────────────────────────────────────
@@ -130,6 +146,70 @@ def api_agent_log(name):
     log_path = os.path.join(task["bench_wt"], ".agent.log")
     messages = parse_agent_log(log_path) if os.path.exists(log_path) else []
     return jsonify({"messages": messages, "summary": get_log_summary(messages)})
+
+
+# ── Action API (POST) ──────────────────────────────────────────────────────
+
+
+@app.route("/api/tasks", methods=["POST"])
+def api_create_task():
+    """Create bench+trace worktrees for a definition name."""
+    data = request.get_json(silent=True) or {}
+    name = data.get("name", "").strip()
+    op_type = data.get("op_type", "").strip()
+    if not _valid_name(name):
+        return jsonify({"error": "invalid or missing name"}), 400
+    args = ["create", name]
+    if op_type:
+        args += ["--op-type", op_type]
+    stdout, stderr, code = _run_architect(*args)
+    return jsonify({"ok": code == 0, "output": stdout or stderr}), (200 if code == 0 else 500)
+
+
+@app.route("/api/tasks/<name>/spawn", methods=["POST"])
+def api_spawn(name):
+    """Spawn a Claude agent for a definition."""
+    if not _valid_name(name):
+        return jsonify({"error": "invalid name"}), 400
+    data = request.get_json(silent=True) or {}
+    args = ["spawn", name]
+    if data.get("model"):
+        args += ["--model", data["model"]]
+    stdout, stderr, code = _run_architect(*args)
+    return jsonify({"ok": code == 0, "output": stdout or stderr}), (200 if code == 0 else 500)
+
+
+@app.route("/api/tasks/<name>/kill", methods=["POST"])
+def api_kill(name):
+    """Kill a running agent."""
+    if not _valid_name(name):
+        return jsonify({"error": "invalid name"}), 400
+    stdout, stderr, code = _run_architect("kill", name)
+    return jsonify({"ok": code == 0, "output": stdout or stderr}), (200 if code == 0 else 500)
+
+
+@app.route("/api/tasks/<name>/rescue", methods=["POST"])
+def api_rescue(name):
+    """Commit dirty work in the bench worktree."""
+    if not _valid_name(name):
+        return jsonify({"error": "invalid name"}), 400
+    data = request.get_json(silent=True) or {}
+    msg = data.get("message", f"WIP: rescue via dashboard for {name}")
+    stdout, stderr, code = _run_architect("rescue", name, "--action", "commit", "-m", msg)
+    return jsonify({"ok": code == 0, "output": stdout or stderr}), (200 if code == 0 else 500)
+
+
+@app.route("/api/tasks/<name>/remove", methods=["POST"])
+def api_remove(name):
+    """Remove worktrees for a definition (requires all PRs open or force)."""
+    if not _valid_name(name):
+        return jsonify({"error": "invalid name"}), 400
+    data = request.get_json(silent=True) or {}
+    args = ["remove", name, "-y"]
+    if data.get("force"):
+        args.append("--force")
+    stdout, stderr, code = _run_architect(*args)
+    return jsonify({"ok": code == 0, "output": stdout or stderr}), (200 if code == 0 else 500)
 
 
 if __name__ == "__main__":
