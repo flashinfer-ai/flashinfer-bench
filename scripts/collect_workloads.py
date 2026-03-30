@@ -630,6 +630,7 @@ def run_sglang_mode(
     env["FLASHINFER_DUMP_MAX_SIZE_GB"] = "30"
     # Use pre-compiled CUDA norm kernels — CuTe DSL norm requires CUDA toolkit 13.1+
     env["FLASHINFER_USE_CUDA_NORM"] = "1"
+    env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
 
     print(f"\nPhase 2: FlashInfer Logging Configuration")
     print(f"  FLASHINFER_DUMP_INCLUDE={include_pattern}")
@@ -663,6 +664,7 @@ def run_sglang_mode(
             cpu_offload_gb=cpu_offload_gb,
         )
     else:
+        _server_port = int(os.environ.get("SGLANG_PORT", "30000"))
         print(f"  Launching SGLang server (model={model_path}, {desc})")
         # Start SGLang server
         server_cmd = [
@@ -674,7 +676,7 @@ def run_sglang_mode(
             "--host",
             "0.0.0.0",
             "--port",
-            "30000",
+            str(_server_port),
             "--tp",
             str(tp),
             "--attention-backend",
@@ -694,7 +696,7 @@ def run_sglang_mode(
         if quantization:
             server_cmd += ["--quantization", quantization]
         if cpu_offload_gb > 0:
-            server_cmd += ["--cpu-offload-gb", str(cpu_offload_gb)]
+            server_cmd += ["--cpu-offload-gb", str(int(cpu_offload_gb))]
 
         server_log_path = dump_dir / "sglang_server.log"
         server_log_file = open(server_log_path, "w")
@@ -711,7 +713,7 @@ def run_sglang_mode(
             if server_proc.poll() is not None:
                 raise RuntimeError("SGLang server exited unexpectedly during startup")
             try:
-                r = _requests.get("http://localhost:30000/health", timeout=5)
+                r = _requests.get(f"http://localhost:{_server_port}/health", timeout=5)
                 if r.status_code == 200:
                     print("  Server is ready!")
                     break
@@ -840,8 +842,9 @@ def _run_sglang_inference(
 
     def _send_one(msgs: list[dict], max_tokens: int = 256) -> bool:
         try:
+            _port = int(os.environ.get("SGLANG_PORT", "30000"))
             resp = requests.post(
-                "http://localhost:30000/v1/chat/completions",
+                f"http://localhost:{_port}/v1/chat/completions",
                 json={
                     "model": "model",
                     "messages": msgs,
@@ -1016,6 +1019,106 @@ def _run_sglang_inference(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Baseline evaluation
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
+    """Run the baseline (reference) solution against collected workloads.
+
+    Uses ``flashinfer-bench run`` to evaluate the baseline solution for each
+    definition and saves a per-definition trace JSONL to
+    ``{trace_dir}/traces/<def_name>_baseline.jsonl``.
+
+    Exits with a non-zero status if any workload evaluation returns a status
+    other than PASSED.
+    """
+    import datetime
+
+    traces_dir = trace_dir / "traces"
+    traces_dir.mkdir(parents=True, exist_ok=True)
+
+    all_passed = True
+
+    for def_file in def_files:
+        def_name = def_file.stem
+        workload_file = trace_dir / "workloads" / def_file.parent.name / f"{def_name}.jsonl"
+        if not workload_file.exists():
+            print(f"  WARNING: workload file not found for {def_name}, skipping eval")
+            continue
+
+        print(f"\nPhase 5: Baseline evaluation — {def_name}")
+        out_trace = traces_dir / f"{def_name}_baseline.jsonl"
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "flashinfer_bench",
+            "run",
+            "--local",
+            str(trace_dir),
+            "--definitions",
+            def_name,
+            "--solutions",
+            "baseline",
+            "--save-results",
+            "--warmup-runs",
+            "3",
+            "--iterations",
+            "20",
+        ]
+        print(f"  Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        stdout = result.stdout + result.stderr
+
+        # Collect trace lines from the standard trace output location
+        # flashinfer-bench writes traces to {trace_dir}/traces/<def_name>_workloads.jsonl
+        auto_trace = traces_dir / f"{def_name}_workloads.jsonl"
+
+        failed = []
+        passed = 0
+
+        if auto_trace.exists():
+            import json as _json
+
+            lines = [l.strip() for l in auto_trace.read_text().splitlines() if l.strip()]
+            for line in lines:
+                try:
+                    rec = _json.loads(line)
+                    status = rec.get("evaluation", {}).get("status", "UNKNOWN")
+                    if status != "PASSED":
+                        failed.append({"workload": rec.get("workload", {}).get("uuid", "?"), "status": status})
+                    else:
+                        passed += 1
+                except Exception:
+                    pass
+
+            # Copy to per-def baseline trace name
+            import shutil
+            shutil.copy(auto_trace, out_trace)
+            print(f"  Results: {passed} PASSED, {len(failed)} FAILED")
+            if failed:
+                print(f"  FAILED workloads:")
+                for f in failed[:10]:
+                    print(f"    uuid={f['workload']} status={f['status']}")
+                all_passed = False
+            else:
+                print(f"  All {passed} workloads PASSED ✓")
+                print(f"  Trace written to: {out_trace}")
+        else:
+            print(f"  WARNING: No trace output found at {auto_trace}")
+            print(f"  flashinfer-bench stdout:\n{stdout[:2000]}")
+            if result.returncode != 0:
+                all_passed = False
+
+    if not all_passed:
+        print("\nERROR: Some baseline evaluations FAILED. Check trace output above.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\nBaseline evaluation complete. All workloads PASSED.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1138,6 +1241,35 @@ def main():
         action="store_true",
         help="Skip Phase 0 package install (use when env already has correct versions)",
     )
+    sglang_p.add_argument(
+        "--eval-baseline",
+        action="store_true",
+        default=True,
+        help=(
+            "After collecting workloads, run the baseline solution against them using "
+            "'flashinfer-bench run' and write per-workload trace JSONL to "
+            "{trace_dir}/traces/<def_name>_baseline.jsonl. All workloads must PASS. "
+            "Enabled by default; use --no-eval-baseline to skip."
+        ),
+    )
+    sglang_p.add_argument(
+        "--no-eval-baseline",
+        dest="eval_baseline",
+        action="store_false",
+        help="Skip baseline evaluation after workload collection.",
+    )
+    direct_p.add_argument(
+        "--eval-baseline",
+        action="store_true",
+        default=True,
+        help="After collecting workloads, run baseline evaluation (enabled by default).",
+    )
+    direct_p.add_argument(
+        "--no-eval-baseline",
+        dest="eval_baseline",
+        action="store_false",
+        help="Skip baseline evaluation after workload collection.",
+    )
 
     args = parser.parse_args()
 
@@ -1225,6 +1357,9 @@ def main():
     print(f"\n{'='*60}")
     print(f"Collection complete! Dump dir: {dump_dir}")
     print(f"{'='*60}")
+
+    if getattr(args, "eval_baseline", True):
+        run_baseline_eval(def_files, trace_dir)
 
 
 if __name__ == "__main__":

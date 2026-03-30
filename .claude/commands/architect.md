@@ -39,25 +39,32 @@ If the loop is already active, the script will tell you. Otherwise it creates th
 
 | Condition | Action |
 |-----------|--------|
-| Agent stopped + all 3 PRs open + clean | Report: ready for cleanup (`tools/architect cleanup`) |
+| Agent stopped + both PRs open + clean | Report: ready for cleanup (`tools/architect cleanup`) |
 | Agent stopped + some PRs missing + has commits | Rescue: `tools/architect rescue <name> --action commit -m "WIP: agent checkpoint"` |
 | Agent running | Report progress summary (status, current step, PRs opened so far) |
 | Ready to spawn (has task spec, no agent) | Report: suggest user runs `tools/architect spawn <name>` |
 | GPU locked | Report: GPU busy, workload collection in progress |
 | Idle (no task spec, no agent) | Report: idle worktree, needs task spec |
 
-4. **Report**: One-line summary per task (name, agent status, PRs 1/2/3 open/pending)
-5. **Completion**: If all active tasks have all 3 PRs open, output: `<promise>ALL_TASKS_DONE</promise>`
+4. **Report**: One-line summary per task (name, agent status, PRs 1/2 open/pending)
+5. **Completion**: If all active tasks have both PRs open, output: `<promise>ALL_TASKS_DONE</promise>`
 
-## Post-Completion Review (when all PRs open)
+## Post-Completion Review (when both PRs open)
 
 After a definition reaches all-PRs-open state, run this checklist:
 
-1. **Definition JSON**: Verify `flashinfer_trace/definitions/{op_type}/{name}.json` exists in the PR
-2. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
-3. **Workloads**: Verify `.jsonl` file appears in the HF PR (PR 2)
-4. **Coverage**: Verify `docs/model_coverage.mdx` updated in PR 3
-5. **Reference tests**: Check if any reference test was added under `tests/`
+**PR 1 (GitHub flashinfer-bench):**
+1. **Definition JSON**: Verify `flashinfer_trace/definitions/{op_type}/{name}.json` exists
+2. **Reference test**: Verify `flashinfer_trace/tests/references/test_{name}.py` exists
+3. **Coverage**: Verify `docs/model_coverage.mdx` updated to ✅ for this definition
+4. **Test results**: Verify PR description includes reference test stdout
+5. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
+
+**PR 2 (HuggingFace flashinfer-trace):**
+1. **Workloads**: Verify `workloads/{op_type}/{name}.jsonl` exists
+2. **Blobs**: Verify `blob/workloads/{op_type}/*.safetensors` exist
+3. **Baseline solution**: Verify `solutions/baseline_{op_type}.py` exists
+4. **Eval trace**: Verify `traces/{name}_baseline.jsonl` exists and all entries have `evaluation.status == "PASSED"`
 
 Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
 
@@ -72,7 +79,7 @@ Report findings per definition. Do NOT modify worktrees yourself — report issu
 ## Stopping
 
 - User runs `/cancel-architect` to stop the loop
-- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have all 3 PRs open
+- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have both PRs open
 
 ## Creating Tasks for Agents
 
@@ -89,10 +96,23 @@ tools/architect spawn <def-name>     # Agent reads TASK.md, works on 3 PRs
 **Every TASK.md for definition onboarding must include:**
 ```
 ## Objective
-Submit 3 PRs for definition <name>:
-- PR 1: Definition JSON → flashinfer-ai/flashinfer-bench (this repo)
-- PR 2: Workloads → flashinfer-ai/flashinfer-trace (HuggingFace dataset)
-- PR 3: Coverage update → flashinfer-ai/flashinfer-bench (this repo)
+Submit 2 PRs for definition <name>:
+- PR 1 (GitHub flashinfer-bench): Definition JSON + reference tests + docs/model_coverage.mdx (✅) + paste reference test stdout in PR description
+- PR 2 (HuggingFace flashinfer-trace): Baseline solution + workloads + blobs + def JSON + ref test + baseline eval trace (all entries PASSED)
+
+## PR 1 Contents
+- `flashinfer_trace/definitions/{op_type}/{name}.json`
+- `flashinfer_trace/tests/references/test_{name}.py`
+- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition
+- PR description must include the full stdout of running the reference test
+
+## PR 2 Contents
+- `solutions/baseline_{op_type}.py` (generated from `reference_impl` field in def JSON)
+- `workloads/{op_type}/{name}.jsonl`
+- `blob/workloads/{op_type}/*.safetensors`
+- `flashinfer_trace/definitions/{op_type}/{name}.json`
+- `flashinfer_trace/tests/references/test_{name}.py`
+- `traces/{name}_baseline.jsonl` (all entries must have `evaluation.status == "PASSED"`)
 
 ## Progress Reporting
 Write .agent-progress.md after every major step:
@@ -103,11 +123,11 @@ Write .agent-progress.md after every major step:
   Blockers: <if any>
   - PR 1: <url or pending>
   - PR 2: <url or pending>
-  - PR 3: <url or pending>
 
 ## GPU Work
 Use tools/gpu-lock before any SGLang workload collection:
-  tools/gpu-lock --exec-timeout 1800 -- python collect_workloads.py ...
+  tools/gpu-lock --gpus <N> --exec-timeout 1800 -- python collect_workloads.py ...
+Where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.)
 ```
 
 ## CLI Reference
