@@ -211,6 +211,7 @@ def _run_sglang_offline_paged_prefill(
         (32, 32, 4),
         (32, 128, 4),
         (64, 32, 4),
+        (128, 32, 4),
     ]
 
     script = r"""
@@ -357,7 +358,7 @@ def _run_sglang_offline_batched(
       2. Creates sglang.Engine and calls engine.generate() for each (batch_size, prompt_tokens) round
       3. Each generate() call is a static batch → decode sees exactly batch_size=B sequences
 
-    Rounds cover batch_size ∈ {1, 2, 4, 8, 16, 32, 64} with short/medium/long prompts
+    Rounds cover batch_size ∈ {1, 2, 4, 8, 16, 32, 64, 128} with short/medium/long prompts
     to produce diverse (batch_size, num_kv_indices) workload combinations.
     """
     # Controlled (batch_size, prompt_tokens, max_tokens) rounds.
@@ -367,14 +368,10 @@ def _run_sglang_offline_batched(
     # 24 distinct (batch_size, kv_len) combos per batch_size — enough for
     # the deduplication/diversity filter to select 20 representative entries.
     rounds = [
-        (1, 50, 8),
         (1, 300, 8),
         (1, 800, 8),
         (2, 50, 8),
-        (2, 300, 8),
-        (2, 800, 8),
         (4, 50, 8),
-        (4, 300, 8),
         (4, 800, 8),
         (8, 50, 8),
         (8, 300, 8),
@@ -385,6 +382,7 @@ def _run_sglang_offline_batched(
         (32, 50, 8),
         (32, 300, 8),
         (64, 50, 8),
+        (128, 50, 8),
     ]
 
     # Write a self-contained script that is launched as a subprocess.
@@ -555,7 +553,8 @@ def run_sglang_mode(
     # Exclude only constructors; .plan is included selectively via FLASHINFER_DUMP_INCLUDE
     env["FLASHINFER_DUMP_EXCLUDE"] = "*.__init__"
     # Each batch-size round emits ~2 decode dumps per worker (1 plan + 1-8 run).
-    # 18 rounds × 10 × 2 workers ≈ 360 — set a generous cap.
+    # Round count varies by schedule and can include larger-batch cases (up to 256).
+    # Keep a generous cap so high-concurrency runs do not truncate dumps.
     env["FLASHINFER_DUMP_MAX_COUNT"] = "50000"
     env["FLASHINFER_DUMP_MAX_SIZE_GB"] = "30"
     # Use pre-compiled CUDA norm kernels — CuTe DSL norm requires CUDA toolkit 13.1+
@@ -857,7 +856,7 @@ def _run_sglang_inference(
         # Varying both gives diverse (len_indptr, total_q, num_kv_indices) combinations.
         # - Avoid too many num_concurrent=1 rounds (they all yield len_indptr=2 and crowd
         #   out larger-batch shapes after the 20-entry dedup cap).
-        # - Include large batches (64, 128) for divergent problem shapes.
+        # - Include large batches (64, 128, 256) for divergent problem shapes.
         _ROUNDS = [
             (1, 128),
             (1, 512),
@@ -882,6 +881,8 @@ def _run_sglang_inference(
             (128, 32),
             (128, 128),
             (128, 512),
+            (256, 32),
+            (256, 128),
         ]
         total_success = 0
         total_sent = 0
@@ -925,7 +926,7 @@ def _run_sglang_inference(
         #
         # We vary both batch_size and prompt_tokens across rounds to produce
         # diverse (batch_size, num_kv_indices) combinations:
-        #   - batch_size  ∈ {1, 2, 4, 8, 16, 32, 64}
+        #   - batch_size  ∈ {1, 2, 4, 8, 16, 32, 64, 128}
         #   - prompt_tokens control how many KV pages each sequence occupies
         #
         # max_tokens is kept short (128) so rounds complete quickly and the
@@ -950,6 +951,7 @@ def _run_sglang_inference(
             (32, 50, 128),
             (32, 300, 128),
             (64, 50, 128),
+            (128, 50, 128),
         ]
 
         conv_idx = 0
