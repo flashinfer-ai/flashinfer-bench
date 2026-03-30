@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Task: {{ task.name }}{% endblock %}
+
+{% block content %}
+<h1>{{ task.name }}</h1>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+  <!-- Left: Task info + PR status -->
+  <div>
+    <div class="card">
+      <h2>Task Info</h2>
+      <table>
+        <tr><td style="color:#8b949e;">Branch</td><td>{{ task.branch }}</td></tr>
+        <tr><td style="color:#8b949e;">Bench worktree</td><td style="font-size:11px;">{{ task.bench_wt }}</td></tr>
+        <tr><td style="color:#8b949e;">Trace worktree</td><td style="font-size:11px;">
+          {{ task.trace_wt }}
+          {% if not task.trace_wt_exists %}<span class="badge badge-red">missing</span>{% endif %}
+        </td></tr>
+        <tr><td style="color:#8b949e;">Commits since main</td><td>{{ task.commits_since_main }}</td></tr>
+        <tr><td style="color:#8b949e;">Dirty files</td><td>
+          {% if task.dirty_count > 0 %}
+            <span class="badge badge-yellow">{{ task.dirty_count }}</span>
+          {% else %}clean{% endif %}
+        </td></tr>
+        <tr><td style="color:#8b949e;">Last activity</td><td>{{ task.last_activity_ago }}</td></tr>
+        <tr><td style="color:#8b949e;">Last commit</td><td style="font-size:11px;">{{ task.last_commit }}</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Agent</h2>
+      <table>
+        <tr><td style="color:#8b949e;">Status</td><td>
+          {% if task.agent_running %}
+            <span class="badge badge-green">running</span>
+          {% elif task.agent_pid %}
+            <span class="badge badge-gray">stopped (pid {{ task.agent_pid }})</span>
+          {% else %}
+            <span class="badge badge-gray">none</span>
+          {% endif %}
+        </td></tr>
+        {% if task.agent_session_id %}
+        <tr><td style="color:#8b949e;">Session</td><td style="font-size:11px;">{{ task.agent_session_id }}</td></tr>
+        {% endif %}
+        {% if task.agent_started %}
+        <tr><td style="color:#8b949e;">Started</td><td>{{ task.agent_started }}</td></tr>
+        {% endif %}
+      </table>
+      {% if task.agent_session_id %}
+      <div style="margin-top:8px; font-size:11px; color:#8b949e;">
+        Re-attach: <code>cd {{ task.bench_wt }} &amp;&amp; claude --resume {{ task.agent_session_id }}</code>
+      </div>
+      {% endif %}
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        {% if task.agent_running %}
+          <button class="action-btn action-danger" onclick="killAgent('{{ task.name }}')">Kill Agent</button>
+        {% else %}
+          <button class="action-btn" onclick="spawnAgent('{{ task.name }}')">Spawn Agent</button>
+        {% endif %}
+        {% if task.dirty_count > 0 and not task.agent_running %}
+          <button class="action-btn action-warn" onclick="rescueTask('{{ task.name }}')">Rescue (commit dirty)</button>
+        {% endif %}
+        {% if task.all_prs_open %}
+          <button class="action-btn action-danger" onclick="removeTask('{{ task.name }}')">Remove Worktrees</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>PR Status</h2>
+      {% for i, label in [(1, "def JSON + ref tests + coverage → flashinfer-bench (GitHub)"), (2, "baseline solution + workloads + traces → flashinfer-trace (HuggingFace)")] %}
+      <div style="margin-bottom:8px;">
+        <div style="color:#8b949e; font-size:11px; margin-bottom:2px;">PR {{ i }}: {{ label }}</div>
+        {% set url = task.prs.get('pr' ~ i) %}
+        {% if url %}
+          <a href="{{ url }}" class="pr-badge pr-open">✓ {{ url }}</a>
+        {% else %}
+          <span class="pr-badge pr-pending">pending</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Right: Progress -->
+  <div>
+    {% if task.progress %}
+    <div class="card">
+      <h2>Agent Progress</h2>
+      <div class="progress-box">{{ task.progress }}</div>
+    </div>
+    {% endif %}
+
+    {% if summary %}
+    <div class="card">
+      <h2>Agent Log Summary</h2>
+      <table>
+        {% if summary.num_turns %}<tr><td style="color:#8b949e;">Turns</td><td>{{ summary.num_turns }}</td></tr>{% endif %}
+        {% if summary.tool_calls %}<tr><td style="color:#8b949e;">Tool calls</td><td>{{ summary.tool_calls }}</td></tr>{% endif %}
+        {% if summary.total_cost_usd %}<tr><td style="color:#8b949e;">Cost</td><td>${{ "%.4f"|format(summary.total_cost_usd) }}</td></tr>{% endif %}
+        {% if summary.model %}<tr><td style="color:#8b949e;">Model</td><td style="font-size:11px;">{{ summary.model }}</td></tr>{% endif %}
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Agent log messages -->
+{% if messages %}
+<div class="card">
+  <h2>Agent Log ({{ messages|length }} messages)</h2>
+  {% for msg in messages[-50:] %}
+    {% if msg.type == "assistant_text" %}
+      <div style="margin:6px 0; padding:6px; border-left:2px solid #58a6ff;">
+        <span style="color:#58a6ff; font-size:10px;">assistant</span>
+        <div style="color:#c9d1d9; font-size:11px; margin-top:2px;">{{ msg.content[:400] }}{% if msg.content|length > 400 %}…{% endif %}</div>
+      </div>
+    {% elif msg.type == "tool_call" %}
+      <div style="margin:4px 0; padding:4px 6px; background:#1c2128; border-radius:3px;">
+        <span style="color:#d2a8ff; font-size:10px;">{{ msg.tool_name }}</span>
+        <span style="color:#8b949e; font-size:10px; margin-left:6px;">{{ msg.tool_input_summary }}</span>
+      </div>
+    {% elif msg.type == "result" %}
+      <div style="margin:6px 0; padding:6px; border-left:2px solid {% if msg.is_error %}#f85149{% else %}#3fb950{% endif %};">
+        <span style="font-size:10px; color:{% if msg.is_error %}#f85149{% else %}#3fb950{% endif %};">
+          result ({{ msg.num_turns }} turns, ${{ "%.4f"|format(msg.total_cost_usd or 0) }})
+        </span>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="margin-top:8px; font-size:11px; color:#8b949e;">
+  <a href="/">&larr; Back to dashboard</a>
+  &nbsp;·&nbsp;
+  <a href="#" onclick="location.reload()">Refresh</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function apiPost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  return r.json();
+}
+
+async function spawnAgent(name) {
+  if (!confirm(`Spawn agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/spawn`);
+  alert(res.output || (res.ok ? 'Agent spawned.' : 'Error spawning agent.'));
+  if (res.ok) location.reload();
+}
+
+async function killAgent(name) {
+  if (!confirm(`Kill agent for '${name}'?`)) return;
+  const res = await apiPost(`/api/tasks/${name}/kill`);
+  alert(res.output || (res.ok ? 'Agent killed.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+
+async function rescueTask(name) {
+  const msg = prompt(`Commit message for rescue of '${name}':`, `WIP: rescue via dashboard`);
+  if (msg === null) return;
+  const res = await apiPost(`/api/tasks/${name}/rescue`, {message: msg});
+  alert(res.output || (res.ok ? 'Rescued.' : 'Error.'));
+  if (res.ok) location.reload();
+}
+
+async function removeTask(name) {
+  if (!confirm(`Remove worktrees for '${name}'? This cannot be undone.`)) return;
+  const res = await apiPost(`/api/tasks/${name}/remove`);
+  alert(res.output || (res.ok ? 'Removed.' : 'Error.'));
+  if (res.ok) window.location.href = '/';
+}
+</script>
+{% endblock %}

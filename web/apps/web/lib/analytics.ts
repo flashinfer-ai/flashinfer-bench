@@ -26,6 +26,21 @@ export type AuthorCurvesResponse = {
   coverage: Record<string, CoverageStats>
 }
 
+export type SpeedupMetrics = {
+  avgSpeedup: number
+  definitions: number
+  workloads: number
+  successRate: number
+  winRate: number
+  bestSolutions: Record<string, string> | null
+}
+
+export type AuthorRankingEntry = SpeedupMetrics & { author: string }
+
+export type AuthorRankingsResponse = {
+  rankings: AuthorRankingEntry[]
+}
+
 export type AuthorCorrectnessResponse = {
   stats: Array<CorrectnessSummary & { author: string }>
   totals: CorrectnessSummary
@@ -327,6 +342,183 @@ export function computeFastPCurvesForAuthors(params: {
   }
 
   return { curves, comparisonCounts, totalComparisons, totalWorkloads, coverage }
+}
+
+function collectBaselineNames(baseline?: BaselineConfig): Set<string> {
+  const names = new Set<string>()
+  if (baseline?.default) names.add(baseline.default)
+  if (baseline?.devices) {
+    for (const value of Object.values(baseline.devices)) names.add(value)
+  }
+  return names
+}
+
+/**
+ * Score a single solution against the baseline.
+ *
+ * Mirrors Python TraceSet.get_solution_score:
+ * - Scans ALL traces for the solution (including workloads where baseline has
+ *   no data) to determine has_fail. Any non-PASSED trace → entire score = 0.
+ * - Per-workload best (lowest) passing latency for both solution and baseline.
+ * - Common workloads = baseline passed AND solution attempted.
+ * - Speedup = baseline_latency / solution_latency per workload, averaged.
+ */
+export function computeSolutionScore(params: {
+  traces: Trace[]
+  solutionName: string
+  baseline?: BaselineConfig
+}): SpeedupMetrics | null {
+  const { traces, solutionName, baseline } = params
+
+  const baselineNames = collectBaselineNames(baseline)
+  if (baselineNames.has(solutionName)) return null
+
+  let hasFail = false
+  const solutionBestLatency = new Map<WorkloadGroupId, number>()
+  const solutionWorkloadIds = new Set<WorkloadGroupId>()
+
+  for (const trace of traces) {
+    if (trace.solution !== solutionName) continue
+    if (!trace.evaluation) continue
+    const workloadId = groupIdForTrace(trace)
+    solutionWorkloadIds.add(workloadId)
+    if (trace.evaluation.status !== "PASSED") {
+      hasFail = true
+      continue
+    }
+    const latency = trace.evaluation.performance?.latency_ms
+    if (typeof latency !== "number" || latency <= 0) continue
+    const existing = solutionBestLatency.get(workloadId)
+    if (existing == null || latency < existing) {
+      solutionBestLatency.set(workloadId, latency)
+    }
+  }
+
+  const groups = buildWorkloadGroups(traces)
+  const baselineBestLatency = new Map<WorkloadGroupId, number>()
+
+  for (const [workloadId, groupTraces] of groups) {
+    if (groupTraces.length === 0) continue
+    const device = deviceForTrace(groupTraces[0]) || "unknown"
+    const baselineName = baselineForDevice(device, baseline)
+    if (!baselineName) continue
+
+    for (const trace of groupTraces) {
+      if (trace.solution !== baselineName) continue
+      if (!trace.evaluation || trace.evaluation.status !== "PASSED") continue
+      const latency = trace.evaluation.performance?.latency_ms
+      if (typeof latency !== "number" || latency <= 0) continue
+      const existing = baselineBestLatency.get(workloadId)
+      if (existing == null || latency < existing) {
+        baselineBestLatency.set(workloadId, latency)
+      }
+    }
+  }
+
+  const commonIds: WorkloadGroupId[] = []
+  for (const id of baselineBestLatency.keys()) {
+    if (solutionWorkloadIds.has(id)) commonIds.push(id)
+  }
+
+  if (commonIds.length === 0) return null
+
+  const workloads = commonIds.length
+
+  if (hasFail) {
+    return {
+      avgSpeedup: 0, definitions: 1, workloads,
+      successRate: 0, winRate: 0, bestSolutions: null,
+    }
+  }
+
+  let sumSpeedup = 0
+  let wins = 0
+  for (const id of commonIds) {
+    const ratio = baselineBestLatency.get(id)! / solutionBestLatency.get(id)!
+    sumSpeedup += ratio
+    if (ratio > 1) wins++
+  }
+
+  return {
+    avgSpeedup: sumSpeedup / workloads,
+    definitions: 1,
+    workloads,
+    successRate: 1,
+    winRate: wins / workloads,
+    bestSolutions: null,
+  }
+}
+
+/**
+ * Rank all authors by average speedup.
+ *
+ * Mirrors Python TraceSet.rank_authors → get_author_score → get_solution_score:
+ * - For each definition, score every non-baseline solution via computeSolutionScore.
+ * - Per author per definition, keep only the best-scoring solution.
+ * - Author's final score = simple mean across definitions (not weighted by workload count).
+ */
+export function computeAuthorRankings(params: {
+  datasets: Array<{
+    traces: Trace[]
+    solutions: Solution[]
+    baseline?: BaselineConfig
+    definitionName?: string
+  }>
+}): AuthorRankingsResponse {
+  const { datasets } = params
+
+  const authorDefScores = new Map<string, Map<string, SpeedupMetrics>>()
+
+  for (const dataset of datasets) {
+    const defName = dataset.definitionName ?? "unknown"
+    const baselineNames = collectBaselineNames(dataset.baseline)
+
+    for (const solution of dataset.solutions) {
+      if (!solution.author || baselineNames.has(solution.name)) continue
+
+      const score = computeSolutionScore({
+        traces: dataset.traces,
+        solutionName: solution.name,
+        baseline: dataset.baseline,
+      })
+      if (!score) continue
+
+      const defScores = authorDefScores.get(solution.author) ?? new Map<string, SpeedupMetrics>()
+      const current = defScores.get(defName)
+      if (!current || score.avgSpeedup > current.avgSpeedup) {
+        defScores.set(defName, {
+          ...score,
+          bestSolutions: { [defName]: solution.name },
+        })
+      }
+      authorDefScores.set(solution.author, defScores)
+    }
+  }
+
+  const rankings = Array.from(authorDefScores.entries())
+    .map(([author, defScores]) => {
+      const scores = Array.from(defScores.values())
+      const n = scores.length
+      const bestSolutions: Record<string, string> = {}
+      for (const [def, score] of defScores.entries()) {
+        if (score.bestSolutions) Object.assign(bestSolutions, score.bestSolutions)
+      }
+      return {
+        author,
+        avgSpeedup: scores.reduce((sum, s) => sum + s.avgSpeedup, 0) / n,
+        definitions: n,
+        workloads: scores.reduce((sum, s) => sum + s.workloads, 0),
+        successRate: scores.reduce((sum, s) => sum + s.successRate, 0) / n,
+        winRate: scores.reduce((sum, s) => sum + s.winRate, 0) / n,
+        bestSolutions,
+      }
+    })
+    .sort((a, b) => {
+      if (b.avgSpeedup !== a.avgSpeedup) return b.avgSpeedup - a.avgSpeedup
+      return a.author.localeCompare(b.author)
+    })
+
+  return { rankings }
 }
 
 export function computeAuthorCorrectnessSummary(params: {
