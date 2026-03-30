@@ -68,6 +68,7 @@ After a definition reaches all-PRs-open state, run this checklist:
 4. **Eval trace**: Verify `traces/{op_type}/{name}.jsonl` exists and all entries have `evaluation.status == "PASSED"`
 5. **Definition JSON**: Verify `definitions/{op_type}/{name}.json` copied from PR 1
 6. **Reference test**: Verify `tests/references/test_{name}.py` copied from PR 1
+7. **SGLang log**: Verify PR description includes the SGLang inference stdout (model loaded, workloads collected, kernel dump counts)
 
 Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
 
@@ -117,6 +118,7 @@ Submit 2 PRs for definition <name>:
 - `traces/{name}_baseline.jsonl` (all entries must have `evaluation.status == "PASSED"`)
 - `definitions/{op_type}/{name}.json` (copied from PR 1)
 - `tests/references/test_{name}.py` (copied from PR 1)
+- PR description must include the SGLang inference stdout (capture stdout of `collect_workloads.py sglang` and paste in PR body under `## SGLang Collection Log`)
 
 ## Progress Reporting
 Write .agent-progress.md after every major step:
