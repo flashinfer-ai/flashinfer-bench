@@ -161,6 +161,17 @@ def _uses_paged_prefill(def_files: list[Path]) -> bool:
     return False
 
 
+def _max_total_tokens_from_extra_args(extra_args: list[str]) -> int | None:
+    """Extract --max-total-tokens value from extra_sglang_args if present."""
+    for i, arg in enumerate(extra_args):
+        if arg == "--max-total-tokens" and i + 1 < len(extra_args):
+            try:
+                return int(extra_args[i + 1])
+            except ValueError:
+                pass
+    return None
+
+
 def _run_sglang_offline_paged_prefill(
     model_path: str,
     tp: int,
@@ -169,6 +180,8 @@ def _run_sglang_offline_paged_prefill(
     dump_dir: Path,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
+    mem_fraction_static: float | None = None,
+    max_total_tokens: int | None = None,
 ) -> None:
     """Run SGLang offline Engine to collect paged-prefill workloads.
 
@@ -212,8 +225,10 @@ if __name__ == '__main__':
     tp          = int(sys.argv[3])
     page_size   = int(sys.argv[4])
     rounds      = json.loads(sys.argv[5])
-    quant       = sys.argv[6] if sys.argv[6] != "none" else None
-    cpu_offload = float(sys.argv[7])
+    quant              = sys.argv[6] if sys.argv[6] != "none" else None
+    cpu_offload        = float(sys.argv[7])
+    mem_frac_override  = float(sys.argv[8]) if sys.argv[8] != "none" else None
+    max_total_toks     = int(sys.argv[9]) if sys.argv[9] != "none" else None
 
     import sglang
 
@@ -234,6 +249,11 @@ if __name__ == '__main__':
         # With cpu_offload, model occupies most GPU. Use mem_fraction_static=0.95 so
         # ~5% remains as dynamic memory for FlashInfer workspace buffers.
         engine_kwargs["mem_fraction_static"] = 0.95
+    if mem_frac_override is not None:
+        # Explicit override wins over the cpu_offload default of 0.95
+        engine_kwargs["mem_fraction_static"] = mem_frac_override
+    if max_total_toks is not None:
+        engine_kwargs["max_total_tokens"] = max_total_toks
 
     engine = sglang.Engine(**engine_kwargs)
 
@@ -311,6 +331,8 @@ if __name__ == '__main__':
         json.dumps(rounds),
         quantization or "none",
         str(cpu_offload_gb),
+        str(mem_fraction_static) if mem_fraction_static is not None else "none",
+        str(max_total_tokens) if max_total_tokens is not None else "none",
     ]
     subprocess.run(cmd, check=True, env=env)
 
@@ -511,6 +533,8 @@ def run_sglang_mode(
     ep: int = 1,
     page_size: int = 1,
     skip_const_axis_check: bool = False,
+    mem_fraction_static: float | None = None,
+    extra_sglang_args: list[str] | None = None,
 ) -> None:
     """Run SGLang inference with FlashInfer logging to collect workloads."""
     include_pattern = _build_fi_include_pattern(def_files)
@@ -589,6 +613,8 @@ def run_sglang_mode(
             dump_dir,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
+            mem_fraction_static=mem_fraction_static,
+            max_total_tokens=_max_total_tokens_from_extra_args(extra_sglang_args or []),
         )
     else:
         _server_port = int(os.environ.get("SGLANG_PORT", "30000"))
@@ -628,6 +654,10 @@ def run_sglang_mode(
             # so 5% (~9GB on B200) stays as dynamic memory for FlashInfer workspace buffers,
             # while the remaining static budget covers model + KV cache.
             server_cmd += ["--mem-fraction-static", "0.95"]
+        if mem_fraction_static is not None and cpu_offload_gb == 0:
+            server_cmd += ["--mem-fraction-static", str(mem_fraction_static)]
+        if extra_sglang_args:
+            server_cmd += extra_sglang_args
 
         server_log_path = dump_dir / "sglang_server.log"
         server_log_file = open(server_log_path, "w")
@@ -1150,6 +1180,18 @@ def main():
     sglang_p.add_argument("--dump-dir", help="Override dump directory path")
     sglang_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
     sglang_p.add_argument(
+        "--mem-fraction-static",
+        type=float,
+        default=None,
+        help="Override SGLang mem_fraction_static (default: SGLang chooses). Lower to avoid OOM.",
+    )
+    sglang_p.add_argument(
+        "--extra-sglang-args",
+        nargs=argparse.REMAINDER,
+        default=[],
+        help="Extra args passed verbatim to SGLang launch_server (e.g. --moe-runner-backend eager)",
+    )
+    sglang_p.add_argument(
         "--skip-const-axis-check",
         action="store_true",
         help=(
@@ -1178,6 +1220,13 @@ def main():
         dest="eval_baseline",
         action="store_false",
         help="Skip baseline evaluation after workload collection.",
+    )
+    sglang_p.add_argument(
+        "--sglang-port",
+        type=int,
+        default=None,
+        help="Port for the SGLang server (default: 30000 or SGLANG_PORT env var). "
+        "Set different ports for jobs running simultaneously on the same host.",
     )
 
     args = parser.parse_args()
@@ -1230,6 +1279,9 @@ def main():
     print(f"Dump dir: {dump_dir}")
 
     if args.mode == "sglang":
+        sglang_port = getattr(args, "sglang_port", None)
+        if sglang_port is not None:
+            os.environ["SGLANG_PORT"] = str(sglang_port)
         tp = getattr(args, "tp", None)
         ep = 1
         if tp is None:
@@ -1259,6 +1311,8 @@ def main():
             ep=ep,
             page_size=page_size,
             skip_const_axis_check=getattr(args, "skip_const_axis_check", False),
+            mem_fraction_static=getattr(args, "mem_fraction_static", None),
+            extra_sglang_args=getattr(args, "extra_sglang_args", []) or [],
         )
 
     print(f"\n{'='*60}")
