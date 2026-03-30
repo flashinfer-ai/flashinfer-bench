@@ -112,7 +112,9 @@ def test_correctness(batch_size=2, max_seq_len=64, atol=1e-2, rtol=5e-2):
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
-    assert out_ok, f"Output mismatch: max_diff={torch.abs(ref_o.float() - fi_o.float()).max().item():.6e}"
+    assert (
+        out_ok
+    ), f"Output mismatch: max_diff={torch.abs(ref_o.float() - fi_o.float()).max().item():.6e}"
     assert lse_ok, f"LSE mismatch: max_diff={torch.abs(ref_lse - fi_lse).max().item():.6e}"
     return out_ok and lse_ok
 
