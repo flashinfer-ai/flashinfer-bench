@@ -1,16 +1,16 @@
 ---
 name: clone-repos
-description: Clone SGLang, FlashInfer, sgl-cookbook repositories from GitHub to tmp/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
+description: Clone SGLang, FlashInfer, sgl-cookbook, and flashinfer-trace repositories to tmp/. Use when setting up the project, preparing for kernel extraction, or when the user needs the source repositories.
 ---
 
 # Clone Repositories
 
-Clone SGLang, FlashInfer, and sgl-cookbook repositories from GitHub to the `tmp/` directory.
+Clone SGLang, FlashInfer, sgl-cookbook, and flashinfer-trace repositories to the `tmp/` directory.
 
 ## Description
 
-This skill sets up the required repositories for kernel extraction and testing workflows. It:
-1. Clones SGLang, FlashInfer, and sgl-cookbook repositories to `tmp/` directory (if not already present) with all submodules
+This skill sets up the required repositories for kernel extraction, testing, and workload collection workflows. It:
+1. Clones SGLang, FlashInfer, sgl-cookbook, and flashinfer-trace repositories to `tmp/` directory (if not already present) with all submodules
 2. Updates repositories by pulling latest changes from remote and updating submodules (if repos already exist)
 3. Checks out the `main` branch by default (or specified branch)
 4. Installs SGLang and FlashInfer packages from source in the current environment
@@ -19,8 +19,7 @@ This skill sets up the required repositories for kernel extraction and testing w
 - **SGLang**: Inference engine with model implementations and kernel calls
 - **FlashInfer**: GPU kernel library with optimized implementations (ground truth)
 - **sgl-cookbook**: Best serving configurations for each architecture and model (TP, EP flags)
-
-**Note**: The `flashinfer_trace/` directory is part of this repository and requires no cloning.
+- **flashinfer-trace**: Workload dataset and kernel definitions — cloned to `tmp/flashinfer-trace`
 
 ## Usage
 
@@ -92,7 +91,22 @@ When executing this skill:
 
    **Note**: sgl-cookbook doesn't require submodules or installation. It contains serving configuration files only.
 
-5. **Install packages from source**:
+5. **Handle flashinfer-trace repository**:
+   ```bash
+   # Check if repo exists
+   if [ -d "tmp/flashinfer-trace/.git" ]; then
+       echo "flashinfer-trace exists, pulling latest changes..."
+       (cd tmp/flashinfer-trace && git fetch origin && git checkout main && git reset --hard origin/main)
+   else
+       echo "Cloning flashinfer-trace..."
+       git clone https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace tmp/flashinfer-trace
+   fi
+   ```
+
+   **Note**: flashinfer-trace is a HuggingFace dataset repo (not GitHub). It contains kernel definitions, workloads, and blob safetensors. All workload collection writes to this directory.
+
+6. **Install packages from source**:
+
    ```bash
    # Upgrade pip once
    pip install --upgrade pip
@@ -106,7 +120,7 @@ When executing this skill:
 
    **Note**: Subshell syntax `(cd ... && command)` keeps working directory unchanged.
 
-6. **Verify installations**:
+7. **Verify installations**:
    ```bash
    # Test imports
    python -c "import sglang; print(f'SGLang: {sglang.__version__}')"
@@ -117,15 +131,15 @@ When executing this skill:
    ls tmp/flashinfer/flashinfer/
    ls tmp/flashinfer/tests/
    ls tmp/sgl-cookbook/
-   ls flashinfer_trace/definitions/
+   ls tmp/flashinfer-trace/definitions/
    ```
 
 ## Output Directory Structure
 
 ```
 flashinfer-bench/
-├── flashinfer_trace/                 # Local (already in project)
-│   ├── definitions/                  # Kernel definitions
+├── flashinfer_trace/                 # Local working area (definitions, tests)
+│   ├── definitions/                  # Kernel definitions (write here first)
 │   │   ├── rmsnorm/
 │   │   ├── gemm/
 │   │   ├── gqa_paged/
@@ -133,7 +147,6 @@ flashinfer-bench/
 │   │   ├── gdn/
 │   │   ├── moe/
 │   │   └── ...
-│   ├── workloads/                    # Workload configurations
 │   └── tests/
 │       └── references/               # Reference tests
 └── tmp/                              # Cloned repositories (auto-updated)
@@ -157,7 +170,8 @@ flashinfer-bench/
     │   ├── tests/                    # Reference tests with vanilla implementations
     │   ├── csrc/                     # CUDA source files
     │   └── include/                  # C++ headers with kernel implementations
-    └── sgl-cookbook/                 # Serving configuration repository (NOT installed)
+    ├── sgl-cookbook/                 # Serving configuration repository (NOT installed)
+    └── flashinfer-trace/             # HuggingFace dataset clone — workloads and blobs go here for PR submission
         ├── docs/                     # Model deployment documentation (markdown)
         │   └── autoregressive/
         │       ├── DeepSeek/
@@ -197,8 +211,10 @@ flashinfer-bench/
 
 This skill provides the foundation for:
 
-1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, sgl-cookbook to find serving configurations (TP/EP flags), outputs to `./flashinfer_trace/definitions/`
+1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, sgl-cookbook to find serving configurations (TP/EP flags), outputs to `./flashinfer_trace/definitions/` (local working area)
 2. **add-reference-tests**: Uses FlashInfer for ground truth, outputs tests to `./flashinfer_trace/tests/references/`
+3. **collect-workloads**: Uses `tmp/flashinfer-trace` (HuggingFace dataset clone) as the target for workload JSONL + safetensors blobs, then submits a PR
+4. **onboard-model**: End-to-end pipeline that calls this skill first (Phase 0) to ensure all repos are current before model discovery, definition generation, and workload collection.
 
 Example workflow:
 
@@ -211,6 +227,9 @@ Example workflow:
 
 # Step 3: Add reference tests
 /add-reference-tests --op-type mla_paged
+
+# Or run the full end-to-end pipeline
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## Notes

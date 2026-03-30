@@ -54,42 +54,34 @@ def summary(args: argparse.Namespace):
         if len(trace_sets) > 1:
             logger.info("Dataset %d:", i + 1)
 
-        logger.info("Traces: %d total, %d passed, %d failed", s["total"], s["passed"], s["failed"])
-        if s["avg_latency_ms"] is not None:
-            logger.info(
-                "Latency (ms): avg=%.3f  min=%.3f  max=%.3f",
-                s["avg_latency_ms"],
-                s["min_latency_ms"],
-                s["max_latency_ms"],
-            )
-
-        rankings = s.get("rankings", [])
-        if rankings:
+        logger.info("Traces: %d total, %d passed, %d failed", s.total, s.passed, s.failed)
+        if s.rankings:
             logger.info("")
-            logger.info("Author Rankings (by area under fast@p curve):")
+            logger.info("Author Rankings (by average speedup):")
             logger.info(
-                "  %-4s  %-24s  %-10s  %-14s  %-12s",
+                "  %-4s  %-24s  %-10s  %-14s  %-14s  %-10s",
                 "Rank",
                 "Author",
-                "AUC Score",
-                "Fast@1x (>base)",
-                "Comparisons",
+                "Avg Speedup",
+                "Success Rate",
+                "Win Rate",
+                "Workloads",
             )
-            logger.info("  " + "-" * 70)
-            for rank, entry in enumerate(rankings, start=1):
+            logger.info("  " + "-" * 92)
+            for rank, (author, score) in enumerate(s.rankings, start=1):
                 logger.info(
-                    "  %-4d  %-24s  %-10.4f  %-14.1f  %-12d",
+                    "  %-4d  %-24s  %-10.4f  %-14.1f  %-14.1f  %-10d",
                     rank,
-                    entry["author"],
-                    entry["auc"],
-                    entry["fast_at_1x"] * 100,
-                    entry["n_comparisons"],
+                    author,
+                    score.avg_speedup,
+                    score.success_rate * 100,
+                    score.win_rate * 100,
+                    score.workloads,
                 )
             logger.info("")
-            logger.info(
-                "  AUC: area under fast@p curve (higher = faster vs baseline across workloads)"
-            )
-            logger.info("  Fast@1x: fraction of workloads where this author beats the baseline")
+            logger.info("  Avg Speedup: mean of baseline_latency / author_latency")
+            logger.info("  Success Rate: fraction of workloads with successful execution")
+            logger.info("  Win Rate: fraction of workloads where this author beats the baseline")
         else:
             logger.info("(No author ranking data available — run with multiple solutions)")
 
@@ -195,9 +187,7 @@ def visualize(args: argparse.Namespace):
 
         # Print summary statistics
         summary = trace_set.summary()
-        logger.info(f"Summary: {summary['passed']}/{summary['total']} traces passed")
-        if summary["avg_latency_ms"]:
-            logger.info(f"Average latency: {summary['avg_latency_ms']:.3f}ms")
+        logger.info(f"Summary: {summary.passed}/{summary.total} traces passed")
 
         # Print detailed results table
         logger.info("\nDetailed Results:")

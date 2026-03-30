@@ -10,6 +10,7 @@ import { FastPLabel } from "@/components/fast-p-label"
 import type {
   AuthorCorrectnessResponse,
   AuthorCurvesResponse,
+  AuthorRankingEntry,
   CurvePoint,
   CorrectnessSummary,
   CoverageStats,
@@ -55,19 +56,6 @@ function sampleCurve(points: CurvePoint[] | undefined, p: number): number {
   return points[lo]?.percent ?? 0
 }
 
-function calculateAUC(points: CurvePoint[] | undefined): number {
-  if (!points || points.length === 0) return 0
-  let area = 0
-  for (let i = 1; i < points.length; i++) {
-    const p1 = points[i - 1]
-    const p2 = points[i]
-    const width = p2.p - p1.p
-    const avgHeight = (p1.percent + p2.percent) / 2
-    area += width * avgHeight
-  }
-  return area / 100 // Convert from percentage to decimal
-}
-
 function buildScoreboard(curves: Record<string, CurvePoint[]>, p: number, excludedAuthors: Set<string>): ScoreboardEntry[] {
   const entries: ScoreboardEntry[] = []
   for (const [name, points] of Object.entries(curves)) {
@@ -82,6 +70,7 @@ function buildScoreboard(curves: Record<string, CurvePoint[]>, p: number, exclud
 
 type LeaderboardClientProps = {
   fast: AuthorCurvesResponse
+  rankings: AuthorRankingEntry[]
   correctness: AuthorCorrectnessResponse
   excludedAuthors: string[]
   baselineLabel: string
@@ -91,6 +80,7 @@ type LeaderboardClientProps = {
 
 export function LeaderboardClient({
   fast,
+  rankings,
   correctness,
   excludedAuthors,
   baselineLabel,
@@ -323,35 +313,23 @@ export function LeaderboardClient({
     return map
   }, [correctness.stats])
 
-  const rankingsData = useMemo(() => {
-    const allAuthors = new Set([
-      ...Object.keys(fast.curves || {}),
-      ...(correctness.stats || []).map(s => s.author)
-    ])
-
-    return Array.from(allAuthors)
-      .filter(author => !excludedSet.has(author))
-      .map(author => {
-        const curve = fast.curves?.[author]
-        const avgSpeedup = calculateAUC(curve)
-
-        const correctnessEntry = correctness.stats?.find(s => s.author === author)
+  const sortedRankings = useMemo(() => {
+    const sorted = rankings
+      .filter((entry) => !excludedSet.has(entry.author))
+      .map((entry) => {
+        const correctnessEntry = correctnessByAuthor[entry.author]
         const passRate = correctnessEntry && correctnessEntry.total > 0
           ? correctnessEntry.passed / correctnessEntry.total
           : 0
 
         return {
-          author,
-          avgSpeedup,
-          passRate,
+          ...entry,
+          passRate: entry.successRate,
           totalTests: correctnessEntry?.total ?? 0,
           passedTests: correctnessEntry?.passed ?? 0,
         }
       })
-  }, [fast.curves, correctness.stats, excludedSet])
 
-  const sortedRankings = useMemo(() => {
-    const sorted = [...rankingsData]
     sorted.sort((a, b) => {
       let compareValue = 0
       switch (rankingSortColumn) {
@@ -368,7 +346,7 @@ export function LeaderboardClient({
       return rankingSortOrder === "asc" ? compareValue : -compareValue
     })
     return sorted
-  }, [rankingsData, rankingSortColumn, rankingSortOrder])
+  }, [correctnessByAuthor, excludedSet, rankingSortColumn, rankingSortOrder, rankings])
 
   const handleSortColumn = useCallback((column: "author" | "speedup" | "resolved") => {
     if (rankingSortColumn === column) {
@@ -467,7 +445,7 @@ export function LeaderboardClient({
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-sm">{(entry.avgSpeedup * 100).toFixed(1)}%</span>
+                            <span className="text-sm">{entry.avgSpeedup.toFixed(3)}x</span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="space-y-1">
@@ -475,7 +453,7 @@ export function LeaderboardClient({
                                 {(entry.passRate * 100).toFixed(1)}%
                               </span>
                               <span className="ml-2 text-xs text-muted-foreground">
-                                ({entry.passedTests}/{entry.totalTests})
+                                ({entry.workloads} workloads)
                               </span>
                             </div>
                           </td>
