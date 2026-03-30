@@ -115,9 +115,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     )
 
     print("Running FlashInfer...")
-    fi_o, fi_lse = wrapper.run(
-        inputs["q"], (k_cache_expanded, v_cache_expanded), return_lse=True
-    )
+    fi_o, fi_lse = wrapper.run(inputs["q"], (k_cache_expanded, v_cache_expanded), return_lse=True)
 
     # Compare
     print("\nComparing outputs...")
