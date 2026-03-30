@@ -63,9 +63,9 @@ After a definition reaches all-PRs-open state, run this checklist:
 
 **PR 2 (HuggingFace flashinfer-trace):**
 1. **Workloads**: Verify `workloads/{op_type}/{name}.jsonl` exists
-2. **Blobs**: Verify `blob/workloads/{op_type}/*.safetensors` exist
-3. **Baseline solution**: Verify `solutions/baseline_{op_type}.py` exists
-4. **Eval trace**: Verify `traces/{name}_baseline.jsonl` exists and all entries have `evaluation.status == "PASSED"`
+2. **Blobs**: Verify `blob/workloads/{op_type}/{name}/*.safetensors` exist
+3. **Baseline solution**: Verify `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` exists (FlashInfer API wrapper, NOT a reference implementation)
+4. **Eval trace**: Verify `traces/{op_type}/{name}.jsonl` exists and all entries have `evaluation.status == "PASSED"`
 5. **Definition JSON**: Verify `definitions/{op_type}/{name}.json` copied from PR 1
 6. **Reference test**: Verify `tests/references/test_{name}.py` copied from PR 1
 
@@ -111,7 +111,7 @@ Submit 2 PRs for definition <name>:
 - PR description must include a link to the HuggingFace PR 2 (workload addition)
 
 ## PR 2 Contents
-- `solutions/baseline_{op_type}.py` (generated from `reference_impl` field in def JSON)
+- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper — NOT the reference_impl from def JSON; must call flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
 - `workloads/{op_type}/{name}.jsonl`
 - `blob/workloads/{op_type}/*.safetensors`
 - `traces/{name}_baseline.jsonl` (all entries must have `evaluation.status == "PASSED"`)
