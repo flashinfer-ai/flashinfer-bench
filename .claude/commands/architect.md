@@ -47,7 +47,7 @@ If the loop is already active, the script will tell you. Otherwise it creates th
 | Idle (no task spec, no agent) | Report: idle worktree, needs task spec |
 
 4. **Report**: One-line summary per task (name, agent status, PRs 1/2 open/pending)
-5. **Completion**: If all active tasks have both PRs open, output: `<promise>ALL_TASKS_DONE</promise>`
+5. **Completion**: If all active tasks have both PRs open **AND** every PR passes all checklist items (PR 1 items 1–6 + PR 2 items 1–7), output: `<promise>ALL_TASKS_DONE</promise>`. If PRs are open but checklist items are failing, report the failures instead.
 
 ## Post-Completion Review (when both PRs open)
 
@@ -83,7 +83,7 @@ Report findings per definition. Do NOT modify worktrees yourself — report issu
 ## Stopping
 
 - User runs `/cancel-architect` to stop the loop
-- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have both PRs open
+- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have both PRs open **and all checklist items pass** (PR 1 items 1–6, PR 2 items 1–7). Both PRs open is necessary but not sufficient.
 
 ## Creating Tasks for Agents
 
