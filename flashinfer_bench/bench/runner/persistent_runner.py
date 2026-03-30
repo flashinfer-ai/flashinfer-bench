@@ -568,7 +568,14 @@ class PersistentRunner(Runner):
                         )
 
                 # Run the solution
-                return worker.run_solution(solution, baseline_handle, config)
+                eval_start_time = time.perf_counter()
+                result = worker.run_solution(solution, baseline_handle, config)
+                eval_time = time.perf_counter() - eval_start_time
+                logger.info(
+                    f"Solution '{solution.name}' workload={workload.uuid}: "
+                    f"{result.status.value} evaluation time={eval_time:.1f}s"
+                )
+                return result
 
             except Exception as e:
                 logger.error(f"Unexpected error in solution execution for {solution.name}: {e}")

@@ -47,19 +47,28 @@ When `--discover` is set, find popular open-source LLMs not yet tracked in `mode
 
 #### Discovery Sources (in order)
 
-1. **SGLang supported models list**:
+1. **SGLang day-0 additions** (highest priority — newly supported models):
+   ```bash
+   # Models added to SGLang in the last 30 days (new .py files in models dir)
+   git -C tmp/sglang log --since="30 days ago" --name-status --diff-filter=A \
+       -- "python/sglang/srt/models/*.py" | grep "^A" | awk '{print $2}'
+   ```
+   These are models with brand-new SGLang support — they are the most likely to have novel
+   kernels not yet tracked. Parse each new filename to derive the model slug.
+
+2. **SGLang supported models list** (full catalog):
    ```bash
    ls tmp/sglang/python/sglang/srt/models/
    ```
    SGLang models are a curated list of production-quality LLMs. Every model in SGLang is a candidate.
 
-2. **sgl-cookbook** (models with recommended serving configs):
+3. **sgl-cookbook** (models with recommended serving configs):
    ```bash
    ls tmp/sgl-cookbook/data/models/generated/v0.5.6/
    ```
    Models with a YAML config are actively deployed — highest priority.
 
-3. **Inference API provider model lists** (strong popularity signal):
+4. **Inference API provider model lists** (strong popularity signal):
    A model served by 2+ commercial inference APIs is definitively production-critical.
    Fetch or browse the following provider pages and extract the open-weight model list:
 
@@ -88,7 +97,34 @@ When `--discover` is set, find popular open-source LLMs not yet tracked in `mode
    - **Qwen3 235B A22B** — Together, Fireworks, Groq
    - **Mistral Small 3 (24B)** — Together; sgl-cookbook has `mistral.yaml`
 
-4. **HuggingFace trending** (optional, web search):
+4. **HuggingFace website** (primary web source — fetch directly):
+   Use `WebFetch` to retrieve the HuggingFace trending models page and extract newly released
+   open-weight LLMs. This gives the most up-to-date signal for models gaining traction before
+   they appear on inference provider lists.
+
+   ```
+   # Fetch trending models (text/LLM category)
+   WebFetch: https://huggingface.co/models?pipeline_tag=text-generation&sort=trending
+   ```
+
+   Also check the HuggingFace "new" filter for models released in the last 7 days:
+
+   ```
+   WebFetch: https://huggingface.co/models?pipeline_tag=text-generation&sort=created
+   ```
+
+   Focus on models that are:
+   - Open-weight (not API-only or gated without public access)
+   - From established labs (Meta, Google, Mistral, Alibaba/Qwen, DeepSeek, Moonshot, etc.)
+   - Have ≥ 1K downloads/week or trending in the top 50
+   - Transformer-based decoder (not vision-only or encoder-only)
+
+   For each candidate, fetch its model page to confirm the architecture:
+   ```
+   WebFetch: https://huggingface.co/{org}/{model}/blob/main/config.json
+   ```
+
+5. **HuggingFace trending** (supplemental web search):
    Search for "huggingface trending LLM open source {current_year}" to find newly popular models.
    Focus on models that are:
    - Open-weight (not API-only)
@@ -411,7 +447,14 @@ Expected definitions:
 /track-models --model-name gemma-3-27b --hf-repo-id google/gemma-3-27b-it
 /extract-kernel-definitions --model-name gemma3
 /add-reference-tests --op-type gqa_paged
+
+# Or use the end-to-end pipeline (discovery + definition + workload + PR submission)
+/onboard-model --discover
+/onboard-model --model-name gemma-3-27b --hf-repo-id google/gemma-3-27b-it
 ```
+
+This skill is also called by `onboard-model` (Phase 1 and Phase 4b) to update
+`docs/model_coverage.mdx` as part of the automated pipeline.
 
 ## Error Handling
 
