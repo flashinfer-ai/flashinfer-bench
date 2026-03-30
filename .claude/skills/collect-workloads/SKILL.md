@@ -22,30 +22,23 @@ Then optionally submit a PR to the flashinfer-trace repo.
 
 | Script | Purpose | When to use |
 |--------|---------|-------------|
-| `collect_workloads.py` | **Primary entry point.** `sglang` mode (**default**): full pipeline (SGLang server + inference + sanitize). `direct` mode: call FlashInfer APIs directly with synthetic inputs — **only when FlashInfer API is not integrated into SGLang**. | Default for any workload collection |
+| `collect_workloads.py` | **Primary entry point.** `sglang` mode: full pipeline (SGLang server + inference + sanitize). | Default for any workload collection |
 | `sanitize_dumps.py` | Converts FlashInfer Level 10 per-call dump directories → flashinfer-trace JSONL + safetensors | Called automatically by `collect_workloads.py`; also run manually to re-sanitize existing dumps |
 
 Always provide `--flashinfer-trace-dir` to specify the flashinfer-trace repo location.
 
 ### `scripts/collect_workloads.py` ← **primary collection script**
 
-The main entry point. **Always use `sglang` mode by default.** Only fall back to `direct` mode when the FlashInfer API is not integrated into SGLang (e.g., a new op_type not yet wired into SGLang's FlashInfer backend).
+The main entry point. Always use `sglang` mode.
 
 ```bash
-# SGLang mode (DEFAULT): real inference → real structural tensors
+# SGLang mode: real inference → real structural tensors
 CUDA_VISIBLE_DEVICES=0,0 python scripts/collect_workloads.py sglang \
   --model-path ~/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/<hash> \
   --definitions gqa_paged_prefill_causal_h20_kv4_d128_ps64 \
   --flashinfer-trace-dir tmp/flashinfer-trace \
   --replace \
   --skip-install  # skip if packages already installed
-
-# Direct mode (FALLBACK ONLY): use only when FlashInfer API is not integrated into SGLang
-# e.g. a new kernel type that SGLang does not yet call via FlashInfer
-python scripts/collect_workloads.py direct \
-  --definitions gdn_mtp_qk4_v8_d128_k_last \
-  --flashinfer-trace-dir tmp/flashinfer-trace \
-  --replace
 ```
 
 **Auto-detection from definition tags:**
@@ -165,20 +158,6 @@ FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only ex
 4. Shut down via SIGTERM
 
 `--disable-cuda-graph` is required so every kernel call is logged individually.
-
-### Phase 3: Direct API Calls (direct mode — FALLBACK ONLY)
-
-**Only use this mode when the FlashInfer API is not integrated into SGLang** — for example, a brand-new kernel type that SGLang does not yet route through FlashInfer. In all other cases, prefer `sglang` mode for real structural tensors.
-
-`collect_workloads.py direct` calls FlashInfer APIs directly with synthetic inputs — no SGLang or model needed. Spawns a subprocess per definition with FlashInfer env vars set before any import.
-
-Default variable axis combinations per op_type (`OP_TYPE_VAR_CONFIGS` in `collect_workloads.py`):
-- `gdn`: 21 (batch_size, seq_len, pool_size) combinations
-- `gqa_paged` / `mla_paged`: 4–5 (batch_size, num_pages) combinations
-- `rmsnorm`: 4 (batch_size, seq_len) combinations
-- `gemm` / `sampling`: 4 batch_size variants
-
-Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the API.
 
 ### Phase 4: Tensor Dump Sanitization
 
@@ -415,7 +394,7 @@ grep -r "gated_delta_rule_decode" tmp/sglang/python/sglang/srt/ --include="*.py"
 If the API is **not found** in SGLang:
 1. SGLang needs to be updated to wire in this FlashInfer kernel.
 2. The `onboard-model` skill (Phase 3c) handles drafting and submitting the SGLang PR.
-3. While the SGLang PR is pending, use `direct` mode if the kernel supports standalone calls.
+3. Wait for the SGLang PR to merge before collecting workloads.
 
 ## Integration with Other Skills
 

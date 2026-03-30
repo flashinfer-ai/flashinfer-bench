@@ -414,14 +414,11 @@ EOF
 )"
 ```
 
-Record the SGLang PR URL. Wait for it to be merged before running workload collection in
-`sglang` mode (or proceed with `direct` mode if the kernel can be called standalone).
+Record the SGLang PR URL. Wait for it to be merged before running workload collection.
 
-**3c-iii: Decide collection mode while SGLang PR is pending**
+**3c-iii: Wait for SGLang PR**
 
-- If the FlashInfer kernel can be called standalone (has a `direct` mode implementation in
-  `collect-workloads`), proceed with `direct` mode now.
-- Otherwise, pause Phase 3 and note that it must resume after the SGLang PR merges.
+Pause Phase 3 and note that it must resume after the SGLang PR merges.
 
 ### 3d: Run workload collection
 
@@ -668,8 +665,7 @@ For each required kernel definition:
               ├── YES → generate def from FlashInfer tests (status:verified)
               │          SGLang integrates this FlashInfer API?
               │          ├── YES → collect workloads (sglang mode)
-              │          └── NO  → submit SGLang PR
-              │                    collect workloads (direct mode or wait for PR)
+              │          └── NO  → submit SGLang PR, wait for merge, then collect workloads
               └── NO  → generate def from HF config + SGLang (status:unverified)
                          file GitHub issue in flashinfer-ai/flashinfer
                          ⛔ skip workload collection (no FlashInfer kernel yet)
