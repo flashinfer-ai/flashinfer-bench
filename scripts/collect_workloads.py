@@ -1087,7 +1087,9 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
                     rec = _json.loads(line)
                     status = rec.get("evaluation", {}).get("status", "UNKNOWN")
                     if status != "PASSED":
-                        failed.append({"workload": rec.get("workload", {}).get("uuid", "?"), "status": status})
+                        failed.append(
+                            {"workload": rec.get("workload", {}).get("uuid", "?"), "status": status}
+                        )
                     else:
                         passed += 1
                 except Exception:
@@ -1095,6 +1097,7 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
 
             # Copy to per-def baseline trace name
             import shutil
+
             shutil.copy(auto_trace, out_trace)
             print(f"  Results: {passed} PASSED, {len(failed)} FAILED")
             if failed:
@@ -1112,7 +1115,9 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
                 all_passed = False
 
     if not all_passed:
-        print("\nERROR: Some baseline evaluations FAILED. Check trace output above.", file=sys.stderr)
+        print(
+            "\nERROR: Some baseline evaluations FAILED. Check trace output above.", file=sys.stderr
+        )
         sys.exit(1)
 
     print(f"\nBaseline evaluation complete. All workloads PASSED.")
