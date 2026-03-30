@@ -249,17 +249,33 @@ GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
 "
 git push origin {branch}
 
+# Create the HuggingFace PR
 python -c "
 from huggingface_hub import HfApi
-result = HfApi().create_commit(
+result = HfApi().create_discussion(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    commit_message='Add {def_name}: solution + workloads + blobs + def + tests + eval trace',
-    create_pr=True,
+    title='Add {def_name}: workloads + solution + eval trace',
+    description='''GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
+
+## SGLang Collection Log
+
+\`\`\`
+{PASTE FULL STDOUT OF collect_workloads.py sglang HERE}
+\`\`\`
+''',
+    pull_request=True,
 )
-print(result.pr_url)
+print(result.url)
 "
 ```
+
+**SGLang log is required in PR2 description.** After creating the HuggingFace PR:
+- Capture the full stdout of `collect_workloads.py sglang` (Phase 3–5)
+- Paste it under `## SGLang Collection Log` in the PR2 discussion body
+- The log must show: model loaded, workloads collected, kernel dump counts, baseline eval PASSED
+- Workloads must be real SGLang-collected (diverse batch_size ≤ 64 with realistic kv_length distributions)
+- **Anti-pattern**: `batch_size=4096` with tiny KV caches is synthetic, not from real inference
 
 **Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions.
 Always wait for PR 1 (GitHub) to be open before submitting PR 2.

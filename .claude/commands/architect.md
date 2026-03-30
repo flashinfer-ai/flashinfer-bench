@@ -68,7 +68,7 @@ After a definition reaches all-PRs-open state, run this checklist:
 4. **Eval trace**: Verify `traces/{op_type}/{name}.jsonl` exists and all entries have `evaluation.status == "PASSED"`
 5. **Definition JSON**: Verify `definitions/{op_type}/{name}.json` copied from PR 1
 6. **Reference test**: Verify `tests/references/test_{name}.py` copied from PR 1
-7. **SGLang log**: Verify PR description includes the SGLang inference stdout (model loaded, workloads collected, kernel dump counts)
+7. **SGLang log**: Verify PR description includes the SGLang inference stdout (model loaded, workloads collected, kernel dump counts). The log must appear under `## SGLang Collection Log` in the PR2 discussion body. Workloads must be SGLang-collected (not synthetic); real workloads have diverse (batch_size, kv_length) pairs drawn from actual inference, NOT manually crafted sweeps (e.g., `batch_size=4096` with 1-page contexts is a red flag).
 
 Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
 
