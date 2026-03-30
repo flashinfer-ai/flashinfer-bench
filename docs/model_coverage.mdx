@@ -23,7 +23,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Mistral 7B v0.3 | GQA + Dense | 🟡 Partial |
 | Mistral Nemo 12B | GQA + Dense | 🟡 Partial |
 | Mixtral 8x7B | GQA + MoE | 🟡 Partial |
-| Mixtral 8x22B | GQA + MoE | ❌ Not covered |
+| Mixtral 8x22B | GQA + MoE | 🟡 Partial |
 | Qwen2.5 7B | GQA + Dense | 🟡 Partial |
 | Qwen2.5 72B | GQA + Dense | 🟡 Partial |
 | Qwen3 8B | GQA + Dense | 🟡 Partial |
@@ -317,7 +317,17 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v32768` | sampling | ❌ |
 | `top_p_sampling_from_probs_v32768` | sampling | ❌ |
 
-**Coverage**: 0 / 12 referenced definitions present. No existing definitions match this architecture.
+**Coverage**: 0 / 12 referenced definitions present (TP=1). No existing definitions match this architecture at TP=1.
+
+### Mixtral 8x22B at TP=2
+
+At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8→4 kv-heads).
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `gqa_paged_decode_h24_kv4_d128_ps64` | gqa_paged | ✅ |
+
+**Coverage**: 1 / 1 TP=2 attention definitions present.
 
 ---
 
