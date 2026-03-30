@@ -27,7 +27,7 @@ def compile_reference(reference_code: str):
 def load_definition():
     from flashinfer_bench.data import Definition, load_json_file
 
-    definitions_dir = Path(__file__).parent.parent / "flashinfer_trace" / "definitions"
+    definitions_dir = Path(__file__).parent.parent.parent / "definitions"
     for op_dir in definitions_dir.iterdir():
         if op_dir.is_dir():
             def_file = op_dir / f"{DEF_NAME}.json"
