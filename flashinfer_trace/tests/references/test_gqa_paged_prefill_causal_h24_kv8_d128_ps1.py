@@ -95,7 +95,9 @@ def test_correctness(batch_size=2, max_seq_len=64, atol=1e-2, rtol=5e-2):
         qo_indptr=inputs["qo_indptr"],
         paged_kv_indptr=inputs["kv_indptr"],
         paged_kv_indices=inputs["kv_indices"],
-        paged_kv_last_page_len=torch.ones(inputs["kv_indptr"].shape[0] - 1, dtype=torch.int32, device=device),
+        paged_kv_last_page_len=torch.ones(
+            inputs["kv_indptr"].shape[0] - 1, dtype=torch.int32, device=device
+        ),
         num_qo_heads=NUM_QO_HEADS,
         num_kv_heads=fi_kv_heads,
         head_dim_qk=HEAD_DIM,
