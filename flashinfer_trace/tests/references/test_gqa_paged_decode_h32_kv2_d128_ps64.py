@@ -83,7 +83,11 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
     )
 
     # Verify reference output shapes and dtypes
-    assert ref_o.shape == (batch_size, NUM_QO_HEADS, HEAD_DIM), f"Output shape mismatch: {ref_o.shape}"
+    assert ref_o.shape == (
+        batch_size,
+        NUM_QO_HEADS,
+        HEAD_DIM,
+    ), f"Output shape mismatch: {ref_o.shape}"
     assert ref_o.dtype == torch.bfloat16, f"Output dtype mismatch: {ref_o.dtype}"
     assert ref_lse.shape == (batch_size, NUM_QO_HEADS), f"LSE shape mismatch: {ref_lse.shape}"
     assert ref_lse.dtype == torch.float32, f"LSE dtype mismatch: {ref_lse.dtype}"
@@ -118,7 +122,9 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
         if "Unsupported group_size" in str(e):
             # FlashInfer does not support group_size=16 in this version;
             # reference shape/dtype/NaN checks above still validate correctness.
-            pytest.skip(f"FlashInfer does not support group_size={NUM_QO_HEADS // NUM_KV_HEADS}: {e}")
+            pytest.skip(
+                f"FlashInfer does not support group_size={NUM_QO_HEADS // NUM_KV_HEADS}: {e}"
+            )
         raise
 
 
