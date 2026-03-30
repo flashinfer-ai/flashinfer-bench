@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}FlashInfer-Bench{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+           background: #0d1117; color: #e6edf3; line-height: 1.5; }
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .nav { background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 20px;
+           display: flex; align-items: center; gap: 20px; }
+    .nav-brand { color: #e6edf3; font-weight: bold; font-size: 14px; }
+    .nav a { color: #8b949e; font-size: 12px; }
+    .nav a:hover { color: #e6edf3; }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 16px; color: #e6edf3; margin-bottom: 16px; }
+    h2 { font-size: 13px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase;
+         letter-spacing: 0.5px; }
+
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            padding: 16px; margin-bottom: 16px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; color: #8b949e; padding: 6px 8px; border-bottom: 1px solid #30363d;
+         font-weight: normal; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
+    td { padding: 6px 8px; border-bottom: 1px solid #21262d; vertical-align: top; }
+    tr:hover td { background: #1c2128; }
+
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 11px; }
+    .badge-green { background: #1f4623; color: #3fb950; border: 1px solid #238636; }
+    .badge-blue  { background: #0c2d6b; color: #58a6ff; border: 1px solid #1f6feb; }
+    .badge-yellow{ background: #3d2e00; color: #d29922; border: 1px solid #9e6a03; }
+    .badge-red   { background: #3d1a1a; color: #f85149; border: 1px solid #da3633; }
+    .badge-gray  { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                  gap: 12px; margin-bottom: 16px; }
+    .stat { background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            padding: 12px; text-align: center; }
+    .stat-value { font-size: 22px; color: #e6edf3; font-weight: bold; }
+    .stat-label { color: #8b949e; font-size: 11px; margin-top: 2px; }
+
+    .gpu-free  { color: #3fb950; }
+    .gpu-locked { color: #f85149; }
+
+    pre { background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+          padding: 12px; overflow-x: auto; font-size: 11px; color: #c9d1d9;
+          white-space: pre-wrap; word-break: break-all; }
+
+    .progress-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px;
+                    padding: 10px; font-size: 11px; color: #c9d1d9; white-space: pre-wrap; }
+
+    .pr-status { display: flex; gap: 6px; }
+    .pr-badge { padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+    .pr-open   { background: #1f4623; color: #3fb950; }
+    .pr-pending{ background: #21262d; color: #8b949e; }
+    .pr-na     { background: #21262d; color: #6e7681; }
+
+    .refresh-btn { background: #21262d; border: 1px solid #30363d; color: #8b949e;
+                   padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .refresh-btn:hover { background: #30363d; color: #e6edf3; }
+
+    .action-btn { background: #1f4623; border: 1px solid #238636; color: #3fb950;
+                  padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .action-btn:hover { background: #238636; color: #e6edf3; }
+    .action-btn.action-danger { background: #3d1a1a; border-color: #da3633; color: #f85149; }
+    .action-btn.action-danger:hover { background: #da3633; color: #e6edf3; }
+    .action-btn.action-warn { background: #3d2e00; border-color: #9e6a03; color: #d29922; }
+    .action-btn.action-warn:hover { background: #9e6a03; color: #e6edf3; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav-brand">FlashInfer-Bench</span>
+    <a href="/">Dashboard</a>
+    <a href="/definitions">Definitions</a>
+  </nav>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+  <script>
+    function refreshPage() { location.reload(); }
+    // Auto-refresh every 15s when there are running agents
+    const hasRunning = document.querySelector('[data-running]');
+    if (hasRunning) {
+      setTimeout(() => location.reload(), 15000);
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

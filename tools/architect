@@ -1,0 +1,900 @@
+#!/usr/bin/env python3
+"""architect: CLI for managing FlashInfer-Bench parallel definition onboarding.
+
+Each "task" is a kernel definition name. The architect manages two worktrees
+per definition: one in this repo (bench) for the definition JSON and coverage
+update PRs, and one in tmp/flashinfer-trace (trace) for the workload PR.
+
+Worktree management:
+  status              Show all worktrees with branch, commits, dirty state, agent status
+  create <name>       Create bench+trace worktrees and scaffold .claude/TASK.md
+  check <name>        Detailed progress for a specific definition task
+  prs <name>          Show PR status for a definition (pr1/pr2 URLs)
+  cleanup             List definitions where all PRs are open (safe to remove)
+  remove <name>       Remove both worktrees for a definition
+  rescue <name>       Commit or stash uncommitted work in bench worktree
+
+Agent management:
+  spawn <name>        Launch a Claude Code agent in the bench worktree
+  attach <name>       Print command to re-attach to a running agent
+  progress [name]     Show agent progress reports
+  kill <name>         Kill a running agent
+
+Session recovery:
+  resume              Detect interrupted sessions, rescue dirty work, re-spawn agents
+"""
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import textwrap
+import time
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+
+# All worktrees live under tmp/worktrees/ to keep them out of the main repo
+WORKTREES_DIR = REPO_ROOT / "tmp" / "worktrees"
+
+# flashinfer-trace HuggingFace dataset clone
+TRACE_REPO = REPO_ROOT / "tmp" / "flashinfer-trace"
+
+# Agent tracking file (gitignored)
+AGENTS_FILE = REPO_ROOT / ".claude" / "agents.json"
+
+# Per-worktree files (gitignored)
+PROGRESS_FILE = ".agent-progress.md"
+AGENT_LOG = ".agent.log"
+AGENT_PROMPT = ".agent-prompt.md"
+
+PROGRESS_INSTRUCTIONS = f"""
+PROGRESS REPORTING (MANDATORY):
+After EVERY significant step, update {PROGRESS_FILE} using the Write tool:
+
+# Progress
+Updated: <YYYY-MM-DD HH:MM>
+Status: in_progress | completed | blocked
+
+## Done
+- <completed steps>
+
+## Current
+<what you're working on right now>
+
+## Next
+- <planned next steps>
+
+## Blockers
+<any issues, or "None">
+
+## PRs
+- PR 1 (def JSON + ref tests + coverage → flashinfer-bench GitHub): <URL or "pending">
+- PR 2 (baseline solution + workloads + traces → flashinfer-trace HF): <URL or "pending" or "N/A — fi_missing">
+
+Write this file FREQUENTLY — it is how the architect monitors your work.
+""".strip()
+
+
+def run(cmd, cwd=None, check=True, capture=True):
+    r = subprocess.run(cmd, cwd=cwd or REPO_ROOT, capture_output=capture, text=True)
+    if check and r.returncode != 0:
+        if capture and r.stderr:
+            print(r.stderr, file=sys.stderr)
+        sys.exit(r.returncode)
+    return r.stdout.strip() if capture else ""
+
+
+def get_bench_wt(name):
+    return WORKTREES_DIR / f"bench-{name}"
+
+
+def get_trace_wt(name):
+    return WORKTREES_DIR / f"trace-{name}"
+
+
+def get_worktrees():
+    """Return list of (path, branch) for flashinfer-bench worktrees."""
+    raw = run(["git", "worktree", "list", "--porcelain"])
+    worktrees = []
+    path = branch = None
+    for line in raw.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree ") :]
+        elif line.startswith("branch "):
+            branch = line[len("branch refs/heads/") :]
+        elif line == "":
+            if path:
+                worktrees.append((path, branch or "(detached)"))
+            path = branch = None
+    if path:
+        worktrees.append((path, branch or "(detached)"))
+    return worktrees
+
+
+def worktree_info(wt_path):
+    last = run(["git", "log", "--oneline", "-1"], cwd=wt_path, check=False)
+    dirty_files = run(["git", "status", "--short", "--ignore-submodules"], cwd=wt_path, check=False)
+    dirty_count = len([l for l in dirty_files.splitlines() if l.strip()])
+    commits_raw = run(["git", "log", "--oneline", "main..HEAD"], cwd=wt_path, check=False)
+    commits = [l for l in commits_raw.splitlines() if l.strip()]
+    ts = run(["git", "log", "-1", "--format=%ci"], cwd=wt_path, check=False)
+    task_spec = Path(wt_path) / ".claude" / "TASK.md"
+    return {
+        "last_commit": last,
+        "dirty_count": dirty_count,
+        "dirty_files": dirty_files,
+        "commits_since_main": len(commits),
+        "commit_list": commits,
+        "last_time": ts,
+        "has_task_spec": task_spec.exists(),
+        "task_spec_path": str(task_spec),
+    }
+
+
+# ─── Agent tracking ───────────────────────────────────────────────────────
+
+
+def load_agents():
+    if AGENTS_FILE.exists():
+        return json.loads(AGENTS_FILE.read_text())
+    return {}
+
+
+def save_agents(agents):
+    AGENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AGENTS_FILE.write_text(json.dumps(agents, indent=2) + "\n")
+
+
+def is_pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def agent_status(name):
+    agents = load_agents()
+    if name not in agents:
+        return "none", None
+    info = agents[name]
+    pid = info.get("pid")
+    if pid and is_pid_alive(pid):
+        return "running", info
+    return "stopped", info
+
+
+def read_progress(wt_path):
+    p = Path(wt_path) / PROGRESS_FILE
+    if p.exists():
+        return p.read_text().strip()
+    return None
+
+
+def progress_status_line(wt_path):
+    content = read_progress(wt_path)
+    if not content:
+        return None
+    for line in content.splitlines():
+        if line.startswith("Status:"):
+            return line.split(":", 1)[1].strip()
+    return "unknown"
+
+
+def extract_pr_urls(wt_path):
+    """Extract PR URLs from the progress file."""
+    content = read_progress(wt_path)
+    if not content:
+        return {}
+    prs = {}
+    for line in content.splitlines():
+        if line.strip().startswith("- PR 1"):
+            url = line.split(":", 1)[1].strip() if ":" in line else ""
+            prs["pr1"] = url if url.startswith("http") else None
+        elif line.strip().startswith("- PR 2"):
+            url = line.split(":", 1)[1].strip() if ":" in line else ""
+            prs["pr2"] = url if url.startswith("http") else None
+    return prs
+
+
+def extract_session_id(log_path, timeout=30):
+    start = time.time()
+    while time.time() - start < timeout:
+        if log_path.exists() and log_path.stat().st_size > 0:
+            with open(log_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        if "session_id" in msg:
+                            return msg["session_id"]
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        time.sleep(1)
+    return None
+
+
+def build_agent_cmd(prompt, wt_path, model=None):
+    cmd = [
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--add-dir",
+        str(wt_path),
+        "--add-dir",
+        str(REPO_ROOT),
+    ]
+    if os.environ.get("FLASHINFER_SKIP_PERMISSIONS") == "1":
+        cmd.append("--dangerously-skip-permissions")
+    else:
+        cmd.extend(
+            [
+                "--allowedTools",
+                "Bash",
+                "Read",
+                "Write",
+                "Edit",
+                "Glob",
+                "Grep",
+                "WebFetch",
+                "WebSearch",
+                "Task",
+            ]
+        )
+    if model:
+        cmd.extend(["--model", model])
+    return cmd
+
+
+def build_agent_env():
+    env = os.environ.copy()
+    env["REPO_ROOT"] = str(REPO_ROOT)
+    env["TRACE_REPO"] = str(TRACE_REPO)
+    env["WORKTREES_DIR"] = str(WORKTREES_DIR)
+    return env
+
+
+# ─── Subcommands ──────────────────────────────────────────────────────────
+
+
+def cmd_status(args):
+    worktrees = get_worktrees()
+    agents = load_agents()
+
+    print(f"{'Definition':<28} {'Branch':<32} {'Commits':>7} {'Dirty':>5} {'Agent':<12} PR Status")
+    print("─" * 120)
+
+    for wt_path, branch in worktrees:
+        name_raw = os.path.basename(wt_path)
+        # Only show bench- worktrees (skip trace- and main)
+        if not name_raw.startswith("bench-") and wt_path != str(REPO_ROOT):
+            continue
+
+        if wt_path == str(REPO_ROOT):
+            name = "* main"
+            print(f"{name:<28} {branch:<32} {'':>7} {'':>5} {'':12} —")
+            continue
+
+        def_name = name_raw[len("bench-") :]
+        info = worktree_info(wt_path)
+        dirty_str = str(info["dirty_count"]) if info["dirty_count"] > 0 else "·"
+        commits_str = str(info["commits_since_main"])
+        a_status, _ = agent_status(def_name)
+        agent_str = {"running": "RUNNING", "stopped": "stopped", "none": "·"}.get(a_status, "·")
+        prog = progress_status_line(wt_path)
+        if prog and a_status != "none":
+            agent_str = prog[:12]
+
+        prs = extract_pr_urls(wt_path)
+        pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
+
+        print(
+            f"{def_name:<28} {branch:<32} {commits_str:>7} {dirty_str:>5} {agent_str:<12} {pr_str}"
+        )
+
+
+def cmd_create(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+    trace_wt = get_trace_wt(name)
+    date = datetime.now().strftime("%Y%m%d")
+
+    WORKTREES_DIR.mkdir(parents=True, exist_ok=True)
+
+    if bench_wt.exists():
+        print(f"Error: {bench_wt} already exists", file=sys.stderr)
+        sys.exit(1)
+
+    # Find definition JSON if it exists
+    def_json = None
+    for path in (REPO_ROOT / "flashinfer_trace" / "definitions").rglob(f"{name}.json"):
+        def_json = path
+        break
+
+    op_type = args.op_type or (def_json.parent.name if def_json else "<op_type>")
+
+    print(f"Creating bench worktree: {bench_wt} (branch: feat/def-{name})")
+    run(["git", "worktree", "add", str(bench_wt), "-b", f"feat/def-{name}"])
+
+    # Scaffold .claude/TASK.md
+    claude_dir = bench_wt / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    task_md = claude_dir / "TASK.md"
+    task_md.write_text(
+        textwrap.dedent(
+            f"""\
+        # Task: onboard definition `{name}`
+
+        ## Definition
+        - **Name**: `{name}`
+        - **Op type**: `{op_type}`
+        - **Definition JSON**: `flashinfer_trace/definitions/{op_type}/{name}.json`
+
+        ## Your worktrees
+        - **Bench worktree** (this repo): `{bench_wt}` → branch `feat/def-{name}`
+        - **Trace worktree** (flashinfer-trace HF repo): `{trace_wt}` → branch `workloads-{date}-{name}`
+
+        ## Objective
+        Submit two PRs for this definition, in order:
+
+        ### PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage)
+        - Copy `flashinfer_trace/definitions/{op_type}/{name}.json` into this worktree
+        - Add reference test at `tests/test_{op_type}_{name}.py`
+        - Update `docs/model_coverage.mdx` to reflect definition status
+        - Commit all three together, push branch `feat/def-{name}`
+        - Open PR to flashinfer-ai/flashinfer-bench
+        - Record PR URL in {PROGRESS_FILE} under "PR 1"
+
+        ### PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests)
+        - Workload files are in `tmp/flashinfer-trace/workloads/{op_type}/{name}.jsonl`
+          and `tmp/flashinfer-trace/blob/workloads/{op_type}/{name}/`
+        - If workload files DO NOT EXIST yet:
+          - Run: `tools/gpu-lock python scripts/collect_workloads.py sglang --definitions {name} --flashinfer-trace-dir tmp/flashinfer-trace`
+          - If GPU not available or SGLang not integrated: note as "N/A — collect manually" and stop here
+        - Copy baseline solution (extracted from definition JSON reference_impl) into `{trace_wt}/solutions/{op_type}/{name}.py`
+        - Copy workload JSONL and safetensors blobs into `{trace_wt}/`
+        - Copy kernel definition JSON from this repo into `{trace_wt}/definitions/{op_type}/{name}.json`
+        - Copy reference test from this repo into `{trace_wt}/tests/{op_type}/test_{op_type}_{name}.py`
+        - Commit all together, push branch `workloads-{date}-{name}`, open HuggingFace PR
+        - Record PR URL in {PROGRESS_FILE} under "PR 2"
+
+        ## Acceptance Criteria
+        - [ ] PR 1 open: definition JSON + reference test + coverage update, PR URL recorded
+        - [ ] PR 2 open (or N/A noted if kernel not yet in FlashInfer/SGLang)
+        - [ ] All PR URLs recorded in {PROGRESS_FILE}
+
+        ## Key files
+        - Definition: `flashinfer_trace/definitions/{op_type}/{name}.json`
+        - Coverage doc: `docs/model_coverage.mdx`
+        - Workload collection script: `scripts/collect_workloads.py`
+        - GPU lock: `tools/gpu-lock <command>`
+
+        ## Notes
+        - Use `tools/gpu-lock` for any workload collection that needs the GPU
+        - Do NOT modify files in the main worktree — work only in your worktrees
+        - Commit frequently; each PR should be a single commit if possible
+    """
+        )
+    )
+
+    # Create trace worktree (in flashinfer-trace repo)
+    if TRACE_REPO.exists():
+        print(f"Creating trace worktree: {trace_wt} (branch: workloads-{date}-{name})")
+        run(
+            ["git", "worktree", "add", str(trace_wt), "-b", f"workloads-{date}-{name}"],
+            cwd=str(TRACE_REPO),
+        )
+    else:
+        print(f"  NOTE: {TRACE_REPO} does not exist — run /clone-repos first")
+        print(f"  Trace worktree ({trace_wt}) will need to be created manually.")
+
+    print(
+        f"""
+Done. Next steps:
+  1. Review {task_md}
+  2. Spawn an agent:  tools/architect spawn {name}
+  3. Monitor:        tools/architect progress {name}
+"""
+    )
+
+
+def cmd_check(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+
+    if not bench_wt.exists():
+        print(f"Error: bench worktree {bench_wt} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    branch = run(["git", "branch", "--show-current"], cwd=str(bench_wt), check=False)
+    info = worktree_info(str(bench_wt))
+
+    print(f"Definition: {name}")
+    print(f"Branch:     {branch}")
+    print(f"Bench wt:   {bench_wt}")
+    trace_wt = get_trace_wt(name)
+    print(f"Trace wt:   {trace_wt} ({'exists' if trace_wt.exists() else 'MISSING'})")
+    print(f"Task spec:  {'yes' if info['has_task_spec'] else 'NO'}")
+
+    a_status, a_info = agent_status(name)
+    if a_info:
+        print(
+            f"Agent:      {a_status} (pid={a_info.get('pid')}, session={a_info.get('session_id', '?')})"
+        )
+    print()
+
+    prog = read_progress(str(bench_wt))
+    if prog:
+        print("─── Agent Progress ───")
+        print(prog)
+        print()
+
+    prs = extract_pr_urls(str(bench_wt))
+    print("─── PR Status ───")
+    for i in [1, 2]:
+        url = prs.get(f"pr{i}")
+        print(f"  PR {i}: {url or '(pending)'}")
+    print()
+
+    print(f"Commits since main: {info['commits_since_main']}")
+    for c in info["commit_list"]:
+        print(f"  {c}")
+    if info["dirty_count"] > 0:
+        print(f"\nUncommitted ({info['dirty_count']}):")
+        print(info["dirty_files"])
+    else:
+        print("\nWorking tree: clean")
+
+
+def cmd_prs(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+    agents = load_agents()
+
+    prs = extract_pr_urls(str(bench_wt)) if bench_wt.exists() else {}
+    agent_prs = agents.get(name, {})
+
+    print(f"PRs for definition: {name}")
+    print()
+    labels = {
+        1: "def JSON + ref tests + coverage → flashinfer-bench (GitHub)",
+        2: "baseline solution + workloads + traces → flashinfer-trace (HuggingFace)",
+    }
+    for i in [1, 2]:
+        url = prs.get(f"pr{i}") or agent_prs.get(f"pr{i}_url")
+        status = "✓ open" if url else "pending"
+        print(f"  PR {i} [{labels[i]}]: {status}")
+        if url:
+            print(f"      {url}")
+
+
+def cmd_cleanup(args):
+    worktrees = get_worktrees()
+    print(f"{'Status':<22} {'Definition':<30} Notes")
+    print("─" * 80)
+    for wt_path, branch in worktrees:
+        name_raw = os.path.basename(wt_path)
+        if not name_raw.startswith("bench-"):
+            continue
+        def_name = name_raw[len("bench-") :]
+        prs = extract_pr_urls(wt_path)
+        all_prs_open = prs.get("pr1")  # PR 2 (HF) may be N/A
+        info = worktree_info(wt_path)
+        a_status, _ = agent_status(def_name)
+        if all_prs_open and info["dirty_count"] == 0 and a_status != "running":
+            print(f"{'READY TO REMOVE':<22} {def_name:<30} all PRs open")
+        elif a_status == "running":
+            print(f"{'AGENT RUNNING':<22} {def_name:<30} in progress")
+        else:
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
+            print(f"{'INCOMPLETE':<22} {def_name:<30} {pr_str}")
+
+
+def cmd_remove(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+    trace_wt = get_trace_wt(name)
+
+    # Kill running agent
+    a_status, a_info = agent_status(name)
+    if a_status == "running":
+        if not args.yes:
+            resp = input(f"Agent is running (pid={a_info['pid']}). Kill it? [y/N] ")
+            if resp.lower() != "y":
+                print("Aborted.")
+                sys.exit(0)
+        try:
+            os.kill(a_info["pid"], signal.SIGTERM)
+            print(f"Killed agent pid={a_info['pid']}")
+        except OSError:
+            pass
+
+    if not args.yes:
+        resp = input(f"Remove worktrees for '{name}'? [y/N] ")
+        if resp.lower() != "y":
+            print("Aborted.")
+            sys.exit(0)
+
+    if bench_wt.exists():
+        info = worktree_info(str(bench_wt))
+        if info["dirty_count"] > 0 and not args.force:
+            print(
+                f"Error: {info['dirty_count']} uncommitted files in bench worktree. Use --force.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        remove_cmd = ["git", "worktree", "remove", str(bench_wt)]
+        if args.force:
+            remove_cmd.append("--force")
+        run(remove_cmd)
+        print(f"Removed bench worktree: {bench_wt}")
+        # Delete branch
+        run(["git", "branch", "-D", f"feat/def-{name}"], check=False)
+
+    if trace_wt.exists() and TRACE_REPO.exists():
+        remove_cmd = ["git", "worktree", "remove", str(trace_wt)]
+        if args.force:
+            remove_cmd.append("--force")
+        run(remove_cmd, cwd=str(TRACE_REPO))
+        print(f"Removed trace worktree: {trace_wt}")
+
+    # Clean agent tracking
+    agents = load_agents()
+    agents.pop(name, None)
+    save_agents(agents)
+    print(f"Done. Worktrees for '{name}' removed.")
+
+
+def cmd_rescue(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+
+    if not bench_wt.exists():
+        print(f"Error: bench worktree {bench_wt} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    info = worktree_info(str(bench_wt))
+    if info["dirty_count"] == 0:
+        print("Working tree is clean — nothing to rescue.")
+        return
+
+    print(f"Uncommitted files ({info['dirty_count']}):")
+    print(info["dirty_files"])
+    print()
+
+    action = args.action
+    if not action:
+        resp = input("Action: [c]ommit as WIP, [s]tash, [q]uit? ")
+        action = {"c": "commit", "s": "stash"}.get(resp.lower(), "quit")
+
+    if action == "commit":
+        msg = args.message or f"WIP: rescue uncommitted work for {name}"
+        run(["git", "add", "-A"], cwd=str(bench_wt))
+        run(["git", "commit", "-m", msg], cwd=str(bench_wt))
+        print(f"Committed: {msg}")
+    elif action == "stash":
+        msg = args.message or f"rescue: {name}"
+        run(["git", "stash", "push", "-m", msg], cwd=str(bench_wt))
+        print(f"Stashed: {msg}")
+    else:
+        print("Aborted.")
+
+
+def cmd_spawn(args):
+    name = args.name
+    bench_wt = get_bench_wt(name)
+
+    if not bench_wt.exists():
+        print(f"Error: bench worktree {bench_wt} does not exist", file=sys.stderr)
+        print(f"Create it first: tools/architect create {name}", file=sys.stderr)
+        sys.exit(1)
+
+    a_status, a_info = agent_status(name)
+    if a_status == "running":
+        print(f"Agent already running for '{name}' (pid={a_info['pid']})")
+        print(f"  Attach: tools/architect attach {name}")
+        print(f"  Kill:   tools/architect kill {name}")
+        sys.exit(1)
+
+    branch = run(["git", "branch", "--show-current"], cwd=str(bench_wt), check=False)
+    task_spec_path = bench_wt / ".claude" / "TASK.md"
+    task_content = task_spec_path.read_text().strip() if task_spec_path.exists() else ""
+
+    extra = args.prompt or ""
+    prompt = f"""You are working in {bench_wt} on branch '{branch}'.
+
+{"Read .claude/TASK.md for your full assignment." if task_content else "No task spec found — ask what to do."}
+
+{extra}
+
+{PROGRESS_INSTRUCTIONS}
+
+Commit frequently. Each PR should be a single clean commit.
+
+Important tool notes:
+- Use `tools/gpu-lock <command>` for any workload collection that requires the GPU
+- Use `gh pr create` to open GitHub PRs
+- Use the huggingface_hub Python API to open HuggingFace PRs
+- Update {PROGRESS_FILE} with PR URLs as soon as each PR is opened
+"""
+
+    prompt_path = bench_wt / AGENT_PROMPT
+    prompt_path.write_text(prompt)
+    log_path = bench_wt / AGENT_LOG
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = build_agent_cmd(prompt, bench_wt, model=args.model)
+    env = build_agent_env()
+
+    print(f"Spawning agent for '{name}'...")
+    print(f"  Bench wt: {bench_wt}")
+    print(f"  Branch:   {branch}")
+    print(f"  Log:      {log_path}")
+
+    with open(log_path, "w") as log_f:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(bench_wt),
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            env=env,
+            start_new_session=True,
+        )
+
+    print(f"  PID:      {proc.pid}")
+    session_id = None
+    if args.wait:
+        print("  Waiting for session ID...", end="", flush=True)
+        session_id = extract_session_id(log_path, timeout=30)
+        print(f" {session_id}" if session_id else " (timeout — check log)")
+
+    agents = load_agents()
+    agents[name] = {
+        "pid": proc.pid,
+        "session_id": session_id,
+        "branch": branch,
+        "bench_worktree": str(bench_wt),
+        "trace_worktree": str(get_trace_wt(name)),
+        "started": datetime.now().isoformat(),
+        "model": args.model,
+        "pr1_url": None,
+        "pr2_url": None,
+    }
+    save_agents(agents)
+
+    print(
+        f"""
+Agent spawned. Monitor with:
+  tools/architect progress {name}
+  tools/architect check {name}
+  tail -f {log_path}
+"""
+    )
+
+
+def cmd_attach(args):
+    name = args.name
+    a_status, a_info = agent_status(name)
+    if not a_info:
+        print(f"No agent session found for '{name}'.", file=sys.stderr)
+        sys.exit(1)
+
+    bench_wt = a_info.get("bench_worktree", str(get_bench_wt(name)))
+    session_id = a_info.get("session_id")
+
+    print(f"Definition: {name}")
+    print(f"Status:     {a_status}")
+    print(f"Session:    {session_id or '(unknown)'}")
+    print(f"PID:        {a_info.get('pid')}")
+    print(f"Started:    {a_info.get('started', '?')}")
+    print()
+    if session_id:
+        print(f"To attach interactively:\n  cd {bench_wt} && claude --resume {session_id}")
+    else:
+        print(f"No session ID. Start fresh:\n  cd {bench_wt} && claude")
+    log_path = Path(bench_wt) / AGENT_LOG
+    if log_path.exists():
+        print(f"\nTo tail the agent log:\n  tail -f {log_path}")
+
+
+def cmd_progress(args):
+    if args.name:
+        bench_wt = get_bench_wt(args.name)
+        if not bench_wt.exists():
+            print(f"Error: bench worktree {bench_wt} does not exist", file=sys.stderr)
+            sys.exit(1)
+        prog = read_progress(str(bench_wt))
+        if prog:
+            a_status, _ = agent_status(args.name)
+            print(f"═══ {args.name} (agent: {a_status}) ═══")
+            print(prog)
+        else:
+            print(f"No progress file for '{args.name}'.")
+        return
+
+    worktrees = get_worktrees()
+    found_any = False
+    for wt_path, branch in worktrees:
+        name_raw = os.path.basename(wt_path)
+        if not name_raw.startswith("bench-"):
+            continue
+        def_name = name_raw[len("bench-") :]
+        prog = read_progress(wt_path)
+        if prog:
+            found_any = True
+            a_status, _ = agent_status(def_name)
+            print(f"═══ {def_name} (agent: {a_status}) ═══")
+            print(prog)
+            print()
+    if not found_any:
+        print("No progress reports found.")
+
+
+def cmd_kill(args):
+    name = args.name
+    a_status, a_info = agent_status(name)
+    if a_status != "running":
+        print(f"No running agent for '{name}'.")
+        return
+    pid = a_info["pid"]
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"Sent SIGTERM to pid={pid}")
+    except OSError as e:
+        print(f"Error: {e}", file=sys.stderr)
+
+
+def cmd_resume(args):
+    worktrees = get_worktrees()
+    agents = load_agents()
+
+    print("Scanning for interrupted sessions...\n")
+
+    incomplete = []
+    for wt_path, branch in worktrees:
+        name_raw = os.path.basename(wt_path)
+        if not name_raw.startswith("bench-"):
+            continue
+        def_name = name_raw[len("bench-") :]
+        a_status, a_info = agent_status(def_name)
+        info = worktree_info(wt_path)
+        prs = extract_pr_urls(wt_path)
+        all_done = prs.get("pr1")  # PR 2 (HF) may be N/A
+
+        if all_done:
+            print(f"  ✓ {def_name}: all PRs open — safe to remove")
+        elif a_status == "running":
+            print(f"  ↻ {def_name}: agent still running (pid={a_info.get('pid')})")
+        else:
+            pr_str = " ".join(f"PR{i}:{'✓' if prs.get(f'pr{i}') else '…'}" for i in [1, 2])
+            dirty = f", {info['dirty_count']} dirty" if info["dirty_count"] > 0 else ""
+            incomplete.append(def_name)
+            print(f"  ! {def_name}: incomplete [{pr_str}]{dirty}")
+
+    if not incomplete:
+        print("\nAll definitions complete or running.")
+        return
+
+    print(f"\n{len(incomplete)} incomplete definition(s): {', '.join(incomplete)}")
+
+    if args.rescue:
+        for name in incomplete:
+            bench_wt = get_bench_wt(name)
+            info = worktree_info(str(bench_wt))
+            if info["dirty_count"] > 0:
+                print(f"\nRescuing dirty work for '{name}'...")
+                run(["git", "add", "-A"], cwd=str(bench_wt))
+                run(["git", "commit", "-m", f"WIP: auto-rescue for {name}"], cwd=str(bench_wt))
+
+    if args.respawn:
+        for name in incomplete:
+            print(f"\nRe-spawning agent for '{name}'...")
+            a_status, _ = agent_status(name)
+            if a_status == "running":
+                print(f"  Already running — skip")
+                continue
+
+            class FakeArgs:
+                pass
+
+            fa = FakeArgs()
+            fa.name = name
+            fa.prompt = "Resume from where you left off. Read your progress file first, then continue with the next pending PR."
+            fa.model = None
+            fa.wait = False
+            cmd_spawn(fa)
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────
+
+
+def main():
+    parser = argparse.ArgumentParser(description="FlashInfer-Bench parallel definition architect")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # status
+    sub.add_parser("status", help="Show all worktrees")
+
+    # create
+    p = sub.add_parser("create", help="Create bench+trace worktrees for a definition")
+    p.add_argument("name", help="Definition name (e.g. gqa_paged_decode_h32_kv8_d128_ps1)")
+    p.add_argument("--op-type", help="op_type (inferred from definitions dir if omitted)")
+
+    # check
+    p = sub.add_parser("check", help="Detailed status for a definition")
+    p.add_argument("name")
+
+    # prs
+    p = sub.add_parser("prs", help="Show PR URLs for a definition")
+    p.add_argument("name")
+
+    # cleanup
+    sub.add_parser("cleanup", help="List definitions ready for worktree removal")
+
+    # remove
+    p = sub.add_parser("remove", help="Remove worktrees for a definition")
+    p.add_argument("name")
+    p.add_argument("-y", "--yes", action="store_true")
+    p.add_argument("--force", action="store_true")
+
+    # rescue
+    p = sub.add_parser("rescue", help="Commit or stash dirty work")
+    p.add_argument("name")
+    p.add_argument("--action", choices=["commit", "stash"])
+    p.add_argument("-m", "--message")
+
+    # spawn
+    p = sub.add_parser("spawn", help="Launch a Claude agent for a definition")
+    p.add_argument("name")
+    p.add_argument("--prompt", help="Extra instructions appended to the task prompt")
+    p.add_argument("--model", help="Claude model override")
+    p.add_argument("--wait", action="store_true", help="Wait for session ID before returning")
+
+    # attach
+    p = sub.add_parser("attach", help="Print re-attach command for a running agent")
+    p.add_argument("name")
+
+    # progress
+    p = sub.add_parser("progress", help="Show agent progress reports")
+    p.add_argument("name", nargs="?", help="Definition name (all if omitted)")
+
+    # kill
+    p = sub.add_parser("kill", help="Kill a running agent")
+    p.add_argument("name")
+
+    # resume
+    p = sub.add_parser("resume", help="Detect interrupted sessions and report status")
+    p.add_argument("--rescue", action="store_true", help="Auto-commit dirty worktrees")
+    p.add_argument("--respawn", action="store_true", help="Re-spawn agents for incomplete tasks")
+
+    args = parser.parse_args()
+    cmds = {
+        "status": cmd_status,
+        "create": cmd_create,
+        "check": cmd_check,
+        "prs": cmd_prs,
+        "cleanup": cmd_cleanup,
+        "remove": cmd_remove,
+        "rescue": cmd_rescue,
+        "spawn": cmd_spawn,
+        "attach": cmd_attach,
+        "progress": cmd_progress,
+        "kill": cmd_kill,
+        "resume": cmd_resume,
+    }
+    cmds[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

@@ -108,24 +108,44 @@ Different serving configurations (TP/EP flags) can require separate kernel defin
 
 ### Using Skills to Add New Models
 
-We provide a suite of skills to automate the model addition process:
+We provide a suite of skills to automate the model addition process.
+
+**Recommended: use the end-to-end `onboard-model` pipeline:**
+
+```bash
+# Discover new day-0 SGLang models and onboard any that have novel kernels
+/onboard-model --discover
+
+# Onboard a specific model end-to-end (definition + workload + PR)
+/onboard-model --model-name qwen3-235b-a22b --hf-repo-id Qwen/Qwen3-235B-A22B
+```
+
+The pipeline handles the full workflow automatically:
+1. Updates all local repos (SGLang, FlashInfer, sgl-cookbook, flashinfer-trace)
+2. Discovers new models via SGLang day-0 additions and sgl-cookbook
+3. Generates kernel definitions (from FlashInfer if available; files a GitHub issue if not)
+4. Checks SGLang integration; submits SGLang PR if the kernel is not yet wired in
+5. Collects real workloads via FlashInfer logging API
+6. Submits one PR to `flashinfer-ai/flashinfer-trace` and one to this repo
+
+**Or run individual steps manually:**
 
 ```bash
 # 1. Clone required repositories (SGLang, FlashInfer, sgl-cookbook)
-claude-code run clone-repos
+/clone-repos
 
 # 2. Extract kernel definitions from model implementation
 #    This will automatically:
 #    - Parse SGLang model implementation
 #    - Find serving configs from sgl-cookbook (TP/EP flags)
 #    - Generate multiple definitions for different parallelism settings
-claude-code run extract-kernel-definitions --model-name deepseek_v3
+/extract-kernel-definitions --model-name deepseek_v3
 
 # 3. Add reference tests to validate definitions
-claude-code run add-reference-tests --op-type mla_paged
+/add-reference-tests --op-type mla_paged
 ```
 
-**Key Feature**: The `extract-kernel-definitions` skill now automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
+**Key Feature**: The `extract-kernel-definitions` skill automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
 
 ### Manual Model Addition Process
 
@@ -218,9 +238,9 @@ flashinfer-bench run --local /path/to/dataset --definitions <your-definitions>
 
 ## Skills Detailed Documentation
 
-### add-new-model
+### onboard-model
 
-Main workflow skill that integrates all steps.
+End-to-end pipeline that orchestrates all phases for onboarding a new model.
 
 **Parameters**:
 - `--model-name`: Model name (e.g., "kimi-k2")
@@ -268,6 +288,33 @@ Generate TypeScript model definition.
 **Output**:
 - Updated models.ts file
 - TypeScript code for module definitions
+
+### collect-workloads
+
+Auto-collect real-world workloads from SGLang inference runs using FlashInfer Level 10 logging API.
+
+**Parameters**:
+- `--definition-names`: List of specific definition names to collect workloads for (optional)
+- `--op-type`: Collect workloads for all definitions of a specific op_type (optional)
+- `--all`: Collect workloads for ALL definitions (optional)
+- `--model-name`: Model to run inference on (required, e.g., "deepseek-v3", "llama-3.1-8b")
+- `--dataset`: Path to ShareGPT-format JSONL dataset (optional)
+- `--num-samples`: Number of inference samples to process (default: 100)
+- `--submit-pr`: Whether to submit PR to flashinfer-trace repo (default: true)
+
+**Output**:
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl`
+- Safetensors blobs in `tmp/flashinfer-trace/blob/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset repo
+
+**Workflow**:
+1. Setup FlashInfer Level 10 logging (tensor dump mode)
+2. Run SGLang inference with ShareGPT dataset
+3. Dump tensors locally from FlashInfer logs
+4. Sanitize tensors according to kernel definitions
+5. Convert to workload JSONL format with deduplication
+6. Submit PR to flashinfer-trace HuggingFace dataset repo
+
 
 ## Common Model Architecture Patterns
 
@@ -415,3 +462,5 @@ Expected output:
 - New kimi-k2 entry in `web/apps/web/data/models.ts`
 - `model_analysis_kimi-k2.json` containing architecture analysis
 - List of Definition mapping suggestions
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset
