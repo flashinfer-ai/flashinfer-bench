@@ -65,6 +65,8 @@ After a definition reaches all-PRs-open state, run this checklist:
 2. **Blobs**: Verify `blob/workloads/{op_type}/*.safetensors` exist
 3. **Baseline solution**: Verify `solutions/baseline_{op_type}.py` exists
 4. **Eval trace**: Verify `traces/{name}_baseline.jsonl` exists and all entries have `evaluation.status == "PASSED"`
+5. **Definition JSON**: Verify `flashinfer_trace/definitions/{op_type}/{name}.json` copied from PR 1
+6. **Reference test**: Verify `flashinfer_trace/tests/references/test_{name}.py` copied from PR 1
 
 Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
 
@@ -110,9 +112,9 @@ Submit 2 PRs for definition <name>:
 - `solutions/baseline_{op_type}.py` (generated from `reference_impl` field in def JSON)
 - `workloads/{op_type}/{name}.jsonl`
 - `blob/workloads/{op_type}/*.safetensors`
-- `flashinfer_trace/definitions/{op_type}/{name}.json`
-- `flashinfer_trace/tests/references/test_{name}.py`
 - `traces/{name}_baseline.jsonl` (all entries must have `evaluation.status == "PASSED"`)
+- `flashinfer_trace/definitions/{op_type}/{name}.json` (copied from PR 1)
+- `flashinfer_trace/tests/references/test_{name}.py` (copied from PR 1)
 
 ## Progress Reporting
 Write .agent-progress.md after every major step:
