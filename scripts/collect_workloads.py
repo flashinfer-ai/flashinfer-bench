@@ -413,6 +413,164 @@ def _uses_paged_prefill(def_files: list[Path]) -> bool:
     return False
 
 
+def _run_sglang_offline_paged_prefill(
+    model_path: str,
+    tp: int,
+    page_size: int,
+    env: dict,
+    dump_dir: Path,
+    quantization: str | None = None,
+    cpu_offload_gb: float = 0.0,
+) -> None:
+    """Run SGLang offline Engine to collect paged-prefill workloads.
+
+    Used when cpu_offload_gb > 0 (model too large for GPU without offloading), where
+    the HTTP server mode fails because synchronous CPU-GPU weight transfers block the
+    uvicorn event loop and prevent health checks from responding.
+
+    Uses enable_deterministic_inference=True so all prefill goes through
+    BatchPrefillWithPagedKVCacheWrapper (same as --enable-deterministic-inference on the server).
+    """
+    rounds = [
+        (1, 128, 4),
+        (1, 512, 4),
+        (1, 1024, 4),
+        (2, 64, 4),
+        (2, 512, 4),
+        (2, 1024, 4),
+        (4, 64, 4),
+        (4, 256, 4),
+        (4, 512, 4),
+        (8, 32, 4),
+        (8, 256, 4),
+        (8, 512, 4),
+        (16, 32, 4),
+        (16, 128, 4),
+        (16, 256, 4),
+        (32, 32, 4),
+        (32, 128, 4),
+        (64, 32, 4),
+    ]
+
+    script = r"""
+import os, sys, json, time
+
+_env = json.loads(sys.argv[1])
+for k, v in _env.items():
+    os.environ[k] = v
+
+if __name__ == '__main__':
+    model_path  = sys.argv[2]
+    tp          = int(sys.argv[3])
+    page_size   = int(sys.argv[4])
+    rounds      = json.loads(sys.argv[5])
+    quant       = sys.argv[6] if sys.argv[6] != "none" else None
+    cpu_offload = float(sys.argv[7])
+
+    import sglang
+
+    engine_kwargs = dict(
+        model_path=model_path,
+        tp_size=tp,
+        attention_backend="flashinfer",
+        disable_cuda_graph=True,
+        disable_radix_cache=True,
+        enable_deterministic_inference=True,
+        page_size=page_size,
+        log_level="info",
+    )
+    if quant:
+        engine_kwargs["quantization"] = quant
+    if cpu_offload > 0:
+        engine_kwargs["cpu_offload_gb"] = int(cpu_offload)
+        # With cpu_offload, model occupies most GPU. Use mem_fraction_static=0.95 so
+        # ~5% remains as dynamic memory for FlashInfer workspace buffers.
+        engine_kwargs["mem_fraction_static"] = 0.95
+
+    engine = sglang.Engine(**engine_kwargs)
+
+    _TOPICS = [
+        "paged KV cache and memory fragmentation reduction",
+        "tensor parallelism for multi-head attention",
+        "FlashAttention tiling and IO-aware computation",
+        "mixture-of-experts routing and load balancing",
+        "RMSNorm versus LayerNorm computational differences",
+        "speculative decoding draft model verification",
+        "continuous batching in LLM serving systems",
+        "quantization tradeoffs FP8 INT4 and GPTQ",
+        "GQA grouped query attention and KV head sharing",
+        "paged attention and vLLM memory management",
+        "CUDA warp-level parallelism and shared memory",
+        "multi-head latent attention MLA KV compression",
+        "gated delta networks linear attention recurrence",
+        "expert parallelism for MoE inference",
+        "prefix caching and radix attention",
+        "chunked prefill for decode-prefill balance",
+        "FlashInfer batch decode wrapper plan and run",
+        "ring attention and sequence parallelism",
+    ]
+
+    def _make_prompt(approx_tokens: int, idx: int) -> str:
+        topic = _TOPICS[idx % len(_TOPICS)]
+        base = "You are an expert in GPU kernel optimization. Please provide a detailed technical explanation: " + topic
+        target_chars = approx_tokens * 6
+        while len(base) < target_chars:
+            base += " " + topic
+        return base[:target_chars]
+
+    prompt_idx = 0
+    try:
+        for B, prompt_tokens, max_tokens in rounds:
+            prompts = [_make_prompt(prompt_tokens, prompt_idx + i) for i in range(B)]
+            prompt_idx += B
+            t0 = time.time()
+            outputs = engine.generate(
+                prompt=prompts,
+                sampling_params={"max_new_tokens": max_tokens, "temperature": 0.0},
+            )
+            elapsed = time.time() - t0
+            n_ok = len(outputs) if outputs else 0
+            print(f"  batch_size={B:2d}, prompt~{prompt_tokens:4d}t, max_tokens={max_tokens}: {n_ok}/{B} ok ({elapsed:.1f}s)", flush=True)
+    finally:
+        engine.shutdown()
+"""
+
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(script)
+        script_path = f.name
+
+    fi_env_keys = [
+        "FLASHINFER_LOGLEVEL",
+        "FLASHINFER_DUMP_DIR",
+        "FLASHINFER_DUMP_SAFETENSORS",
+        "FLASHINFER_DUMP_INCLUDE",
+        "FLASHINFER_DUMP_EXCLUDE",
+        "FLASHINFER_DUMP_MAX_COUNT",
+        "FLASHINFER_DUMP_MAX_SIZE_GB",
+        "FLASHINFER_USE_CUDA_NORM",
+    ]
+    fi_env_json = json.dumps({k: env[k] for k in fi_env_keys if k in env})
+
+    cmd = [
+        sys.executable,
+        script_path,
+        fi_env_json,
+        model_path,
+        str(tp),
+        str(page_size),
+        json.dumps(rounds),
+        quantization or "none",
+        str(cpu_offload_gb),
+    ]
+    subprocess.run(cmd, check=True, env=env)
+
+    import os as _os
+
+    _os.unlink(script_path)
+
+
 def _run_sglang_offline_batched(
     model_path: str,
     tp: int,
@@ -631,6 +789,7 @@ def run_sglang_mode(
     # Use pre-compiled CUDA norm kernels — CuTe DSL norm requires CUDA toolkit 13.1+
     env["FLASHINFER_USE_CUDA_NORM"] = "1"
     env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
+    env["SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK"] = "1"
 
     print(f"\nPhase 2: FlashInfer Logging Configuration")
     print(f"  FLASHINFER_DUMP_INCLUDE={include_pattern}")
@@ -649,12 +808,32 @@ def run_sglang_mode(
     # decode phase sees exactly batch_size=B concurrent sequences.
     # The HTTP server's continuous-batching scheduler processes requests one at a
     # time and does not reliably produce multi-sequence decode batches for small B.
+    #
+    # For paged prefill with cpu_offload_gb > 0 (model too large for GPU without
+    # offloading), also use the offline Engine with enable_deterministic_inference=True.
+    # The HTTP server mode fails in this case because synchronous CPU-GPU weight
+    # transfers during inference block the uvicorn event loop, preventing health checks
+    # from responding.
     use_offline = not force_paged_prefill
+    use_offline_paged_prefill = force_paged_prefill and cpu_offload_gb > 0
     if use_offline:
         print(
             f"  Using SGLang offline Engine (decode-only, batch-controlled) — model={model_path}, {desc}"
         )
         _run_sglang_offline_batched(
+            model_path,
+            tp,
+            page_size,
+            env,
+            dump_dir,
+            quantization=quantization,
+            cpu_offload_gb=cpu_offload_gb,
+        )
+    elif use_offline_paged_prefill:
+        print(
+            f"  Using SGLang offline Engine (paged prefill + cpu_offload) — model={model_path}, {desc}"
+        )
+        _run_sglang_offline_paged_prefill(
             model_path,
             tp,
             page_size,
@@ -697,6 +876,10 @@ def run_sglang_mode(
             server_cmd += ["--quantization", quantization]
         if cpu_offload_gb > 0:
             server_cmd += ["--cpu-offload-gb", str(int(cpu_offload_gb))]
+            # With CPU offloading, model uses most GPU memory. Use mem-fraction-static=0.95
+            # so 5% (~9GB on B200) stays as dynamic memory for FlashInfer workspace buffers,
+            # while the remaining static budget covers model + KV cache.
+            server_cmd += ["--mem-fraction-static", "0.95"]
 
         server_log_path = dump_dir / "sglang_server.log"
         server_log_file = open(server_log_path, "w")

@@ -27,7 +27,7 @@
 
 set -euo pipefail
 
-NUM_GPUS_TOTAL=8
+NUM_GPUS_TOTAL=6
 LOCK_PREFIX="/tmp/flashinfer-bench-gpu"
 INFO_PREFIX="/tmp/flashinfer-bench-gpu"
 GPUS_NEEDED=1
