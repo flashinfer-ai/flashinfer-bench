@@ -58,7 +58,8 @@ After a definition reaches all-PRs-open state, run this checklist:
 2. **Reference test**: Verify `flashinfer_trace/tests/references/test_{name}.py` exists
 3. **Coverage**: Verify `docs/model_coverage.mdx` updated to ✅ for this definition
 4. **Test results**: Verify PR description includes reference test stdout
-5. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
+5. **PR2 link**: Verify PR description includes a link to the HuggingFace PR 2 (workload addition)
+6. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
 
 **PR 2 (HuggingFace flashinfer-trace):**
 1. **Workloads**: Verify `workloads/{op_type}/{name}.jsonl` exists
@@ -107,6 +108,7 @@ Submit 2 PRs for definition <name>:
 - `flashinfer_trace/tests/references/test_{name}.py`
 - `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition
 - PR description must include the full stdout of running the reference test
+- PR description must include a link to the HuggingFace PR 2 (workload addition)
 
 ## PR 2 Contents
 - `solutions/baseline_{op_type}.py` (generated from `reference_impl` field in def JSON)
