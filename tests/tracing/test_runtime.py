@@ -38,7 +38,7 @@ def minimal_trace_set(tmp_path: Path) -> TraceSet:
             reference="def run(a, b):\n    return a\n",
         ),
     }
-    return TraceSet(root=str(tmp_path), definitions=definitions)
+    return TraceSet(root=str(tmp_path), definitions=definitions, traces=[])
 
 
 @pytest.fixture(autouse=True)

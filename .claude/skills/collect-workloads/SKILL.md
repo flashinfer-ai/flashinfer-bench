@@ -22,23 +22,30 @@ Then optionally submit a PR to the flashinfer-trace repo.
 
 | Script | Purpose | When to use |
 |--------|---------|-------------|
-| `collect_workloads.py` | **Primary entry point.** `sglang` mode: full pipeline (SGLang server + inference + sanitize). | Default for any workload collection |
+| `collect_workloads.py` | **Primary entry point.** `sglang` mode (**default**): full pipeline (SGLang server + inference + sanitize). `direct` mode: call FlashInfer APIs directly with synthetic inputs — **only when FlashInfer API is not integrated into SGLang**. | Default for any workload collection |
 | `sanitize_dumps.py` | Converts FlashInfer Level 10 per-call dump directories → flashinfer-trace JSONL + safetensors | Called automatically by `collect_workloads.py`; also run manually to re-sanitize existing dumps |
 
 Always provide `--flashinfer-trace-dir` to specify the flashinfer-trace repo location.
 
 ### `scripts/collect_workloads.py` ← **primary collection script**
 
-The main entry point. Always use `sglang` mode.
+The main entry point. **Always use `sglang` mode by default.** Only fall back to `direct` mode when the FlashInfer API is not integrated into SGLang (e.g., a new op_type not yet wired into SGLang's FlashInfer backend).
 
 ```bash
-# SGLang mode: real inference → real structural tensors
+# SGLang mode (DEFAULT): real inference → real structural tensors
 CUDA_VISIBLE_DEVICES=0,0 python scripts/collect_workloads.py sglang \
   --model-path ~/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/<hash> \
   --definitions gqa_paged_prefill_causal_h20_kv4_d128_ps64 \
   --flashinfer-trace-dir tmp/flashinfer-trace \
   --replace \
   --skip-install  # skip if packages already installed
+
+# Direct mode (FALLBACK ONLY): use only when FlashInfer API is not integrated into SGLang
+# e.g. a new kernel type that SGLang does not yet call via FlashInfer
+python scripts/collect_workloads.py direct \
+  --definitions gdn_mtp_qk4_v8_d128_k_last \
+  --flashinfer-trace-dir tmp/flashinfer-trace \
+  --replace
 ```
 
 **Auto-detection from definition tags:**
@@ -159,6 +166,20 @@ FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only ex
 
 `--disable-cuda-graph` is required so every kernel call is logged individually.
 
+### Phase 3: Direct API Calls (direct mode — FALLBACK ONLY)
+
+**Only use this mode when the FlashInfer API is not integrated into SGLang** — for example, a brand-new kernel type that SGLang does not yet route through FlashInfer. In all other cases, prefer `sglang` mode for real structural tensors.
+
+`collect_workloads.py direct` calls FlashInfer APIs directly with synthetic inputs — no SGLang or model needed. Spawns a subprocess per definition with FlashInfer env vars set before any import.
+
+Default variable axis combinations per op_type (`OP_TYPE_VAR_CONFIGS` in `collect_workloads.py`):
+- `gdn`: 21 (batch_size, seq_len, pool_size) combinations
+- `gqa_paged` / `mla_paged`: 4–5 (batch_size, num_pages) combinations
+- `rmsnorm`: 4 (batch_size, seq_len) combinations
+- `gemm` / `sampling`: 4 batch_size variants
+
+Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the API.
+
 ### Phase 4: Tensor Dump Sanitization
 
 `scripts/sanitize_dumps.py` processes the FlashInfer dump directory:
@@ -178,117 +199,16 @@ FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only ex
 6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
 7. **Deduplication**: at most 2 entries per unique axes combination per definition
 
-### Phase 5: Baseline Evaluation (correctness gate before PR submission)
-
-Before creating PR 2, run the baseline solution against the collected workloads to verify
-correctness. `collect_workloads.py` does this automatically via `--eval-baseline` (on by default):
+### Phase 5: Submit Pull Request
 
 ```bash
-# Automatically run as part of collect_workloads.py (--eval-baseline is the default)
-# Runs: flashinfer-bench run --local {trace_dir} --definitions {def_name} --solutions baseline
-# Writes: {trace_dir}/traces/{def_name}_baseline.jsonl
-# Exits non-zero if any workload status != PASSED
+cd tmp/flashinfer-trace
+git checkout -b workloads-$(date +%Y%m%d)-{op_type}
+git add workloads/ blob/
+git commit -m "Add {op_type} workloads from {model} ({num} samples)"
+git push origin HEAD
+gh pr create --repo flashinfer-ai/flashinfer-trace --title "Add {op_type} workloads" --body "..."
 ```
-
-All entries in the resulting `traces/{def_name}_baseline.jsonl` must have `evaluation.status == "PASSED"`.
-If any fail, do **not** submit PR 2 — investigate and fix the reference implementation first.
-
-### Phase 6: Submit Pull Request (1 HuggingFace PR per definition)
-
-This skill produces **PR 2** in the two-PR workflow. PR 1 (definition JSON + reference tests +
-`docs/model_coverage.mdx`) must already be open on GitHub before submitting PR 2.
-
-For each definition, submit **one HuggingFace PR** containing **six items**:
-
-| # | Item | Source |
-|---|------|--------|
-| 1 | Baseline solution JSON | FlashInfer API wrapper at `solutions/baseline/{op_type}/{def_name}/flashinfer_wrapper_*.json` — calls `flashinfer.BatchDecodeWithPagedKVCacheWrapper` or `flashinfer.BatchPrefillWithPagedKVCacheWrapper`, NOT the `reference_impl` from def JSON |
-| 2 | Workload JSONL | `{trace_dir}/workloads/{op_type}/{def_name}.jsonl` |
-| 3 | Safetensors blobs | `{trace_dir}/blob/workloads/{op_type}/{def_name}/` |
-| 4 | Kernel definition JSON | Copied from flashinfer-bench (same as PR 1) |
-| 5 | Reference test | Copied from flashinfer-bench (same as PR 1) |
-| 6 | **Baseline eval trace JSONL** | `{trace_dir}/traces/{def_name}_baseline.jsonl` → copied to `traces/{op_type}/{def_name}.jsonl` (all PASSED) |
-
-```bash
-cd tmp/worktrees/trace-{definition_name}  # or tmp/flashinfer-trace on its own branch
-
-# 1. Baseline solution — FlashInfer API wrapper JSON (NOT reference_impl from def JSON)
-# Copy from the main flashinfer-trace repo (solutions/baseline/{op_type}/{def_name}/)
-# The solution must call flashinfer.BatchDecodeWithPagedKVCacheWrapper (decode defs) or
-# flashinfer.BatchPrefillWithPagedKVCacheWrapper (prefill defs / non-power-of-2 group sizes)
-mkdir -p solutions/baseline/{op_type}/{def_name}
-# Write a flashinfer_wrapper_<hash>.json file following the format in:
-#   solutions/baseline/{op_type}/existing_def/flashinfer_wrapper_*.json
-git add solutions/baseline/{op_type}/{def_name}/
-
-# 2+3. Workload JSONL and blobs
-cp {trace_dir}/workloads/{op_type}/{def_name}.jsonl workloads/{op_type}/{def_name}.jsonl
-cp -r {trace_dir}/blob/workloads/{op_type}/{def_name}/ blob/workloads/{op_type}/{def_name}/
-git add workloads/{op_type}/{def_name}.jsonl blob/workloads/{op_type}/{def_name}/
-
-# 4. Kernel definition JSON
-mkdir -p definitions/{op_type}
-cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{def_name}.json definitions/{op_type}/{def_name}.json
-git add definitions/{op_type}/{def_name}.json
-
-# 5. Reference test
-mkdir -p tests/references
-cp {REPO_ROOT}/flashinfer_trace/tests/references/test_{def_name}.py tests/references/test_{def_name}.py
-git add tests/references/test_{def_name}.py
-
-# 6. Baseline eval trace (must all be PASSED — generated by Phase 5)
-mkdir -p traces/{op_type}
-cp {trace_dir}/traces/{def_name}_baseline.jsonl traces/{op_type}/{def_name}.jsonl
-git add traces/{op_type}/{def_name}.jsonl
-
-git commit -m "Add {def_name}: baseline solution + workloads + blobs + def + tests + eval trace
-
-All {N} workload entries PASSED baseline evaluation.
-Model: {hf_repo_id}
-GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
-"
-git push origin {branch}
-
-python -c "
-from huggingface_hub import HfApi
-result = HfApi().create_commit(
-    repo_id='flashinfer-ai/flashinfer-trace',
-    repo_type='dataset',
-    commit_message='Add {def_name}: solution + workloads + blobs + def + tests + eval trace',
-    create_pr=True,
-)
-print(result.pr_url)
-"
-```
-
-**Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions.
-Always wait for PR 1 (GitHub) to be open before submitting PR 2.
-
-### Parallelizing across definitions with git worktrees
-
-When submitting PRs for multiple definitions, use git worktrees so all submissions happen
-in parallel — one worktree per definition in each repo, one agent per definition.
-
-```bash
-DATE=$(date +%Y%m%d)
-
-# Create trace worktrees up front for all definitions
-for DEF in {definition_name_1} {definition_name_2} ...; do
-  git -C tmp/flashinfer-trace worktree add \
-    ../worktrees/trace-${DEF} \
-    -b workloads-${DATE}-${DEF}
-done
-
-# Spawn one agent per definition — all run simultaneously
-# Each agent: copies solution + workload files into its worktree, commits, pushes, creates HF PR
-# Clean up after all agents report their PR URLs:
-for DEF in {definition_names}; do
-  git -C tmp/flashinfer-trace worktree remove ../worktrees/trace-${DEF}
-  git worktree remove tmp/worktrees/bench-${DEF}
-done
-```
-
-See `onboard-model` SKILL.md Phase 4 for the full agent prompt template and per-step details.
 
 ## Output Format
 
@@ -381,21 +301,6 @@ python scripts/sanitize_dumps.py \
 - Verify HuggingFace auth: `huggingface-cli login`
 - Check write permissions to flashinfer-ai/flashinfer-trace
 
-## Checking SGLang Integration Before Collection
-
-Before running `sglang` mode, verify that SGLang actually routes the target kernel through
-FlashInfer. Use the `fi_api` tag from the definition JSON as the search term:
-
-```bash
-# e.g. for fi_api:flashinfer.gdn.gated_delta_rule_decode
-grep -r "gated_delta_rule_decode" tmp/sglang/python/sglang/srt/ --include="*.py" | grep -v __pycache__
-```
-
-If the API is **not found** in SGLang:
-1. SGLang needs to be updated to wire in this FlashInfer kernel.
-2. The `onboard-model` skill (Phase 3c) handles drafting and submitting the SGLang PR.
-3. Wait for the SGLang PR to merge before collecting workloads.
-
 ## Integration with Other Skills
 
 ```bash
@@ -403,9 +308,6 @@ If the API is **not found** in SGLang:
 /extract-kernel-definitions --model-name deepseek_v3
 /collect-workloads --op-type mla_paged --model-name deepseek-v3
 /add-reference-tests --op-type mla_paged
-
-# Or use the full end-to-end pipeline (handles SGLang integration check + PR automatically)
-/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## References

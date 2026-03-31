@@ -295,7 +295,6 @@ def run(args: argparse.Namespace):
             solutions=args.solutions,
             timeout_seconds=args.timeout,
             required_matched_ratio=args.required_matched_ratio,
-            profile_baseline=getattr(args, "profile_baseline", True),
         )
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
@@ -419,14 +418,6 @@ def cli():
         type=int,
         default=300,
         help="Timeout in seconds for each solution evaluation (default: 300)",
-    )
-    run_parser.add_argument(
-        "--no-profile-baseline",
-        dest="profile_baseline",
-        action="store_false",
-        default=True,
-        help="Skip profiling the reference implementation (correctness check still runs). "
-        "Useful when the reference is slow (e.g. large prefill workloads).",
     )
     run_parser.add_argument(
         "--local",
