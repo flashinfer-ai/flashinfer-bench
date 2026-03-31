@@ -117,6 +117,11 @@ async def root():
                 "description": "Submit a solution for evaluation",
             },
             {
+                "method": "POST",
+                "path": "/profile",
+                "description": "Submit a solution for evaluation with CUPTI profiling",
+            },
+            {
                 "method": "GET",
                 "path": "/tasks/{task_id}",
                 "description": "Get task status and results",
@@ -170,6 +175,16 @@ async def evaluate(req: EvaluateRequest):
         raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
     renamed = req.solution.with_unique_name()
     task_id = sched.submit(renamed, req.workload_uuids)
+    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
+
+
+@app.post("/profile", response_model=EvaluateResponse)
+async def profile(req: EvaluateRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+    renamed = req.solution.with_unique_name()
+    task_id = sched.submit(renamed, req.workload_uuids, profile=True)
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 

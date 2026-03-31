@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.data import Solution, Trace
 
 
@@ -30,6 +31,7 @@ class Task:
     error: Optional[str] = None
     created_at: float = field(default_factory=time.time)
     completed_at: Optional[float] = None
+    config_override: Optional[BenchmarkConfig] = None
 
 
 class TaskStore:
@@ -41,7 +43,12 @@ class TaskStore:
         self._ttl = ttl_seconds
         self._lock = threading.Lock()
 
-    def create_task(self, solution: Solution, workload_uuids: Optional[List[str]] = None) -> str:
+    def create_task(
+        self,
+        solution: Solution,
+        workload_uuids: Optional[List[str]] = None,
+        config_override: Optional[BenchmarkConfig] = None,
+    ) -> str:
         """Create a single evaluation task. Returns task_id."""
         task_id = uuid.uuid4().hex
         task = Task(
@@ -49,6 +56,7 @@ class TaskStore:
             solution=solution,
             definition_name=solution.definition,
             workload_uuids=workload_uuids,
+            config_override=config_override,
         )
         with self._lock:
             self._tasks[task_id] = task

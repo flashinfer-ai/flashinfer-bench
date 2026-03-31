@@ -11,7 +11,7 @@ import torch
 from flashinfer_bench.bench.config import ResolvedEvalConfig
 from flashinfer_bench.bench.evaluators.evaluator import Evaluator
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
-from flashinfer_bench.bench.timing import time_runnable
+from flashinfer_bench.bench.timing import profile_runnable, time_runnable
 from flashinfer_bench.bench.utils import (
     compute_error_stats,
     gen_inputs,
@@ -24,6 +24,7 @@ from flashinfer_bench.data import (
     Definition,
     Evaluation,
     EvaluationStatus,
+    KernelProfile,
     Performance,
     Workload,
 )
@@ -189,6 +190,7 @@ class DefaultEvaluator(Evaluator):
     ) -> Tuple[Performance, Optional[Evaluation]]:
         sol_latencies: List[float] = []
         is_dps = sol_runnable.metadata.destination_passing_style
+        kernel_profiles = None
 
         try:
             for inp in inputs:
@@ -199,8 +201,16 @@ class DefaultEvaluator(Evaluator):
                 else:
                     # Value-returning style
                     args = list(inp)
-                ms = time_runnable(sol_runnable, args, cfg.warmup_runs, cfg.iterations, device)
-                sol_latencies.append(ms)
+
+                if cfg.profile:
+                    ms, profiles = profile_runnable(
+                        sol_runnable, args, cfg.warmup_runs, cfg.iterations, device
+                    )
+                    sol_latencies.append(ms)
+                    kernel_profiles = [KernelProfile(**p) for p in profiles]
+                else:
+                    ms = time_runnable(sol_runnable, args, cfg.warmup_runs, cfg.iterations, device)
+                    sol_latencies.append(ms)
         except Exception:
             traceback.print_exc()
             return None, make_eval(
@@ -218,6 +228,7 @@ class DefaultEvaluator(Evaluator):
             latency_ms=sol_mean_latency_ms,
             reference_latency_ms=ref_mean_latency_ms,
             speedup_factor=(ref_mean_latency_ms / sol_mean_latency_ms),
+            profile=kernel_profiles,
         )
 
         return performance, None

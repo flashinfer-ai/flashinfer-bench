@@ -2,7 +2,7 @@
 
 import math
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -36,6 +36,35 @@ class Correctness(BaseModelWithDocstrings):
         return v
 
 
+class KernelProfile(BaseModelWithDocstrings):
+    """CUPTI Activity data for a single GPU kernel invocation.
+
+    Contains hardware-level profiling information collected via the CUPTI
+    Activity API for a GPU kernel launch.
+    """
+
+    name: str
+    """Kernel function name."""
+    duration_ns: int
+    """Kernel execution duration in nanoseconds (end - start)."""
+    grid: List[int]
+    """Grid dimensions [grid_x, grid_y, grid_z]."""
+    block: List[int]
+    """Block dimensions [block_x, block_y, block_z]."""
+    registers_per_thread: int
+    """Number of registers used per thread."""
+    static_shared_memory: int
+    """Static shared memory allocated in bytes."""
+    dynamic_shared_memory: int
+    """Dynamic shared memory allocated in bytes."""
+    shared_memory_executed: int
+    """Total shared memory executed in bytes."""
+    local_memory_per_thread: int
+    """Local memory per thread in bytes."""
+    local_memory_total: int
+    """Total local memory in bytes."""
+
+
 class Performance(BaseModelWithDocstrings):
     """Performance metrics from timing evaluation.
 
@@ -49,6 +78,8 @@ class Performance(BaseModelWithDocstrings):
     """Reference implementation latency in milliseconds for comparison."""
     speedup_factor: float = Field(default=0.0, ge=0.0)
     """Performance speedup factor compared to reference (reference_time / solution_time)."""
+    profile: Optional[List[KernelProfile]] = None
+    """Per-kernel CUPTI Activity profiling data (present only for /profile requests)."""
 
 
 class Environment(BaseModelWithDocstrings):
