@@ -1,5 +1,6 @@
 """GPU worker scheduling for the benchmark server."""
 
+import dataclasses
 import logging
 import queue
 import threading
@@ -55,9 +56,17 @@ class Scheduler:
     def workers(self) -> List["_GPUWorkerThread"]:
         return self._workers
 
-    def submit(self, solution: Solution, workload_uuids: Optional[List[str]] = None) -> str:
+    def submit(
+        self,
+        solution: Solution,
+        workload_uuids: Optional[List[str]] = None,
+        profile: bool = False,
+    ) -> str:
         """Submit a solution for evaluation. Returns task_id."""
-        task_id = self._task_store.create_task(solution, workload_uuids)
+        config_override = None
+        if profile:
+            config_override = dataclasses.replace(self._config, profile=True)
+        task_id = self._task_store.create_task(solution, workload_uuids, config_override)
         self._queue.put(task_id)
         return task_id
 
@@ -150,11 +159,13 @@ class _GPUWorkerThread(threading.Thread):
         if not workload_traces:
             raise ValueError(f"No workloads found for definition: {task.definition_name}")
 
+        cfg = task.config_override or self._config
+
         traces = []
         for wl_trace in workload_traces:
             workload = wl_trace.workload
             ref_handle = self._get_or_build_ref(definition, workload)
-            evaluation = self._gpu_worker.run_solution(task.solution, ref_handle, self._config)
+            evaluation = self._gpu_worker.run_solution(task.solution, ref_handle, cfg)
             trace = Trace(
                 definition=task.definition_name,
                 workload=workload,
