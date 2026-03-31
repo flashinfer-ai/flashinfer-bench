@@ -6,6 +6,8 @@ import uuid
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
+import logging
+
 import torch
 
 from flashinfer_bench.bench.config import ResolvedEvalConfig
@@ -26,6 +28,7 @@ from flashinfer_bench.data import (
     EvaluationStatus,
     KernelProfile,
     Performance,
+    Solution,
     Workload,
 )
 
@@ -187,7 +190,12 @@ class DefaultEvaluator(Evaluator):
         cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
+        *,
+        solution: Optional[Solution] = None,
+        workload: Optional[Workload] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> Tuple[Performance, Optional[Evaluation]]:
+        _logger = logging.getLogger(__name__)
         sol_latencies: List[float] = []
         is_dps = sol_runnable.metadata.destination_passing_style
         kernel_profiles = None
@@ -202,15 +210,23 @@ class DefaultEvaluator(Evaluator):
                     # Value-returning style
                     args = list(inp)
 
-                if cfg.profile:
-                    ms, profiles = profile_runnable(
-                        sol_runnable, args, cfg.warmup_runs, cfg.iterations, device
+                # Always use time_runnable for accurate latency
+                ms = time_runnable(sol_runnable, args, cfg.warmup_runs, cfg.iterations, device)
+                sol_latencies.append(ms)
+
+            # Phase 2: NCU profiling (once, separate from latency measurement)
+            if cfg.profile and solution is not None and workload is not None:
+                try:
+                    profiles = profile_runnable(
+                        definition, solution, workload, device,
+                        trace_set_root=trace_set_root,
+                        ncu_path=cfg.ncu_path,
+                        timeout=cfg.ncu_timeout,
                     )
-                    sol_latencies.append(ms)
                     kernel_profiles = [KernelProfile(**p) for p in profiles]
-                else:
-                    ms = time_runnable(sol_runnable, args, cfg.warmup_runs, cfg.iterations, device)
-                    sol_latencies.append(ms)
+                except Exception:
+                    _logger.warning("NCU profiling failed (non-fatal)", exc_info=True)
+                    kernel_profiles = None
         except Exception:
             traceback.print_exc()
             return None, make_eval(

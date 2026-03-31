@@ -18,6 +18,7 @@ from flashinfer_bench.data import (
     Evaluation,
     EvaluationStatus,
     Performance,
+    Solution,
     Workload,
 )
 
@@ -62,6 +63,10 @@ class Evaluator(ABC):
         cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
+        *,
+        solution: Optional[Solution] = None,
+        workload: Optional[Workload] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> Tuple[Performance, Optional[Evaluation]]: ...
 
     @classmethod
@@ -75,6 +80,10 @@ class Evaluator(ABC):
         cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
+        *,
+        solution: Optional[Solution] = None,
+        workload: Optional[Workload] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> Evaluation:
         correctness, evaluation = cls.check_correctness(
             definition=definition,
@@ -96,6 +105,9 @@ class Evaluator(ABC):
             cfg=cfg,
             log_path=log_path,
             device=device,
+            solution=solution,
+            workload=workload,
+            trace_set_root=trace_set_root,
         )
 
         if evaluation is not None:

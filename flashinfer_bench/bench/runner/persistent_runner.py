@@ -262,7 +262,12 @@ class PersistentSubprocessWorker:
         return baseline.handle
 
     def run_solution(
-        self, solution: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
+        self,
+        solution: Solution,
+        baseline: BaselineHandle,
+        cfg: BenchmarkConfig,
+        workload: Optional[Workload] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> Evaluation:
         """Run solution using cached compilation."""
         if baseline not in self._baselines:
@@ -290,6 +295,8 @@ class PersistentSubprocessWorker:
             "ref_mean_latency_ms": bl.mean_latency_ms,
             "config": cfg,
             "solution_name": solution.name,
+            "workload": workload,
+            "trace_set_root": trace_set_root,
         }
 
         if self._parent_conn is None or self._parent_conn.closed:
@@ -692,6 +699,9 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
                             cfg=eval_cfg,
                             log_path=log_path,
                             device=device,
+                            solution=solution,
+                            workload=msg.get("workload"),
+                            trace_set_root=msg.get("trace_set_root"),
                         )
 
                         conn.send(
