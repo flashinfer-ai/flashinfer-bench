@@ -199,19 +199,20 @@ def _run_sglang_offline_paged_prefill(
         (2, 64, 4),
         (2, 512, 4),
         (2, 1024, 4),
-        (4, 64, 4),
         (4, 256, 4),
-        (4, 512, 4),
-        (8, 32, 4),
         (8, 256, 4),
-        (8, 512, 4),
         (16, 32, 4),
         (16, 128, 4),
         (16, 256, 4),
         (32, 32, 4),
         (32, 128, 4),
         (64, 32, 4),
+        (64, 128, 4),
+        (64, 256, 4),
         (128, 32, 4),
+        (128, 128, 4),
+        (256, 32, 4),
+        (256, 128, 4),
     ]
 
     script = r"""
@@ -350,6 +351,7 @@ def _run_sglang_offline_batched(
     dump_dir: Path,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
+    mem_fraction_static: float | None = None,
 ) -> None:
     """Run SGLang offline Engine in a subprocess to collect decode workloads with controlled batch sizes.
 
@@ -371,18 +373,19 @@ def _run_sglang_offline_batched(
         (1, 300, 8),
         (1, 800, 8),
         (2, 50, 8),
-        (4, 50, 8),
-        (4, 800, 8),
-        (8, 50, 8),
+        (4, 300, 8),
         (8, 300, 8),
-        (8, 800, 8),
         (16, 50, 8),
         (16, 300, 8),
         (16, 800, 8),
         (32, 50, 8),
         (32, 300, 8),
         (64, 50, 8),
+        (64, 300, 8),
+        (64, 800, 8),
         (128, 50, 8),
+        (256, 50, 8),
+        (256, 300, 8),
     ]
 
     # Write a self-contained script that is launched as a subprocess.
@@ -409,6 +412,7 @@ if __name__ == '__main__':
     rounds      = json.loads(sys.argv[5])
     quant       = sys.argv[6] if sys.argv[6] != "none" else None
     cpu_offload = float(sys.argv[7])
+    mem_frac    = float(sys.argv[8]) if sys.argv[8] != "none" else None
 
     # ── SGLang offline engine ─────────────────────────────────────────────────
     import sglang
@@ -425,6 +429,8 @@ if __name__ == '__main__':
         engine_kwargs["quantization"] = quant
     if cpu_offload > 0:
         engine_kwargs["cpu_offload_gb"] = cpu_offload
+    if mem_frac is not None:
+        engine_kwargs["mem_fraction_static"] = mem_frac
 
     engine = sglang.Engine(**engine_kwargs)
 
@@ -509,6 +515,7 @@ if __name__ == '__main__':
         json.dumps(rounds),
         quantization or "none",
         str(cpu_offload_gb),
+        str(mem_fraction_static) if mem_fraction_static is not None else "none",
     ]
     subprocess.run(cmd, check=True, env=env)
 
@@ -599,6 +606,7 @@ def run_sglang_mode(
             dump_dir,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
+            mem_fraction_static=mem_fraction_static,
         )
     elif use_offline_paged_prefill:
         print(
@@ -863,10 +871,7 @@ def _run_sglang_inference(
             (2, 64),
             (2, 512),
             (2, 1024),
-            (4, 64),
             (4, 256),
-            (4, 768),
-            (8, 32),
             (8, 256),
             (8, 1024),
             (16, 64),
@@ -875,7 +880,8 @@ def _run_sglang_inference(
             (32, 32),
             (32, 256),
             (32, 512),
-            (64, 64),
+            (64, 32),
+            (64, 128),
             (64, 256),
             (64, 768),
             (128, 32),
@@ -883,6 +889,8 @@ def _run_sglang_inference(
             (128, 512),
             (256, 32),
             (256, 128),
+            (256, 256),
+            (256, 512),
         ]
         total_success = 0
         total_sent = 0
@@ -939,19 +947,19 @@ def _run_sglang_inference(
             (2, 50, 128),
             (2, 300, 128),
             (2, 800, 128),
-            (4, 50, 128),
             (4, 300, 128),
-            (4, 800, 128),
-            (8, 50, 128),
             (8, 300, 128),
-            (8, 800, 128),
             (16, 50, 128),
             (16, 300, 128),
             (16, 800, 128),
             (32, 50, 128),
             (32, 300, 128),
             (64, 50, 128),
+            (64, 300, 128),
+            (64, 800, 128),
             (128, 50, 128),
+            (256, 50, 128),
+            (256, 300, 128),
         ]
 
         conv_idx = 0
