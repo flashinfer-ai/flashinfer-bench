@@ -30,7 +30,7 @@ class BenchmarkConfig:
     profile_baseline: bool = field(default=True)
     profile: bool = field(default=False)
     ncu_path: str = field(default="ncu")
-    ncu_timeout: int = field(default=120)
+    ncu_timeout: int = field(default=300)
 
     def __post_init__(self):
         if self.log_dir is not None:

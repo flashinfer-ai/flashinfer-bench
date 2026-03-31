@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import re
 import statistics
 import subprocess
@@ -38,7 +39,7 @@ NCU_METRICS = [
     "dram__bytes_write.sum",
     "l1tex__t_sector_hit_rate.pct",
     "lts__t_sector_hit_rate.pct",
-    "launch__shared_mem_per_block_allocated",
+    "launch__shared_mem_per_block",
     "sm__warps_active.avg.pct_of_peak_sustained_active",
     "sm__maximum_warps_per_active_cycle_pct",
 ]
@@ -178,30 +179,48 @@ def _parse_ncu_csv(csv_output: str) -> List[Dict[str, Any]]:
         grid = _parse_dim_tuple(row.get("Grid Size", "(0,0,0)"))
         block = _parse_dim_tuple(row.get("Block Size", "(0,0,0)"))
 
-        kernels.append({
-            "name": kernel_name,
-            "duration_ns": _safe_float(row, "gpu__time_duration.sum"),
-            "grid": grid,
-            "block": block,
-            "registers_per_thread": _safe_int(row, "launch__registers_per_thread"),
-            "sm_throughput_pct": _safe_float(
-                row, "sm__throughput.avg.pct_of_peak_sustained_elapsed"
-            ),
-            "dram_throughput_pct": _safe_float(
-                row, "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
-            ),
-            "dram_bytes_read": _safe_float(row, "dram__bytes_read.sum"),
-            "dram_bytes_written": _safe_float(row, "dram__bytes_write.sum"),
-            "l1_hit_rate_pct": _safe_float(row, "l1tex__t_sector_hit_rate.pct"),
-            "l2_hit_rate_pct": _safe_float(row, "lts__t_sector_hit_rate.pct"),
-            "shared_memory_bytes": _safe_float(row, "launch__shared_mem_per_block_allocated"),
-            "achieved_occupancy_pct": _safe_float(
-                row, "sm__warps_active.avg.pct_of_peak_sustained_active"
-            ),
-            "theoretical_occupancy_pct": _safe_float(
-                row, "sm__maximum_warps_per_active_cycle_pct"
-            ),
-        })
+        kernels.append(
+            {
+                "name": kernel_name,
+                "gpu__time_duration.sum": _safe_float(
+                    row, "gpu__time_duration.sum"
+                ),
+                "grid": grid,
+                "block": block,
+                "launch__registers_per_thread": _safe_int(
+                    row, "launch__registers_per_thread"
+                ),
+                "sm__throughput.avg.pct_of_peak_sustained_elapsed": _safe_float(
+                    row, "sm__throughput.avg.pct_of_peak_sustained_elapsed"
+                ),
+                "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": _safe_float(
+                    row,
+                    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+                ),
+                "dram__bytes_read.sum": _safe_float(
+                    row, "dram__bytes_read.sum"
+                ),
+                "dram__bytes_write.sum": _safe_float(
+                    row, "dram__bytes_write.sum"
+                ),
+                "l1tex__t_sector_hit_rate.pct": _safe_float(
+                    row, "l1tex__t_sector_hit_rate.pct"
+                ),
+                "lts__t_sector_hit_rate.pct": _safe_float(
+                    row, "lts__t_sector_hit_rate.pct"
+                ),
+                "launch__shared_mem_per_block": _safe_float(
+                    row, "launch__shared_mem_per_block"
+                ),
+                "sm__warps_active.avg.pct_of_peak_sustained_active": _safe_float(
+                    row,
+                    "sm__warps_active.avg.pct_of_peak_sustained_active",
+                ),
+                "sm__maximum_warps_per_active_cycle_pct": _safe_float(
+                    row, "sm__maximum_warps_per_active_cycle_pct"
+                ),
+            }
+        )
 
     return kernels
 
@@ -262,8 +281,8 @@ def profile_runnable(
             ncu_path,
             "--csv",
             "--page", "raw",
-            "--set", "detailed",
             "--metrics", metrics_str,
+            "--replay-mode", "application",
             "--nvtx",
             "--nvtx-include", "flashinfer_bench_ncu_profile]",
             "-f",
@@ -277,11 +296,25 @@ def profile_runnable(
         if trace_set_root is not None:
             cmd.extend(["--trace-set-path", str(trace_set_root)])
 
+        # Remap the target device to cuda:0 via CUDA_VISIBLE_DEVICES so NCU
+        # profiles on device 0.  NCU + TMA (cp.async.bulk.tensor) can fail on
+        # non-zero devices during replay.
+        env = os.environ.copy()
+        device_idx = 0
+        if device.startswith("cuda:"):
+            try:
+                device_idx = int(device.split(":")[1])
+            except (IndexError, ValueError):
+                pass
+        env["CUDA_VISIBLE_DEVICES"] = str(device_idx)
+        # The subprocess now sees only one GPU, so tell the runner to use cuda:0
+        cmd[cmd.index("--device") + 1] = "cuda:0"
+
         logger.info("NCU profile command: %s", " ".join(cmd))
 
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
+                cmd, capture_output=True, text=True, timeout=timeout, env=env,
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"NCU profiling timed out after {timeout} seconds")
