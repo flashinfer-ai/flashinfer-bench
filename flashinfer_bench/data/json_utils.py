@@ -23,7 +23,7 @@ def save_json_file(object: BaseModel, path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(object.model_dump_json(indent=2, exclude_unset=True))
+        f.write(object.model_dump_json(indent=2, exclude_unset=True, by_alias=True))
 
 
 def load_json_file(model_cls: Type[T], path: Union[str, Path]) -> T:
@@ -70,7 +70,7 @@ def save_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        object_strs = [obj.model_dump_json(indent=None) for obj in objects]
+        object_strs = [obj.model_dump_json(indent=None, by_alias=True) for obj in objects]
         output_str = "\n".join(object_strs) + "\n"
         f.write(output_str)
 
@@ -137,6 +137,6 @@ def append_jsonl_file(objects: List[BaseModel], path: Union[str, Path]) -> None:
         if needs_newline_prefix:
             f.write("\n")
 
-        object_strs = [obj.model_dump_json(indent=None) for obj in objects]
+        object_strs = [obj.model_dump_json(indent=None, by_alias=True) for obj in objects]
         output_str = "\n".join(object_strs) + "\n"
         f.write(output_str)

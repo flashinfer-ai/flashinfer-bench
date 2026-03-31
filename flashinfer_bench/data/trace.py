@@ -43,56 +43,37 @@ class KernelProfile(BaseModelWithDocstrings):
     Compute (NCU) for a GPU kernel launch.
     """
 
-    model_config = ConfigDict(
-        use_attribute_docstrings=True,
-        populate_by_name=True,
-    )
+    model_config = ConfigDict(use_attribute_docstrings=True, populate_by_name=True)
 
     name: str
     """Kernel function name (demangled)."""
-    duration_ns: float = Field(validation_alias="gpu__time_duration.sum")
+    duration_ns: float = Field(alias="gpu__time_duration.sum")
     """Kernel execution duration in nanoseconds (gpu__time_duration.sum)."""
     grid: List[int]
     """Grid dimensions [grid_x, grid_y, grid_z]."""
     block: List[int]
     """Block dimensions [block_x, block_y, block_z]."""
-    registers_per_thread: int = Field(
-        validation_alias="launch__registers_per_thread"
-    )
+    registers_per_thread: int = Field(alias="launch__registers_per_thread")
     """Number of registers used per thread (launch__registers_per_thread)."""
-    sm_throughput_pct: float = Field(
-        validation_alias="sm__throughput.avg.pct_of_peak_sustained_elapsed"
-    )
+    sm_throughput_pct: float = Field(alias="sm__throughput.avg.pct_of_peak_sustained_elapsed")
     """SM throughput as percentage of peak (sm__throughput.avg.pct_of_peak_sustained_elapsed)."""
     dram_throughput_pct: float = Field(
-        validation_alias="gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
+        alias="gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
     )
     """DRAM throughput as percentage of peak (gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed)."""
-    dram_bytes_read: float = Field(validation_alias="dram__bytes_read.sum")
+    dram_bytes_read: float = Field(alias="dram__bytes_read.sum")
     """DRAM bytes read (dram__bytes_read.sum)."""
-    dram_bytes_written: float = Field(
-        validation_alias="dram__bytes_write.sum"
-    )
+    dram_bytes_written: float = Field(alias="dram__bytes_write.sum")
     """DRAM bytes written (dram__bytes_write.sum)."""
-    l1_hit_rate_pct: float = Field(
-        validation_alias="l1tex__t_sector_hit_rate.pct"
-    )
+    l1_hit_rate_pct: float = Field(alias="l1tex__t_sector_hit_rate.pct")
     """L1 cache hit rate percentage (l1tex__t_sector_hit_rate.pct)."""
-    l2_hit_rate_pct: float = Field(
-        validation_alias="lts__t_sector_hit_rate.pct"
-    )
+    l2_hit_rate_pct: float = Field(alias="lts__t_sector_hit_rate.pct")
     """L2 cache hit rate percentage (lts__t_sector_hit_rate.pct)."""
-    shared_memory_bytes: float = Field(
-        validation_alias="launch__shared_mem_per_block"
-    )
+    shared_memory_bytes: float = Field(alias="launch__shared_mem_per_block")
     """Shared memory allocated per block in bytes (launch__shared_mem_per_block_allocated)."""
-    achieved_occupancy_pct: float = Field(
-        validation_alias="sm__warps_active.avg.pct_of_peak_sustained_active"
-    )
+    achieved_occupancy_pct: float = Field(alias="sm__warps_active.avg.pct_of_peak_sustained_active")
     """Achieved occupancy percentage (sm__warps_active.avg.pct_of_peak_sustained_active)."""
-    theoretical_occupancy_pct: float = Field(
-        validation_alias="sm__maximum_warps_per_active_cycle_pct"
-    )
+    theoretical_occupancy_pct: float = Field(alias="sm__maximum_warps_per_active_cycle_pct")
     """Theoretical occupancy percentage (sm__maximum_warps_per_active_cycle_pct)."""
     extra_metrics: Optional[Dict[str, float]] = None
     """Additional NCU metrics not covered by named fields."""

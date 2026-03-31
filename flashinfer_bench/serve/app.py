@@ -201,7 +201,9 @@ async def batch_get_tasks(req: BatchRequest):
     results = []
     for tid in req.task_ids:
         task = sched.task_store.get_task(tid)
-        traces_data = [t.model_dump(mode="json") for t in task.traces] if task.traces else None
+        traces_data = (
+            [t.model_dump(mode="json", by_alias=True) for t in task.traces] if task.traces else None
+        )
         results.append(
             TaskResponse(
                 task_id=task.id,
