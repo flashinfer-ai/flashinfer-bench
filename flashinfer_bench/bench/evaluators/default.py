@@ -223,7 +223,7 @@ class DefaultEvaluator(Evaluator):
                         ncu_path=cfg.ncu_path,
                         timeout=cfg.ncu_timeout,
                     )
-                    kernel_profiles = [KernelProfile(**p) for p in profiles]
+                    kernel_profiles = [KernelProfile.model_validate(p) for p in profiles]
                 except Exception:
                     _logger.warning("NCU profiling failed (non-fatal)", exc_info=True)
                     kernel_profiles = None
