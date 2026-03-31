@@ -229,7 +229,7 @@ class TraceSet:
                 for name, workloads in self.workloads.items()
             },
             "traces": {
-                name: [trace.model_dump(mode="json") for trace in traces]
+                name: [trace.model_dump(mode="json", by_alias=True) for trace in traces]
                 for name, traces in self.traces.items()
             },
         }
