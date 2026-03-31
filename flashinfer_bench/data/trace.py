@@ -37,32 +37,42 @@ class Correctness(BaseModelWithDocstrings):
 
 
 class KernelProfile(BaseModelWithDocstrings):
-    """CUPTI Activity data for a single GPU kernel invocation.
+    """NCU profiling data for a single GPU kernel invocation.
 
-    Contains hardware-level profiling information collected via the CUPTI
-    Activity API for a GPU kernel launch.
+    Contains hardware-level profiling information collected via NVIDIA Nsight
+    Compute (NCU) for a GPU kernel launch.
     """
 
     name: str
-    """Kernel function name."""
-    duration_ns: int
-    """Kernel execution duration in nanoseconds (end - start)."""
+    """Kernel function name (demangled)."""
+    duration_ns: float
+    """Kernel execution duration in nanoseconds (gpu__time_duration.sum)."""
     grid: List[int]
     """Grid dimensions [grid_x, grid_y, grid_z]."""
     block: List[int]
     """Block dimensions [block_x, block_y, block_z]."""
     registers_per_thread: int
-    """Number of registers used per thread."""
-    static_shared_memory: int
-    """Static shared memory allocated in bytes."""
-    dynamic_shared_memory: int
-    """Dynamic shared memory allocated in bytes."""
-    shared_memory_executed: int
-    """Total shared memory executed in bytes."""
-    local_memory_per_thread: int
-    """Local memory per thread in bytes."""
-    local_memory_total: int
-    """Total local memory in bytes."""
+    """Number of registers used per thread (launch__registers_per_thread)."""
+    sm_throughput_pct: float
+    """SM throughput as percentage of peak (sm__throughput.avg.pct_of_peak_sustained_elapsed)."""
+    dram_throughput_pct: float
+    """DRAM throughput as percentage of peak (gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed)."""
+    dram_bytes_read: float
+    """DRAM bytes read (dram__bytes_read.sum)."""
+    dram_bytes_written: float
+    """DRAM bytes written (dram__bytes_write.sum)."""
+    l1_hit_rate_pct: float
+    """L1 cache hit rate percentage (l1tex__t_sector_hit_rate.pct)."""
+    l2_hit_rate_pct: float
+    """L2 cache hit rate percentage (lts__t_sector_hit_rate.pct)."""
+    shared_memory_bytes: float
+    """Shared memory allocated per block in bytes (launch__shared_mem_per_block_allocated)."""
+    achieved_occupancy_pct: float
+    """Achieved occupancy percentage (sm__warps_active.avg.pct_of_peak_sustained_active)."""
+    theoretical_occupancy_pct: float
+    """Theoretical occupancy percentage (sm__maximum_warps_per_active_cycle_pct)."""
+    extra_metrics: Optional[Dict[str, float]] = None
+    """Additional NCU metrics not covered by named fields."""
 
 
 class Performance(BaseModelWithDocstrings):
@@ -79,7 +89,7 @@ class Performance(BaseModelWithDocstrings):
     speedup_factor: float = Field(default=0.0, ge=0.0)
     """Performance speedup factor compared to reference (reference_time / solution_time)."""
     profile: Optional[List[KernelProfile]] = None
-    """Per-kernel CUPTI Activity profiling data (present only for /profile requests)."""
+    """Per-kernel NCU profiling data (present only for /profile requests)."""
 
 
 class Environment(BaseModelWithDocstrings):

@@ -4,22 +4,44 @@ Timing utilities for benchmarking FlashInfer-Bench kernel solutions.
 
 from __future__ import annotations
 
-import bisect
+import csv
+import io
+import logging
+import re
 import statistics
-from functools import partial
+import subprocess
+import sys
+import tempfile
 from multiprocessing import Lock
 from multiprocessing.synchronize import Lock as LockType
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import torch
 from flashinfer.testing import bench_gpu_time_with_cupti
-from flashinfer.testing.utils import get_l2_cache_size
 
 from flashinfer_bench.compile import Runnable
+from flashinfer_bench.data import Definition, Solution, Workload
+
+logger = logging.getLogger(__name__)
 
 # Device-specific lock registry to ensure multiprocess-safe benchmarking
 _device_locks: dict[str, LockType] = {}
 _registry_lock = Lock()
+
+# NCU metrics to collect for profiling
+NCU_METRICS = [
+    "gpu__time_duration.sum",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+    "dram__bytes_read.sum",
+    "dram__bytes_write.sum",
+    "l1tex__t_sector_hit_rate.pct",
+    "lts__t_sector_hit_rate.pct",
+    "launch__shared_mem_per_block_allocated",
+    "sm__warps_active.avg.pct_of_peak_sustained_active",
+    "sm__maximum_warps_per_active_cycle_pct",
+]
 
 
 def _device_lock(device: str) -> LockType:
@@ -85,167 +107,195 @@ def time_runnable(fn: Runnable, args: List[Any], warmup: int, iters: int, device
             return statistics.median(times)
 
 
-def profile_runnable(
-    fn: Runnable, args: List[Any], warmup: int, iters: int, device: str
-) -> Tuple[float, List[Dict[str, Any]]]:
-    """Profile kernel execution with CUPTI Activity API.
+def _parse_dim_tuple(s: str) -> List[int]:
+    """Parse an NCU dimension string like '(256, 1, 1)' into [256, 1, 1]."""
+    match = re.findall(r"\d+", s)
+    return [int(x) for x in match] if match else [0, 0, 0]
 
-    Collects per-kernel hardware profiling data (launch config, register usage,
-    shared memory) alongside timing measurements.
+
+def _safe_float(row: Dict[str, str], key: str, default: float = 0.0) -> float:
+    """Safely extract a float from a CSV row dict."""
+    val = row.get(key, "")
+    if not val or val == "":
+        return default
+    try:
+        # NCU may format with commas for thousands
+        return float(val.replace(",", ""))
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(row: Dict[str, str], key: str, default: int = 0) -> int:
+    """Safely extract an int from a CSV row dict."""
+    val = row.get(key, "")
+    if not val or val == "":
+        return default
+    try:
+        return int(float(val.replace(",", "")))
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_ncu_csv(csv_output: str) -> List[Dict[str, Any]]:
+    """Parse NCU --csv --page raw output into kernel profile dicts.
 
     Parameters
     ----------
-    fn : Runnable
-        The kernel function to profile.
-    args : List[Any]
-        List of arguments in definition order.
-    warmup : int
-        Number of warmup iterations before profiling.
-    iters : int
-        Number of profiling iterations.
-    device : str
-        The CUDA device to run on.
+    csv_output : str
+        Raw stdout from ncu --csv --page raw.
 
     Returns
     -------
-    Tuple[float, List[Dict[str, Any]]]
-        (median_latency_ms, kernel_profiles) where kernel_profiles is a list
-        of dicts with CUPTI ActivityKernel11 fields from the median iteration.
+    List[Dict[str, Any]]
+        List of dicts, each suitable for KernelProfile(**d).
     """
-    from cupti import cupti
+    # Filter out NCU preamble/warning lines (start with ==)
+    lines = csv_output.split("\n")
+    csv_lines = [line for line in lines if line and not line.startswith("==")]
 
-    def _buffer_requested():
-        return 8 * 1024 * 1024, 0
+    if len(csv_lines) < 2:
+        return []
 
-    def _collect_kernel_info(activity):
-        return {
-            "name": activity.name,
-            "start": activity.start,
-            "end": activity.end,
-            "correlation_id": activity.correlation_id,
-            "grid": [activity.grid_x, activity.grid_y, activity.grid_z],
-            "block": [activity.block_x, activity.block_y, activity.block_z],
-            "registers_per_thread": int(activity.registers_per_thread),
-            "static_shared_memory": int(activity.static_shared_memory),
-            "dynamic_shared_memory": int(activity.dynamic_shared_memory),
-            "shared_memory_executed": int(activity.shared_memory_executed),
-            "local_memory_per_thread": int(activity.local_memory_per_thread),
-            "local_memory_total": int(activity.local_memory_total),
-        }
+    # First non-preamble line is header, second is units, rest are data
+    # With --page raw, the format is: header, units, data rows
+    reader = csv.DictReader(io.StringIO("\n".join(csv_lines)))
 
-    def _buffer_completed(launches, kernels, activities):
-        for activity in activities:
-            if activity.kind == cupti.ActivityKind.CONCURRENT_KERNEL:
-                kernels.append(_collect_kernel_info(activity))
-            elif activity.kind in (cupti.ActivityKind.RUNTIME, cupti.ActivityKind.DRIVER):
-                launches.append(
-                    (activity.start, activity.end, activity.correlation_id)
-                )
+    kernels: List[Dict[str, Any]] = []
+    for i, row in enumerate(reader):
+        if i == 0:
+            # First row after header is the units row — skip it
+            # Check if this looks like a units row (contains "ns", "byte", "%", etc.)
+            id_val = row.get("ID", "")
+            if id_val == "" or not id_val.strip().isdigit():
+                continue
 
-    def call_fn():
-        fn(*args)
+        # Skip unit rows that slipped through
+        id_val = row.get("ID", "")
+        if not id_val or not id_val.strip().isdigit():
+            continue
 
-    lock = _device_lock(device)
-    with lock:
-        with torch.cuda.device(device):
-            # L2 cache flush buffer
-            l2_size = get_l2_cache_size(device)
-            l2_flush_size = (l2_size * 2) // (1024 * 1024) * 1024 * 1024
-            buffer = torch.empty(l2_flush_size, device=device, dtype=torch.int8)
+        kernel_name = row.get("Kernel Name", "unknown")
+        grid = _parse_dim_tuple(row.get("Grid Size", "(0,0,0)"))
+        block = _parse_dim_tuple(row.get("Block Size", "(0,0,0)"))
 
-            # Warmup
-            torch.cuda.synchronize()
-            for _ in range(warmup):
-                buffer.zero_()
-                call_fn()
-            torch.cuda.synchronize()
+        kernels.append({
+            "name": kernel_name,
+            "duration_ns": _safe_float(row, "gpu__time_duration.sum"),
+            "grid": grid,
+            "block": block,
+            "registers_per_thread": _safe_int(row, "launch__registers_per_thread"),
+            "sm_throughput_pct": _safe_float(
+                row, "sm__throughput.avg.pct_of_peak_sustained_elapsed"
+            ),
+            "dram_throughput_pct": _safe_float(
+                row, "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
+            ),
+            "dram_bytes_read": _safe_float(row, "dram__bytes_read.sum"),
+            "dram_bytes_written": _safe_float(row, "dram__bytes_write.sum"),
+            "l1_hit_rate_pct": _safe_float(row, "l1tex__t_sector_hit_rate.pct"),
+            "l2_hit_rate_pct": _safe_float(row, "lts__t_sector_hit_rate.pct"),
+            "shared_memory_bytes": _safe_float(row, "launch__shared_mem_per_block_allocated"),
+            "achieved_occupancy_pct": _safe_float(
+                row, "sm__warps_active.avg.pct_of_peak_sustained_active"
+            ),
+            "theoretical_occupancy_pct": _safe_float(
+                row, "sm__maximum_warps_per_active_cycle_pct"
+            ),
+        })
 
-            # CUPTI measurement
-            launches: List[Tuple] = []
-            kernels: List[Dict] = []
-            iter_timestamps = []
+    return kernels
 
-            cupti.activity_enable(cupti.ActivityKind.RUNTIME)
-            cupti.activity_enable(cupti.ActivityKind.CONCURRENT_KERNEL)
-            cupti.activity_enable(cupti.ActivityKind.DRIVER)
-            cupti.activity_register_callbacks(
-                _buffer_requested, partial(_buffer_completed, launches, kernels)
+
+def profile_runnable(
+    definition: Definition,
+    solution: Solution,
+    workload: Workload,
+    device: str,
+    trace_set_root: Optional[Path] = None,
+    ncu_path: str = "ncu",
+    timeout: int = 120,
+) -> List[Dict[str, Any]]:
+    """Profile kernel execution with NCU (Nsight Compute).
+
+    Runs the solution in a subprocess under NCU to collect per-kernel
+    hardware profiling data (SM throughput, cache hit rates, DRAM bandwidth,
+    occupancy, etc.).
+
+    Parameters
+    ----------
+    definition : Definition
+        The kernel definition.
+    solution : Solution
+        The solution to profile.
+    workload : Workload
+        The workload to run.
+    device : str
+        The CUDA device to run on.
+    trace_set_root : Path, optional
+        Root path of the trace set (for safetensors loading).
+    ncu_path : str
+        Path to the NCU executable.
+    timeout : int
+        Timeout in seconds for NCU profiling.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        List of kernel profile dicts, each suitable for KernelProfile(**d).
+
+    Raises
+    ------
+    RuntimeError
+        If NCU fails or times out.
+    """
+    with tempfile.TemporaryDirectory(prefix="fib_ncu_profile_") as build_dir:
+        build_path = Path(build_dir)
+
+        # Write data files for _solution_runner
+        (build_path / "definition.json").write_text(definition.model_dump_json())
+        (build_path / "solution.json").write_text(solution.model_dump_json())
+        (build_path / "workload.json").write_text(workload.model_dump_json())
+
+        # Build NCU command
+        metrics_str = ",".join(NCU_METRICS)
+        cmd = [
+            ncu_path,
+            "--csv",
+            "--page", "raw",
+            "--set", "detailed",
+            "--metrics", metrics_str,
+            "--nvtx",
+            "--nvtx-include", "flashinfer_bench_ncu_profile]",
+            "-f",
+            "--",
+            sys.executable,
+            "-u",
+            "-m", "flashinfer_bench.agents._solution_runner",
+            "--data-dir", str(build_path),
+            "--device", device,
+        ]
+        if trace_set_root is not None:
+            cmd.extend(["--trace-set-path", str(trace_set_root)])
+
+        logger.info("NCU profile command: %s", " ".join(cmd))
+
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"NCU profiling timed out after {timeout} seconds")
+
+        if result.returncode != 0:
+            stderr_snippet = result.stderr[:500] if result.stderr else ""
+            stdout_snippet = result.stdout[:500] if result.stdout else ""
+            raise RuntimeError(
+                f"NCU exited with code {result.returncode}.\n"
+                f"stderr: {stderr_snippet}\nstdout: {stdout_snippet}"
             )
 
-            for _ in range(iters):
-                buffer.zero_()
-                start_cpu = cupti.get_timestamp()
-                call_fn()
-                end_cpu = cupti.get_timestamp()
-                torch.cuda.synchronize()
-                iter_timestamps.append((start_cpu, end_cpu))
+        kernels = _parse_ncu_csv(result.stdout)
+        if not kernels:
+            logger.warning("NCU produced no kernel data. stderr: %s", result.stderr[:300])
 
-            cupti.activity_flush_all(0)
-            cupti.activity_disable(cupti.ActivityKind.RUNTIME)
-            cupti.activity_disable(cupti.ActivityKind.CONCURRENT_KERNEL)
-            cupti.activity_disable(cupti.ActivityKind.DRIVER)
-            cupti.finalize()
-
-            del buffer
-
-            # Correlate launches to kernels per iteration
-            sorted_launches = sorted(launches, key=lambda l: l[0])
-            launch_starts = [l[0] for l in sorted_launches]
-
-            corr_id_to_kernels: Dict[int, List[Dict]] = {}
-            for k in kernels:
-                cid = k["correlation_id"]
-                if cid not in corr_id_to_kernels:
-                    corr_id_to_kernels[cid] = []
-                corr_id_to_kernels[cid].append(k)
-
-            measured_times = []
-            iter_kernel_data: List[List[Dict]] = []
-
-            for start_cpu, end_cpu in iter_timestamps:
-                left = bisect.bisect_left(launch_starts, start_cpu)
-                right = bisect.bisect_right(launch_starts, end_cpu)
-                corr_ids = set(sorted_launches[i][2] for i in range(left, right))
-
-                iter_kernels = []
-                for cid in corr_ids:
-                    if cid in corr_id_to_kernels:
-                        iter_kernels.extend(corr_id_to_kernels[cid])
-
-                if not iter_kernels:
-                    measured_times.append(0.0)
-                    iter_kernel_data.append([])
-                    continue
-
-                min_start = min(k["start"] for k in iter_kernels)
-                max_end = max(k["end"] for k in iter_kernels)
-                span_ms = (max_end - min_start) / 1e6
-                measured_times.append(span_ms)
-                iter_kernel_data.append(iter_kernels)
-
-            # Find median iteration
-            median_ms = statistics.median(measured_times)
-            median_idx = min(
-                range(len(measured_times)),
-                key=lambda i: abs(measured_times[i] - median_ms),
-            )
-
-            # Build profile dicts from median iteration kernels
-            profile_kernels = []
-            for k in iter_kernel_data[median_idx]:
-                profile_kernels.append(
-                    {
-                        "name": k["name"],
-                        "duration_ns": int(k["end"] - k["start"]),
-                        "grid": k["grid"],
-                        "block": k["block"],
-                        "registers_per_thread": k["registers_per_thread"],
-                        "static_shared_memory": k["static_shared_memory"],
-                        "dynamic_shared_memory": k["dynamic_shared_memory"],
-                        "shared_memory_executed": k["shared_memory_executed"],
-                        "local_memory_per_thread": k["local_memory_per_thread"],
-                        "local_memory_total": k["local_memory_total"],
-                    }
-                )
-
-            return median_ms, profile_kernels
+        return kernels

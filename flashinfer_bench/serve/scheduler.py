@@ -165,7 +165,11 @@ class _GPUWorkerThread(threading.Thread):
         for wl_trace in workload_traces:
             workload = wl_trace.workload
             ref_handle = self._get_or_build_ref(definition, workload)
-            evaluation = self._gpu_worker.run_solution(task.solution, ref_handle, cfg)
+            evaluation = self._gpu_worker.run_solution(
+                task.solution, ref_handle, cfg,
+                workload=workload,
+                trace_set_root=self._trace_set.root,
+            )
             trace = Trace(
                 definition=task.definition_name,
                 workload=workload,
