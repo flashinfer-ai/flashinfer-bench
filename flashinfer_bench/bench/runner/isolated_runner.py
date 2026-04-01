@@ -478,8 +478,12 @@ class IsolatedRunner(Runner):
                 for i, solution in enumerate(solutions):
                     r = selected[i % len(selected)]
                     sol_futs[solution.name] = pool.submit(
-                        r.run_solution, solution, baselines[r], config,
-                        workload=workload, trace_set_root=root,
+                        r.run_solution,
+                        solution,
+                        baselines[r],
+                        config,
+                        workload=workload,
+                        trace_set_root=root,
                     )
 
                 results: Dict[str, Evaluation] = {
