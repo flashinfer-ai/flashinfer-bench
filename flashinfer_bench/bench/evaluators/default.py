@@ -1,12 +1,11 @@
 """Default evaluator for general kernel correctness and performance."""
 
+import logging
 import sys
 import traceback
 import uuid
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
-
-import logging
 
 import torch
 
@@ -218,7 +217,10 @@ class DefaultEvaluator(Evaluator):
             if cfg.profile and solution is not None and workload is not None:
                 try:
                     profiles = profile_runnable(
-                        definition, solution, workload, device,
+                        definition,
+                        solution,
+                        workload,
+                        device,
                         trace_set_root=trace_set_root,
                         ncu_path=cfg.ncu_path,
                         timeout=cfg.ncu_timeout,

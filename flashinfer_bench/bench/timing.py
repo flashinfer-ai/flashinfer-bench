@@ -182,39 +182,23 @@ def _parse_ncu_csv(csv_output: str) -> List[Dict[str, Any]]:
         kernels.append(
             {
                 "name": kernel_name,
-                "gpu__time_duration.sum": _safe_float(
-                    row, "gpu__time_duration.sum"
-                ),
+                "gpu__time_duration.sum": _safe_float(row, "gpu__time_duration.sum"),
                 "grid": grid,
                 "block": block,
-                "launch__registers_per_thread": _safe_int(
-                    row, "launch__registers_per_thread"
-                ),
+                "launch__registers_per_thread": _safe_int(row, "launch__registers_per_thread"),
                 "sm__throughput.avg.pct_of_peak_sustained_elapsed": _safe_float(
                     row, "sm__throughput.avg.pct_of_peak_sustained_elapsed"
                 ),
                 "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": _safe_float(
-                    row,
-                    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+                    row, "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed"
                 ),
-                "dram__bytes_read.sum": _safe_float(
-                    row, "dram__bytes_read.sum"
-                ),
-                "dram__bytes_write.sum": _safe_float(
-                    row, "dram__bytes_write.sum"
-                ),
-                "l1tex__t_sector_hit_rate.pct": _safe_float(
-                    row, "l1tex__t_sector_hit_rate.pct"
-                ),
-                "lts__t_sector_hit_rate.pct": _safe_float(
-                    row, "lts__t_sector_hit_rate.pct"
-                ),
-                "launch__shared_mem_per_block": _safe_float(
-                    row, "launch__shared_mem_per_block"
-                ),
+                "dram__bytes_read.sum": _safe_float(row, "dram__bytes_read.sum"),
+                "dram__bytes_write.sum": _safe_float(row, "dram__bytes_write.sum"),
+                "l1tex__t_sector_hit_rate.pct": _safe_float(row, "l1tex__t_sector_hit_rate.pct"),
+                "lts__t_sector_hit_rate.pct": _safe_float(row, "lts__t_sector_hit_rate.pct"),
+                "launch__shared_mem_per_block": _safe_float(row, "launch__shared_mem_per_block"),
                 "sm__warps_active.avg.pct_of_peak_sustained_active": _safe_float(
-                    row,
-                    "sm__warps_active.avg.pct_of_peak_sustained_active",
+                    row, "sm__warps_active.avg.pct_of_peak_sustained_active"
                 ),
                 "sm__maximum_warps_per_active_cycle_pct": _safe_float(
                     row, "sm__maximum_warps_per_active_cycle_pct"
@@ -280,18 +264,25 @@ def profile_runnable(
         cmd = [
             ncu_path,
             "--csv",
-            "--page", "raw",
-            "--metrics", metrics_str,
-            "--replay-mode", "application",
+            "--page",
+            "raw",
+            "--metrics",
+            metrics_str,
+            "--replay-mode",
+            "application",
             "--nvtx",
-            "--nvtx-include", "flashinfer_bench_ncu_profile]",
+            "--nvtx-include",
+            "flashinfer_bench_ncu_profile]",
             "-f",
             "--",
             sys.executable,
             "-u",
-            "-m", "flashinfer_bench.agents._solution_runner",
-            "--data-dir", str(build_path),
-            "--device", device,
+            "-m",
+            "flashinfer_bench.agents._solution_runner",
+            "--data-dir",
+            str(build_path),
+            "--device",
+            device,
         ]
         if trace_set_root is not None:
             cmd.extend(["--trace-set-path", str(trace_set_root)])
@@ -313,9 +304,7 @@ def profile_runnable(
         logger.info("NCU profile command: %s", " ".join(cmd))
 
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout, env=env,
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"NCU profiling timed out after {timeout} seconds")
 

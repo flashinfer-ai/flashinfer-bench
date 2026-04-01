@@ -57,10 +57,7 @@ class Scheduler:
         return self._workers
 
     def submit(
-        self,
-        solution: Solution,
-        workload_uuids: Optional[List[str]] = None,
-        profile: bool = False,
+        self, solution: Solution, workload_uuids: Optional[List[str]] = None, profile: bool = False
     ) -> str:
         """Submit a solution for evaluation. Returns task_id."""
         config_override = None
@@ -166,7 +163,9 @@ class _GPUWorkerThread(threading.Thread):
             workload = wl_trace.workload
             ref_handle = self._get_or_build_ref(definition, workload)
             evaluation = self._gpu_worker.run_solution(
-                task.solution, ref_handle, cfg,
+                task.solution,
+                ref_handle,
+                cfg,
                 workload=workload,
                 trace_set_root=self._trace_set.root,
             )
