@@ -112,8 +112,8 @@ For each layer component AND each serving configuration (TP/EP setting), extract
 - **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
 
 #### RoPE Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- `rope_d{head_dim}_rd{rotary_dim}` (neox-style, partial or full rotary)
-- **Parameters**: head_dim, rotary_dim, rope_theta, rope_scale
+- `rope_d{head_dim}_rd{rotary_dim}`
+- **Parameters**: head_dim, rotary_dim, cos_sin_cache, positions
 - **Naming**: `rope_d{head_dim}_rd{rotary_dim}`
 - **Note**: RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
 
@@ -204,7 +204,7 @@ Tags follow the pattern `{category}:{value}`:
 | `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
 | `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
 | `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
-| `rope` | `flashinfer.apply_rope_inplace` | Also: `flashinfer.apply_rope`, `flashinfer.apply_llama31_rope_inplace` |
+| `rope` | `flashinfer.apply_rope_with_cos_sin_cache_inplace` | Uses pre-computed cos/sin cache, matching SGLang runtime dispatch |
 | `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
 | `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
 
@@ -675,7 +675,7 @@ The `reference` field in Definition JSON contains a `run()` function. **Always p
   | GQA prefill | `test_batch_prefill.py` | `ref_attention()` or inline reference |
   | MLA | `test_mla.py` | `ref_mla()` or inline reference |
   | RMSNorm | `test_norm.py` | `ref_rmsnorm()` or `ref_fused_add_rmsnorm()` |
-  | RoPE | `attention/test_rope.py` | `apply_rotary_emb()` from `test_helpers/rope_reference.py` |
+  | RoPE | `test_rope.py` | `apply_rotary_emb()` from `test_helpers/rope_reference.py` |
   | Sampling | `test_sampling.py` | Reference sampling implementations |
 
 - **Important**: The reference `run()` should match FlashInfer's test implementation exactly, with constant values updated to match SGLang model config

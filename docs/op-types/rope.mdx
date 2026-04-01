@@ -2,29 +2,31 @@
 title: "RoPE"
 ---
 
-Rotary Position Embedding (RoPE) applies rotary transformations to query and key tensors before attention, encoding positional information directly into the attention mechanism.
+Rotary Position Embedding (RoPE) applies rotary transformations to query and key tensors before attention, encoding positional information directly into the attention mechanism. Uses a pre-computed cos/sin cache indexed by position IDs, matching the FlashInfer API `flashinfer.rope.apply_rope_with_cos_sin_cache_inplace`.
 
 Variants:
-- Full RoPE: rotary dimension equals head dimension (`rotary_dim == head_dim`)
-- Partial RoPE: rotary dimension is less than head dimension (`rotary_dim < head_dim`), only the first `rotary_dim` dimensions are rotated, the rest pass through unchanged
-- Neox-style: splits last dimension into first half and second half for rotation
-- Interleaved (GPT-J style): rotates even and odd dimensions
+- Full RoPE: rotary dimension equals head size (`rotary_dim == head_size`)
+- Partial RoPE: rotary dimension is less than head size (`rotary_dim < head_size`)
 
-Axes (5 dimensions):
-- `num_tokens`: variable (total tokens across all sequences)
-- `num_qo_heads`: variable (number of query heads, varies by model and TP config)
-- `num_kv_heads`: variable (number of KV heads, varies by model and TP config)
-- `head_dim`: constant
+Rotation styles:
+- NeoX-style (`is_neox=True`): split first/second half of rotary dimensions
+- GPT-J interleaved (`is_neox=False`): rotate even/odd indices
+
+Axes (6 dimensions):
+- `num_tokens`: variable
+- `num_qo_heads`: variable
+- `num_kv_heads`: variable
+- `max_seq_len`: variable
+- `head_size`: constant
 - `rotary_dim`: constant
 
-Inputs (4 tensors + 2 scalars):
-- `q`: [num_tokens, num_qo_heads, head_dim]
-- `k`: [num_tokens, num_kv_heads, head_dim]
-- `positions`: [num_tokens] (position indices for each token)
-- `cos_sin_cache`: [max_position, rotary_dim] (precomputed cos/sin cache)
-- `rope_theta`: scalar (base frequency, e.g. 10000.0)
-- `rope_scale`: scalar (scaling factor, default 1.0)
+Inputs (5):
+- `q`: [num_tokens, num_qo_heads, head_size]
+- `k`: [num_tokens, num_kv_heads, head_size]
+- `cos_sin_cache`: [max_seq_len, rotary_dim] (float32, first half cos, second half sin)
+- `positions`: [num_tokens] (int64, index into cos_sin_cache)
+- `is_neox`: bool scalar (rotation style)
 
-Outputs (2 tensors):
-- `q_out`: [num_tokens, num_qo_heads, head_dim]
-- `k_out`: [num_tokens, num_kv_heads, head_dim]
+Outputs (2 tensors, in-place):
+- `q_out`: [num_tokens, num_qo_heads, head_size]
+- `k_out`: [num_tokens, num_kv_heads, head_size]

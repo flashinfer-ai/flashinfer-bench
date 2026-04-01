@@ -222,7 +222,7 @@ Associate each module with corresponding Definitions:
   - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
   - DSA: `dsa_sparse_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_topk{topk}_ps1` (sparse MLA)
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
-- **RoPE layers**: `rope_d{head_dim}_rd{rotary_dim}` (partial RoPE when rotary_dim < head_dim)
+- **RoPE layers**: `rope_d{head_size}_rd{rotary_dim}` (partial RoPE when rotary_dim < head_size)
 - **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
 
