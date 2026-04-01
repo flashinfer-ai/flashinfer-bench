@@ -13,8 +13,8 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
     num_kv_indices = kv_indices.shape[0]
 
     # Check constants
-    assert num_qo_heads == 48
-    assert num_kv_heads == 8
+    assert num_qo_heads == 6
+    assert num_kv_heads == 1
     assert head_dim == 128
     assert page_size == 1
 
@@ -79,8 +79,8 @@ def run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):
 def generate_random_inputs(
     batch_size,
     max_seq_len,
-    num_attention_heads=48,
-    num_key_value_heads=8,
+    num_attention_heads=6,
+    num_key_value_heads=1,
     head_dim=128,
     page_size=1,
     device="cuda",
@@ -146,8 +146,8 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         return
 
     # Constants from kernel definition
-    num_attention_heads = 48
-    num_key_value_heads = 8
+    num_attention_heads = 6
+    num_key_value_heads = 1
     head_dim = 128
     page_size = 1
 
@@ -177,8 +177,8 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     )
 
     # Setup FlashInfer
-    # FlashInfer only supports group sizes {1,2,3,4,8}. Since group_size = 48/8 = 6
-    # is not supported, expand KV heads from 8 to 48 (repeating each KV head
+    # FlashInfer only supports group sizes {1,2,3,4,8}. Since group_size = 6/1 = 6
+    # is not supported, expand KV heads from 1 to 6 (repeating each KV head
     # 6 times) so group_size=1 (MHA), which gives mathematically equivalent results.
     group_size = num_attention_heads // num_key_value_heads  # 6
     k_cache_expanded = inputs["k_cache"].repeat_interleave(group_size, dim=2)
@@ -310,7 +310,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
 
 def main():
     """Run comprehensive tests."""
-    print("Testing Batch GQA Paged Decode Reference Implementation")
+    print("Testing Batch GQA Paged Decode Reference Implementation (h6_kv1_d128_ps1)")
 
     # Test different configurations
     test_configs = [

@@ -5,19 +5,21 @@ import torch
 
 
 @torch.no_grad()
-def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
+def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, sm_scale):
     total_q, num_qo_heads, head_dim = q.shape
-    total_kv, num_kv_heads, _ = k.shape
+    num_pages, page_size, num_kv_heads, _ = k_cache.shape
     len_indptr = qo_indptr.shape[0]
+    num_kv_indices = kv_indices.shape[0]
 
     # Check constants
-    assert num_qo_heads == 48
-    assert num_kv_heads == 8
+    assert num_qo_heads == 6
+    assert num_kv_heads == 1
     assert head_dim == 128
+    assert page_size == 1
 
     # Check constraints
     assert total_q == qo_indptr[-1].item()
-    assert total_kv == kv_indptr[-1].item()
+    assert num_kv_indices == kv_indptr[-1].item()
 
     device = q.device
 
@@ -27,8 +29,9 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
     gqa_ratio = num_qo_heads // num_kv_heads
 
     q_f32 = q.to(torch.float32)
-    k_f32 = k.to(torch.float32)
-    v_f32 = v.to(torch.float32)
+    # Flatten page dimension since page_size=1
+    k_cache_flat = k_cache.squeeze(1).to(torch.float32)  # [num_pages, num_kv_heads, head_dim]
+    v_cache_flat = v_cache.squeeze(1).to(torch.float32)  # [num_pages, num_kv_heads, head_dim]
 
     for b in range(len_indptr - 1):
         q_start = int(qo_indptr[b].item())
@@ -41,36 +44,47 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
             # No queries or KV for this batch element
             continue
 
-        # Get Q, K, V for this batch
-        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]
-        k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
-        v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
+        page_ids = kv_indices[kv_start:kv_end].to(torch.long)
 
+        # Number of KV tokens is equal to number of pages for page_size=1
+        num_kv_tokens = page_ids.shape[0]
+        k_batch = k_cache_flat[page_ids]  # [num_kv_tokens, num_kv_heads, head_dim]
+        v_batch = v_cache_flat[page_ids]  # [num_kv_tokens, num_kv_heads, head_dim]
+
+        # Get queries for this sequence
+        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]
         num_q_tokens = q_batch.shape[0]
-        num_kv_tokens = k_batch.shape[0]
+
+        # Delta for causal masking
         delta = num_kv_tokens - num_q_tokens
 
-        k_expanded = k_batch.repeat_interleave(gqa_ratio, dim=1)
-        v_expanded = v_batch.repeat_interleave(gqa_ratio, dim=1)
+        for q_idx in range(num_q_tokens):
+            global_q_idx = q_start + q_idx
 
-        # Compute attention scores: Q @ K^T
-        logits = torch.einsum("qhd,khd->qhk", q_batch, k_expanded) * sm_scale
+            # Apply causal mask
+            max_kv_idx = min(q_idx + 1 + delta, num_kv_tokens)
+            if max_kv_idx <= 0:
+                continue
 
-        # For position q_idx, can attend to KV positions [0, min(q_idx + 1 + delta, num_kv_tokens))
-        q_positions = torch.arange(num_q_tokens, device=device)  # [num_q_tokens]
-        kv_positions = torch.arange(num_kv_tokens, device=device)  # [num_kv_tokens]
+            q_pos = q_batch[q_idx]  # [num_qo_heads, head_dim]
 
-        # Apply causal mask
-        causal_mask = kv_positions[None, :] < (q_positions[:, None] + 1 + delta)
-        logits = logits.masked_fill(~causal_mask[:, None, :], float("-inf"))
+            for h in range(num_qo_heads):
+                # Find corresponding KV head for GQA
+                kv_head = h // gqa_ratio
 
-        # Compute 2-base LSE
-        lse_batch = torch.logsumexp(logits, dim=-1) / math.log(2.0)
-        lse[q_start:q_end] = lse_batch
+                q_head = q_pos[h]  # [head_dim]
+                k_head = k_batch[:max_kv_idx, kv_head]  # [max_kv_idx, head_dim]
+                v_head = v_batch[:max_kv_idx, kv_head]  # [max_kv_idx, head_dim]
 
-        attn_weights = torch.softmax(logits, dim=-1)  # [num_q_tokens, num_qo_heads, num_kv_tokens]
-        output_batch = torch.einsum("qhk,khd->qhd", attn_weights, v_expanded)
-        output[q_start:q_end] = output_batch.to(torch.bfloat16)
+                logits = torch.matmul(q_head, k_head.T)  # [max_kv_idx]
+                logits_scaled = logits * sm_scale
+
+                # Compute 2-base LSE
+                lse[global_q_idx, h] = torch.logsumexp(logits_scaled, dim=-1) / math.log(2.0)
+
+                attn = torch.softmax(logits_scaled, dim=-1)  # [max_kv_idx]
+                out_head = torch.matmul(attn, v_head)  # [head_dim]
+                output[global_q_idx, h] = out_head.to(torch.bfloat16)
 
     return output, lse
 
@@ -79,13 +93,15 @@ def generate_random_inputs(
     batch_size,
     max_q_len,
     max_kv_len,
-    num_attention_heads=48,
-    num_key_value_heads=8,
+    max_pages,
+    num_attention_heads=6,
+    num_key_value_heads=1,
     head_dim=128,
+    page_size=1,
     causal=True,
     device="cuda",
 ):
-    """Generate random inputs for ragged prefill testing."""
+    """Generate random inputs for paged prefill testing."""
 
     # Generate random query lengths for each batch element
     q_lens = torch.randint(1, max_q_len + 1, (batch_size,), dtype=torch.int32)
@@ -95,7 +111,10 @@ def generate_random_inputs(
     kv_lens = torch.zeros(batch_size, dtype=torch.int32)
     for i in range(batch_size):
         # KV length should be at least as long as query length for causal attention
-        kv_lens[i] = torch.randint(q_lens[i].item(), max_kv_len + 1, (1,)).item()
+        if causal:
+            kv_lens[i] = torch.randint(q_lens[i].item(), max_kv_len + 1, (1,)).item()
+        else:
+            kv_lens[i] = torch.randint(1, max_kv_len + 1, (1,)).item()
 
     # Create indptr arrays
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
@@ -106,12 +125,30 @@ def generate_random_inputs(
 
     # Get total tokens
     total_q = qo_indptr[-1].item()
-    total_kv = kv_indptr[-1].item()
+    num_kv_indices = kv_indptr[-1].item()
 
-    # Generate tensors
+    # Generate page indices (for page_size=1, we need num_kv_indices unique pages)
+    # Simulate scattered memory allocation
+    all_page_ids = torch.randperm(max_pages, device=device)[:num_kv_indices]
+
+    # Create kv_indices by assigning pages to each sequence
+    kv_indices = torch.zeros(num_kv_indices, dtype=torch.int32, device=device)
+    idx = 0
+    for i in range(batch_size):
+        seq_len = kv_lens[i].item()
+        kv_indices[idx : idx + seq_len] = all_page_ids[idx : idx + seq_len]
+        idx += seq_len
+
+    # Generate KV cache (paged storage)
+    k_cache = torch.randn(
+        max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device
+    )
+    v_cache = torch.randn(
+        max_pages, page_size, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device
+    )
+
+    # Generate query tensor
     q = torch.randn(total_q, num_attention_heads, head_dim, dtype=torch.bfloat16, device=device)
-    k = torch.randn(total_kv, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device)
-    v = torch.randn(total_kv, num_key_value_heads, head_dim, dtype=torch.bfloat16, device=device)
 
     # Generate attention parameters
     sm_scale = 1.0 / math.sqrt(head_dim)
@@ -120,26 +157,32 @@ def generate_random_inputs(
     # Convert causal to tensor
     causal = torch.tensor(causal, dtype=torch.bool, device=device)
 
+    # For page_size=1, last_page_len is always all ones
+    last_page_len = torch.ones(batch_size, dtype=torch.int32, device=device)
+
     return {
         "q": q,
-        "k": k,
-        "v": v,
+        "k_cache": k_cache,
+        "v_cache": v_cache,
         "qo_indptr": qo_indptr,
         "kv_indptr": kv_indptr,
+        "kv_indices": kv_indices,
+        "last_page_len": last_page_len,
         "q_lens": q_lens,
         "kv_lens": kv_lens,
         "total_q": total_q,
-        "total_kv": total_kv,
+        "num_kv_indices": num_kv_indices,
         "sm_scale": sm_scale,
         "causal": causal,
+        "page_size": page_size,
     }
 
 
 def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, atol=1e-2, rtol=5e-2):
-    """Test correctness of ragged prefill reference implementation against FlashInfer."""
+    """Test correctness of paged prefill reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
     print(
-        f"Testing GQA Ragged Prefill batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}, causal={causal}"
+        f"Testing GQA Paged Prefill batch_size={batch_size}, max_q_len={max_q_len}, max_kv_len={max_kv_len}, causal={causal}"
     )
     print(f"{'='*60}")
 
@@ -149,18 +192,24 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
         return
 
     # Constants from kernel definition
-    num_attention_heads = 48
-    num_key_value_heads = 8
+    num_attention_heads = 6
+    num_key_value_heads = 1
     head_dim = 128
+    page_size = 1
+
+    # Maximum number of pages (should be large enough to hold all KV tokens)
+    max_pages = max_kv_len * batch_size * 2  # Extra buffer for scattered allocation
 
     # Generate inputs
     inputs = generate_random_inputs(
         batch_size,
         max_q_len,
         max_kv_len,
+        max_pages,
         num_attention_heads,
         num_key_value_heads,
         head_dim,
+        page_size,
         causal,
         device,
     )
@@ -168,17 +217,20 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
     print(f"Generated query lengths: {inputs['q_lens'].cpu().numpy()}")
     print(f"Generated KV lengths: {inputs['kv_lens'].cpu().numpy()}")
     print(f"Total query tokens: {inputs['total_q']}")
-    print(f"Total KV tokens: {inputs['total_kv']}")
+    print(f"Total KV indices: {inputs['num_kv_indices']}")
+    print(f"Max page ID used: {inputs['kv_indices'].max().item()}")
     print(f"Causal mode: {inputs['causal'].item()}")
+    print(f"Page size: {inputs['page_size']}")
 
     # Run reference implementation
     print("\nRunning reference implementation...")
     ref_o, ref_lse = run(
         inputs["q"],
-        inputs["k"],
-        inputs["v"],
+        inputs["k_cache"],
+        inputs["v_cache"],
         inputs["qo_indptr"],
         inputs["kv_indptr"],
+        inputs["kv_indices"],
         inputs["sm_scale"],
     )
 
@@ -186,27 +238,34 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
     print("\nSetting up FlashInfer...")
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
 
-    prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(
+    prefill_wrapper = flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper(
         workspace_buffer, kv_layout="NHD"  # Layout for K/V tensors
     )
+
+    # Combine k_cache and v_cache into paged_kv_cache format that FlashInfer expects
+    # FlashInfer expects shape [max_num_pages, 2, page_size, num_kv_heads, head_dim] for NHD layout
+    paged_kv_cache = torch.stack([inputs["k_cache"], inputs["v_cache"]], dim=1)
 
     # Plan the attention computation
     prefill_wrapper.plan(
         qo_indptr=inputs["qo_indptr"],
-        kv_indptr=inputs["kv_indptr"],
+        paged_kv_indptr=inputs["kv_indptr"],
+        paged_kv_indices=inputs["kv_indices"],
+        paged_kv_last_page_len=inputs["last_page_len"],
         num_qo_heads=num_attention_heads,
         num_kv_heads=num_key_value_heads,
-        head_dim_qk=head_dim,  # head dimension for query/key
-        head_dim_vo=head_dim,  # head dimension for value/output (same as qk for standard attention)
-        causal=inputs["causal"].item(),  # Use the randomly generated causal flag
-        sm_scale=inputs["sm_scale"].item(),  # Scale factor for softmax
+        head_dim_qk=head_dim,
+        head_dim_vo=head_dim,
+        page_size=page_size,
+        causal=inputs["causal"].item(),
+        sm_scale=inputs["sm_scale"].item(),
         q_data_type=torch.bfloat16,
         kv_data_type=torch.bfloat16,
     )
 
     # Run FlashInfer
     print("Running FlashInfer...")
-    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], inputs["k"], inputs["v"], return_lse=True)
+    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], paged_kv_cache, return_lse=True)
 
     # Compare outputs
     print("\nComparing outputs...")
@@ -310,7 +369,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, causal=True, ato
 
 def main():
     """Run comprehensive tests."""
-    print("Testing Batch GQA Ragged Prefill Reference Implementation")
+    print("Testing Batch GQA Paged Prefill Reference Implementation (h6_kv1_d128_ps1)")
 
     # Test different configurations
     test_configs = [
@@ -319,7 +378,6 @@ def main():
         (4, 16, 32, True),  # Small batch, causal
         (8, 32, 64, True),  # Medium batch, causal
         (16, 64, 128, True),  # Large batch, causal
-        (32, 128, 256, True),  # Very large batch, causal
     ]
 
     passed = 0

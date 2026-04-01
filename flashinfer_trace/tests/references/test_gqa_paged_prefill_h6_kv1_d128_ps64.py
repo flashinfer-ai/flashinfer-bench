@@ -12,8 +12,8 @@ def run(q, k_cache, v_cache, qo_indptr, kv_indptr, kv_indices, kv_last_page_len,
     num_kv_indices = kv_indices.shape[0]
 
     # Check constants
-    assert num_qo_heads == 48
-    assert num_kv_heads == 8
+    assert num_qo_heads == 6
+    assert num_kv_heads == 1
     assert head_dim == 128
     assert page_size == 64
 
@@ -113,8 +113,8 @@ def generate_random_inputs(
     max_q_len,
     max_kv_len,
     max_pages,
-    num_attention_heads=48,
-    num_key_value_heads=8,
+    num_attention_heads=6,
+    num_key_value_heads=1,
     head_dim=128,
     page_size=64,
     causal=True,
@@ -204,8 +204,8 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=128, causal=True, at
         return
 
     # Constants from kernel definition
-    num_attention_heads = 48
-    num_key_value_heads = 8
+    num_attention_heads = 6
+    num_key_value_heads = 1
     head_dim = 128
     page_size = 64
 
@@ -373,7 +373,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=128, causal=True, at
 
 def main():
     """Run comprehensive tests."""
-    print("Testing Batch GQA Paged Prefill Reference Implementation (page_size=64)")
+    print("Testing Batch GQA Paged Prefill Reference Implementation (h6_kv1_d128_ps64)")
 
     test_configs = [(1, 16, 64, True), (4, 32, 128, True), (8, 64, 256, True), (16, 128, 512, True)]
 

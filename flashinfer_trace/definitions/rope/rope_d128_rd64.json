@@ -1,0 +1,78 @@
+{
+  "name": "rope_d128_rd64",
+  "description": "Rotary Position Embedding (RoPE) with partial rotary dimension. head_dim=128, rotary_dim=64. Only the first 64 dimensions are rotated; the remaining 64 pass through unchanged. Captured from MiniMax M2.",
+  "op_type": "rope",
+  "tags": [
+    "status:unverified",
+    "model:minimax-m2",
+    "fi_api:flashinfer.apply_rope_inplace"
+  ],
+  "axes": {
+    "num_tokens": {
+      "type": "var",
+      "description": "Total number of tokens across all sequences."
+    },
+    "num_qo_heads": {
+      "type": "var",
+      "description": "Number of query heads (varies by model and TP config)."
+    },
+    "num_kv_heads": {
+      "type": "var",
+      "description": "Number of KV heads (varies by model and TP config)."
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 128
+    },
+    "rotary_dim": {
+      "type": "const",
+      "value": 64,
+      "description": "Partial rotary dimension. Only the first 64 of 128 head dimensions are rotated."
+    },
+    "max_position": {
+      "type": "var",
+      "description": "Maximum position index for the cos/sin cache."
+    }
+  },
+  "constraints": [],
+  "inputs": {
+    "q": {
+      "shape": ["num_tokens", "num_qo_heads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Query tensor."
+    },
+    "k": {
+      "shape": ["num_tokens", "num_kv_heads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Key tensor."
+    },
+    "cos_sin_cache": {
+      "shape": ["max_position", "rotary_dim"],
+      "dtype": "float32",
+      "description": "Precomputed cos/sin cache. First half is cos, second half is sin."
+    },
+    "positions": {
+      "shape": ["num_tokens"],
+      "dtype": "int64",
+      "description": "Position index for each token."
+    },
+    "rope_theta": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Base frequency for RoPE. Model-specific (e.g. 10000.0)."
+    }
+  },
+  "outputs": {
+    "q_out": {
+      "shape": ["num_tokens", "num_qo_heads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Query tensor with rotary embedding applied."
+    },
+    "k_out": {
+      "shape": ["num_tokens", "num_kv_heads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Key tensor with rotary embedding applied."
+    }
+  },
+  "reference": "import torch\n\n\n@torch.no_grad()\ndef run(q, k, cos_sin_cache, positions, rope_theta):\n    head_dim = 128\n    rotary_dim = 64\n\n    num_tokens = q.shape[0]\n    positions = positions.flatten().to(torch.long)\n\n    # Look up cos/sin from precomputed cache\n    cos_sin = cos_sin_cache.index_select(0, positions)  # [num_tokens, rotary_dim]\n    cos, sin = cos_sin.chunk(2, dim=-1)  # each [num_tokens, rotary_dim/2]\n\n    def apply_rotary_emb(x, cos, sin):\n        cos = cos.unsqueeze(-2).to(x.dtype)  # [num_tokens, 1, rotary_dim/2]\n        sin = sin.unsqueeze(-2).to(x.dtype)  # [num_tokens, 1, rotary_dim/2]\n        x1, x2 = torch.chunk(x, 2, dim=-1)  # each [num_tokens, num_heads, rotary_dim/2]\n        o1 = x1 * cos - x2 * sin\n        o2 = x2 * cos + x1 * sin\n        return torch.cat((o1, o2), dim=-1)\n\n    # Process Q: split rotary and pass-through parts\n    q_f32 = q.to(torch.float32)\n    q_shape = q_f32.shape\n    q_3d = q_f32.view(num_tokens, -1, head_dim)\n    q_rot = q_3d[..., :rotary_dim]\n    q_pass = q_3d[..., rotary_dim:]\n    q_rot = apply_rotary_emb(q_rot, cos, sin)\n    q_out = torch.cat((q_rot, q_pass), dim=-1).reshape(q_shape).to(q.dtype)\n\n    # Process K: split rotary and pass-through parts\n    k_f32 = k.to(torch.float32)\n    k_shape = k_f32.shape\n    k_3d = k_f32.view(num_tokens, -1, head_dim)\n    k_rot = k_3d[..., :rotary_dim]\n    k_pass = k_3d[..., rotary_dim:]\n    k_rot = apply_rotary_emb(k_rot, cos, sin)\n    k_out = torch.cat((k_rot, k_pass), dim=-1).reshape(k_shape).to(k.dtype)\n\n    return q_out, k_out"
+}
