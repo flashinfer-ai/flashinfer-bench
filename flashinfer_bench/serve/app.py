@@ -198,7 +198,7 @@ async def batch_get_tasks(req: BatchRequest):
             raise HTTPException(404, detail=f"Task not found: {task_id}")
 
     if req.timeout > 0:
-        await asyncio.to_thread(sched.task_store.wait_for_all, req.task_ids, req.timeout)
+        await sched.task_store.async_wait_for_all(req.task_ids, req.timeout)
 
     results = []
     for tid in req.task_ids:
