@@ -6,6 +6,7 @@
     "stage:decode",
     "status:verified",
     "model:qwen3-next",
+    "model:qwen3.5-35b-a3b",
     "layout:k-last",
     "fi_api:flashinfer.gdn.gated_delta_rule_decode",
     "tp:2"
