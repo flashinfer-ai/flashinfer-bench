@@ -1,5 +1,6 @@
 """Task lifecycle management for the benchmark server."""
 
+import asyncio
 import enum
 import threading
 import time
@@ -101,6 +102,29 @@ class TaskStore:
             event = self._events.get(task_id)
             if event and not event.is_set():
                 event.wait(timeout=remaining)
+        return all(
+            self._tasks[tid].status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+            for tid in task_ids
+            if tid in self._tasks
+        )
+
+    async def async_wait_for_all(self, task_ids: List[str], timeout: float) -> bool:
+        """Async wait that cooperates with cancellation (client disconnect).
+
+        Polls threading.Events in short intervals so that asyncio cancellation
+        (triggered when a client closes the connection) is honoured promptly.
+        """
+        deadline = time.monotonic() + timeout
+        poll_interval = 0.5
+        for task_id in task_ids:
+            event = self._events.get(task_id)
+            if event is None or event.is_set():
+                continue
+            while not event.is_set():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                await asyncio.sleep(min(poll_interval, remaining))
         return all(
             self._tasks[tid].status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
             for tid in task_ids
