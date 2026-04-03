@@ -6,6 +6,7 @@
     "stage:mtp",
     "status:verified",
     "model:qwen3-next",
+    "model:qwen3.5-35b-a3b",
     "layout:k-last",
     "tp:2"
   ],
