@@ -1,0 +1,46 @@
+{
+    "name": "gemma_rmsnorm_h2048",
+    "op_type": "rmsnorm",
+    "description": "Gemma-style RMSNorm with hidden_size=2048. Captured from Qwen3.5-35B-A3B at TP=2. Uses (1 + weight) scaling and epsilon 1e-6.",
+    "tags": [
+        "model:qwen3.5-35b-a3b",
+        "status:verified",
+        "stage:norm",
+        "fi_api:flashinfer.norm.gemma_rmsnorm",
+        "tp:2"
+    ],
+    "axes": {
+        "batch_size": {
+            "type": "var"
+        },
+        "hidden_size": {
+            "type": "const",
+            "value": 2048
+        }
+    },
+    "inputs": {
+        "hidden_states": {
+            "shape": [
+                "batch_size",
+                "hidden_size"
+            ],
+            "dtype": "bfloat16"
+        },
+        "weight": {
+            "shape": [
+                "hidden_size"
+            ],
+            "dtype": "bfloat16"
+        }
+    },
+    "outputs": {
+        "output": {
+            "shape": [
+                "batch_size",
+                "hidden_size"
+            ],
+            "dtype": "bfloat16"
+        }
+    },
+    "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, weight):\n    _, hidden_size = hidden_states.shape\n    assert hidden_size == 2048\n\n    EPS = 1e-6\n\n    x = hidden_states.to(torch.float32)\n    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    y = (x * inv_rms) * (1.0 + weight.to(torch.float32))\n    return y.to(hidden_states.dtype)"
+}
