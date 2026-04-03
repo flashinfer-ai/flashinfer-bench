@@ -31,6 +31,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 32B | GQA + Dense | 🟡 Partial |
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
+| Qwen3.5 35B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
@@ -170,6 +171,35 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, kv=1, d=256 (TP=2 of original h=16, kv=2, d=256).
 
 ---
+
+## Qwen3.5 35B A3B
+
+**Architecture**: 28 layers total — 20 GDN (linear attention) + 8 GQA (standard attention), all layers use MoE FFN. Standard serving configuration: **TP=2**. Shares GDN/GQA architecture with Qwen3 Next 80B A3B but at smaller scale (hidden=2048, head_dim=256 for GQA, head_dim=128 for GDN).
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `gdn_decode_qk8_v16_d128_k_last` | gdn TP=2 | ❌ |
+| `gdn_prefill_qk8_v16_d128_k_last` | gdn TP=2 | ❌ |
+| `gdn_mtp_qk8_v16_d128_k_last` | gdn TP=2 | ❌ |
+| `gemm_n16_k2048` | gemm | ❌ |
+| `gemm_n256_k2048` | gemm | ❌ |
+| `gemm_n512_k2048` | gemm | ❌ |
+| `gemm_n2048_k256` | gemm | ❌ |
+| `gemm_n2048_k2048` | gemm | ❌ |
+| `gemm_n4096_k2048` | gemm | ❌ |
+| `gemm_n4608_k2048` | gemm | ❌ |
+| `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
+| `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
+| `moe_bf16_topk8_e256_h2048_i256` | moe | ✅ |
+| `gemma_fused_add_rmsnorm_h2048` | rmsnorm | ❌ |
+| `gemma_rmsnorm_h2048` | rmsnorm | ❌ |
+| `gemma_rmsnorm_h256` | rmsnorm | ❌ |
+| `top_k_top_p_sampling_from_probs_v248320` | sampling | ❌ |
+
+**Coverage**: 1 / 17 definitions present.
+
+---
+
 
 ## Llama 3.1 / 3.3 70B
 
