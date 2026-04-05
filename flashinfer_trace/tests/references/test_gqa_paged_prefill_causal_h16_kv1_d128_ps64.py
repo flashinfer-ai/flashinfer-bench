@@ -1,4 +1,4 @@
-"""Reference test for gqa_paged_prefill_causal_h16_kv1_d64_ps64."""
+"""Reference test for gqa_paged_prefill_causal_h16_kv1_d128_ps64."""
 
 import math
 from pathlib import Path
@@ -12,7 +12,7 @@ DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 NUM_QO_HEADS = 16
 NUM_KV_HEADS = 1
-HEAD_DIM = 64
+HEAD_DIM = 128
 PAGE_SIZE = 64
 
 
@@ -74,7 +74,7 @@ def test_correctness(batch_size=2, max_seq_len=256, atol=1e-2, rtol=5e-2):
     if device == "cpu":
         return False
 
-    definition = load_definition("gqa_paged_prefill_causal_h16_kv1_d64_ps64")
+    definition = load_definition("gqa_paged_prefill_causal_h16_kv1_d128_ps64")
     run = compile_reference(definition.reference)
     inputs = generate_random_inputs(batch_size, max_seq_len, device)
 
