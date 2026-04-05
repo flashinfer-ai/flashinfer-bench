@@ -1,6 +1,6 @@
 {
-  "name": "gqa_paged_decode_h16_kv1_d64_ps1",
-  "description": "Batched Grouped Query Attention decode with a paged KV cache (page_size=1). Captured from Qwen3 235B A22B at TP=4. 16 q-heads, 1 kv-heads, head_dim=64.",
+  "name": "gqa_paged_decode_h16_kv1_d128_ps1",
+  "description": "Batched Grouped Query Attention decode with a paged KV cache (page_size=1). Captured from Qwen3 235B A22B at TP=4. 16 q-heads, 1 kv-heads, head_dim=128.",
   "op_type": "gqa_paged",
   "tags": [
     "stage:decode",
@@ -23,7 +23,7 @@
     },
     "head_dim": {
       "type": "const",
-      "value": 64
+      "value": 128
     },
     "num_pages": {
       "type": "var"
@@ -110,5 +110,5 @@
       "description": "The 2-based log-sum-exp of attention logits."
     }
   },
-  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):\n    batch_size, num_qo_heads, head_dim = q.shape\n    _, page_size, num_kv_heads, _ = k_cache.shape\n\n    # Check constants\n    assert num_qo_heads == 16\n    assert num_kv_heads == 1\n    assert head_dim == 64\n    assert page_size == 1\n\n    device = q.device\n    output = torch.zeros(\n        (batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (batch_size, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    gqa_ratio = num_qo_heads // num_kv_heads\n    # page_size=1: squeeze page dim -> [num_pages, num_kv_heads, head_dim]\n    k_flat = k_cache.squeeze(1).to(torch.float32)\n    v_flat = v_cache.squeeze(1).to(torch.float32)\n    q_f32 = q.to(torch.float32)\n\n    for b in range(batch_size):\n        ps = int(kv_indptr[b].item())\n        pe = int(kv_indptr[b + 1].item())\n        if ps >= pe:\n            output[b].zero_()\n            continue\n\n        idx = kv_indices[ps:pe].to(torch.long)\n        k = k_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        v = v_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        q_b = q_f32[b].unsqueeze(1)  # [num_qo_heads, 1, head_dim]\n\n        logits = torch.bmm(q_b, k.transpose(1, 2)).squeeze(1) * sm_scale  # [H, T]\n        lse[b] = torch.logsumexp(logits, dim=-1) / math.log(2.0)\n        attn = torch.softmax(logits, dim=-1)\n        output[b] = torch.bmm(attn.unsqueeze(1), v).squeeze(1).to(torch.bfloat16)\n\n    return output, lse"
+  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q, k_cache, v_cache, kv_indptr, kv_indices, sm_scale):\n    batch_size, num_qo_heads, head_dim = q.shape\n    _, page_size, num_kv_heads, _ = k_cache.shape\n\n    # Check constants\n    assert num_qo_heads == 16\n    assert num_kv_heads == 1\n    assert head_dim == 128\n    assert page_size == 1\n\n    device = q.device\n    output = torch.zeros(\n        (batch_size, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (batch_size, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    gqa_ratio = num_qo_heads // num_kv_heads\n    # page_size=1: squeeze page dim -> [num_pages, num_kv_heads, head_dim]\n    k_flat = k_cache.squeeze(1).to(torch.float32)\n    v_flat = v_cache.squeeze(1).to(torch.float32)\n    q_f32 = q.to(torch.float32)\n\n    for b in range(batch_size):\n        ps = int(kv_indptr[b].item())\n        pe = int(kv_indptr[b + 1].item())\n        if ps >= pe:\n            output[b].zero_()\n            continue\n\n        idx = kv_indices[ps:pe].to(torch.long)\n        k = k_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        v = v_flat[idx].permute(1, 0, 2).repeat_interleave(gqa_ratio, dim=0)\n        q_b = q_f32[b].unsqueeze(1)  # [num_qo_heads, 1, head_dim]\n\n        logits = torch.bmm(q_b, k.transpose(1, 2)).squeeze(1) * sm_scale  # [H, T]\n        lse[b] = torch.logsumexp(logits, dim=-1) / math.log(2.0)\n        attn = torch.softmax(logits, dim=-1)\n        output[b] = torch.bmm(attn.unsqueeze(1), v).squeeze(1).to(torch.bfloat16)\n\n    return output, lse"
 }
