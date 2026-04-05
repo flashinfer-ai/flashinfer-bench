@@ -568,6 +568,9 @@ def run_sglang_mode(
     env["FLASHINFER_USE_CUDA_NORM"] = "1"
     env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
     env["SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK"] = "1"
+    # Downgrade TP memory imbalance from error→warning so collection can proceed
+    # when GPUs have leftover memory from previous (unlocked) processes.
+    env["SGLANG_ENABLE_TP_MEMORY_INBALANCE_CHECK"] = "0"
 
     print(f"\nPhase 2: FlashInfer Logging Configuration")
     print(f"  FLASHINFER_DUMP_INCLUDE={include_pattern}")

@@ -57,6 +57,15 @@
                 "--tp-size", "8",
                 "--moe-runner-backend", "triton"
             ]
+        },
+        "qwen3-235b-a22b-ps64": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--page-size", "64"
+            ]
         }
     },
     "h200": {
