@@ -1,37 +1,202 @@
 {
-    "llama-3.1-8b": {
-        "server_flags": [
-            "--trust-remote-code",
-            "--attention-backend", "flashinfer"
-        ]
+    "_comment": "Server flags per GPU type and model. GPU types match sgl-cookbook hardware IDs (b200, h200, h100, mi300x). TP/EP/DP values sourced from sgl-cookbook default configs. Tracing-specific flags (--disable-radix-cache, --enable-deterministic-inference) are passed via CLI, not stored here.",
+    "b200": {
+        "llama-3.1-8b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "llama-3.1-70b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "4"
+            ]
+        },
+        "llama-4-scout": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8"
+            ]
+        },
+        "deepseek-v3": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--ep-size", "8",
+                "--moe-runner-backend", "flashinfer_trtllm"
+            ]
+        },
+        "deepseek-v3.2": {
+            "server_flags": [
+                "--tp", "8",
+                "--dp", "8",
+                "--enable-dp-attention",
+                "--nsa-decode-backend", "trtllm",
+                "--kv-cache-dtype", "bfloat16",
+                "--reasoning-parser", "deepseek-v3",
+                "--trust-remote-code",
+                "--skip-server-warmup",
+                "--mem-fraction-static", "0.7",
+                "--disable-flashinfer-autotune"
+            ]
+        },
+        "qwen3-30b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "qwen3-235b-a22b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton"
+            ]
+        }
     },
-    "deepseek-v3": {
-        "server_flags": [
-            "--trust-remote-code",
-            "--attention-backend", "flashinfer",
-            "--tp-size", "8",
-            "--ep-size", "8",
-            "--moe-runner-backend", "flashinfer_trtllm"
-        ]
+    "h200": {
+        "llama-3.1-8b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "llama-3.1-70b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "4"
+            ]
+        },
+        "llama-4-scout": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8"
+            ]
+        },
+        "deepseek-v3": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--ep-size", "8",
+                "--disable-radix-cache"
+            ]
+        },
+        "deepseek-v3.2": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--ep-size", "8",
+                "--disable-radix-cache"
+            ]
+        },
+        "qwen3-30b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "qwen3-235b-a22b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8"
+            ]
+        }
     },
-    "deepseek-v3.2": {
-        "server_flags": [
-            "--tp", "8",
-            "--dp", "8",
-            "--enable-dp-attention",
-            "--nsa-decode-backend", "trtllm",
-            "--kv-cache-dtype", "bfloat16",
-            "--reasoning-parser", "deepseek-v3",
-            "--trust-remote-code",
-            "--skip-server-warmup",
-            "--mem-fraction-static", "0.7",
-            "--disable-flashinfer-autotune"
-        ]
+    "h100": {
+        "llama-3.1-8b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "llama-3.1-70b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "4"
+            ]
+        },
+        "llama-4-scout": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8"
+            ]
+        },
+        "deepseek-v3": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--ep-size", "8"
+            ]
+        },
+        "deepseek-v3.2": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--ep-size", "8"
+            ]
+        },
+        "qwen3-30b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "qwen3-235b-a22b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8"
+            ]
+        }
     },
-    "qwen3-30b": {
-        "server_flags": [
-            "--trust-remote-code",
-            "--attention-backend", "flashinfer"
-        ]
+    "mi300x": {
+        "llama-3.1-8b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "aiter"
+            ]
+        },
+        "llama-3.1-70b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "aiter",
+                "--tp-size", "4"
+            ]
+        },
+        "deepseek-v3": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "aiter",
+                "--tp-size", "8",
+                "--ep-size", "8"
+            ]
+        },
+        "qwen3-30b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "aiter"
+            ]
+        },
+        "qwen3-235b-a22b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "aiter",
+                "--tp-size", "8"
+            ]
+        }
     }
 }

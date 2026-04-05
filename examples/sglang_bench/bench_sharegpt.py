@@ -3,26 +3,34 @@ Benchmark SGLang serving throughput using the ShareGPT dataset.
 
 Launches an SGLang server, sends batched requests from ShareGPT, and reports
 throughput and latency statistics across a sweep of batch sizes. Model server
-flags are loaded from model_configs.json.
+flags are loaded from model_configs.json, keyed by GPU type and model name.
 
 Usage:
-    python3 bench_sharegpt.py --model llama-3.1-8b   --model-path /path/to/Llama-3.1-8B-Instruct    --disable-cuda-graph
-    python3 bench_sharegpt.py --model deepseek-v3    --model-path /path/to/DeepSeek-V3              --disable-cuda-graph
-    python3 bench_sharegpt.py --model deepseek-v3.2  --model-path /path/to/DeepSeek-V3.2            --disable-cuda-graph
-    python3 bench_sharegpt.py --model qwen3-30b      --model-path /path/to/Qwen3-30B-A3B            --disable-cuda-graph
+    # Auto-detect GPU type from nvidia-smi
+    python3 bench_sharegpt.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
+    python3 bench_sharegpt.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
+    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
 
-    # Disable radix cache (e.g. for ragged prefill traces)
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct      --disable-radix-cache --disable-cuda-graph
+    # Explicitly specify GPU type (b200, h200, h100, mi300x)
+    python3 bench_sharegpt.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
+
+    # TP size is auto-detected from CUDA_VISIBLE_DEVICES (set by gpu-lock):
+    #   tools/gpu-lock --gpus 4 -- python3 bench_sharegpt.py --model qwen3-235b-a22b ...
+    #   → CUDA_VISIBLE_DEVICES=0,1,2,3 → TP=4 used automatically
+
+    # Tracing flags
+    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
+    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
 
     # Custom batch sizes and number of batches
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct --batch-sizes 32 128 --num-batches 8 --disable-cuda-graph
+    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
 
 Environment variables (optional, for flashinfer-bench tracing):
     FIB_ENABLE_APPLY=1        Enable the flashinfer-bench apply hook
     FIB_DATASET_PATH=<dir>    Directory to write flashinfer trace data
 
     Example:
-        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct --disable-cuda-graph
+        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model
 """
 
 import argparse
@@ -30,6 +38,7 @@ import asyncio
 import json
 import math
 import os
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +46,69 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
+
+# Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
+_GPU_NAME_MAP = [
+    ("B200", "b200"),
+    ("H200", "h200"),
+    ("H100", "h100"),
+    ("A100", "a100"),
+    ("MI355", "mi355x"),
+    ("MI325", "mi325x"),
+    ("MI300", "mi300x"),
+]
+
+
+def detect_gpu_type() -> str:
+    """Auto-detect GPU type from nvidia-smi or rocm-smi, returning a sgl-cookbook hardware ID."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip().splitlines()[0].upper()
+            for substr, gpu_id in _GPU_NAME_MAP:
+                if substr in name:
+                    return gpu_id
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["rocm-smi", "--showproductname"], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            name = result.stdout.upper()
+            for substr, gpu_id in _GPU_NAME_MAP:
+                if substr in name:
+                    return gpu_id
+    except Exception:
+        pass
+    return "b200"  # default fallback
+
+
+def detect_tp_size() -> Optional[int]:
+    """Detect available GPU count from CUDA_VISIBLE_DEVICES (set by gpu-lock) to use as TP size."""
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if cvd and cvd != "-1":
+        return len(cvd.split(","))
+    # Fall back to total GPU count from nvidia-smi
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            count = len(result.stdout.strip().splitlines())
+            return count if count > 0 else None
+    except Exception:
+        pass
+    return None
+
 
 from datasets import load_dataset
 from sglang.bench_serving import benchmark, set_global_args
@@ -65,18 +137,37 @@ def load_model_configs() -> dict:
     if not _CONFIG_FILE.exists():
         raise FileNotFoundError(f"Model config file not found: {_CONFIG_FILE}")
     with _CONFIG_FILE.open() as f:
-        return json.load(f)
+        data = json.load(f)
+    # Strip metadata keys
+    return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def get_model_config(model_type: str) -> dict:
-    """Return server flags for a given model type loaded from model_configs.json."""
+def get_available_models(gpu_type: str) -> List[str]:
+    """Return model keys available for a given GPU type."""
     configs = load_model_configs()
-    key = model_type.lower()
-    if key not in configs:
+    gpu_key = gpu_type.lower()
+    if gpu_key not in configs:
+        # Fall back to first GPU type defined
+        gpu_key = next(iter(configs))
+    return list(configs[gpu_key].keys())
+
+
+def get_model_config(model_type: str, gpu_type: str) -> dict:
+    """Return server flags for a given model + GPU type from model_configs.json."""
+    configs = load_model_configs()
+    gpu_key = gpu_type.lower()
+    if gpu_key not in configs:
+        available_gpus = list(configs.keys())
+        raise ValueError(f"Unknown GPU type {gpu_type!r}. Available: {available_gpus}")
+    model_key = model_type.lower()
+    gpu_configs = configs[gpu_key]
+    if model_key not in gpu_configs:
+        available_models = list(gpu_configs.keys())
         raise ValueError(
-            f"Unsupported model type: {model_type!r}. Available in {_CONFIG_FILE.name}: {list(configs.keys())}"
+            f"Model {model_type!r} not configured for GPU {gpu_type!r}. "
+            f"Available models for {gpu_type}: {available_models}"
         )
-    return configs[key]
+    return gpu_configs[model_key]
 
 
 def log(msg: str) -> None:
@@ -141,6 +232,9 @@ def build_bench_args() -> SimpleNamespace:
         profile_num_steps=None,
         profile_by_stage=False,
         profile_stages=None,
+        logprob_start_len=-1,
+        top_logprobs_num=0,
+        token_ids_logprob=None,
     )
 
 
@@ -197,13 +291,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    available_models = list(load_model_configs().keys())
+    parser.add_argument(
+        "--gpu",
+        type=str,
+        default=None,
+        help="GPU type (b200, h200, h100, mi300x). Auto-detected from nvidia-smi if not specified.",
+    )
     parser.add_argument(
         "--model",
         type=str,
         required=True,
-        choices=available_models,
-        help=f"Model configuration to use. Available: {available_models}",
+        help="Model key to use from model_configs.json (e.g. llama-3.1-8b, qwen3-235b-a22b).",
     )
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to the model weights directory"
@@ -211,7 +309,12 @@ def main():
     parser.add_argument(
         "--disable-radix-cache",
         action="store_true",
-        help="Enable ragged prefill collection (adds --disable-radix-cache to server args)",
+        help="Add --disable-radix-cache to server args (for ragged prefill collection)",
+    )
+    parser.add_argument(
+        "--enable-deterministic-inference",
+        action="store_true",
+        help="Add --enable-deterministic-inference to server args (for paged prefill collection)",
     )
     parser.add_argument(
         "--base-url",
@@ -239,7 +342,11 @@ def main():
     )
     args = parser.parse_args()
 
-    model_config = get_model_config(args.model)
+    # Resolve GPU type
+    gpu_type = args.gpu if args.gpu else detect_gpu_type()
+    log(f"GPU type:       {gpu_type}" + (" (auto-detected)" if not args.gpu else ""))
+
+    model_config = get_model_config(args.model, gpu_type)
     num_prompts = args.batch_sizes[-1] * args.num_batches + 1
 
     log(f"Model type:     {args.model}")
@@ -258,8 +365,43 @@ def main():
         server_args.append("--disable-radix-cache")
         log("Added --disable-radix-cache for ragged prefill collection")
 
+    if args.enable_deterministic_inference:
+        server_args.append("--enable-deterministic-inference")
+        log("Added --enable-deterministic-inference for paged prefill collection")
+
     server_args.extend(model_config["server_flags"])
-    log(f"Server arguments: {server_args}")
+
+    # Auto-detect TP size from CUDA_VISIBLE_DEVICES (set by gpu-lock) and override if needed
+    detected_tp = detect_tp_size()
+    if detected_tp is not None:
+        # Extract TP size from current server_args
+        config_tp = None
+        for i, arg in enumerate(server_args):
+            if arg in ("--tp-size", "--tp") and i + 1 < len(server_args):
+                try:
+                    config_tp = int(server_args[i + 1])
+                except ValueError:
+                    pass
+                break
+        if config_tp != detected_tp:
+            # Remove existing --tp-size / --tp flags and replace
+            filtered = []
+            skip_next = False
+            for arg in server_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg in ("--tp-size", "--tp"):
+                    skip_next = True
+                    continue
+                filtered.append(arg)
+            server_args = filtered + ["--tp-size", str(detected_tp)]
+            log(
+                f"TP size: {detected_tp} (auto-detected from CUDA_VISIBLE_DEVICES, overrides config TP={config_tp})"
+            )
+        else:
+            log(f"TP size: {detected_tp} (matches config)")
+    log(f"Server args:    {server_args}")
 
     process = popen_launch_server(
         args.model_path,
