@@ -152,12 +152,20 @@ FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only ex
 
 **Always use this mode.** `collect_workloads.py sglang` handles everything automatically — no changes to SGLang needed:
 
-1. Launch SGLang with `--attention-backend flashinfer --disable-cuda-graph`
+1. Launch SGLang with `--attention-backend flashinfer --disable-cuda-graph --disable-piecewise-cuda-graph`
 2. Wait for server ready (polls `/health`, timeout 30min)
 3. Run ShareGPT inference via `/v1/chat/completions`
 4. Shut down via SIGTERM
 
-`--disable-cuda-graph` is required so every kernel call is logged individually.
+**Both CUDA graph flags are required — and they serve different purposes:**
+
+- `--disable-cuda-graph`: disables regular CUDA graph capture. Without this, `BatchDecodeWithPagedKVCacheWrapper.run()` is called inside a CUDA stream capture context, which causes `cudaErrorStreamCaptureUnsupported` when the FlashInfer logging API tries to copy tensors to CPU. The dump fails silently, meaning only `plan()` tensors (structural int32/int64) are captured — `q`, `k_cache`, `v_cache` are never saved. This makes const-axis validation (e.g. `head_dim`) impossible: since `q` is None, `_verify_constant_axis` skips the check and silently accepts wrong values.
+
+- `--disable-piecewise-cuda-graph`: disables piecewise CUDA graph capture. Even with `--disable-cuda-graph`, SGLang still runs piecewise capture by default (a separate mechanism). Piecewise capture also runs `run()` inside a CUDA stream, producing the same `cudaErrorStreamCaptureUnsupported` failure for `run()` dumps.
+
+**Why this matters for `head_dim` validation specifically:** `head_dim` is a const axis inferred from `q.shape[2]`. Since `q` is only an argument to `run()` (not `plan()`), if `run()` is not captured, `head_dim` can never be verified regardless of what the definition says. Workloads collected without both flags will silently pass validation even if `head_dim` is wrong.
+
+**Consequence of disabling CUDA graph:** batch size diversity comes from actual inference batching (SGLang's continuous batching scheduler), not from CUDA graph capture sequences. Use `--num-batches` and `--batch-sizes` to ensure sufficient coverage.
 
 ### Phase 4: Tensor Dump Sanitization
 
@@ -172,9 +180,11 @@ FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only ex
    - `paged_kv_last_page_len` → `kv_last_page_len`
    - `qo_indptr` → `qo_indptr`
 5. **Tensor storage policy** (based on definition input dtype):
-   - `int32`/`int64` (structural) → saved to safetensors blob
-   - `float32`/`bfloat16`/`float16` (activations) → `{"type": "random"}` (values don't affect benchmarking)
-   - null shape (scalars like `sm_scale`) → `{"type": "scalar", "value": <float>}`
+   - `int32`/`int64` (structural) → saved to safetensors blob (captured from `plan()`)
+   - `float32`/`bfloat16`/`float16` (activations like `q`, `k_cache`, `v_cache`) → `{"type": "random"}` (actual values don't affect benchmarking; shapes are reconstructed from const/var axes at benchmark time)
+   - null shape (scalars like `sm_scale`) → `{"type": "scalar", "value": <float>}` (captured from `run()`)
+
+   **Critical**: float activation tensors are stored as `{"type": "random"}`, but they are still captured from `run()` to validate const axes like `head_dim` (via `q.shape[2]`). If `run()` is not captured (e.g. due to CUDA graph capture blocking dumps), const axes cannot be verified and may be silently wrong. Always use `--disable-cuda-graph --disable-piecewise-cuda-graph` to ensure `run()` is logged.
 6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
 7. **Deduplication**: at most 2 entries per unique axes combination per definition
 
@@ -380,6 +390,14 @@ python scripts/sanitize_dumps.py \
 - Verify `FLASHINFER_LOGLEVEL=10` is set before any FlashInfer import (subprocess env)
 - Check `FLASHINFER_DUMP_INCLUDE` matches the actual API function names
 - Ensure SGLang is using FlashInfer backend (`--attention-backend flashinfer`)
+
+### `run()` Not Captured — Silent `head_dim` Mismatch
+
+**Symptom**: `cudaErrorStreamCaptureUnsupported` errors appear in the SGLang log for `BatchDecodeWithPagedKVCacheWrapper.run` or `BatchPrefillWithPagedKVCacheWrapper.run`. Workloads are produced but float tensors (`q`, `k_cache`, `v_cache`) are all `{"type": "random"}` stubs with no shape validation. Const axes like `head_dim` silently pass even if wrong.
+
+**Cause**: `run()` was called inside a CUDA stream capture context (regular or piecewise CUDA graph), which blocks FlashInfer's tensor copy-to-CPU dump code.
+
+**Fix**: Always pass both `--disable-cuda-graph` and `--disable-piecewise-cuda-graph` to the SGLang server. These flags must appear in the model config (`model_configs.json`) or be passed directly to `bench_sharegpt.py`. Never remove them to "get diverse batch sizes" — diversity should come from inference load, not CUDA graph capture.
 
 ### Constant Axis Mismatch
 

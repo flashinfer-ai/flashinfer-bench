@@ -66,6 +66,25 @@
                 "--moe-runner-backend", "triton",
                 "--page-size", "64"
             ]
+        },
+        "qwen3-235b-a22b-ragged": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--disable-piecewise-cuda-graph"
+            ]
+        },
+        "qwen3-235b-a22b-decode-ps64": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--page-size", "64",
+                "--disable-piecewise-cuda-graph"
+            ]
         }
     },
     "h200": {
