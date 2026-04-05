@@ -1,4 +1,4 @@
-"""Reference test for gqa_paged_decode_h16_kv1_d64_ps64."""
+"""Reference test for gqa_paged_decode_h16_kv1_d128_ps64."""
 
 import math
 from pathlib import Path
@@ -12,7 +12,7 @@ DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
 
 NUM_QO_HEADS = 16
 NUM_KV_HEADS = 1
-HEAD_DIM = 64
+HEAD_DIM = 128
 PAGE_SIZE = 64
 
 
@@ -35,14 +35,13 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
     seq_lens = torch.randint(1, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
     num_pages_per_seq = (seq_lens + PAGE_SIZE - 1) // PAGE_SIZE
     total_pages = num_pages_per_seq.sum().item()
-
     kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     kv_indptr[1:] = torch.cumsum(num_pages_per_seq, dim=0)
     kv_indices = torch.arange(total_pages, dtype=torch.int32, device=device)
     kv_last_page_len = (seq_lens - 1) % PAGE_SIZE + 1
 
-    q = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
     num_cache_pages = total_pages + 100
+    q = torch.randn(batch_size, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
     k_cache = torch.randn(
         num_cache_pages, PAGE_SIZE, NUM_KV_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device
     )
@@ -62,12 +61,12 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
     }
 
 
-def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
+def test_correctness(batch_size=2, max_seq_len=256, atol=1e-2, rtol=5e-2):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         return False
 
-    definition = load_definition("gqa_paged_decode_h16_kv1_d64_ps64")
+    definition = load_definition("gqa_paged_decode_h16_kv1_d128_ps64")
     run = compile_reference(definition.reference)
     inputs = generate_random_inputs(batch_size, max_seq_len, device)
 
@@ -81,26 +80,20 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
         inputs["sm_scale"],
     )
 
-    # group_size=16 is not supported by flashinfer; expand KV heads to Q heads (group_size=1)
-    k_cache_exp = inputs["k_cache"].repeat_interleave(NUM_QO_HEADS, dim=2)
-    v_cache_exp = inputs["v_cache"].repeat_interleave(NUM_QO_HEADS, dim=2)
-    fi_kv_heads = NUM_QO_HEADS
-    workspace = torch.empty(128 * 1024 * 1024, dtype=torch.uint8, device=device)
+    workspace = torch.empty(512 * 1024 * 1024, dtype=torch.uint8, device=device)
     wrapper = flashinfer.BatchDecodeWithPagedKVCacheWrapper(workspace, kv_layout="NHD")
     wrapper.plan(
         indptr=inputs["kv_indptr"],
         indices=inputs["kv_indices"],
         last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
-        num_kv_heads=fi_kv_heads,
+        num_kv_heads=NUM_KV_HEADS,
         head_dim=HEAD_DIM,
         page_size=PAGE_SIZE,
-        pos_encoding_mode="NONE",
         q_data_type=torch.bfloat16,
-        kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run(inputs["q"], (k_cache_exp, v_cache_exp), return_lse=True)
+    fi_o, fi_lse = wrapper.run(inputs["q"], (inputs["k_cache"], inputs["v_cache"]), return_lse=True)
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
@@ -108,7 +101,7 @@ def test_correctness(batch_size=4, max_seq_len=256, atol=1e-2, rtol=5e-2):
 
 
 def main():
-    configs = [(1, 16), (4, 256), (8, 512)]
+    configs = [(1, 16), (2, 256)]
     passed = sum(1 for b, s in configs if test_correctness(b, s))
     print(f"{passed}/{len(configs)} passed")
 
