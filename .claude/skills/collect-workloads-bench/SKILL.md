@@ -34,34 +34,60 @@ Edit `examples/sglang_bench/model_configs.json` to add/confirm entry:
 ```
 For paged prefill: always include `--disable-radix-cache` and `--enable-deterministic-inference`.
 
-### 2. Set FlashInfer Level-10 dump env vars and run bench_sharegpt.py
+### 2. Set FlashInfer Level-10 dump env vars and run bench_sharegpt.py (incremental)
+
+Run one batch size at a time to avoid node overload. After each run, sanitize to collect
+2–3 workloads, then delete the dump dir before the next run.
 
 ```bash
 DUMP_DIR=/tmp/flashinfer_dumps_<name>
-mkdir -p $DUMP_DIR
+TRACE_DIR=<trace_dir>
+LOG=/tmp/bench_sharegpt_<name>.log
 
 cd /home/averyh/flashinfer-bench
-tools/gpu-lock --gpus <N> --exec-timeout 7200 -- \
-  conda run -n flashinfer_bench env \
-    FLASHINFER_LOGLEVEL=10 \
-    FLASHINFER_DUMP_DIR=$DUMP_DIR \
-    FLASHINFER_DUMP_SAFETENSORS=1 \
-    FLASHINFER_DUMP_INCLUDE="<fi_include_pattern>,<fi_plan_pattern>" \
-    FLASHINFER_DUMP_EXCLUDE="*.__init__" \
-    FLASHINFER_DUMP_MAX_COUNT=2000 \
-    FLASHINFER_DUMP_MAX_SIZE_GB=10 \
-    FLASHINFER_USE_CUDA_NORM=1 \
-    FLASHINFER_DISABLE_VERSION_CHECK=1 \
-    SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK=1 \
-    SGLANG_ENABLE_TP_MEMORY_INBALANCE_CHECK=0 \
-  python examples/sglang_bench/bench_sharegpt.py \
-    --model <model-key> \
-    --model-path <model-path> \
-    --batch-sizes 1 16 64 128 256\
-    --num-batches 8 \
-    --disable-cuda-graph \
-    2>&1 | tee /tmp/bench_sharegpt_<name>.log
+
+for BS in 1 64 128 256; do
+  echo "=== Collecting batch_size=$BS ===" | tee -a $LOG
+  rm -rf $DUMP_DIR && mkdir -p $DUMP_DIR
+
+  tools/gpu-lock --gpus <N> --exec-timeout 1800 -- \
+    conda run -n flashinfer_bench env \
+      FLASHINFER_LOGLEVEL=10 \
+      FLASHINFER_DUMP_DIR=$DUMP_DIR \
+      FLASHINFER_DUMP_SAFETENSORS=1 \
+      FLASHINFER_DUMP_INCLUDE="<fi_include_pattern>,<fi_plan_pattern>" \
+      FLASHINFER_DUMP_EXCLUDE="*.__init__" \
+      FLASHINFER_DUMP_MAX_COUNT=100 \
+      FLASHINFER_DUMP_MAX_SIZE_GB=2 \
+      FLASHINFER_USE_CUDA_NORM=1 \
+      FLASHINFER_DISABLE_VERSION_CHECK=1 \
+      SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK=1 \
+      SGLANG_ENABLE_TP_MEMORY_INBALANCE_CHECK=0 \
+    python examples/sglang_bench/bench_sharegpt.py \
+      --model <model-key> \
+      --model-path <model-path> \
+      --batch-sizes $BS \
+      --num-batches 4 \
+      --disable-cuda-graph \
+      2>&1 | tee -a $LOG
+
+  # Kill any lingering processes
+  pkill -f bench_sharegpt.py || true
+  pkill -f sglang.launch_server || true
+
+  # Sanitize (no --replace so workloads from previous batch sizes are kept)
+  conda run -n flashinfer_bench python scripts/sanitize_dumps.py \
+    --dump-dir $DUMP_DIR \
+    --definitions <def_name> \
+    --flashinfer-trace-dir $TRACE_DIR
+
+  # Delete dumps before next run to free disk space
+  rm -rf $DUMP_DIR
+done
 ```
+
+**Note**: Omit `--replace` during the loop so each batch size's workloads are appended.
+Use `--replace` only on the first run if you want to start fresh.
 
 **FLASHINFER_DUMP_INCLUDE pattern** — always include both `plan*` and `run*`:
 - For paged prefill: `"BatchPrefillWithPagedKVCacheWrapper.plan*,BatchPrefillWithPagedKVCacheWrapper.run*"`
