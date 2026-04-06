@@ -25,10 +25,11 @@ Three usage modes:
 
   Mode 3 — Mixed (agent fills in only what's missing):
     Provide some args explicitly; agent resolves the rest from the prompt.
+    Useful when the model is not in the HuggingFace cache and needs an explicit path.
 
     python scripts/collect_workloads_agent.py \
         --prompt "collect mla_ragged for DeepSeek V3" \
-        --tp 8
+        --model-path /path/to/deepseek-v3
 
 Environment:
     ANTHROPIC_API_KEY  — required
@@ -555,7 +556,7 @@ def main():
               # Mixed (agent fills in only what's missing):
               python collect_workloads_agent.py \\
                 --prompt "collect mla_ragged for DeepSeek V3" \\
-                --tp 8
+                --model-path /path/to/deepseek-v3
         """
         ),
     )
