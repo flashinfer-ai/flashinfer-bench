@@ -5,18 +5,30 @@ Headless workload collection agent using Anthropic tool-calling API.
 Wraps collect_workloads.py with an autonomous retry/recovery loop that can
 run in CI without any human interaction or Claude Code terminal session.
 
-Usage:
-    python scripts/collect_workloads_agent.py \
-        --model-path /path/to/model \
-        --definitions mla_ragged_prefill_causal_h16_qk192_vo128 \
-        --flashinfer-trace-dir tmp/flashinfer-trace
+Three usage modes:
 
-    # With explicit TP and quantization:
+  Mode 1 — Explicit (fastest, recommended for CI):
+    All parameters provided directly; no discovery phase.
+
     python scripts/collect_workloads_agent.py \
         --model-path /path/to/deepseek-v3 \
-        --definitions mla_paged_decode_h16_ckv512_kpe64_ps1 \
+        --definitions mla_ragged_prefill_causal_h16_qk192_vo128 \
         --tp 8 --quantization fp8 \
         --max-attempts 3
+
+  Mode 2 — Prompt-only (agent resolves all parameters):
+    Agent uses list_definitions + find_model_path tools to discover
+    the definition name, model snapshot path, and TP from the prompt.
+
+    python scripts/collect_workloads_agent.py \
+        --prompt "collect mla_ragged workloads for DeepSeek V3"
+
+  Mode 3 — Mixed (agent fills in only what's missing):
+    Provide some args explicitly; agent resolves the rest from the prompt.
+
+    python scripts/collect_workloads_agent.py \
+        --prompt "collect mla_ragged for DeepSeek V3" \
+        --tp 8
 
 Environment:
     ANTHROPIC_API_KEY  — required
