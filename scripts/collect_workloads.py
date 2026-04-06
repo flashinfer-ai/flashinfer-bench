@@ -150,8 +150,22 @@ def _tp_ep_from_definitions(def_files: list[Path]) -> tuple[int, int]:
     return tp, ep
 
 
-def _uses_paged_prefill(def_files: list[Path]) -> bool:
-    """Return True if any definition uses BatchPrefillWithPagedKVCacheWrapper."""
+def _uses_prefill_server(def_files: list[Path]) -> bool:
+    """Return True if any definition requires the HTTP server path (any prefill wrapper)."""
+    for path in def_files:
+        with open(path) as f:
+            defn = json.load(f)
+        for tag in defn.get("tags", []):
+            if (
+                "BatchPrefillWithPagedKVCacheWrapper" in tag
+                or "BatchPrefillWithRaggedKVCacheWrapper" in tag
+            ):
+                return True
+    return False
+
+
+def _uses_paged_prefill_specifically(def_files: list[Path]) -> bool:
+    """Return True if any definition uses BatchPrefillWithPagedKVCacheWrapper (needs --enable-deterministic-inference)."""
     for path in def_files:
         with open(path) as f:
             defn = json.load(f)
@@ -438,8 +452,8 @@ def _run_sglang_offline_batched(
     # Each batch size is run num_rounds times, drawing the next slice of ShareGPT prompts
     # each time so KV lengths vary naturally across rounds.
     batch_sizes = [8, 32, 64, 128]
-    num_rounds = 4   # rounds per batch size
-    max_tokens = 8   # keep each round fast while still producing decode steps
+    num_rounds = 4  # rounds per batch size
+    max_tokens = 8  # keep each round fast while still producing decode steps
 
     # Total prompts needed across all rounds
     total_prompts = sum(B * num_rounds for B in batch_sizes)
@@ -473,14 +487,17 @@ for k, v in _env.items():
     os.environ[k] = v
 
 if __name__ == '__main__':
-    model_path  = sys.argv[2]
-    tp          = int(sys.argv[3])
-    page_size   = int(sys.argv[4])
-    rounds      = json.loads(sys.argv[5])   # list of (B, start, end, max_tokens)
-    prompts     = json.loads(sys.argv[6])   # full prompt list
-    quant       = sys.argv[7] if sys.argv[7] != "none" else None
-    cpu_offload = float(sys.argv[8])
-    mem_frac    = float(sys.argv[9]) if sys.argv[9] != "none" else None
+    model_path       = sys.argv[2]
+    tp               = int(sys.argv[3])
+    page_size        = int(sys.argv[4])
+    rounds           = json.loads(sys.argv[5])   # list of (B, start, end, max_tokens)
+    prompts_file     = sys.argv[6]               # path to JSON file with prompts list
+    quant            = sys.argv[7] if sys.argv[7] != "none" else None
+    cpu_offload      = float(sys.argv[8])
+    mem_frac         = float(sys.argv[9]) if sys.argv[9] != "none" else None
+
+    with open(prompts_file) as _pf:
+        prompts = json.load(_pf)
 
     # ── SGLang offline engine ─────────────────────────────────────────────────
     import sglang
@@ -524,6 +541,12 @@ if __name__ == '__main__':
         f.write(script)
         script_path = f.name
 
+    # Write prompts to a temp file to avoid ARG_MAX limits (E2BIG) when passing
+    # large ShareGPT prompt lists via command-line arguments.
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as pf:
+        json.dump(prompts, pf)
+        prompts_file = pf.name
+
     # Pass FlashInfer env vars as JSON so the subprocess sets them before importing sglang
     fi_env_keys = [
         "FLASHINFER_LOGLEVEL",
@@ -545,16 +568,20 @@ if __name__ == '__main__':
         str(tp),
         str(page_size),
         json.dumps(rounds),
-        json.dumps(prompts),
+        prompts_file,
         quantization or "none",
         str(cpu_offload_gb),
         str(mem_fraction_static) if mem_fraction_static is not None else "none",
     ]
-    subprocess.run(cmd, check=True, env=env)
+    try:
+        result = subprocess.run(cmd, env=env, capture_output=False, stderr=None, stdout=None)
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd)
+    finally:
+        import os as _os
 
-    import os as _os
-
-    _os.unlink(script_path)
+        _os.unlink(script_path)
+        _os.unlink(prompts_file)
 
 
 def run_sglang_mode(
@@ -579,11 +606,14 @@ def run_sglang_mode(
     if not include_pattern:
         include_pattern = "*"
 
-    # Paged prefill (BatchPrefillWithPagedKVCacheWrapper) requires --enable-deterministic-inference
-    # so SGLang sets use_ragged=False and routes all prefill through the paged wrapper.
-    force_paged_prefill = _uses_paged_prefill(def_files)
-    if force_paged_prefill:
-        print("  Detected paged prefill definition — will use --enable-deterministic-inference")
+    # Any prefill wrapper requires the HTTP server path (offline engine can't control which
+    # prefill wrapper SGLang uses). Paged prefill additionally needs --enable-deterministic-inference
+    # to force use_ragged=False. Ragged prefill must NOT have that flag (it would disable the wrapper).
+    force_prefill_server = _uses_prefill_server(def_files)
+    force_paged_prefill = _uses_paged_prefill_specifically(def_files)
+    if force_prefill_server:
+        extra = " + --enable-deterministic-inference" if force_paged_prefill else ""
+        print(f"  Detected prefill definition — will use HTTP server{extra}")
 
     env = os.environ.copy()
     env["FLASHINFER_LOGLEVEL"] = "10"
@@ -628,7 +658,7 @@ def run_sglang_mode(
     # The HTTP server mode fails in this case because synchronous CPU-GPU weight
     # transfers during inference block the uvicorn event loop, preventing health checks
     # from responding.
-    use_offline = not force_paged_prefill
+    use_offline = not force_prefill_server
     use_offline_paged_prefill = force_paged_prefill and cpu_offload_gb > 0
     if use_offline:
         print(
@@ -685,9 +715,11 @@ def run_sglang_mode(
             str(page_size),
             "--max-running-requests",
             "256",
-            # Force use_ragged=False so all prefill goes through BatchPrefillWithPagedKVCacheWrapper
-            "--enable-deterministic-inference",
         ]
+        if force_paged_prefill:
+            # Force use_ragged=False so all prefill goes through BatchPrefillWithPagedKVCacheWrapper.
+            # Must NOT be set for ragged prefill — it would disable BatchPrefillWithRaggedKVCacheWrapper.
+            server_cmd += ["--enable-deterministic-inference"]
         if ep > 1:
             server_cmd += ["--ep", str(ep)]
         if quantization:
@@ -700,6 +732,7 @@ def run_sglang_mode(
             server_cmd += ["--mem-fraction-static", "0.95"]
         if mem_fraction_static is not None and cpu_offload_gb == 0:
             server_cmd += ["--mem-fraction-static", str(mem_fraction_static)]
+        server_cmd += ["--skip-server-warmup"]
         if extra_sglang_args:
             server_cmd += extra_sglang_args
 
