@@ -199,16 +199,92 @@ Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the AP
 6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
 7. **Deduplication**: at most 2 entries per unique axes combination per definition
 
-### Phase 5: Submit Pull Request
+### Phase 5: Submit Pull Request (1 HuggingFace PR per definition)
+
+This skill produces **PR 2** in the two-PR workflow. PR 1 (definition JSON + reference tests +
+model_coverage.mdx) is submitted by `extract-kernel-definitions` and should already be open
+before submitting workloads.
+
+For each definition with newly collected workloads, submit **one HuggingFace PR** containing
+five things together: baseline solution, workload JSONL, safetensors traces, kernel definition
+JSON, and reference test (the last two copied from flashinfer-bench PR 1):
 
 ```bash
 cd tmp/flashinfer-trace
-git checkout -b workloads-$(date +%Y%m%d)-{op_type}
-git add workloads/ blob/
-git commit -m "Add {op_type} workloads from {model} ({num} samples)"
-git push origin HEAD
-gh pr create --repo flashinfer-ai/flashinfer-trace --title "Add {op_type} workloads" --body "..."
+BRANCH="workloads-$(date +%Y%m%d)-{definition_name}"
+git checkout -b "$BRANCH"
+
+# 1. Baseline solution (Python reference extracted from definition JSON reference_impl field)
+cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   solutions/{op_type}/{definition_name}.py
+# (extract the reference_impl field into a standalone runnable script)
+git add solutions/{op_type}/{definition_name}.py
+
+# 2. Workload JSONL and safetensors blobs
+git add workloads/{op_type}/{definition_name}.jsonl \
+        blob/workloads/{op_type}/{definition_name}/
+
+# 3. Kernel definition JSON (mirrored from flashinfer-bench)
+cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+   definitions/{op_type}/{definition_name}.json
+git add definitions/{op_type}/{definition_name}.json
+
+# 4. Reference test (mirrored from flashinfer-bench)
+cp {REPO_ROOT}/tests/test_{op_type}_{definition_name}.py \
+   tests/{op_type}/test_{op_type}_{definition_name}.py
+git add tests/{op_type}/test_{op_type}_{definition_name}.py
+
+git commit -m "Add {definition_name}: baseline solution + workloads + traces + def + tests
+
+Model: {hf_repo_id}
+SGLang: {sglang_commit_sha}
+FlashInfer: {flashinfer_commit_sha}
+Workload entries: {num_workload_entries}
+GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
+"
+pre-commit run --all-files
+git push origin "$BRANCH"
+python -c "
+from huggingface_hub import HfApi
+HfApi().create_pull_request(
+    repo_id='flashinfer-ai/flashinfer-trace',
+    repo_type='dataset',
+    title='Add {definition_name}: baseline solution + workloads + traces + def + tests',
+    description='...',
+    head='$BRANCH',
+)
+"
 ```
+
+**Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions into a
+single PR. Always wait for PR 1 (GitHub) to be open before submitting PR 2, so the
+`pr1_number` cross-reference in the commit message is valid.
+
+### Parallelizing across definitions with git worktrees
+
+When submitting PRs for multiple definitions, use git worktrees so all submissions happen
+in parallel — one worktree per definition in each repo, one agent per definition.
+
+```bash
+DATE=$(date +%Y%m%d)
+
+# Create trace worktrees up front for all definitions
+for DEF in {definition_name_1} {definition_name_2} ...; do
+  git -C tmp/flashinfer-trace worktree add \
+    ../worktrees/trace-${DEF} \
+    -b workloads-${DATE}-${DEF}
+done
+
+# Spawn one agent per definition — all run simultaneously
+# Each agent: copies solution + workload files into its worktree, commits, pushes, creates HF PR
+# Clean up after all agents report their PR URLs:
+for DEF in {definition_names}; do
+  git -C tmp/flashinfer-trace worktree remove ../worktrees/trace-${DEF}
+  git worktree remove tmp/worktrees/bench-${DEF}
+done
+```
+
+See `onboard-model` SKILL.md Phase 4 for the full agent prompt template and per-step details.
 
 ## Output Format
 
@@ -301,6 +377,21 @@ python scripts/sanitize_dumps.py \
 - Verify HuggingFace auth: `huggingface-cli login`
 - Check write permissions to flashinfer-ai/flashinfer-trace
 
+## Checking SGLang Integration Before Collection
+
+Before running `sglang` mode, verify that SGLang actually routes the target kernel through
+FlashInfer. Use the `fi_api` tag from the definition JSON as the search term:
+
+```bash
+# e.g. for fi_api:flashinfer.gdn.gated_delta_rule_decode
+grep -r "gated_delta_rule_decode" tmp/sglang/python/sglang/srt/ --include="*.py" | grep -v __pycache__
+```
+
+If the API is **not found** in SGLang:
+1. SGLang needs to be updated to wire in this FlashInfer kernel.
+2. The `onboard-model` skill (Phase 3c) handles drafting and submitting the SGLang PR.
+3. While the SGLang PR is pending, use `direct` mode if the kernel supports standalone calls.
+
 ## Integration with Other Skills
 
 ```bash
@@ -308,6 +399,9 @@ python scripts/sanitize_dumps.py \
 /extract-kernel-definitions --model-name deepseek_v3
 /collect-workloads --op-type mla_paged --model-name deepseek-v3
 /add-reference-tests --op-type mla_paged
+
+# Or use the full end-to-end pipeline (handles SGLang integration check + PR automatically)
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## References

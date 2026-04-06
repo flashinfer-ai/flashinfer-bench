@@ -52,3 +52,10 @@ AGENTS.md
 .coverage
 
 workload_dumps_*
+
+# Agent/worktree runtime files
+.agent-progress.md
+.agent.log
+.agent-prompt.md
+.claude/agents.json
+.claude/architect-loop.local.md

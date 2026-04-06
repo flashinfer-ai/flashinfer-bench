@@ -214,6 +214,7 @@ This skill provides the foundation for:
 1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, sgl-cookbook to find serving configurations (TP/EP flags), outputs to `./flashinfer_trace/definitions/` (local working area)
 2. **add-reference-tests**: Uses FlashInfer for ground truth, outputs tests to `./flashinfer_trace/tests/references/`
 3. **collect-workloads**: Uses `tmp/flashinfer-trace` (HuggingFace dataset clone) as the target for workload JSONL + safetensors blobs, then submits a PR
+4. **onboard-model**: End-to-end pipeline that calls this skill first (Phase 0) to ensure all repos are current before model discovery, definition generation, and workload collection.
 
 Example workflow:
 
@@ -226,6 +227,9 @@ Example workflow:
 
 # Step 3: Add reference tests
 /add-reference-tests --op-type mla_paged
+
+# Or run the full end-to-end pipeline
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## Notes
