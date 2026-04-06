@@ -252,6 +252,10 @@ Where `ckv_dim = kv_lora_rank + qk_rope_head_dim` and `kpe_dim = qk_rope_head_di
 **MoE** (EP-dependent):
 - `moe_fp8_block_scale_ds_routing_topk{topk}_ng{n_group}_kg{topk_group}_e{num_experts//EP}_h{hidden_size}_i{intermediate_size}`
 
+**RoPE** (not TP-dependent):
+- `rope_with_cos_sin_cache_neox_style_d{head_dim}_rd{rotary_dim}`
+- `rope_with_cos_sin_cache_gptj_style_d{head_dim}_rd{rotary_dim}`
+
 **Sampling** (not TP-dependent):
 - `top_k_sampling_from_probs_v{vocab_size}`
 - `top_k_top_p_sampling_from_probs_v{vocab_size}`

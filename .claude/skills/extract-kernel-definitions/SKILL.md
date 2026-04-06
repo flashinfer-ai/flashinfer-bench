@@ -112,10 +112,11 @@ For each layer component AND each serving configuration (TP/EP setting), extract
 - **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
 
 #### RoPE Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- `rope_d{head_dim}_rd{rotary_dim}`
+- **Naming**: `rope_with_cos_sin_cache_{style}_d{head_dim}_rd{rotary_dim}`
+  - NeoX style: `rope_with_cos_sin_cache_neox_style_d{head_dim}_rd{rotary_dim}`
+  - GPT-J style: `rope_with_cos_sin_cache_gptj_style_d{head_dim}_rd{rotary_dim}`
 - **Parameters**: head_dim, rotary_dim, cos_sin_cache, positions
-- **Naming**: `rope_d{head_dim}_rd{rotary_dim}`
-- **Note**: RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
+- **Note**: Rotation style (NeoX vs GPT-J) is encoded in the definition name, not as an input parameter. RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
 
 #### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.

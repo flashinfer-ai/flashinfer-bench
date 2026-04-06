@@ -638,7 +638,7 @@ const models: Model[] = [
         count: 62,
         parent: "self_attn",
         type: "layer",
-        definitions: ["rope_d128_rd64"],
+        definitions: ["rope_with_cos_sin_cache_neox_style_d128_rd64"],
       },
       attn: {
         count: 62,

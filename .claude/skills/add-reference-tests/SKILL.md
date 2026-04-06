@@ -111,6 +111,7 @@ For each definition, locate ground truth implementation using this priority orde
 | `moe` | SGLang (fallback) | N/A (FlashInfer MoE may not cover all variants) | `sglang/layers/moe/fused_moe.py` |
 | `gemm` | PyTorch | N/A | `torch.nn.functional.linear` |
 | `sampling` | FlashInfer | `flashinfer.sampling.*` | N/A |
+| `rope` | FlashInfer | `flashinfer.apply_rope_with_cos_sin_cache_inplace` | N/A |
 
 #### Reference `run()` Function Sources
 

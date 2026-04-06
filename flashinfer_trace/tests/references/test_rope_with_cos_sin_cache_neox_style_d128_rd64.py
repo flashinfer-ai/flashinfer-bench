@@ -3,7 +3,7 @@ import torch
 
 
 @torch.no_grad()
-def run(q, k, cos_sin_cache, positions, is_neox=True):
+def run(q, k, cos_sin_cache, positions):
     head_size = 128
     rotary_dim = 64
 
@@ -17,20 +17,14 @@ def run(q, k, cos_sin_cache, positions, is_neox=True):
     cos_sin = cos_sin_cache[positions]  # [num_tokens, rotary_dim]
     cos, sin = cos_sin.chunk(2, dim=-1)  # each [num_tokens, rotary_dim/2]
 
-    def apply_rotary_emb(x, cos, sin, is_neox):
+    def apply_rotary_emb_neox(x, cos, sin):
+        """NeoX-style: split into first/second half, rotate, concatenate."""
         cos = cos.unsqueeze(-2).to(x.dtype)
         sin = sin.unsqueeze(-2).to(x.dtype)
-        if is_neox:
-            x1, x2 = torch.chunk(x, 2, dim=-1)
-        else:
-            x1 = x[..., ::2]
-            x2 = x[..., 1::2]
+        x1, x2 = torch.chunk(x, 2, dim=-1)
         o1 = x1 * cos - x2 * sin
         o2 = x2 * cos + x1 * sin
-        if is_neox:
-            return torch.cat((o1, o2), dim=-1)
-        else:
-            return torch.stack((o1, o2), dim=-1).flatten(-2)
+        return torch.cat((o1, o2), dim=-1)
 
     # Process Q
     q_f32 = q.to(torch.float32)
@@ -38,7 +32,7 @@ def run(q, k, cos_sin_cache, positions, is_neox=True):
     q_3d = q_f32.view(num_tokens, -1, head_size)
     q_rot = q_3d[..., :rotary_dim]
     q_pass = q_3d[..., rotary_dim:]
-    q_rot = apply_rotary_emb(q_rot, cos, sin, is_neox)
+    q_rot = apply_rotary_emb_neox(q_rot, cos, sin)
     q_out = torch.cat((q_rot, q_pass), dim=-1).reshape(q_shape).to(q.dtype)
 
     # Process K
@@ -47,7 +41,7 @@ def run(q, k, cos_sin_cache, positions, is_neox=True):
     k_3d = k_f32.view(num_tokens, -1, head_size)
     k_rot = k_3d[..., :rotary_dim]
     k_pass = k_3d[..., rotary_dim:]
-    k_rot = apply_rotary_emb(k_rot, cos, sin, is_neox)
+    k_rot = apply_rotary_emb_neox(k_rot, cos, sin)
     k_out = torch.cat((k_rot, k_pass), dim=-1).reshape(k_shape).to(k.dtype)
 
     return q_out, k_out
@@ -98,10 +92,10 @@ def generate_random_inputs(
     }
 
 
-def test_correctness(batch_size=4, seq_len=64, is_neox=True, atol=1e-2, rtol=5e-2):
-    """Test correctness of reference implementation against FlashInfer."""
+def test_correctness(batch_size=4, seq_len=64, atol=1e-2, rtol=5e-2):
+    """Test correctness of NeoX-style reference implementation against FlashInfer."""
     print(f"\n{'='*60}")
-    print(f"Testing batch_size={batch_size}, seq_len={seq_len}, is_neox={is_neox}")
+    print(f"Testing batch_size={batch_size}, seq_len={seq_len} (NeoX style)")
     print(f"{'='*60}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -121,16 +115,12 @@ def test_correctness(batch_size=4, seq_len=64, is_neox=True, atol=1e-2, rtol=5e-
 
     print(f"nnz (total tokens): {inputs['nnz']}")
     print(f"num_qo_heads: {num_qo_heads}, num_kv_heads: {num_kv_heads}")
-    print(f"head_size: {head_size}, rotary_dim: {rotary_dim}, is_neox: {is_neox}")
+    print(f"head_size: {head_size}, rotary_dim: {rotary_dim}")
 
     # Run reference implementation
     print("\nRunning reference implementation...")
     ref_q, ref_k = run(
-        inputs["q"].clone(),
-        inputs["k"].clone(),
-        inputs["cos_sin_cache"],
-        inputs["positions"],
-        is_neox=is_neox,
+        inputs["q"].clone(), inputs["k"].clone(), inputs["cos_sin_cache"], inputs["positions"]
     )
 
     # Run FlashInfer (cache-based API matching the definition's fi_api tag)
@@ -143,7 +133,7 @@ def test_correctness(batch_size=4, seq_len=64, is_neox=True, atol=1e-2, rtol=5e-
         fi_k.view(inputs["nnz"], -1),
         head_size,
         inputs["cos_sin_cache"],
-        is_neox=is_neox,
+        is_neox=True,
     )
 
     # Compare outputs
@@ -196,24 +186,17 @@ def test_correctness(batch_size=4, seq_len=64, is_neox=True, atol=1e-2, rtol=5e-
 
 
 def main():
-    """Run comprehensive tests."""
-    print("Testing RoPE Reference Implementation (d128_rd64, partial, cos_sin_cache)")
+    """Run comprehensive tests for NeoX-style RoPE."""
+    print("Testing RoPE Reference Implementation (NeoX-style, d128_rd64, partial, cos_sin_cache)")
 
-    test_configs = [
-        (1, 16, True),
-        (4, 32, True),
-        (8, 64, True),
-        (16, 128, True),
-        (32, 256, True),
-        (4, 64, False),  # GPT-J interleaved style
-    ]
+    test_configs = [(1, 16), (4, 32), (8, 64), (16, 128), (32, 256)]
 
     passed = 0
     total = len(test_configs)
 
-    for batch_size, seq_len, is_neox in test_configs:
+    for batch_size, seq_len in test_configs:
         try:
-            if test_correctness(batch_size, seq_len, is_neox=is_neox):
+            if test_correctness(batch_size, seq_len):
                 passed += 1
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")

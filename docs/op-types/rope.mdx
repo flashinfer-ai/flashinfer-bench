@@ -20,12 +20,13 @@ Axes (6 dimensions):
 - `head_size`: constant
 - `rotary_dim`: constant
 
-Inputs (5):
+Inputs (4):
 - `q`: [num_tokens, num_qo_heads, head_size]
 - `k`: [num_tokens, num_kv_heads, head_size]
 - `cos_sin_cache`: [max_seq_len, rotary_dim] (float32, first half cos, second half sin)
 - `positions`: [num_tokens] (int64, index into cos_sin_cache)
-- `is_neox`: bool scalar (rotation style)
+
+Note: Rotation style (NeoX vs GPT-J) is encoded in the definition name rather than as an input parameter, following the 1-kernel-1-definition principle. For example: `rope_with_cos_sin_cache_neox_style_d128_rd64` vs `rope_with_cos_sin_cache_gptj_style_d128_rd64`.
 
 Outputs (2 tensors, in-place):
 - `q_out`: [num_tokens, num_qo_heads, head_size]

@@ -79,7 +79,7 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
 | `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
-| `rope` | Rotary Position Embedding | `rope_d128_rd64` |
+| `rope` | Rotary Position Embedding | `rope_with_cos_sin_cache_neox_style_d128_rd64` |
 | `sampling` | Sampling operations | - |
 
 ### Tensor/Expert Parallelism and Multiple Definitions
@@ -222,7 +222,7 @@ Associate each module with corresponding Definitions:
   - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
   - DSA: `dsa_sparse_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_topk{topk}_ps1` (sparse MLA)
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
-- **RoPE layers**: `rope_d{head_size}_rd{rotary_dim}` (partial RoPE when rotary_dim < head_size)
+- **RoPE layers**: `rope_with_cos_sin_cache_{style}_d{head_size}_rd{rotary_dim}` (style: `neox_style` or `gptj_style`; partial RoPE when rotary_dim < head_size)
 - **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
 
