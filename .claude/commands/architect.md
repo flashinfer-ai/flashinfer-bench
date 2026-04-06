@@ -39,15 +39,17 @@ If the loop is already active, the script will tell you. Otherwise it creates th
 
 | Condition | Action |
 |-----------|--------|
-| Agent stopped + both PRs open + clean | Report: ready for cleanup (`tools/architect cleanup`) |
-| Agent stopped + some PRs missing + has commits | Rescue: `tools/architect rescue <name> --action commit -m "WIP: agent checkpoint"` |
+| Agent stopped + both PRs open + all checklist items pass | Report: ready for cleanup (`tools/architect cleanup`) |
+| Agent stopped + both PRs open + checklist items failing | Re-spawn: `tools/architect spawn <name>` — agent must fix failures; report which checklist items failed |
+| Agent stopped + some PRs missing + has commits | Rescue: `tools/architect rescue <name> --action commit -m "WIP: agent checkpoint"`, then re-spawn |
+| Agent stopped + some PRs missing + no commits | Re-spawn: `tools/architect spawn <name>` |
 | Agent running | Report progress summary (status, current step, PRs opened so far) |
 | Ready to spawn (has task spec, no agent) | Report: suggest user runs `tools/architect spawn <name>` |
 | GPU locked | Report: GPU busy, workload collection in progress |
 | Idle (no task spec, no agent) | Report: idle worktree, needs task spec |
 
-4. **Report**: One-line summary per task (name, agent status, PRs 1/2 open/pending)
-5. **Completion**: If all active tasks have both PRs open **AND** every PR passes all checklist items (PR 1 items 1–6 + PR 2 items 1–7), output: `<promise>ALL_TASKS_DONE</promise>`. If PRs are open but checklist items are failing, report the failures instead.
+4. **Report**: One-line summary per task (name, agent status, PRs 1/2 open/pending, checklist pass/fail)
+5. **Completion**: If all active tasks have both PRs submitted **AND** every checklist item passes (PR 1 items 1–6 + PR 2 items 1–7), output: `<promise>ALL_TASKS_DONE</promise>`. Both PRs submitted + all checklist items passing is the only exit condition — anything else requires re-spawning the agent.
 
 ## Post-Completion Review (when both PRs open)
 
@@ -70,7 +72,7 @@ After a definition reaches all-PRs-open state, run this checklist:
 6. **Reference test**: Verify `tests/references/test_{name}.py` copied from PR 1
 7. **SGLang log**: Verify PR description includes the SGLang inference stdout (model loaded, workloads collected, kernel dump counts). The log must appear under `## SGLang Collection Log` in the PR2 discussion body. Workloads must be SGLang-collected (not synthetic); real workloads have diverse (batch_size, kv_length) pairs drawn from actual inference, NOT manually crafted sweeps (e.g., `batch_size=4096` with 1-page contexts is a red flag).
 
-Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
+Report findings per definition. Do NOT modify worktrees yourself. If checklist items are failing, re-spawn the agent (`tools/architect spawn <name>`) so it can fix them — do not wait for the user to intervene.
 
 ## Rules
 

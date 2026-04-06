@@ -343,12 +343,81 @@ if __name__ == '__main__':
     _os.unlink(script_path)
 
 
+def _load_sharegpt_prompts(dataset_path: str | None, num_prompts: int) -> list[str]:
+    """Load prompts from a local ShareGPT JSONL file or HuggingFace, with synthetic fallback."""
+    conversations = []
+    if dataset_path:
+        with open(dataset_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        conversations.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+    else:
+        try:
+            from datasets import load_dataset
+
+            ds = load_dataset("anon8231489123/ShareGPT_Vicuna_unfiltered", split="train")
+            conversations = list(ds)
+        except Exception as e:
+            print(f"  Warning: could not load ShareGPT dataset ({e}), using synthetic prompts")
+
+    prompts = []
+    for conv in conversations:
+        msgs = conv.get("conversations", conv.get("messages", []))
+        for m in msgs:
+            if m.get("from") in ("human", "user"):
+                text = m.get("value", m.get("content", "")).strip()
+                if text:
+                    prompts.append(text)
+                    break
+
+    if not prompts:
+        # Synthetic fallback
+        _BASE = (
+            "You are an expert in GPU kernel optimization, CUDA programming, and "
+            "transformer inference systems. Please provide a detailed technical "
+            "explanation covering the following topic: "
+        )
+        _TOPICS = [
+            "paged KV cache and memory fragmentation reduction",
+            "tensor parallelism for multi-head attention",
+            "FlashAttention tiling and IO-aware computation",
+            "mixture-of-experts routing and load balancing",
+            "RMSNorm versus LayerNorm computational differences",
+            "speculative decoding draft model verification",
+            "continuous batching in LLM serving systems",
+            "quantization tradeoffs FP8 INT4 and GPTQ",
+            "GQA grouped query attention and KV head sharing",
+            "paged attention and vLLM memory management",
+            "CUDA warp-level parallelism and shared memory",
+            "multi-head latent attention MLA KV compression",
+            "gated delta networks linear attention recurrence",
+            "expert parallelism for MoE inference",
+            "prefix caching and radix attention",
+            "chunked prefill for decode-prefill balance",
+            "ring attention and sequence parallelism",
+            "FlashInfer batch decode wrapper plan and run",
+        ]
+        for i in range(num_prompts):
+            topic = _TOPICS[i % len(_TOPICS)]
+            prompts.append(_BASE + topic)
+
+    # Repeat to reach num_prompts if needed
+    while len(prompts) < num_prompts:
+        prompts.extend(prompts[: num_prompts - len(prompts)])
+    return prompts[:num_prompts]
+
+
 def _run_sglang_offline_batched(
     model_path: str,
     tp: int,
     page_size: int,
     env: dict,
     dump_dir: Path,
+    dataset_path: str | None = None,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
     mem_fraction_static: float | None = None,
@@ -357,36 +426,34 @@ def _run_sglang_offline_batched(
 
     Spawns a subprocess that:
       1. Sets FlashInfer logging env vars before any import (so TP workers inherit them)
-      2. Creates sglang.Engine and calls engine.generate() for each (batch_size, prompt_tokens) round
-      3. Each generate() call is a static batch → decode sees exactly batch_size=B sequences
+      2. Loads real ShareGPT prompts (or falls back to synthetic) for natural KV-length diversity
+      3. Creates sglang.Engine and calls engine.generate() for each batch-size round
+      4. Each generate() call is a static batch → decode sees exactly batch_size=B sequences
 
-    Rounds cover batch_size ∈ {1, 2, 4, 8, 16, 32, 64, 128} with short/medium/long prompts
-    to produce diverse (batch_size, num_kv_indices) workload combinations.
+    Batch sizes are powers of 2 (1–256) matching SGLang CUDA graph capture points, with
+    multiple prompt draws each to produce diverse (batch_size, num_kv_indices) workload combinations.
     """
-    # Controlled (batch_size, prompt_tokens, max_tokens) rounds.
-    # Prompt tokens control how many KV pages are occupied per sequence.
-    # max_tokens=8 keeps each round fast while still providing kv_len diversity.
-    # With 3 prompt lengths per batch_size and 8 decode steps each, we get
-    # 24 distinct (batch_size, kv_len) combos per batch_size — enough for
-    # the deduplication/diversity filter to select 20 representative entries.
-    rounds = [
-        (1, 300, 8),
-        (1, 800, 8),
-        (2, 50, 8),
-        (4, 300, 8),
-        (8, 300, 8),
-        (16, 50, 8),
-        (16, 300, 8),
-        (16, 800, 8),
-        (32, 50, 8),
-        (32, 300, 8),
-        (64, 50, 8),
-        (64, 300, 8),
-        (64, 800, 8),
-        (128, 50, 8),
-        (256, 50, 8),
-        (256, 300, 8),
-    ]
+    # Batch sizes match SGLang CUDA graph capture points (powers of 2: 1–256).
+    # With CUDA graph enabled, the decode kernel always sees one of these padded shapes.
+    # Each batch size is run num_rounds times, drawing the next slice of ShareGPT prompts
+    # each time so KV lengths vary naturally across rounds.
+    batch_sizes = [8, 32, 64, 128]
+    num_rounds = 4   # rounds per batch size
+    max_tokens = 8   # keep each round fast while still producing decode steps
+
+    # Total prompts needed across all rounds
+    total_prompts = sum(B * num_rounds for B in batch_sizes)
+    prompts = _load_sharegpt_prompts(dataset_path, total_prompts)
+    print(f"  Loaded {len(prompts)} ShareGPT prompts for offline batched inference")
+
+    # Build rounds as (batch_size, prompt_slice_start, prompt_slice_end, max_tokens)
+    # We pass the full prompt list to the subprocess and index into it per round.
+    rounds = []
+    offset = 0
+    for B in batch_sizes:
+        for _ in range(num_rounds):
+            rounds.append((B, offset, offset + B, max_tokens))
+            offset += B
 
     # Write a self-contained script that is launched as a subprocess.
     # All FlashInfer env vars must be set before sglang is imported so that
@@ -409,10 +476,11 @@ if __name__ == '__main__':
     model_path  = sys.argv[2]
     tp          = int(sys.argv[3])
     page_size   = int(sys.argv[4])
-    rounds      = json.loads(sys.argv[5])
-    quant       = sys.argv[6] if sys.argv[6] != "none" else None
-    cpu_offload = float(sys.argv[7])
-    mem_frac    = float(sys.argv[8]) if sys.argv[8] != "none" else None
+    rounds      = json.loads(sys.argv[5])   # list of (B, start, end, max_tokens)
+    prompts     = json.loads(sys.argv[6])   # full prompt list
+    quant       = sys.argv[7] if sys.argv[7] != "none" else None
+    cpu_offload = float(sys.argv[8])
+    mem_frac    = float(sys.argv[9]) if sys.argv[9] != "none" else None
 
     # ── SGLang offline engine ─────────────────────────────────────────────────
     import sglang
@@ -434,54 +502,18 @@ if __name__ == '__main__':
 
     engine = sglang.Engine(**engine_kwargs)
 
-    _BASE = (
-        "You are an expert in GPU kernel optimization, CUDA programming, and "
-        "transformer inference systems. Please provide a detailed technical "
-        "explanation covering the following topic: "
-    )
-    _TOPICS = [
-        "paged KV cache and memory fragmentation reduction",
-        "tensor parallelism for multi-head attention",
-        "FlashAttention tiling and IO-aware computation",
-        "mixture-of-experts routing and load balancing",
-        "RMSNorm versus LayerNorm computational differences",
-        "speculative decoding draft model verification",
-        "continuous batching in LLM serving systems",
-        "quantization tradeoffs FP8 INT4 and GPTQ",
-        "GQA grouped query attention and KV head sharing",
-        "paged attention and vLLM memory management",
-        "CUDA warp-level parallelism and shared memory",
-        "multi-head latent attention MLA KV compression",
-        "gated delta networks linear attention recurrence",
-        "expert parallelism for MoE inference",
-        "prefix caching and radix attention",
-        "chunked prefill for decode-prefill balance",
-        "ring attention and sequence parallelism",
-        "FlashInfer batch decode wrapper plan and run",
-    ]
-
-    def _make_prompt(approx_tokens: int, idx: int) -> str:
-        topic = _TOPICS[idx % len(_TOPICS)]
-        text = _BASE + topic
-        # Repeat to reach approximate token count (~6 chars/token heuristic)
-        target_chars = approx_tokens * 6
-        while len(text) < target_chars:
-            text += " " + topic
-        return text[:target_chars]
-
-    prompt_idx = 0
     try:
-        for B, prompt_tokens, max_tokens in rounds:
-            prompts = [_make_prompt(prompt_tokens, prompt_idx + i) for i in range(B)]
-            prompt_idx += B
+        for B, start, end, max_tokens in rounds:
+            batch_prompts = prompts[start:end]
             t0 = time.time()
             outputs = engine.generate(
-                prompt=prompts,
+                prompt=batch_prompts,
                 sampling_params={"max_new_tokens": max_tokens, "temperature": 0.0},
             )
             elapsed = time.time() - t0
             n_ok = len(outputs) if outputs else 0
-            print(f"  batch_size={B:2d}, prompt~{prompt_tokens:4d}t, max_tokens={max_tokens}: {n_ok}/{B} ok ({elapsed:.1f}s)", flush=True)
+            avg_len = sum(len(p) for p in batch_prompts) // max(len(batch_prompts), 1)
+            print(f"  batch_size={B:3d}, avg_prompt_chars={avg_len:5d}, max_tokens={max_tokens}: {n_ok}/{B} ok ({elapsed:.1f}s)", flush=True)
     finally:
         engine.shutdown()
 """
@@ -513,6 +545,7 @@ if __name__ == '__main__':
         str(tp),
         str(page_size),
         json.dumps(rounds),
+        json.dumps(prompts),
         quantization or "none",
         str(cpu_offload_gb),
         str(mem_fraction_static) if mem_fraction_static is not None else "none",
@@ -607,6 +640,7 @@ def run_sglang_mode(
             page_size,
             env,
             dump_dir,
+            dataset_path=dataset_path,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
             mem_fraction_static=mem_fraction_static,
