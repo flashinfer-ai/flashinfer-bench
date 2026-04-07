@@ -137,6 +137,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | MoE gate / topk / experts | moe | — |
+| `moe_fp8_block_scale_renorm_topk8_e128_h2048_i768` | moe EP=1 | 🟡 |
 | `trtllm_fp4_block_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP8) | 🟡 |
 
@@ -166,9 +167,10 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ❌ |
 | MoE gate / topk / experts (GDN layers) | moe | — |
 | MoE gate / topk / experts (GQA layers) | moe | — |
+| `moe_fp8_block_scale_renorm_topk10_e128_h2048_i512` | moe EP=1 | 🟡 |
 | `trtllm_fp4_block_scale_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4, EP=4) | 🟡 |
 
-**Coverage**: 9 / 14 referenced definitions present.
+**Coverage**: 10 / 14 referenced definitions present. MoE definition added (shared across GDN and GQA layers).
 
 Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, kv=1, d=256 (TP=2 of original h=16, kv=2, d=256).
 
@@ -440,13 +442,14 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `gqa_ragged_prefill_causal_h16_kv1_d128` | gqa_ragged TP=4 | ❌ |
 | `gemm_n4608_k4096` | gemm | ❌ |
 | `gemm_n4096_k4096` | gemm | ✅ |
+| `moe_fp8_block_scale_renorm_topk8_e128_h4096_i1536` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e64_h4096_i1536` | moe EP=2 | ❌ |
 | `trtllm_fp4_block_scale_moe_topk8_e64_h4096_i1536` | moe (TRT-LLM FP4, EP=2) | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 7 / 13 referenced definitions present. Missing: all GQA defs (head_dim=64), QKV GEMM, and DSA-routing MoE (different hidden=4096 and intermediate=1536 vs existing h=7168, i=2048). TRT-LLM FP4 block scale MoE added for EP=2 (64 local experts). The o_proj GEMM and rmsnorm are shared with other h=4096 models.
+**Coverage**: 8 / 14 referenced definitions present. MoE EP=1 + TRT-LLM FP4 EP=2 definitions added. Missing: all GQA defs (head_dim=64), QKV GEMM. The o_proj GEMM and rmsnorm are shared with other h=4096 models.
 
 ---
 
@@ -467,12 +470,13 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ❌ |
 | `mla_paged_decode_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
 | `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | ❌ |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e96_h7168_i2048` | moe EP=4 | ❌ |
 | `top_k_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
-**Coverage**: 4 / 13 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). All MLA defs require new h=8 variants; MoE requires e=96 (384 experts / EP=4); sampling needs new v=160000 definitions.
+**Coverage**: 5 / 14 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 definition added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
 
 ---
 
