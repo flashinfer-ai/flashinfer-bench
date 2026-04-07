@@ -39,40 +39,27 @@ If the loop is already active, the script will tell you. Otherwise it creates th
 
 | Condition | Action |
 |-----------|--------|
-| Agent stopped + both PRs open + all checklist items pass | Report: ready for cleanup (`tools/architect cleanup`) |
-| Agent stopped + both PRs open + checklist items failing | Re-spawn: `tools/architect spawn <name>` — agent must fix failures; report which checklist items failed |
-| Agent stopped + some PRs missing + has commits | Rescue: `tools/architect rescue <name> --action commit -m "WIP: agent checkpoint"`, then re-spawn |
-| Agent stopped + some PRs missing + no commits | Re-spawn: `tools/architect spawn <name>` |
+| Agent stopped + all 3 PRs open + clean | Report: ready for cleanup (`tools/architect cleanup`) |
+| Agent stopped + some PRs missing + has commits | Rescue: `tools/architect rescue <name> --action commit -m "WIP: agent checkpoint"` |
 | Agent running | Report progress summary (status, current step, PRs opened so far) |
 | Ready to spawn (has task spec, no agent) | Report: suggest user runs `tools/architect spawn <name>` |
 | GPU locked | Report: GPU busy, workload collection in progress |
 | Idle (no task spec, no agent) | Report: idle worktree, needs task spec |
 
-4. **Report**: One-line summary per task (name, agent status, PRs 1/2 open/pending, checklist pass/fail)
-5. **Completion**: If all active tasks have both PRs submitted **AND** every checklist item passes (PR 1 items 1–6 + PR 2 items 1–7), output: `<promise>ALL_TASKS_DONE</promise>`. Both PRs submitted + all checklist items passing is the only exit condition — anything else requires re-spawning the agent.
+4. **Report**: One-line summary per task (name, agent status, PRs 1/2/3 open/pending)
+5. **Completion**: If all active tasks have all 3 PRs open, output: `<promise>ALL_TASKS_DONE</promise>`
 
-## Post-Completion Review (when both PRs open)
+## Post-Completion Review (when all PRs open)
 
 After a definition reaches all-PRs-open state, run this checklist:
 
-**PR 1 (GitHub flashinfer-bench):**
-1. **Definition JSON**: Verify `flashinfer_trace/definitions/{op_type}/{name}.json` exists
-2. **Reference test**: Verify `flashinfer_trace/tests/references/test_{name}.py` exists
-3. **Coverage**: Verify `docs/model_coverage.mdx` updated to ✅ for this definition
-4. **Test results**: Verify PR description includes reference test stdout
-5. **PR2 link**: Verify PR description includes a link to the HuggingFace PR 2 (workload addition)
-6. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
+1. **Definition JSON**: Verify `flashinfer_trace/definitions/{op_type}/{name}.json` exists in the PR
+2. **Tags**: Check `status:verified` (or `status:unverified` if FlashInfer missing), `fi_api:*`, `ep:*`/`tp:*` if applicable
+3. **Workloads**: Verify `.jsonl` file appears in the HF PR (PR 2)
+4. **Coverage**: Verify `docs/model_coverage.mdx` updated in PR 3
+5. **Reference tests**: Check if any reference test was added under `tests/`
 
-**PR 2 (HuggingFace flashinfer-trace):**
-1. **Workloads**: Verify `workloads/{op_type}/{name}.jsonl` exists
-2. **Blobs**: Verify `blob/workloads/{op_type}/{name}/*.safetensors` exist
-3. **Baseline solution**: Verify `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` exists (FlashInfer API wrapper, NOT a reference implementation)
-4. **Eval trace**: Verify `traces/{op_type}/{name}.jsonl` exists and all entries have `evaluation.status == "PASSED"`
-5. **Definition JSON**: Verify `definitions/{op_type}/{name}.json` copied from PR 1
-6. **Reference test**: Verify `tests/references/test_{name}.py` copied from PR 1
-7. **SGLang log**: Verify PR description includes the SGLang inference stdout (model loaded, workloads collected, kernel dump counts). The log must appear under `## SGLang Collection Log` in the PR2 discussion body. Workloads must be SGLang-collected (not synthetic); real workloads have diverse (batch_size, kv_length) pairs drawn from actual inference, NOT manually crafted sweeps (e.g., `batch_size=4096` with 1-page contexts is a red flag).
-
-Report findings per definition. Do NOT modify worktrees yourself. If checklist items are failing, re-spawn the agent (`tools/architect spawn <name>`) so it can fix them — do not wait for the user to intervene.
+Report findings per definition. Do NOT modify worktrees yourself — report issues back to the agent or user.
 
 ## Rules
 
@@ -85,7 +72,7 @@ Report findings per definition. Do NOT modify worktrees yourself. If checklist i
 ## Stopping
 
 - User runs `/cancel-architect` to stop the loop
-- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have both PRs open **and all checklist items pass** (PR 1 items 1–6, PR 2 items 1–7). Both PRs open is necessary but not sufficient.
+- Or output `<promise>ALL_TASKS_DONE</promise>` when all definitions have all 3 PRs open
 
 ## Creating Tasks for Agents
 
@@ -102,25 +89,10 @@ tools/architect spawn <def-name>     # Agent reads TASK.md, works on 3 PRs
 **Every TASK.md for definition onboarding must include:**
 ```
 ## Objective
-Submit 2 PRs for definition <name>:
-- PR 1 (GitHub flashinfer-bench): Definition JSON + reference tests + docs/model_coverage.mdx (✅) + paste reference test stdout in PR description
-- PR 2 (HuggingFace flashinfer-trace): Baseline solution + workloads + blobs + def JSON + ref test + baseline eval trace (all entries PASSED)
-
-## PR 1 Contents
-- `flashinfer_trace/definitions/{op_type}/{name}.json`
-- `flashinfer_trace/tests/references/test_{name}.py`
-- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition
-- PR description must include the full stdout of running the reference test
-- PR description must include a link to the HuggingFace PR 2 (workload addition)
-
-## PR 2 Contents
-- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper — NOT the reference_impl from def JSON; must call flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
-- `workloads/{op_type}/{name}.jsonl`
-- `blob/workloads/{op_type}/*.safetensors`
-- `traces/{name}_baseline.jsonl` (all entries must have `evaluation.status == "PASSED"`)
-- `definitions/{op_type}/{name}.json` (copied from PR 1)
-- `tests/references/test_{name}.py` (copied from PR 1)
-- PR description must include the SGLang inference stdout (capture stdout of `collect_workloads.py sglang` and paste in PR body under `## SGLang Collection Log`)
+Submit 3 PRs for definition <name>:
+- PR 1: Definition JSON → flashinfer-ai/flashinfer-bench (this repo)
+- PR 2: Workloads → flashinfer-ai/flashinfer-trace (HuggingFace dataset)
+- PR 3: Coverage update → flashinfer-ai/flashinfer-bench (this repo)
 
 ## Progress Reporting
 Write .agent-progress.md after every major step:
@@ -131,11 +103,11 @@ Write .agent-progress.md after every major step:
   Blockers: <if any>
   - PR 1: <url or pending>
   - PR 2: <url or pending>
+  - PR 3: <url or pending>
 
 ## GPU Work
 Use tools/gpu-lock before any SGLang workload collection:
-  tools/gpu-lock --gpus <N> --exec-timeout 1800 -- python collect_workloads.py ...
-Where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.)
+  tools/gpu-lock --exec-timeout 1800 -- python collect_workloads.py ...
 ```
 
 ## CLI Reference

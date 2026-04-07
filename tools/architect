@@ -360,14 +360,12 @@ def cmd_create(args):
           and `tmp/flashinfer-trace/blob/workloads/{op_type}/{name}/`
         - If workload files DO NOT EXIST yet:
           - Run: `tools/gpu-lock python scripts/collect_workloads.py sglang --definitions {name} --flashinfer-trace-dir tmp/flashinfer-trace`
-          - **Capture the full stdout** of the above command — you will paste it in the PR description
           - If GPU not available or SGLang not integrated: note as "N/A — collect manually" and stop here
         - Copy baseline solution (extracted from definition JSON reference_impl) into `{trace_wt}/solutions/{op_type}/{name}.py`
         - Copy workload JSONL and safetensors blobs into `{trace_wt}/`
         - Copy kernel definition JSON from this repo into `{trace_wt}/definitions/{op_type}/{name}.json`
         - Copy reference test from this repo into `{trace_wt}/tests/{op_type}/test_{op_type}_{name}.py`
         - Commit all together, push branch `workloads-{date}-{name}`, open HuggingFace PR
-        - **HuggingFace PR description must include a `## SGLang Collection Log` section** with the full stdout from the collect_workloads.py run (model loading, workload counts, dump dir info)
         - Record PR URL in {PROGRESS_FILE} under "PR 2"
 
         ## Acceptance Criteria
