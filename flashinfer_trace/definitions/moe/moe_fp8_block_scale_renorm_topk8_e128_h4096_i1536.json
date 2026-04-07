@@ -1,0 +1,137 @@
+{
+  "name": "moe_fp8_block_scale_renorm_topk8_e128_h4096_i1536",
+  "description": "FP8 block-scale MoE (DeepSeek-style). Qwen3-235B-A22B (EP=1). Renormalize routing (TopK->Softmax).",
+  "op_type": "moe",
+  "tags": [
+    "status:verified",
+    "model:qwen3-235b-a22b",
+    "quantization:float8_e4m3fn",
+    "fi_api:flashinfer.fused_moe.trtllm_fp8_block_scale_moe",
+    "ep:1",
+    "tp:8"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Number of input tokens."
+    },
+    "num_local_experts": {
+      "type": "const",
+      "value": 128,
+      "description": "Number of local experts (EP=1 → all experts)."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 4096,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 1536,
+      "description": "MoE expert intermediate size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 3072,
+      "description": "Output size of the first GEMM (W13). Should be 2 * intermediate_size."
+    },
+    "top_k": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of experts selected per token."
+    },
+    "num_hidden_blocks": {
+      "type": "const",
+      "value": 32,
+      "description": "Number of quantized blocks along hidden_size (block_size=128, 4096/128=32)."
+    },
+    "num_intermediate_blocks": {
+      "type": "const",
+      "value": 12,
+      "description": "Number of quantized blocks along intermediate_size (block_size=128, 1536/128=12)."
+    },
+    "num_gemm1_out_blocks": {
+      "type": "const",
+      "value": 24,
+      "description": "Number of quantized blocks along gemm1_out_size (block_size=128, 3072/128=24)."
+    }
+  },
+  "inputs": {
+    "routing_logits": {
+      "shape": [
+        "seq_len",
+        "num_local_experts"
+      ],
+      "dtype": "bfloat16",
+      "description": "Router logits."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "Input hidden states (FP8 block-scale quantized)."
+    },
+    "hidden_states_scale": {
+      "shape": [
+        "num_hidden_blocks",
+        "seq_len"
+      ],
+      "dtype": "float32",
+      "description": "Block scales for hidden_states, shape [num_hidden_blocks, seq_len] (transposed)."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_local_experts",
+        "gemm1_out_size",
+        "hidden_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "FC1 weights (gate+up), FP8 block-scale."
+    },
+    "gemm1_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "num_gemm1_out_blocks",
+        "num_hidden_blocks"
+      ],
+      "dtype": "float32",
+      "description": "Block scales for gemm1_weights."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_local_experts",
+        "hidden_size",
+        "intermediate_size"
+      ],
+      "dtype": "float8_e4m3fn",
+      "description": "FC2 weights (down), FP8 block-scale."
+    },
+    "gemm2_weights_scale": {
+      "shape": [
+        "num_local_experts",
+        "num_hidden_blocks",
+        "num_intermediate_blocks"
+      ],
+      "dtype": "float32",
+      "description": "Block scales for gemm2_weights."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor."
+    }
+  },
+  "constraints": [
+    "gemm1_weights.shape[1] == 2 * intermediate_size",
+    "gemm2_weights.shape[1] == hidden_size",
+    "gemm2_weights.shape[2] == intermediate_size"
+  ],
+  "reference": "import torch\n\n\n@torch.no_grad()\ndef run(\n    routing_logits: torch.Tensor,\n    hidden_states: torch.Tensor,\n    hidden_states_scale: torch.Tensor,\n    gemm1_weights: torch.Tensor,\n    gemm1_weights_scale: torch.Tensor,\n    gemm2_weights: torch.Tensor,\n    gemm2_weights_scale: torch.Tensor,\n):\n    \"\"\"\n    FP8 block-scale MoE reference — Renormalize routing (routing_method_type=1).\n    Routing: TopK -> Softmax (renormalize). No routing bias.\n    FP8 block-scale dequantization: float ≈ fp8 * scale (block size = 128).\n    Activation: SwiGLU.\n    \"\"\"\n    E = 128\n    H = 4096\n    I = 1536\n    TOP_K = 8\n    BLOCK = 128\n\n    T = routing_logits.shape[0]\n    device = routing_logits.device\n\n    num_h_blocks = H // BLOCK\n    num_i_blocks = I // BLOCK\n\n    # 1) FP8 block-scale dequantization of hidden_states\n    # hidden_states: [T, H], scale: [H/128, T] (transposed layout)\n    A_fp32 = hidden_states.to(torch.float32)\n    A_scale = hidden_states_scale.to(torch.float32)            # [H/128, T]\n    A_scale_TH = A_scale.permute(1, 0).contiguous()           # [T, H/128]\n    A = (A_fp32.view(T, num_h_blocks, BLOCK) *\n         A_scale_TH.unsqueeze(-1)).view(T, H)                 # [T, H]\n\n    # W13: [E, 2I, H], scale: [E, (2I)/128, H/128]\n    W13_fp32 = gemm1_weights.to(torch.float32)\n    S13 = gemm1_weights_scale.to(torch.float32)               # [E, 2I/128, H/128]\n    W13 = (W13_fp32.view(E, 2 * num_i_blocks, BLOCK, num_h_blocks, BLOCK) *\n           S13.unsqueeze(2).unsqueeze(4)).view(E, 2 * I, H)\n\n    # W2: [E, H, I], scale: [E, H/128, I/128]\n    W2_fp32 = gemm2_weights.to(torch.float32)\n    S2 = gemm2_weights_scale.to(torch.float32)                # [E, H/128, I/128]\n    W2 = (W2_fp32.view(E, num_h_blocks, BLOCK, num_i_blocks, BLOCK) *\n          S2.unsqueeze(2).unsqueeze(4)).view(E, H, I)\n\n    # 2) Renormalize routing: TopK -> Softmax\n    logits = routing_logits.to(torch.float32)                  # [T, E]\n    topk_logits, topk_idx = torch.topk(logits, k=TOP_K, dim=-1)  # [T, K]\n    probs = torch.softmax(topk_logits, dim=-1)                 # [T, K]\n\n    # 3) Compute expert outputs and accumulate\n    output = torch.zeros(T, H, dtype=torch.float32, device=device)\n    for e in range(E):\n        for k in range(TOP_K):\n            tok_mask = (topk_idx[:, k] == e)\n            if not tok_mask.any():\n                continue\n            tok_idx = torch.nonzero(tok_mask, as_tuple=False).squeeze(1)\n            w = probs[tok_idx, k].unsqueeze(1)                 # [Tk, 1]\n            g1 = A[tok_idx] @ W13[e].t()                      # [Tk, 2I]\n            up, gate = g1[:, :I], g1[:, I:]\n            c = torch.nn.functional.silu(gate) * up            # [Tk, I]\n            o = (c @ W2[e].t()) * w                            # [Tk, H]\n            output.index_add_(0, tok_idx, o)\n\n    return output.to(torch.bfloat16)\n"
+}
