@@ -479,7 +479,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h40_kv10_d128_ps1` | gqa_paged | 🟡 |
+| `gqa_paged_prefill_causal_h40_kv10_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h40_kv10_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h40_kv10_d128_ps64` | gqa_paged | ❌ |
@@ -492,7 +492,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v100352` | sampling | ❌ |
 | `top_p_sampling_from_probs_v100352` | sampling | ❌ |
 
-**Coverage**: 3 / 14 definitions present. rmsnorm h5120 is now shared with Qwen3 14B; `gemm_n5120_k5120` (o_proj shape) is shared since 40q*128=5120=hidden. Missing: all GQA defs (unusual 10 KV-head config), most GEMM, sampling v100352.
+**Coverage**: 4 / 14 definitions present. rmsnorm h5120 is now shared with Qwen3 14B; `gemm_n5120_k5120` (o_proj shape) is shared since 40q*128=5120=hidden; `gqa_paged_prefill_causal_h40_kv10_d128_ps1` has workloads collected (20/20 PASSED). Missing: remaining GQA defs (unusual 10 KV-head config), most GEMM, sampling v100352.
 
 ---
 
