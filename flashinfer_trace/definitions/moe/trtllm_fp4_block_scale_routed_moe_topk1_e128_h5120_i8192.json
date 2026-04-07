@@ -1,0 +1,97 @@
+{
+  "name": "trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192",
+  "description": "FP4 block scale routed MoE (MxFP4+BF16, TRT-LLM style). Llama 4 Maverick 17B-128E (EP=1). Llama4 routing. Pre-computed routing. Routing: Llama4 (pre-computed topk_ids, routing_method_type=3).",
+  "op_type": "moe",
+  "tags": [
+    "status:verified",
+    "model:llama-4-maverick",
+    "quantization:float4_e2m1fn_mxfp4",
+    "fi_api:flashinfer.fused_moe.trtllm_fp4_block_scale_routed_moe",
+    "gpu:sm100",
+    "routing:pre-computed",
+    "ep:1"
+  ],
+  "axes": {
+    "seq_len": {
+      "type": "var",
+      "description": "Number of input tokens."
+    },
+    "num_experts": {
+      "type": "const",
+      "value": 128,
+      "description": "Total number of local experts."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 5120,
+      "description": "Hidden dimension size."
+    },
+    "intermediate_size": {
+      "type": "const",
+      "value": 8192,
+      "description": "MoE expert intermediate size."
+    },
+    "gemm1_out_size": {
+      "type": "const",
+      "value": 16384,
+      "description": "FC1 output size (2 * intermediate_size for SwiGLU)."
+    },
+    "top_k": {
+      "type": "const",
+      "value": 1,
+      "description": "Number of experts selected per token."
+    }
+  },
+  "inputs": {
+    "topk_ids": {
+      "shape": [
+        "seq_len",
+        "top_k"
+      ],
+      "dtype": "int32",
+      "description": "Packed topk_ids: high 16 bits = expert_idx, low 16 bits = bfloat16 weight."
+    },
+    "hidden_states": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Input hidden states (bfloat16)."
+    },
+    "gemm1_weights": {
+      "shape": [
+        "num_experts",
+        "gemm1_out_size",
+        "hidden_size"
+      ],
+      "dtype": "float32",
+      "description": "FC1 weights (gate+up). Float32 in definition."
+    },
+    "gemm2_weights": {
+      "shape": [
+        "num_experts",
+        "hidden_size",
+        "intermediate_size"
+      ],
+      "dtype": "float32",
+      "description": "FC2 weights (down). Float32 in definition."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "seq_len",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Final MoE output tensor."
+    }
+  },
+  "constraints": [
+    "gemm1_weights.shape[1] == 2 * intermediate_size",
+    "gemm2_weights.shape[1] == hidden_size",
+    "gemm2_weights.shape[2] == intermediate_size"
+  ],
+  "reference": "import torch\n\n\n@torch.no_grad()\ndef run(\n    topk_ids: torch.Tensor,\n    hidden_states: torch.Tensor,\n    gemm1_weights: torch.Tensor,\n    gemm2_weights: torch.Tensor,\n):\n    \"\"\"\n    FP4 block scale routed MoE reference — Llama4 pre-computed routing.\n    topk_ids: int32 packed; use_routing_scales_on_input=True (weight applied to input).\n    Activation: SwiGLU.\n    \"\"\"\n    E = 128\n    H = 5120\n    I = 8192\n    TOP_K = 1\n\n    T = topk_ids.shape[0]\n    device = topk_ids.device\n\n    expert_idx = (topk_ids >> 16).to(torch.int16).to(torch.int64)\n    weight_bits = (topk_ids & 0xFFFF).to(torch.int16)\n    probs = weight_bits.view(torch.bfloat16).to(torch.float32)\n\n    A = hidden_states.to(torch.float32)\n    W13 = gemm1_weights.to(torch.float32)\n    W2 = gemm2_weights.to(torch.float32)\n    output = torch.zeros(T, H, dtype=torch.float32, device=device)\n\n    for e in range(E):\n        for k in range(TOP_K):\n            tok_mask = (expert_idx[:, k] == e)\n            if not tok_mask.any():\n                continue\n            tok_idx = torch.nonzero(tok_mask, as_tuple=False).squeeze(1)\n            w = probs[tok_idx, k].unsqueeze(1)\n            A_e = A[tok_idx] * w  # scale at input\n            g1 = A_e @ W13[e].t()\n            act = g1[:, :I]\n            gate = g1[:, I:]\n            c = torch.nn.functional.silu(gate) * act\n            o = c @ W2[e].t()\n            output.index_add_(0, tok_idx, o)\n\n    return output.to(torch.bfloat16)\n"
+}

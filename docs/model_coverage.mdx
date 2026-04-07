@@ -139,6 +139,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | MoE gate / topk / experts | moe | — |
 | `moe_fp8_block_scale_renorm_topk8_e128_h2048_i768` | moe EP=1 | 🟡 |
 | `trtllm_fp4_block_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4) | 🟡 |
+| `trtllm_fp4_block_scale_routed_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4 routed) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP8) | 🟡 |
 
 **Coverage**: 14 / 14 referenced definitions present. MoE kernels added (not yet mapped in `models.ts`).
@@ -169,6 +170,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | MoE gate / topk / experts (GQA layers) | moe | — |
 | `moe_fp8_block_scale_renorm_topk10_e128_h2048_i512` | moe EP=1 | 🟡 |
 | `trtllm_fp4_block_scale_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4, EP=4) | 🟡 |
+| `trtllm_fp4_block_scale_routed_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4 routed, EP=4) | 🟡 |
 
 **Coverage**: 10 / 14 referenced definitions present. MoE definition added (shared across GDN and GQA layers).
 
@@ -457,6 +459,7 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `moe_fp8_block_scale_renorm_topk8_e128_h4096_i1536` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e64_h4096_i1536` | moe EP=2 | ❌ |
 | `trtllm_fp4_block_scale_moe_topk8_e64_h4096_i1536` | moe (TRT-LLM FP4, EP=2) | 🟡 |
+| `trtllm_fp4_block_scale_routed_moe_topk8_e64_h4096_i1536` | moe (TRT-LLM FP4 routed, EP=2) | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
@@ -559,6 +562,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 16 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
+| `trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
@@ -585,6 +589,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
+| `trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
