@@ -653,6 +653,86 @@ done
 
 ---
 
+## PR Review Checklist
+
+Run this checklist after both PRs are open for a definition. **Both PRs must pass all items
+before the definition is considered complete.** If any item fails, fix and re-push before
+requesting merge.
+
+### PR 1 — GitHub flashinfer-bench
+
+1. **Definition JSON**: `flashinfer_trace/definitions/{op_type}/{name}.json` exists in the PR
+2. **Reference test**: `flashinfer_trace/tests/references/test_{name}.py` exists in the PR
+3. **Coverage**: `docs/model_coverage.mdx` updated — row for this definition shows ✅
+4. **Test results**: PR description includes the full stdout of running the reference test
+5. **PR2 link**: PR description includes a link to the HuggingFace PR 2 (workload addition)
+6. **Tags**: definition JSON has `status:verified` (or `status:unverified` if FlashInfer kernel
+   is missing), `fi_api:*`, and `ep:*`/`tp:*` if applicable
+
+### PR 2 — HuggingFace flashinfer-trace
+
+1. **Workloads**: `workloads/{op_type}/{name}.jsonl` exists and is non-empty
+2. **Blobs**: `blob/workloads/{op_type}/{name}/*.safetensors` files exist
+3. **Baseline solution**: `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json`
+   exists — this must be a FlashInfer API wrapper (calls `BatchDecodeWithPagedKVCacheWrapper`
+   or `BatchPrefillWithPagedKVCacheWrapper`), **not** a copy of `reference_impl`
+4. **Eval trace**: `traces/{op_type}/{name}.jsonl` exists and every entry has
+   `evaluation.status == "PASSED"` — no failures allowed
+5. **Definition JSON**: `definitions/{op_type}/{name}.json` copied from PR 1
+6. **Reference test**: `tests/references/test_{name}.py` copied from PR 1
+7. **SGLang log**: PR description contains a `## SGLang Collection Log` section with the
+   full stdout from the `collect_workloads.py sglang` run (model loading, workload counts,
+   dump dir info). Workloads must be SGLang-collected (not synthetic) — real workloads have
+   diverse `(batch_size, kv_length)` pairs drawn from actual inference. A uniform sweep like
+   `batch_size=4096` with 1-page contexts is a red flag for synthetic data.
+
+---
+
+## Agent TASK.md Template
+
+When spawning an agent for a definition, write `.claude/TASK.md` in its bench worktree.
+Every TASK.md for definition onboarding must include:
+
+```markdown
+## Objective
+Submit 2 PRs for definition {name}:
+- PR 1 (GitHub flashinfer-bench): Definition JSON + reference tests + docs/model_coverage.mdx (✅) + paste reference test stdout in PR description
+- PR 2 (HuggingFace flashinfer-trace): Baseline solution + workloads + blobs + def JSON + ref test + baseline eval trace (all entries PASSED)
+
+## PR 1 Contents
+- `flashinfer_trace/definitions/{op_type}/{name}.json`
+- `flashinfer_trace/tests/references/test_{name}.py`
+- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition
+- PR description must include the full stdout of running the reference test
+- PR description must include a link to the HuggingFace PR 2 (workload addition)
+
+## PR 2 Contents
+- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper — NOT the reference_impl from def JSON; must call flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
+- `workloads/{op_type}/{name}.jsonl`
+- `blob/workloads/{op_type}/*.safetensors`
+- `traces/{op_type}/{name}.jsonl` (all entries must have `evaluation.status == "PASSED"`)
+- `definitions/{op_type}/{name}.json` (copied from PR 1)
+- `tests/references/test_{name}.py` (copied from PR 1)
+- PR description must include the SGLang inference stdout (capture stdout of `collect_workloads.py sglang` and paste in PR body under `## SGLang Collection Log`)
+
+## Progress Reporting
+Write .agent-progress.md after every major step:
+  Status: in_progress | completed | blocked
+  Done: <what's done>
+  Current: <what you're doing now>
+  Next: <next step>
+  Blockers: <if any>
+  - PR 1 (def JSON + ref tests + coverage → flashinfer-bench GitHub): <URL or pending>
+  - PR 2 (baseline solution + workloads + traces → flashinfer-trace HF): <URL or pending>
+
+## GPU Work
+Use tools/gpu-lock before any SGLang workload collection:
+  tools/gpu-lock --gpus <N> --exec-timeout 1800 -- python collect_workloads.py ...
+Where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.)
+```
+
+---
+
 ## Decision Tree Summary
 
 ```
