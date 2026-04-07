@@ -1,0 +1,37 @@
+{
+    "llama-3.1-8b": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer"
+        ]
+    },
+    "deepseek-v3": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "8",
+            "--ep-size", "8",
+            "--moe-runner-backend", "flashinfer_trtllm"
+        ]
+    },
+    "deepseek-v3.2": {
+        "server_flags": [
+            "--tp", "8",
+            "--dp", "8",
+            "--enable-dp-attention",
+            "--nsa-decode-backend", "trtllm",
+            "--kv-cache-dtype", "bfloat16",
+            "--reasoning-parser", "deepseek-v3",
+            "--trust-remote-code",
+            "--skip-server-warmup",
+            "--mem-fraction-static", "0.7",
+            "--disable-flashinfer-autotune"
+        ]
+    },
+    "qwen3-30b": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer"
+        ]
+    }
+}

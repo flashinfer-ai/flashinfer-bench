@@ -1,7 +1,9 @@
 import { LeaderboardClient } from "./client"
 import {
+  computeAuthorRankings,
   computeFastPCurvesForAuthors,
   computeAuthorCorrectnessSummary,
+  type AuthorRankingEntry,
   type BaselineConfig,
   type CoverageStats,
 } from "@/lib/analytics"
@@ -32,6 +34,10 @@ type DefinitionAuthorDetail = {
   solutionNamesByAuthor: Record<string, string[]>
 }
 
+type LeaderboardData = {
+  rankings: AuthorRankingEntry[]
+}
+
 export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: LeaderboardSectionProps) {
   const filteredEntries = entries.filter((entry) => entry.solutions.length > 0 && entry.traces.length > 0)
 
@@ -59,6 +65,15 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
     datasets: filteredEntries.map((entry) => ({
       solutions: entry.solutions,
       traces: entry.traces,
+    })),
+  })
+
+  const rankingData: LeaderboardData = computeAuthorRankings({
+    datasets: filteredEntries.map((entry) => ({
+      solutions: entry.solutions,
+      traces: entry.traces,
+      baseline: entry.baseline,
+      definitionName: entry.definition.name,
     })),
   })
 
@@ -96,6 +111,7 @@ export function LeaderboardSection({ entries, baselineLabel, initialPinnedP }: L
   return (
     <LeaderboardClient
       fast={fast}
+      rankings={rankingData.rankings}
       correctness={correctness}
       excludedAuthors={[...excludedAuthors]}
       baselineLabel={baselineLabel}
