@@ -211,25 +211,34 @@ def tool_create_github_pr(title: str, body: str, branch: str, base: str = "main"
 def tool_create_hf_pr(
     repo_id: str, title: str, description: str, branch: str, worktree: str
 ) -> str:
-    script = textwrap.dedent(
+    # Step 1: create the PR (empty) to get the PR number
+    script_create = textwrap.dedent(
         f"""\
         from huggingface_hub import HfApi
         api = HfApi()
-        # Push the branch first
-        import subprocess
-        subprocess.run(['git', 'push', '--set-upstream', 'origin', '{branch}'], cwd='{worktree}', check=True)
         pr = api.create_pull_request(
             repo_id='{repo_id}',
             repo_type='dataset',
             title={repr(title)},
             description={repr(description)},
         )
-        print('PR URL:', pr.url)
-        print('PR number:', pr.num)
+        print('PR_URL:', pr.url)
+        print('PR_NUM:', pr.num)
     """
     )
-    cmd = f"conda run -n {CONDA_ENV} python -c {repr(script)}"
-    return _fmt(_run(cmd, timeout=60))
+    cmd = f"conda run -n {CONDA_ENV} python -c {repr(script_create)}"
+    result = _run(cmd, timeout=60)
+    out = result.get("stdout", "")
+    pr_num = None
+    for line in out.splitlines():
+        if line.startswith("PR_NUM:"):
+            pr_num = line.split(":", 1)[1].strip()
+    if not pr_num:
+        return _fmt(result) + "\nERROR: could not parse PR number"
+
+    # Step 2: push branch content directly to refs/pr/<num> on origin
+    push_result = _run(f"git push origin HEAD:refs/pr/{pr_num} --force", timeout=300, cwd=worktree)
+    return _fmt(result) + "\n" + _fmt(push_result)
 
 
 def tool_check_workloads(flashinfer_trace_dir: str, definition: str) -> str:
