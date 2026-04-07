@@ -1,0 +1,505 @@
+---
+title: "Benchmark Server API"
+description: "Start `flashinfer-bench serve` and use its HTTP API to inspect definitions, submit solutions, and poll evaluation tasks."
+---
+
+`flashinfer-bench serve` exposes an HTTP service for evaluating submitted `Solution` objects against workloads in a local `TraceSet`.
+
+It is a benchmark evaluation service, not a general model inference server.
+
+## Start The Server
+
+Install the server dependencies first:
+
+```bash
+pip install "flashinfer-bench[serve]"
+```
+
+Then start the server against a local trace dataset:
+
+```bash
+flashinfer-bench serve \
+  --local /path/to/flashinfer-trace \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --devices cuda:0,cuda:1
+```
+
+CLI flags:
+
+| Flag | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--local` | `path` | Yes | None | Path to the local `TraceSet`. |
+| `--devices` | `string` | No | All available CUDA devices | Comma-separated CUDA devices such as `cuda:0,cuda:1`. |
+| `--host` | `string` | No | `0.0.0.0` | Host address for the HTTP server. |
+| `--port` | `integer` | No | `8000` | Port for the HTTP server. |
+| `--warmup-runs` | `integer` | No | `10` | Number of warmup runs before measurement. |
+| `--iterations` | `integer` | No | `50` | Number of benchmark iterations per trial. |
+| `--num-trials` | `integer` | No | `3` | Number of benchmark trials per workload. |
+| `--rtol` | `float` | No | `1e-2` | Relative tolerance for correctness checks. |
+| `--atol` | `float` | No | `1e-2` | Absolute tolerance for correctness checks. |
+| `--timeout` | `integer` | No | `300` | Per-solution evaluation timeout in seconds. |
+| `--log-level` | `enum` | No | `INFO` | Server log level. One of `DEBUG`, `INFO`, `WARNING`, or `ERROR`. |
+
+## Mental Model
+
+The server evaluates one submitted `Solution` asynchronously:
+
+- `Solution`: The implementation you submit to the server.
+- `Task`: The asynchronous evaluation job created for that submission.
+- `Trace`: One evaluation result for one workload under that task.
+
+One task may produce multiple traces because the same solution can be evaluated on multiple workloads.
+
+Two status layers matter:
+
+- `task.status` tracks task lifecycle: `pending`, `running`, `completed`, or `failed`.
+- `traces[*].evaluation.status` tracks the actual evaluation result for each workload, such as `PASSED`, `COMPILE_ERROR`, `RUNTIME_ERROR`, or `TIMEOUT`.
+
+`task.status = completed` only means the task finished running. It does not mean the solution passed correctness checks.
+
+## API Reference
+
+### `GET /definitions`
+
+**Purpose**
+
+List available definitions in the loaded `TraceSet`.
+
+**Request**
+
+No request body.
+
+**Response**
+
+Returns an array of definition summaries.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | string | Definition name. |
+| `description` | string or `null` | Optional definition description. |
+
+Example response:
+
+```json
+[
+  {
+    "name": "rmsnorm_h128",
+    "description": "..."
+  }
+]
+```
+
+**Errors**
+
+No endpoint-specific error behavior beyond standard server failures.
+
+### `GET /definitions/{name}`
+
+**Purpose**
+
+Return the full serialized `Definition` object for one definition.
+
+**Request**
+
+Path parameters:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Definition name. |
+
+**Response**
+
+Returns the full serialized `Definition` object.
+
+Use this endpoint when you need the exact contract before writing a passing solution.
+
+**Errors**
+
+- `404`: Definition not found.
+
+### `GET /definitions/{name}/workloads`
+
+**Purpose**
+
+List workloads for one definition.
+
+**Request**
+
+Path parameters:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Definition name. |
+
+**Response**
+
+Returns an array of serialized `Workload` objects.
+
+Use this endpoint to discover valid workload UUIDs for `POST /evaluate`.
+
+**Errors**
+
+- `404`: Definition not found.
+
+### `GET /workloads/{uuid}`
+
+**Purpose**
+
+Return one workload by UUID.
+
+**Request**
+
+Path parameters:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `uuid` | string | Yes | Workload UUID. |
+
+**Response**
+
+Returns the serialized `Workload` object.
+
+**Errors**
+
+- `404`: Workload not found.
+
+### `POST /evaluate`
+
+**Purpose**
+
+Submit one solution for evaluation.
+
+**Request**
+
+Request body fields:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `solution` | object | Yes | Full [Solution](/docs/flashinfer-trace/solution) object to evaluate. |
+| `workload_uuids` | string[] | No | Optional subset of workload UUIDs. If omitted, the server evaluates all workloads for the definition. |
+
+Illustrative payload example:
+
+```json
+{
+  "solution": {
+    "name": "my_solution",
+    "definition": "rmsnorm_h128",
+    "author": "alice",
+    "spec": {
+      "language": "python",
+      "target_hardware": ["cuda"],
+      "entry_point": "pkg/main.py::kernel",
+      "destination_passing_style": false
+    },
+    "sources": [
+      {
+        "path": "pkg/main.py",
+        "content": "import torch\n\ndef kernel(x):\n    return x\n"
+      }
+    ]
+  },
+  "workload_uuids": ["workload_uuid_1"]
+}
+```
+
+This payload is illustrative only. The submitted `Solution` still needs to match the selected definition's real inputs and outputs.
+
+**Response**
+
+Response fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `task_id` | string | Identifier for the asynchronous evaluation task. |
+| `normalized_solution_name` | string | Server-normalized solution name after `Solution.with_unique_name()`. |
+
+Example response:
+
+```json
+{
+  "task_id": "7f8f5b1d4f0e4b3b8c4b8c1a2d3e4f5a",
+  "normalized_solution_name": "my_solution_1a2b3c4d"
+}
+```
+
+- The server normalizes the submitted solution name by calling `Solution.with_unique_name()`.
+- `normalized_solution_name` is deterministic for the same solution content.
+- If the selected workloads are empty, the task is still created, but it later ends with `task.status = failed`.
+
+**Errors**
+
+- `400`: `solution.definition` does not exist.
+
+### `GET /tasks/{task_id}`
+
+**Purpose**
+
+Get one task by ID.
+
+**Request**
+
+Path parameters:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `task_id` | string | Yes | Task identifier. |
+
+Query parameters:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `timeout` | float | No | Optional value in the range `0..3600`. `0` means return immediately. A positive value enables long-polling until the task completes or the timeout expires. |
+
+**Response**
+
+Response fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `task_id` | string | Task identifier. |
+| `status` | string | Task lifecycle status: `pending`, `running`, `completed`, or `failed`. |
+| `definition` | string | Definition name associated with the submitted solution. |
+| `solution` | string | Normalized solution name used by the server. |
+| `traces` | object[] or `null` | Serialized trace results. Can be `null` while the task is still pending or running. |
+| `error` | string or `null` | Task-level failure message. Usually `null` unless `status = failed`. |
+
+Example response:
+
+```json
+{
+  "task_id": "7f8f5b1d4f0e4b3b8c4b8c1a2d3e4f5a",
+  "status": "completed",
+  "definition": "rmsnorm_h128",
+  "solution": "my_solution_1a2b3c4d",
+  "traces": [
+    {
+      "definition": "rmsnorm_h128",
+      "solution": "my_solution_1a2b3c4d",
+      "workload": {
+        "uuid": "workload_uuid_1"
+      },
+      "evaluation": {
+        "status": "PASSED"
+      }
+    }
+  ],
+  "error": null
+}
+```
+
+- If the task is still pending or running, `traces` may be `null`.
+- If the task fails at the task level, `error` contains the failure reason.
+
+**Errors**
+
+- `404`: Task not found.
+
+### `POST /tasks/batch`
+
+**Purpose**
+
+Query multiple tasks in one request.
+
+**Request**
+
+Request body fields:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `task_ids` | string[] | Yes | Task IDs to query. Response order matches this array. |
+| `timeout` | float | No | Optional wait time in seconds. `timeout <= 0` returns immediately. `timeout > 0` waits until all tasks complete or the timeout expires. |
+
+Request body example:
+
+```json
+{
+  "task_ids": ["task_id_1", "task_id_2"],
+  "timeout": 30
+}
+```
+
+**Response**
+
+Returns an array of `TaskResponse` objects.
+
+Each item has the following fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `task_id` | string | Task identifier. |
+| `status` | string | Task lifecycle status: `pending`, `running`, `completed`, or `failed`. |
+| `definition` | string | Definition name associated with the submitted solution. |
+| `solution` | string | Normalized solution name used by the server. |
+| `traces` | object[] or `null` | Serialized trace results. Can be `null` while the task is still pending or running. |
+| `error` | string or `null` | Task-level failure message. Usually `null` unless `status = failed`. |
+
+- Returns a list of `TaskResponse` objects in the same order as `task_ids`.
+- Duplicate task IDs are allowed and produce duplicate results.
+
+**Errors**
+
+- `404`: At least one task ID does not exist. The request is fail-fast.
+
+### `GET /health`
+
+**Purpose**
+
+Return worker health and queue depth.
+
+**Request**
+
+No request body.
+
+**Response**
+
+Response fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | string | Overall server health status. |
+| `workers` | object[] | Per-worker health information. |
+| `queue_size` | integer | Number of queued tasks waiting to run. |
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "workers": [
+    {
+      "device": "cuda:0",
+      "healthy": true
+    }
+  ],
+  "queue_size": 0
+}
+```
+
+This endpoint is intended for operational checks rather than task inspection.
+
+**Errors**
+
+No endpoint-specific error behavior beyond standard server failures.
+
+### `POST /shutdown` (Management)
+
+**Purpose**
+
+Ask the current server process to exit gracefully.
+
+**Request**
+
+No request body.
+
+**Response**
+
+Response fields:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `status` | string | Shutdown acknowledgement, currently `shutting_down`. |
+
+Example response:
+
+```json
+{
+  "status": "shutting_down"
+}
+```
+
+This is a management endpoint, not part of the normal submit-and-poll flow.
+
+**Errors**
+
+No endpoint-specific error behavior beyond standard server failures.
+
+## Polling And Error Semantics
+
+Keep these semantics in mind when integrating with the server:
+
+- `task.status = completed` means the task finished, not that the solution passed.
+- Look at `traces[*].evaluation.status` for correctness and performance outcomes.
+- `task.status = failed` indicates task-level failures such as missing workloads or other failures that prevent evaluation from completing normally.
+- In `GET /tasks/{task_id}`, `timeout` must be in the range `0..3600`.
+- In `POST /tasks/batch`, `timeout <= 0` returns immediately and `timeout > 0` waits up to the provided value.
+- `POST /tasks/batch` is fail-fast on invalid task IDs.
+
+## Minimal Runnable Example
+
+This example shows the smallest end-to-end flow that works without depending on a specific kernel signature.
+
+It intentionally submits a Python solution with a syntax error, so the task should complete with `COMPILE_ERROR`. That makes the example portable across trace datasets as long as you choose a definition that has at least one workload.
+
+Requirements:
+
+- `curl`
+- `jq`
+- A running benchmark server
+
+```bash
+set -euo pipefail
+
+BASE_URL=http://127.0.0.1:8000
+
+# Pick the first definition that has at least one workload.
+DEFINITION=$(
+  curl -s "$BASE_URL/definitions" | jq -r '.[].name' | while read -r name; do
+    count=$(curl -s "$BASE_URL/definitions/$name/workloads" | jq 'length')
+    if [ "$count" -gt 0 ]; then
+      echo "$name"
+      break
+    fi
+  done
+)
+
+WORKLOAD_UUID=$(curl -s "$BASE_URL/definitions/$DEFINITION/workloads" | jq -r '.[0].uuid')
+
+jq -n \
+  --arg definition "$DEFINITION" \
+  --arg workload_uuid "$WORKLOAD_UUID" \
+  '{
+    solution: {
+      name: "docs_compile_error",
+      definition: $definition,
+      author: "docs",
+      spec: {
+        language: "python",
+        target_hardware: ["cuda"],
+        entry_point: "pkg/main.py::kernel",
+        destination_passing_style: false
+      },
+      sources: [
+        {
+          path: "pkg/main.py",
+          content: "def kernel(\n    return 0\n"
+        }
+      ]
+    },
+    workload_uuids: [$workload_uuid]
+  }' > /tmp/fib-serve-request.json
+
+TASK_ID=$(
+  curl -s \
+    -X POST "$BASE_URL/evaluate" \
+    -H "Content-Type: application/json" \
+    -d @/tmp/fib-serve-request.json | jq -r '.task_id'
+)
+
+curl -s "$BASE_URL/tasks/$TASK_ID?timeout=60" | jq
+```
+
+Expected result:
+
+- Top-level `status` should become `completed`.
+- `traces[0].evaluation.status` should be `COMPILE_ERROR`.
+
+To get `PASSED` instead, inspect `GET /definitions/{name}` and implement a real solution that matches that definition's inputs and outputs.
+
+## Notes
+
+- The server requires at least one CUDA device.
+- Reference results are cached per `(definition, workload)` inside each worker process.
+- `GET /health` is intended for operational checks rather than task inspection.
+- Submitted solution names are normalized before evaluation.

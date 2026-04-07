@@ -216,10 +216,9 @@ class Solution(BaseModelWithDocstrings):
         object.__setattr__(self, "_hash_cache", self._compute_hash())
 
     def _compute_hash(self) -> str:
-        """Compute a deterministic hash of the solution content."""
+        """Compute a deterministic hash of the solution content (excluding name)."""
         h = hashlib.sha1()
         for s in (
-            self.name,
             self.definition,
             self.spec.language,
             self.spec.entry_point,
@@ -231,11 +230,27 @@ class Solution(BaseModelWithDocstrings):
 
         return h.hexdigest()
 
+    def with_unique_name(self) -> "Solution":
+        """Return a copy with name suffixed by content hash for uniqueness.
+
+        The generated name is deterministic: same code always produces the
+        same unique name regardless of submission order or environment.
+
+        Returns
+        -------
+        Solution
+            A new Solution instance with name ``{name}_{hash[:8]}``.
+        """
+        unique_name = f"{self.name}_{self.hash()[:8]}"
+        data = self.model_dump()
+        data["name"] = unique_name
+        return Solution(**data)
+
     def hash(self) -> str:
-        """Return the memoized deterministic hash of the solution content.
+        """Return the memoized deterministic hash of the solution content (excluding name).
 
         This hash is computed from all fields that affect the solution's behavior:
-        name, definition, language, entry point, dependencies, and all source file
+        definition, language, entry point, dependencies, and all source file
         paths and contents. This ensures that any meaningful change to the solution
         results in a different hash.
 

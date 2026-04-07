@@ -1,0 +1,138 @@
+#!/bin/bash
+# gpu-lock: Mutex wrapper for GPU commands in flashinfer-bench.
+# Ensures only one workload collection task runs at a time.
+#
+# Usage:
+#   gpu-lock <command> [args...]    Run command with exclusive GPU lock
+#   gpu-lock --status               Check if GPU is locked and by whom
+#   gpu-lock --wait                 Block until GPU is free, then exit
+#
+# Options:
+#   --timeout <sec>       Max seconds to wait for lock (default: 600)
+#   --exec-timeout <sec>  Max seconds the command can run (default: 1800 = 30 min)
+#                         Set to 0 to disable. Workload collection can be long.
+#   --no-wait             Fail immediately if GPU is locked
+#
+# Examples:
+#   gpu-lock python scripts/collect_workloads.py sglang --definitions gqa_paged_decode_h32_kv8_d128_ps1
+#   gpu-lock --status
+#   gpu-lock --no-wait python scripts/collect_workloads.py direct --definitions rmsnorm_h7168
+
+set -euo pipefail
+
+LOCKFILE="/tmp/flashinfer-bench-gpu.lock"
+INFOFILE="/tmp/flashinfer-bench-gpu.info"
+TIMEOUT=600
+EXEC_TIMEOUT=1800
+NO_WAIT=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --status)
+            if [ -f "$INFOFILE" ]; then
+                if flock -n "$LOCKFILE" true 2>/dev/null; then
+                    echo "GPU is FREE (stale info file exists)"
+                    rm -f "$INFOFILE"
+                else
+                    echo "GPU is LOCKED"
+                    cat "$INFOFILE"
+                fi
+            else
+                if flock -n "$LOCKFILE" true 2>/dev/null; then
+                    echo "GPU is FREE"
+                else
+                    echo "GPU is LOCKED (no info available)"
+                fi
+            fi
+            exit 0
+            ;;
+        --wait)
+            echo "Waiting for GPU lock to be released..."
+            flock "$LOCKFILE" true
+            echo "GPU is free."
+            exit 0
+            ;;
+        --timeout)
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        --exec-timeout)
+            EXEC_TIMEOUT="$2"
+            shift 2
+            ;;
+        --no-wait)
+            NO_WAIT=true
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: gpu-lock [--timeout N] [--exec-timeout N] [--no-wait] <command> [args...]" >&2
+    echo "       gpu-lock --status" >&2
+    echo "       gpu-lock --wait" >&2
+    exit 1
+fi
+
+write_info() {
+    cat > "$INFOFILE" <<EOF
+  PID:        $$
+  User:       $(whoami)
+  Command:    $*
+  Since:      $(date '+%Y-%m-%d %H:%M:%S')
+  TTY:        ${SSH_TTY:-${TTY:-unknown}}
+  Exec limit: ${EXEC_TIMEOUT}s (0 = disabled)
+EOF
+}
+
+cleanup() {
+    rm -f "$INFOFILE"
+}
+
+exec_with_lock() {
+    write_info "$@"
+    trap cleanup EXIT
+    if [[ "$EXEC_TIMEOUT" -gt 0 ]]; then
+        timeout --signal=KILL "$EXEC_TIMEOUT" "$@"
+        status=$?
+        if [[ $status -eq 137 ]]; then
+            echo "" >&2
+            echo "ERROR: Command killed after ${EXEC_TIMEOUT}s execution timeout." >&2
+            echo "  Use --exec-timeout <sec> to increase (0 to disable)." >&2
+            exit 137
+        fi
+        exit $status
+    else
+        "$@"
+    fi
+}
+
+exec 9>"$LOCKFILE"
+
+if $NO_WAIT; then
+    if ! flock -n 9; then
+        echo "GPU is locked by another task. Use 'gpu-lock --status' for details." >&2
+        exit 1
+    fi
+else
+    if ! flock -n 9; then
+        echo "GPU is locked, waiting (timeout=${TIMEOUT}s)..." >&2
+        if [ -f "$INFOFILE" ]; then
+            cat "$INFOFILE" >&2
+        fi
+        if ! flock -w "$TIMEOUT" 9; then
+            echo "Timed out waiting for GPU lock after ${TIMEOUT}s." >&2
+            exit 1
+        fi
+        echo "Lock acquired." >&2
+    fi
+fi
+
+exec_with_lock "$@"

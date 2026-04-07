@@ -1,13 +1,12 @@
 """Integration tests for compute-sanitizer agent API."""
 
-from pathlib import Path
-
 import pytest
 
 from flashinfer_bench.agents.sanitizer import flashinfer_bench_run_sanitizer
 from flashinfer_bench.data import BuildSpec, Solution, SourceFile, SupportedLanguages, TraceSet
+from flashinfer_bench.env import get_fib_dataset_path
 
-TRACE_SET_PATH = str(Path(__file__).resolve().parents[2] / "tmp-repos" / "flashinfer-trace")
+TRACE_SET_PATH = str(get_fib_dataset_path())
 DEFN_NAME = "gemm_n128_k2048"
 
 
