@@ -34,9 +34,17 @@ Three usage modes:
         --tp 4
 
 Environment:
-    ANTHROPIC_API_KEY  — required
+    ANTHROPIC_API_KEY  — required (native Anthropic key starts with sk-ant-)
+                         OR an NVIDIA Inference Hub key (starts with sk-) used
+                         with --api-base-url https://inference-api.nvidia.com/v1
     CONDA_ENV          — conda env to use (default: flashinfer_bench)
     GITHUB_BRANCH      — branch to push PR1 to (default: auto-generated)
+
+NVIDIA Inference Hub example:
+    ANTHROPIC_API_KEY=sk-... python scripts/onboard_definition_agent.py \\
+        --api-base-url https://inference-api.nvidia.com/v1 \\
+        --claude-model aws/anthropic/bedrock-claude-sonnet-4-6 \\
+        --definition gqa_paged_prefill_causal_h40_kv10_d128_ps1 ...
 """
 
 import argparse
@@ -47,8 +55,6 @@ import sys
 import textwrap
 import time
 from pathlib import Path
-
-import anthropic
 
 REPO_ROOT = Path(__file__).parent.parent
 CONDA_ENV = os.environ.get("CONDA_ENV", "flashinfer_bench")
@@ -521,8 +527,19 @@ def run_agent(
     tp: int | None = None,
     quantization: str | None = None,
     ep: int = 1,
+    api_base_url: str | None = None,
 ) -> bool:
-    client = anthropic.Anthropic()
+    api_key = os.environ["ANTHROPIC_API_KEY"]
+    use_openai_compat = bool(api_base_url)
+
+    if use_openai_compat:
+        from openai import OpenAI
+
+        oa_client = OpenAI(base_url=api_base_url, api_key=api_key)
+    else:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key)
 
     # Build task message
     known, unknown = [], []
@@ -567,10 +584,94 @@ def run_agent(
     collection_attempts = 0
 
     print(f"[agent] Starting onboarding agent (model={claude_model})", flush=True)
+    if use_openai_compat:
+        print(f"[agent] API:        OpenAI-compat ({api_base_url})", flush=True)
     print(f"[agent] Definition: {definition or '(from prompt)'}", flush=True)
     print(f"[agent] Trace dir:  {flashinfer_trace_dir}\n", flush=True)
 
+    # Convert TOOLS (Anthropic format) to OpenAI function format once
+    if use_openai_compat:
+        oa_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["input_schema"],
+                },
+            }
+            for t in TOOLS
+        ]
+
     while True:
+        if use_openai_compat:
+            # OpenAI-compatible path (NVIDIA Inference Hub, etc.)
+            oa_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+            oa_resp = oa_client.chat.completions.create(
+                model=claude_model, max_tokens=8192, tools=oa_tools, messages=oa_messages
+            )
+            choice = oa_resp.choices[0]
+            msg = choice.message
+
+            # Extract text and tool calls from OpenAI response
+            text_content = msg.content or ""
+            tool_calls = msg.tool_calls or []
+
+            if text_content:
+                print(f"[agent] {text_content}", flush=True)
+                if "ONBOARD_COMPLETE:" in text_content:
+                    print("\n[agent] ✅ Onboarding complete.", flush=True)
+                    return True
+                if "ONBOARD_FAILED:" in text_content:
+                    print("\n[agent] ❌ Onboarding failed.", flush=True)
+                    return False
+
+            if choice.finish_reason == "stop":
+                print("[agent] Model stopped without completion signal.", flush=True)
+                return False
+
+            if choice.finish_reason != "tool_calls":
+                print(f"[agent] Unexpected finish_reason: {choice.finish_reason}", flush=True)
+                return False
+
+            # Append assistant message with tool_calls
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": text_content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+            )
+
+            for tc in tool_calls:
+                fn_name = tc.function.name
+                fn_args = json.loads(tc.function.arguments)
+                if fn_name == "run_collection":
+                    collection_attempts += 1
+                    print(
+                        f"\n[agent] Collection attempt {collection_attempts}/{max_attempts}",
+                        flush=True,
+                    )
+                    if collection_attempts > max_attempts:
+                        print("[agent] Max collection attempts reached.", flush=True)
+                        return False
+                print(f"[agent] → {fn_name}({json.dumps(fn_args)[:120]})", flush=True)
+                result = dispatch_tool(fn_name, fn_args)
+                print(f"[agent] ← {result[:400]}\n", flush=True)
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+            continue
+
+        # Native Anthropic SDK path
         response = client.messages.create(
             model=claude_model,
             max_tokens=8192,
@@ -679,7 +780,18 @@ def main():
     parser.add_argument(
         "--claude-model",
         default="claude-sonnet-4-6",
-        help="Anthropic model ID (default: claude-sonnet-4-6)",
+        help=(
+            "Model ID. For native Anthropic: claude-sonnet-4-6 (default). "
+            "For NVIDIA Inference Hub: aws/anthropic/bedrock-claude-sonnet-4-6"
+        ),
+    )
+    parser.add_argument(
+        "--api-base-url",
+        default=None,
+        help=(
+            "OpenAI-compatible base URL for non-Anthropic endpoints. "
+            "Example: https://inference-api.nvidia.com/v1"
+        ),
     )
     args = parser.parse_args()
 
@@ -688,6 +800,11 @@ def main():
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
         sys.exit(1)
+
+    # When using NVIDIA Inference Hub, default to the Hub model name
+    claude_model = args.claude_model
+    if args.api_base_url and claude_model == "claude-sonnet-4-6":
+        claude_model = "aws/anthropic/bedrock-claude-sonnet-4-6"
 
     success = run_agent(
         prompt=args.prompt,
@@ -700,7 +817,8 @@ def main():
         quantization=args.quantization,
         ep=args.ep,
         max_attempts=args.max_attempts,
-        claude_model=args.claude_model,
+        claude_model=claude_model,
+        api_base_url=args.api_base_url,
     )
     sys.exit(0 if success else 1)
 
