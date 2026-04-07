@@ -549,7 +549,7 @@ def run_agent(
         f"Max collection attempts: {max_attempts}",
         f"Conda env: {CONDA_ENV}",
         f"Repo root: {REPO_ROOT}",
-        f"Trace worktree: {REPO_ROOT / 'tmp/worktrees/trace-' + (definition or 'new')} (create if missing)",
+        f"Trace worktree: {REPO_ROOT / ('tmp/worktrees/trace-' + (definition or 'new'))} (create if missing)",
     ]
 
     parts = []
