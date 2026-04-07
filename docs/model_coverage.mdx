@@ -138,6 +138,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | MoE gate / topk / experts | moe | — |
 | `moe_fp8_block_scale_renorm_topk8_e128_h2048_i768` | moe EP=1 | 🟡 |
+| `trtllm_fp4_block_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP4) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk8_e128_h2048_i768` | moe (TRT-LLM FP8) | 🟡 |
 
 **Coverage**: 14 / 14 referenced definitions present. MoE kernels added (not yet mapped in `models.ts`).
@@ -164,7 +165,10 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
 | `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
 | `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ❌ |
+| MoE gate / topk / experts (GDN layers) | moe | — |
+| MoE gate / topk / experts (GQA layers) | moe | — |
 | `moe_fp8_block_scale_renorm_topk10_e128_h2048_i512` | moe EP=1 | 🟡 |
+| `trtllm_fp4_block_scale_moe_topk10_e128_h2048_i512` | moe (TRT-LLM FP4, EP=4) | 🟡 |
 
 **Coverage**: 10 / 14 referenced definitions present. MoE definition added (shared across GDN and GQA layers).
 
@@ -451,11 +455,12 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `gemm_n4096_k4096` | gemm | ✅ |
 | `moe_fp8_block_scale_renorm_topk8_e128_h4096_i1536` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e64_h4096_i1536` | moe EP=2 | ❌ |
+| `trtllm_fp4_block_scale_moe_topk8_e64_h4096_i1536` | moe (TRT-LLM FP4, EP=2) | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 7 / 14 referenced definitions present. MoE EP=1 definition added. Missing: all GQA defs (head_dim=64), QKV GEMM, and MoE EP=2 variant. The o_proj GEMM and rmsnorm are shared with other h=4096 models.
+**Coverage**: 8 / 14 referenced definitions present. MoE EP=1 + TRT-LLM FP4 EP=2 definitions added. Missing: all GQA defs (head_dim=64), QKV GEMM. The o_proj GEMM and rmsnorm are shared with other h=4096 models.
 
 ---
 
@@ -552,12 +557,13 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 16 experts, standard routing) | moe | — |
+| `trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 3 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. TRT-LLM FP8 per-tensor scale MoE kernel added (top-1, 16 experts, H=5120, Llama4 routing). Missing: all GQA defs (h=5 per device), sampling v202048.
+**Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 16 experts, Llama4 routing). Missing: all GQA defs (h=5 per device), sampling v202048.
 
 ---
 
@@ -577,12 +583,13 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
+| `trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 3 / 10 referenced definitions present. rmsnorm h5120 is now shared with Qwen3 14B. TRT-LLM FP8 per-tensor scale MoE kernel added (top-1, 128 experts, H=5120, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: all GQA defs (h=5 per device), sampling v202048.
+**Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 128 experts, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: all GQA defs (h=5 per device), sampling v202048.
 
 ---
 
