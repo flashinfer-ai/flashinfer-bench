@@ -72,12 +72,13 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | Operation Type | Description | Example |
 |---------------|-------------|---------|
 | `rmsnorm` | RMS Layer Normalization | `rmsnorm_h4096` |
-| `gemm` | General Matrix Multiplication | `gemm_n_6144_k_4096` |
+| `gemm` | General Matrix Multiplication | `gemm_n6144_k4096` |
 | `gqa_ragged` | Group Query Attention (ragged) | `gqa_ragged_prefill_causal_h32_kv8_d128` |
 | `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
 | `mla_paged` | Multi-Head Latent Attention (paged) | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
 | `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
 | `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
+| `mamba_ssu` | Mamba2 Selective State Update (decode) | `mamba_ssu_decode_h128_d64_s128_ng8` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
 | `sampling` | Sampling operations | - |
 
@@ -108,24 +109,44 @@ Different serving configurations (TP/EP flags) can require separate kernel defin
 
 ### Using Skills to Add New Models
 
-We provide a suite of skills to automate the model addition process:
+We provide a suite of skills to automate the model addition process.
+
+**Recommended: use the end-to-end `onboard-model` pipeline:**
+
+```bash
+# Discover new day-0 SGLang models and onboard any that have novel kernels
+/onboard-model --discover
+
+# Onboard a specific model end-to-end (definition + workload + PR)
+/onboard-model --model-name qwen3-235b-a22b --hf-repo-id Qwen/Qwen3-235B-A22B
+```
+
+The pipeline handles the full workflow automatically:
+1. Updates all local repos (SGLang, FlashInfer, sgl-cookbook, flashinfer-trace)
+2. Discovers new models via SGLang day-0 additions and sgl-cookbook
+3. Generates kernel definitions (from FlashInfer if available; files a GitHub issue if not)
+4. Checks SGLang integration; submits SGLang PR if the kernel is not yet wired in
+5. Collects real workloads via FlashInfer logging API
+6. Submits one PR to `flashinfer-ai/flashinfer-trace` and one to this repo
+
+**Or run individual steps manually:**
 
 ```bash
 # 1. Clone required repositories (SGLang, FlashInfer, sgl-cookbook)
-claude-code run clone-repos
+/clone-repos
 
 # 2. Extract kernel definitions from model implementation
 #    This will automatically:
 #    - Parse SGLang model implementation
 #    - Find serving configs from sgl-cookbook (TP/EP flags)
 #    - Generate multiple definitions for different parallelism settings
-claude-code run extract-kernel-definitions --model-name deepseek_v3
+/extract-kernel-definitions --model-name deepseek_v3
 
 # 3. Add reference tests to validate definitions
-claude-code run add-reference-tests --op-type mla_paged
+/add-reference-tests --op-type mla_paged
 ```
 
-**Key Feature**: The `extract-kernel-definitions` skill now automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
+**Key Feature**: The `extract-kernel-definitions` skill automatically uses sgl-cookbook to find recommended serving configurations (tensor parallel and expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
 
 ### Manual Model Addition Process
 
@@ -201,8 +222,16 @@ Associate each module with corresponding Definitions:
   - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
   - DSA: `dsa_sparse_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_topk{topk}_ps1` (sparse MLA)
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
-- **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
+  - Mamba2 SSU: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}` (see note below)
+- **GEMM layers**: `gemm_n{out_dim}_k{in_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
+
+**Mamba2 SSU FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
+- Supported `head_dim` (d): 64, 128, 256
+- Supported `dstate` (s): 64, 128, 256
+- Supported `nheads/ngroups` ratio: 1, 8, 16
+- Example: NemotronH-8B: `nheads=128, head_dim=64, dstate=128, ngroups=8` → ratio=16 ✓
+- TP splits both nheads and ngroups equally, keeping the ratio constant
 
 #### 5. Validation and Testing
 
@@ -218,9 +247,9 @@ flashinfer-bench run --local /path/to/dataset --definitions <your-definitions>
 
 ## Skills Detailed Documentation
 
-### add-new-model
+### onboard-model
 
-Main workflow skill that integrates all steps.
+End-to-end pipeline that orchestrates all phases for onboarding a new model.
 
 **Parameters**:
 - `--model-name`: Model name (e.g., "kimi-k2")
@@ -268,6 +297,33 @@ Generate TypeScript model definition.
 **Output**:
 - Updated models.ts file
 - TypeScript code for module definitions
+
+### collect-workloads
+
+Auto-collect real-world workloads from SGLang inference runs using FlashInfer Level 10 logging API.
+
+**Parameters**:
+- `--definition-names`: List of specific definition names to collect workloads for (optional)
+- `--op-type`: Collect workloads for all definitions of a specific op_type (optional)
+- `--all`: Collect workloads for ALL definitions (optional)
+- `--model-name`: Model to run inference on (required, e.g., "deepseek-v3", "llama-3.1-8b")
+- `--dataset`: Path to ShareGPT-format JSONL dataset (optional)
+- `--num-samples`: Number of inference samples to process (default: 100)
+- `--submit-pr`: Whether to submit PR to flashinfer-trace repo (default: true)
+
+**Output**:
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl`
+- Safetensors blobs in `tmp/flashinfer-trace/blob/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset repo
+
+**Workflow**:
+1. Setup FlashInfer Level 10 logging (tensor dump mode)
+2. Run SGLang inference with ShareGPT dataset
+3. Dump tensors locally from FlashInfer logs
+4. Sanitize tensors according to kernel definitions
+5. Convert to workload JSONL format with deduplication
+6. Submit PR to flashinfer-trace HuggingFace dataset repo
+
 
 ## Common Model Architecture Patterns
 
@@ -334,6 +390,39 @@ Where GDN maintains a recurrent state [B, H, K, V] and uses:
 - `A_log`: learnable log decay parameter
 - `a`: input-dependent decay (combined with dt_bias)
 - `b`: update gate input (transformed via sigmoid)
+
+### Mamba2 SSM Architecture (e.g., NemotronH-8B)
+
+Hybrid models interleave Mamba2 SSM layers with standard attention and MLP-only layers:
+```
+Model (52 layers total: 24 Mamba, 4 Attention, 24 MLP-only)
+├── NemotronHMambaDecoderLayer (×24)   # 'M' positions in hybrid_override_pattern
+│   ├── input_layernorm → rmsnorm
+│   └── mamba_mixer → mamba_ssu_decode  (SSM state update, decode step)
+├── NemotronHAttentionDecoderLayer (×4)  # '*' positions
+│   ├── input_layernorm → rmsnorm
+│   ├── self_attn → gqa_paged_decode/prefill
+│   ├── post_attention_layernorm → rmsnorm
+│   └── mlp → gemm
+└── NemotronHMLPDecoderLayer (×24)     # '-' positions
+    ├── input_layernorm → rmsnorm
+    └── mlp → gemm
+```
+
+Mamba2 SSU decode step (per layer, per decode token):
+- `in_proj → gemm` (x, dt, B, C from hidden states)
+- `conv1d` (causal convolution on x, B, C)
+- `mamba_ssu_decode → mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
+- `out_proj → gemm` (SSM output to hidden states)
+
+Key Mamba2 SSU parameters:
+- `nheads`: SSM heads (split by TP)
+- `head_dim`: head dimension (d_ssm / nheads, NOT split by TP)
+- `dstate`: SSM state size (NOT split by TP)
+- `ngroups`: B/C groups (split by TP alongside nheads)
+
+Supported FlashInfer models (mamba_ssu kernel constraints: head_dim∈[64,128,256], dstate∈[64,128,256], nheads/ngroups∈[1,8,16]):
+- **NemotronH-8B** (nvidia/Nemotron-H-8B-Base): nheads=128, head_dim=64, dstate=128, ngroups=8, ratio=16 ✓
 
 ## Extension and Contributing
 
@@ -415,3 +504,5 @@ Expected output:
 - New kimi-k2 entry in `web/apps/web/data/models.ts`
 - `model_analysis_kimi-k2.json` containing architecture analysis
 - List of Definition mapping suggestions
+- Workload JSONL files in `tmp/flashinfer-trace/workloads/{op_type}/`
+- Pull request to `flashinfer-ai/flashinfer-trace` dataset

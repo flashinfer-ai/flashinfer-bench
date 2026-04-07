@@ -1,0 +1,106 @@
+{
+  "name": "mamba_ssu_decode_h64_d64_s128_ng4",
+  "description": "Mamba2 Selective State Update (SSU) decode with 64 heads, head_dim=64, dstate=128, 4 groups. Single-token generation via recurrent SSM state update. Captured from NVIDIA NemotronH-8B Mamba layers (TP=2, heads split by TP: 128/2=64, groups split by TP: 8/2=4). nheads/ngroups=16 is supported by FlashInfer.",
+  "op_type": "mamba_ssu",
+  "tags": [
+    "stage:decode",
+    "status:verified",
+    "model:nemotron-h-8b",
+    "fi_api:flashinfer.mamba.selective_state_update",
+    "tp:2"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Number of sequences being decoded concurrently."
+    },
+    "state_cache_size": {
+      "type": "var",
+      "description": "Total number of slots in the paged SSM state cache. Must be >= batch_size."
+    },
+    "nheads": {
+      "type": "const",
+      "value": 64,
+      "description": "Number of SSM heads per TP rank (128/TP=128/2=64)."
+    },
+    "head_dim": {
+      "type": "const",
+      "value": 64,
+      "description": "Head dimension (mamba_head_dim = 64, not split by TP)."
+    },
+    "dstate": {
+      "type": "const",
+      "value": 128,
+      "description": "SSM state dimension (ssm_state_size, not split by TP)."
+    },
+    "ngroups": {
+      "type": "const",
+      "value": 4,
+      "description": "Number of SSM groups per TP rank (8/TP=8/2=4). nheads/ngroups=16 is supported by FlashInfer."
+    }
+  },
+  "constraints": [
+    "nheads % ngroups == 0",
+    "state_cache_size >= batch_size"
+  ],
+  "inputs": {
+    "state": {
+      "shape": ["state_cache_size", "nheads", "head_dim", "dstate"],
+      "dtype": "bfloat16",
+      "description": "Paged SSM state cache (per-TP-rank shard). Updated in-place."
+    },
+    "x": {
+      "shape": ["batch_size", "nheads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Input features (TP-sharded, nheads=64 heads per rank)."
+    },
+    "dt": {
+      "shape": ["batch_size", "nheads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Time step (delta) before softplus."
+    },
+    "A": {
+      "shape": ["nheads", "head_dim", "dstate"],
+      "dtype": "float32",
+      "description": "Decay matrix (TP-sharded, nheads=64 per rank). TIE_HDIM=True: one scalar per head."
+    },
+    "B": {
+      "shape": ["batch_size", "ngroups", "dstate"],
+      "dtype": "bfloat16",
+      "description": "B gate (TP-sharded, ngroups=4 per rank)."
+    },
+    "C": {
+      "shape": ["batch_size", "ngroups", "dstate"],
+      "dtype": "bfloat16",
+      "description": "C gate (TP-sharded, ngroups=4 per rank)."
+    },
+    "D": {
+      "shape": ["nheads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Skip connection weight (TP-sharded, nheads=64 per rank)."
+    },
+    "dt_bias": {
+      "shape": ["nheads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "Dt bias (TP-sharded, nheads=64 per rank)."
+    },
+    "state_batch_indices": {
+      "shape": ["batch_size"],
+      "dtype": "int32",
+      "description": "Slot index into state cache for each batch element. -1 (PAD_SLOT_ID) skips update."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": ["batch_size", "nheads", "head_dim"],
+      "dtype": "bfloat16",
+      "description": "SSM output (TP-sharded, requires all-reduce after out_proj)."
+    },
+    "new_state": {
+      "shape": ["state_cache_size", "nheads", "head_dim", "dstate"],
+      "dtype": "bfloat16",
+      "description": "Updated SSM state cache (same tensor as input state, modified in-place)."
+    }
+  },
+  "reference": "import torch\nimport torch.nn.functional as F\n\n\n@torch.no_grad()\ndef run(state, x, dt, A, B, C, D, dt_bias, state_batch_indices):\n    \"\"\"\n    Mamba2 Selective State Update decode reference (TP=2 variant).\n    Same math as TP=1 but with nheads=64, ngroups=4 (both halved by TP=2).\n    nheads/ngroups ratio remains 16, supported by FlashInfer.\n    \"\"\"\n    batch, nheads, head_dim = x.shape\n    ngroups, dstate = B.shape[1], B.shape[2]\n    ratio = nheads // ngroups\n\n    assert nheads == 64 and head_dim == 64 and dstate == 128 and ngroups == 4\n\n    dt_f = F.softplus(dt.float() + dt_bias.float())  # (batch, nheads, head_dim)\n    dA = torch.exp(A.float().unsqueeze(0) * dt_f.unsqueeze(-1))  # (batch, nheads, head_dim, dstate)\n\n    B_exp = B.float().repeat_interleave(ratio, dim=1)  # (batch, nheads, dstate)\n    C_exp = C.float().repeat_interleave(ratio, dim=1)  # (batch, nheads, dstate)\n\n    dt_x = dt_f * x.float()  # (batch, nheads, head_dim)\n    dB_x = dt_x.unsqueeze(-1) * B_exp.unsqueeze(-2)  # (batch, nheads, head_dim, dstate)\n\n    new_state = state.clone()\n    output = torch.zeros(batch, nheads, head_dim, dtype=torch.float32, device=x.device)\n\n    for b in range(batch):\n        slot = int(state_batch_indices[b])\n        if slot < 0:\n            continue\n        s = new_state[slot].float()  # (nheads, head_dim, dstate)\n        s = s * dA[b] + dB_x[b]\n        new_state[slot] = s.to(state.dtype)\n        y = (s * C_exp[b].unsqueeze(-2)).sum(-1)  # (nheads, head_dim)\n        y = y + x[b].float() * D.float()\n        output[b] = y\n\n    return output.to(x.dtype), new_state"
+}

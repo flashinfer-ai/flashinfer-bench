@@ -502,10 +502,78 @@ When executing this skill:
      - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
      - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
 
-8. **Report results**:
+8. **Submit one GitHub PR per definition** (PR 1 in the two-PR workflow):
+
+   Each PR bundles the definition JSON, a reference test, and the model_coverage.mdx update
+   together. Use git worktrees for parallel submission — one worktree and one agent per definition:
+
+   ```bash
+   # Create one worktree per definition (do this up front for all definitions)
+   git worktree add \
+     tmp/worktrees/bench-{definition_name} \
+     -b feat/def-{definition_name}
+
+   # Then in each worktree (agents can run in parallel):
+   # 1. Copy definition JSON
+   cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+      tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
+
+   # 2. Add reference test (use /add-reference-tests skill or write manually)
+   # File: tmp/worktrees/bench-{definition_name}/tests/test_{op_type}_{definition_name}.py
+
+   # 3. Update model coverage doc
+   # Edit tmp/worktrees/bench-{definition_name}/docs/model_coverage.mdx
+
+   cd tmp/worktrees/bench-{definition_name}
+   git add flashinfer_trace/definitions/{op_type}/{definition_name}.json \
+           tests/test_{op_type}_{definition_name}.py \
+           docs/model_coverage.mdx
+   git commit -m "feat: add {definition_name}
+
+   - {op_type} kernel definition for {model_display_name}
+   - Reference test for definition validation
+   - Model coverage doc updated
+   Reference implementation sourced from {source}.
+   "
+   # Run reference test and capture output for PR description
+   pytest tests/test_{op_type}_{definition_name}.py -v 2>&1 | tee /tmp/test_{definition_name}.txt
+
+   pre-commit run --all-files
+   git push origin feat/def-{definition_name}
+   gh pr create \
+     --repo flashinfer-ai/flashinfer-bench \
+     --title "feat: add {definition_name}" \
+     --body "$(cat <<'EOF'
+## Summary
+- Adds kernel definition for `{definition_name}` ({op_type})
+- Model: {model_display_name}
+- Reference implementation sourced from: {source}
+{If fi_missing: - ⚠️ FlashInfer kernel missing — tracking issue: flashinfer-ai/flashinfer#{issue_number}}
+
+## Reference Test Results
+\`\`\`
+$(cat /tmp/test_{definition_name}.txt)
+\`\`\`
+
+## Files changed
+- `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
+- `tests/test_{op_type}_{definition_name}.py`
+- `docs/model_coverage.mdx`
+EOF
+)"
+
+   # Clean up worktree after PR is open
+   git worktree remove tmp/worktrees/bench-{definition_name}
+   ```
+
+   **One PR per definition.** Do not batch multiple definitions into a single PR.
+   PR 2 (baseline solution + workloads + traces → HuggingFace) is handled by `collect-workloads`.
+
+9. **Report results**:
    - List new definitions created (grouped by TP/EP config)
    - List existing definitions skipped (deduplication)
    - List kernels shared across models
+   - List PR URLs opened
 
 ## SGLang Code Patterns to Look For
 
@@ -671,6 +739,27 @@ def run(q, k, v, ...):
 - **Error**: Definition exists with different parameters
 - **Handling**: Create new versioned definition, flag for review
 
+## When FlashInfer Does Not Have the Kernel
+
+If the required kernel does not exist in `tmp/flashinfer/` (no test file, no Python API), this
+skill still generates the definition JSON but using SGLang's vanilla implementation as the
+reference `run()`. Mark the definition with `"status:unverified"` and omit the `fi_api` tag.
+
+After writing the definition, file a GitHub issue requesting the FlashInfer implementation:
+
+```bash
+gh issue create \
+  --repo flashinfer-ai/flashinfer \
+  --title "Kernel request: {op_type} for {model_name}" \
+  --label "enhancement,kernel-request" \
+  --body "..."
+```
+
+See `onboard-model` SKILL.md Phase 2a for the full issue body template.
+
+**Do not run workload collection** for fi_missing kernels — workload collection requires the
+FlashInfer kernel to be available.
+
 ## Integration with Other Skills
 
 ```bash
@@ -685,6 +774,9 @@ def run(q, k, v, ...):
 # Add tests for new definitions
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
+
+# Or use the full end-to-end pipeline (recommended for new models)
+/onboard-model --model-name qwen3-235b-a22b
 ```
 
 ## Notes
