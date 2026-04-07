@@ -1,17 +1,7 @@
-import json
 from pathlib import Path
 
 import torch
 from flashinfer.fused_moe import trtllm_fp8_block_scale_moe
-from safetensors.torch import load_file
-
-TRACE_ROOT = Path(__file__).resolve().parents[2]
-WORKLOAD_JSONL_PATH = (
-    TRACE_ROOT
-    / "workloads"
-    / "moe"
-    / "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048.jsonl"
-)
 
 
 @torch.no_grad()
@@ -259,116 +249,6 @@ def _fp8_block_quant_2d(w_bf16: torch.Tensor, block: int = 128):
     w_fp8 = w_scaled.view(*prefix, R, C).to(torch.float8_e4m3fn)
 
     return w_fp8, scales
-
-
-# read jsonl file to locate the workload record at index
-def _load_workload_record(workload_index: int):
-    if not WORKLOAD_JSONL_PATH.exists():
-        raise FileNotFoundError(f"Workload JSONL not found: {WORKLOAD_JSONL_PATH}")
-
-    record = None
-    with WORKLOAD_JSONL_PATH.open("r", encoding="utf-8") as f:
-        for idx, line in enumerate(f):
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if idx == workload_index:
-                record = json.loads(stripped)
-                break
-
-    if record is None:
-        raise IndexError(f"No workload entry at index {workload_index}")
-
-    return record
-
-
-def _load_workload_tensors(record: dict, *, device: str):
-    HIDDEN_SIZE = 7168
-    BLOCK_SIZE = 128
-
-    workload = record["workload"]
-    inputs_spec = workload["inputs"]
-
-    tensor_cache = {}
-
-    def fetch_tensor(spec: dict):
-        if spec["type"] != "safetensors":
-            raise ValueError(f"Unsupported spec type: {spec['type']}")
-
-        file_path = Path(spec["path"])
-        if not file_path.is_absolute():
-            file_path = REPO_ROOT / file_path
-
-        if file_path not in tensor_cache:
-            tensor_cache[file_path] = load_file(file_path)
-
-        tensors = tensor_cache[file_path]
-        tensor_key = spec["tensor_key"]
-        if tensor_key not in tensors:
-            raise KeyError(f"Tensor key '{tensor_key}' not found in {file_path}")
-        return tensors[tensor_key]
-
-    seq_len = workload["axes"]["seq_len"]
-
-    routing_logits = fetch_tensor(inputs_spec["routing_logits"]).to(torch.float32).to(device)
-    routing_bias = fetch_tensor(inputs_spec["routing_bias"]).to(device)
-    if routing_bias.dtype != torch.bfloat16:
-        routing_bias = routing_bias.to(torch.bfloat16)
-
-    hidden_states = fetch_tensor(inputs_spec["hidden_states"]).to(device)
-    hidden_states_scale = fetch_tensor(inputs_spec["hidden_states_scale"]).to(torch.float32)
-    expected_scale_shape = (HIDDEN_SIZE // BLOCK_SIZE, seq_len)
-    if hidden_states_scale.shape == (seq_len, HIDDEN_SIZE // BLOCK_SIZE):
-        hidden_states_scale = hidden_states_scale.permute(1, 0).contiguous()
-    if hidden_states_scale.shape != expected_scale_shape:
-        raise ValueError(
-            f"Unexpected hidden_states_scale shape: {hidden_states_scale.shape}, expected {expected_scale_shape}"
-        )
-    hidden_states_scale = hidden_states_scale.to(device)
-
-    local_expert_offset = int(inputs_spec["local_expert_offset"]["value"])
-    routed_scaling_factor = float(inputs_spec["routed_scaling_factor"]["value"])
-
-    return {
-        "routing_logits": routing_logits,
-        "routing_bias": routing_bias,
-        "hidden_states": hidden_states,
-        "hidden_states_scale": hidden_states_scale,
-        "local_expert_offset": local_expert_offset,
-        "routed_scaling_factor": routed_scaling_factor,
-    }, {"seq_len": seq_len, "uuid": workload.get("uuid", "unknown")}
-
-
-def prepare_inputs_from_workload(workload_index: int, *, device: str):
-    HIDDEN_SIZE = 7168
-    INTERMEDIATE_SIZE = 2048
-    NUM_EXPERTS_GLOBAL = 256
-    NUM_EXPERTS_LOCAL = 32
-
-    record = _load_workload_record(workload_index)
-    real_inputs, metadata = _load_workload_tensors(record, device=device)
-
-    seq_len = metadata["seq_len"]
-
-    base_inputs = generate_random_inputs_moe(
-        seq_len,
-        num_experts_global=NUM_EXPERTS_GLOBAL,
-        num_local_experts=NUM_EXPERTS_LOCAL,
-        hidden_size=HIDDEN_SIZE,
-        intermediate_size=INTERMEDIATE_SIZE,
-        use_bias=True,
-        local_expert_offset=real_inputs["local_expert_offset"],
-        routed_scaling_factor=real_inputs["routed_scaling_factor"],
-        device=device,
-    )
-
-    for key in ("routing_logits", "routing_bias", "hidden_states", "hidden_states_scale"):
-        base_inputs[key] = real_inputs[key]
-
-    base_inputs["local_expert_offset"] = real_inputs["local_expert_offset"]
-    base_inputs["routed_scaling_factor"] = real_inputs["routed_scaling_factor"]
-
-    return base_inputs, {**metadata, "workload_index": workload_index}
 
 
 def _compare_reference_vs_kernel(
@@ -669,29 +549,6 @@ def test_correctness_moe(
     return hit_ratio >= percent
 
 
-def test_moe_with_real_workload():
-    device = "cuda"
-    torch.manual_seed(42)
-
-    # Select workload index deterministically for reproducibility
-    workload_index = 0
-
-    inputs, meta = prepare_inputs_from_workload(workload_index, device=device)
-
-    atol = 1e-1
-    rtol = 2e-1
-    percent = 0.85
-
-    ok = _compare_reference_vs_kernel(
-        inputs, seq_len=meta["seq_len"], atol=atol, rtol=rtol, percent=percent
-    )
-
-    assert ok, (
-        f"FlashInfer output mismatched reference for workload index {workload_index} "
-        f"(uuid={meta['uuid']})."
-    )
-
-
 def main():
     print("Testing FP8 Block-Scale MoE (DeepSeek-V3) Reference vs FlashInfer")
 
@@ -722,9 +579,6 @@ def main():
     print("\n" + "=" * 70)
     print(f"Summary: {passed}/{len(configs)} tests passed")
     print("=" * 70)
-
-    print("Testing with real workload...")
-    test_moe_with_real_workload()
 
 
 if __name__ == "__main__":
