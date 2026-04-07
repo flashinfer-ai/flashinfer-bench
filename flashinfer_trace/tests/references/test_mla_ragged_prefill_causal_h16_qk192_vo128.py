@@ -39,7 +39,7 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
         if q_start >= q_end or kv_start >= kv_end:
             continue
 
-        q_batch = q_f32[q_start:q_end]    # [num_q_tokens, num_qo_heads, qk_dim]
+        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, qk_dim]
         k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, qk_dim]
         v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, vo_dim]
 
@@ -285,7 +285,7 @@ def main():
 
     test_configs = [
         # (batch_size, max_q_len, max_kv_len, causal)
-        (1, 8, 16, True),   # Small causal
+        (1, 8, 16, True),  # Small causal
         (4, 16, 32, True),  # Medium causal
         (8, 32, 64, True),  # Large causal
     ]
