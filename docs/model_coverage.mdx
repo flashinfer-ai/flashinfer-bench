@@ -319,7 +319,18 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v32768` | sampling | ❌ |
 | `top_p_sampling_from_probs_v32768` | sampling | ❌ |
 
-**Coverage**: 1 / 13 referenced definitions present. TP=2 prefill definition added (workload collected). Missing: rmsnorm, remaining GQA variants, GEMM, and sampling definitions.
+**Coverage**: 2 / 13 referenced definitions present. TP=2 prefill + decode definitions added. Missing: rmsnorm, remaining GQA variants, GEMM, and sampling definitions.
+
+### Mixtral 8x22B at TP=2
+
+At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8→4 kv-heads).
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `gqa_paged_prefill_causal_h24_kv4_d128_ps64` | gqa_paged | ✅ |
+| `gqa_paged_decode_h24_kv4_d128_ps64` | gqa_paged | ✅ |
+
+**Coverage**: 2 / 2 TP=2 attention definitions present (prefill + decode ps64).
 
 ---
 
