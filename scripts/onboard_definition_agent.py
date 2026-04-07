@@ -474,7 +474,8 @@ SYSTEM_PROMPT = textwrap.dedent(
       Use 🟡 (not ✅) since workloads are not yet collected.
 
     ── Phase 4: Commit and open PR1 ──
-    - Create a new branch: feat/def-{{definition_name}}
+    - IMPORTANT: Always branch from main, not from whatever is currently checked out:
+        git checkout main && git checkout -b feat/def-{{definition_name}}
     - git add + commit all three files (definition JSON, reference test, coverage).
     - Push and open a GitHub PR with:
         Title: "feat: add {{definition_name}} definition"
@@ -503,6 +504,9 @@ SYSTEM_PROMPT = textwrap.dedent(
     - Run run_baseline_eval. All workloads must PASSED.
 
     ── Phase 7: Assemble and open PR2 ──
+    - In the trace worktree, ALWAYS branch from origin/main:
+        cd <trace_dir> && git checkout origin/main -b add-{{definition_name}}
+      Never branch from an existing local branch (they may contain unrelated workloads).
     - Copy definition JSON and reference test into the trace worktree.
     - Commit all artifacts to the trace worktree branch.
     - Open HuggingFace PR on flashinfer-ai/flashinfer-trace with:
