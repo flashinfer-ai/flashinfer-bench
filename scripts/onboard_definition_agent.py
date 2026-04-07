@@ -438,7 +438,7 @@ SYSTEM_PROMPT = textwrap.dedent(
     - Use list_files on docs/model_coverage.mdx to understand coverage table format.
 
     ── Phase 1: Create definition JSON ──
-    File: flashinfer_trace/definitions/{op_type}/{definition_name}.json
+    File: flashinfer_trace/definitions/{{op_type}}/{{definition_name}}.json
     - Copy the schema from a similar definition of the same op_type.
     - Update: name, description, const axis values (num_heads, head_dim, page_size, tp),
       tags (status:reference, fi_api:*, model:*, tp:*), and reference implementation.
@@ -447,7 +447,7 @@ SYSTEM_PROMPT = textwrap.dedent(
       Use status:verified only if a real SGLang run confirmed the kernel fires.
 
     ── Phase 2: Create reference test ──
-    File: flashinfer_trace/tests/references/test_{definition_name}.py
+    File: flashinfer_trace/tests/references/test_{{definition_name}}.py
     - Read an existing test of the same op_type for the pattern.
     - The test imports the reference impl from the definition JSON and runs it against
       FlashInfer's API with random inputs, asserting allclose.
@@ -459,10 +459,10 @@ SYSTEM_PROMPT = textwrap.dedent(
       Use 🟡 (not ✅) since workloads are not yet collected.
 
     ── Phase 4: Commit and open PR1 ──
-    - Create a new branch: feat/def-{definition_name}
+    - Create a new branch: feat/def-{{definition_name}}
     - git add + commit all three files (definition JSON, reference test, coverage).
     - Push and open a GitHub PR with:
-        Title: "feat: add {definition_name} definition"
+        Title: "feat: add {{definition_name}} definition"
         Body:  summary, kernel details table, reference test stdout, link to PR2 (add after PR2 opens)
 
     ── Phase 5: Collect workloads ──
@@ -482,7 +482,7 @@ SYSTEM_PROMPT = textwrap.dedent(
 
     ── Phase 6: Create baseline solution + run eval ──
     - Read an existing baseline solution of the same op_type for the pattern.
-    - Write: {trace_dir}/solutions/baseline/{op_type}/{definition_name}/flashinfer_wrapper_<hash>.json
+    - Write: {trace_dir}/solutions/baseline/{{op_type}}/{{definition_name}}/flashinfer_wrapper_<hash>.json
       The solution calls flashinfer.BatchPrefillWithPagedKVCacheWrapper (or equivalent).
       The hash is the first 6 chars of sha256 of the main.py content.
     - Run run_baseline_eval. All workloads must PASSED.
@@ -491,7 +491,7 @@ SYSTEM_PROMPT = textwrap.dedent(
     - Copy definition JSON and reference test into the trace worktree.
     - Commit all artifacts to the trace worktree branch.
     - Open HuggingFace PR on flashinfer-ai/flashinfer-trace with:
-        Title: "Add {definition_name}: solution + workloads + blobs + eval trace"
+        Title: "Add {{definition_name}}: solution + workloads + blobs + eval trace"
         Body:  summary, workload diversity table, SGLang collection log
     - Update PR1 body to include the PR2 link.
 
