@@ -88,6 +88,44 @@ def init_app(scheduler: Scheduler) -> FastAPI:
     return app
 
 
+@app.get("/")
+async def root():
+    """Root endpoint returning server info and available endpoints."""
+    return {
+        "name": "FlashInfer-Bench Server",
+        "version": __version__,
+        "docs": "/docs",
+        "endpoints": [
+            {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
+            {"method": "GET", "path": "/docs", "description": "Interactive Swagger UI"},
+            {"method": "GET", "path": "/health", "description": "Server health and worker status"},
+            {"method": "GET", "path": "/definitions", "description": "List all loaded definitions"},
+            {
+                "method": "GET",
+                "path": "/definitions/{name}",
+                "description": "Get a definition by name",
+            },
+            {
+                "method": "GET",
+                "path": "/definitions/{name}/workloads",
+                "description": "List workloads for a definition",
+            },
+            {"method": "GET", "path": "/workloads/{uuid}", "description": "Get a workload by UUID"},
+            {
+                "method": "POST",
+                "path": "/evaluate",
+                "description": "Submit a solution for evaluation",
+            },
+            {
+                "method": "GET",
+                "path": "/tasks/{task_id}",
+                "description": "Get task status and results",
+            },
+            {"method": "POST", "path": "/tasks/batch", "description": "Batch get multiple tasks"},
+        ],
+    }
+
+
 @app.get("/definitions", response_model=List[DefinitionInfo])
 async def list_definitions():
     sched = _get_scheduler()
