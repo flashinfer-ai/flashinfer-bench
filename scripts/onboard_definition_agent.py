@@ -474,8 +474,11 @@ SYSTEM_PROMPT = textwrap.dedent(
       Use 🟡 (not ✅) since workloads are not yet collected.
 
     ── Phase 4: Commit and open PR1 ──
-    - IMPORTANT: Always branch from main, not from whatever is currently checked out:
-        git checkout main && git checkout -b feat/def-{{definition_name}}
+    - IMPORTANT: Always branch from main, not from whatever is currently checked out.
+      Use the absolute repo root path, never `cd` without it:
+        git -C {repo_root} checkout main && git -C {repo_root} checkout -b feat/def-{{definition_name}}
+      After committing, return to the tooling branch so the script remains accessible:
+        git -C {repo_root} checkout feat/tooling-improvements
     - git add + commit all three files (definition JSON, reference test, coverage).
     - Push and open a GitHub PR with:
         Title: "feat: add {{definition_name}} definition"
@@ -523,7 +526,7 @@ SYSTEM_PROMPT = textwrap.dedent(
     On unrecoverable failure after max_attempts:
       ONBOARD_FAILED: <reason>
 """
-).format(conda_env=CONDA_ENV, trace_dir=TRACE_DIR_DEFAULT)
+).format(conda_env=CONDA_ENV, trace_dir=TRACE_DIR_DEFAULT, repo_root=REPO_ROOT)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
