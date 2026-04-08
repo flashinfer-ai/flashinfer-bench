@@ -419,26 +419,26 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 
 ## Qwen3 32B
 
-**Architecture**: 64 decoder layers, GQA attention, dense MLP. 64 query heads, 8 KV heads, head_dim=128. Standard serving configuration: **TP=4**.
+**Architecture**: 64 decoder layers, GQA attention, dense MLP. hidden=5120, 64 query heads, 8 KV heads, head_dim=128, intermediate=25600. Standard serving configuration: **TP=4**.
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h4096` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h4096` | rmsnorm | ✅ |
+| `rmsnorm_h5120` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_decode_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_decode_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
 | `gqa_ragged_prefill_causal_h16_kv2_d128` | gqa_ragged TP=4 | ✅ |
-| `gemm_n5120_k4096` | gemm | ❌ |
-| `gemm_n4096_k4096` | gemm | ✅ |
-| `gemm_n44032_k4096` | gemm | ❌ |
-| `gemm_n4096_k22016` | gemm | ❌ |
+| `gemm_n10240_k5120` | gemm (QKV) | ❌ |
+| `gemm_n5120_k8192` | gemm (o_proj) | ❌ |
+| `gemm_n51200_k5120` | gemm (gate_up) | ❌ |
+| `gemm_n5120_k25600` | gemm (down) | ❌ |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 11 / 14 definitions present. GQA kernels shared with Llama 3.1/3.3 70B (same h=16, kv=2, d=128 at TP=4). Missing: QKV and MLP GEMM defs.
+**Coverage**: 10 / 14 definitions present. RMSNorm shared with Qwen3 14B (same hidden=5120). GQA kernels shared with Llama 3.1/3.3 70B (same h=16, kv=2, d=128 at TP=4). Sampling shared with other Qwen3 models (same vocab=151936). Missing: all GEMM definitions.
 
 ---
 
