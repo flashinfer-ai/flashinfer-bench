@@ -50,7 +50,10 @@
               "op-types/gqa-paged",
               "op-types/gqa-ragged",
               "op-types/mla-paged",
+              "op-types/dsa-paged",
+              "op-types/gdn",
               "op-types/rmsnorm",
+              "op-types/rope",
               "op-types/sampling",
               "op-types/moe"
             ]
