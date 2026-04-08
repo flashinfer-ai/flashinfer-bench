@@ -479,7 +479,8 @@ SYSTEM_PROMPT = textwrap.dedent(
     - git add + commit all three files (definition JSON, reference test, coverage).
     - Push and open a GitHub PR with:
         Title: "feat: add {{definition_name}} definition"
-        Body:  summary, kernel details table, reference test stdout, link to PR2 (add after PR2 opens)
+        Body:  summary, kernel details table, reference test stdout
+               Include "## PR2 (HuggingFace trace)\n_Link to be added after PR2 opens._"
 
     ── Phase 5: Collect workloads ──
     - Verify GPUs are free (run_shell nvidia-smi). Kill stale sglang if needed.
@@ -512,7 +513,9 @@ SYSTEM_PROMPT = textwrap.dedent(
     - Open HuggingFace PR on flashinfer-ai/flashinfer-trace with:
         Title: "Add {{definition_name}}: solution + workloads + blobs + eval trace"
         Body:  summary, workload diversity table, SGLang collection log
-    - Update PR1 body to include the PR2 link.
+               MUST include "GitHub PR1: flashinfer-ai/flashinfer-bench#<pr1_num>" at the top.
+    - Update PR1 body: replace the "_Link to be added_" placeholder with the actual PR2 URL
+      using: gh pr edit <pr1_num> --body "$(gh pr view <pr1_num> --json body -q '.body' | sed ...)"
 
     ── Completion ──
     When PR1 and PR2 are both open and all eval traces PASSED, output exactly:
