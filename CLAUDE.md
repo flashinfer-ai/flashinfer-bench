@@ -225,9 +225,9 @@ Associate each module with corresponding Definitions:
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
   - Mamba2 SSU: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}` (see note below)
 - **GEMM layers**: `gemm_n{out_dim}_k{in_dim}`
-- **RoPE layers**: 
-  - NeoX: `rope_with_cos_sin_cache_neox_style_d{head_size}_rd{rotary_dim}` 
-  - GPT-J: `rope_with_cos_sin_cache_gptj_style_d{head_size}_rd{rotary_dim}` 
+- **RoPE layers**:
+  - NeoX: `rope_with_cos_sin_cache_neox_style_d{head_size}_rd{rotary_dim}`
+  - GPT-J: `rope_with_cos_sin_cache_gptj_style_d{head_size}_rd{rotary_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
 
 **Mamba2 SSU FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
