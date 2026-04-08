@@ -425,7 +425,7 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `rmsnorm_h4096` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h4096` | rmsnorm | ✅ |
 | `gqa_paged_prefill_causal_h16_kv2_d64_ps1` | gqa_paged TP=4 | ❌ |
-| `gqa_paged_prefill_causal_h16_kv2_d64_ps64` | gqa_paged TP=4 | ❌ |
+| `gqa_paged_prefill_causal_h16_kv2_d64_ps64` | gqa_paged TP=4 | 🟡 |
 | `gqa_paged_decode_h16_kv2_d64_ps1` | gqa_paged TP=4 | ❌ |
 | `gqa_paged_decode_h16_kv2_d64_ps64` | gqa_paged TP=4 | ❌ |
 | `gqa_ragged_prefill_causal_h16_kv2_d64` | gqa_ragged TP=4 | ❌ |
