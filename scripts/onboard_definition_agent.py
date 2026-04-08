@@ -471,7 +471,7 @@ SYSTEM_PROMPT = textwrap.dedent(
     ── Phase 3: Update model coverage ──
     File: docs/model_coverage.mdx
     - Find the row for the model and update ❌ → 🟡 for this definition.
-      Use 🟡 (not ✅) since workloads are not yet collected.
+      Use 🟡 as a placeholder now; it will be updated to ✅ in Phase 7 after eval passes.
 
     ── Phase 4: Commit and open PR1 ──
     - IMPORTANT: Always branch from main, not from whatever is currently checked out.
@@ -517,6 +517,8 @@ SYSTEM_PROMPT = textwrap.dedent(
         Title: "Add {{definition_name}}: solution + workloads + blobs + eval trace"
         Body:  summary, workload diversity table, SGLang collection log
                MUST include "GitHub PR1: flashinfer-ai/flashinfer-bench#<pr1_num>" at the top.
+    - Update model_coverage.mdx on the PR1 branch: upgrade 🟡 → ✅ now that eval PASSED.
+      Use git_op to amend/add a commit on the feat/def-{{definition_name}} branch.
     - Update PR1 body: replace the "_Link to be added_" placeholder with the actual PR2 URL
       using: gh pr edit <pr1_num> --body "$(gh pr view <pr1_num> --json body -q '.body' | sed ...)"
 
