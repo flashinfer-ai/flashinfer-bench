@@ -196,9 +196,9 @@ def tool_run_baseline_eval(definition: str, flashinfer_trace_dir: str) -> str:
         f"conda run -n {CONDA_ENV} python -m flashinfer_bench run "
         f"--local {flashinfer_trace_dir} "
         f"--definitions {definition} "
-        f"--solutions baseline --save-results --warmup-runs 3 --iterations 20"
+        f"--solutions baseline --save-results --warmup-runs 0 --iterations 1 --num-trials 1"
     )
-    return _fmt(_run(cmd, timeout=300))
+    return _fmt(_run(cmd, timeout=600))
 
 
 def tool_create_github_pr(title: str, body: str, branch: str, base: str = "main") -> str:

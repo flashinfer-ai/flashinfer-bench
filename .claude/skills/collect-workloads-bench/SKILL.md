@@ -157,7 +157,8 @@ print('REAL workloads OK')
 ```bash
 cd /home/averyh/flashinfer-bench
 conda run -n flashinfer_bench python -m flashinfer_bench run \
-  --local <trace_dir> --definitions <def_name> --save-results
+  --local <trace_dir> --definitions <def_name> --save-results \
+  --warmup-runs 0 --iterations 1 --num-trials 1
 ```
 
 Then commit and force-push to HF PR2:
