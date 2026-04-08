@@ -4,8 +4,9 @@
   "op_type": "gqa_paged",
   "tags": [
     "stage:decode",
-    "status:reference",
+    "status:verified",
     "model:llama-3.1-70b",
+    "model:qwen3-32b",
     "fi_api:flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
     "tp:4"
   ],
