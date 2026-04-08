@@ -1,0 +1,33 @@
+---
+title: "RoPE"
+---
+
+Rotary Position Embedding (RoPE) applies rotary transformations to query and key tensors before attention, encoding positional information directly into the attention mechanism. Uses a pre-computed cos/sin cache indexed by position IDs, matching the FlashInfer API `flashinfer.rope.apply_rope_with_cos_sin_cache_inplace`.
+
+Variants:
+- Full RoPE: rotary dimension equals head size (`rotary_dim == head_size`)
+- Partial RoPE: rotary dimension is less than head size (`rotary_dim < head_size`)
+
+Rotation styles:
+- NeoX-style (`is_neox=True`): split first/second half of rotary dimensions
+- GPT-J interleaved (`is_neox=False`): rotate even/odd indices
+
+Axes (6 dimensions):
+- `num_tokens`: variable
+- `num_qo_heads`: variable
+- `num_kv_heads`: variable
+- `max_seq_len`: variable
+- `head_size`: constant
+- `rotary_dim`: constant
+
+Inputs (4):
+- `q`: [num_tokens, num_qo_heads, head_size]
+- `k`: [num_tokens, num_kv_heads, head_size]
+- `cos_sin_cache`: [max_seq_len, rotary_dim] (float32, first half cos, second half sin)
+- `positions`: [num_tokens] (int64, index into cos_sin_cache)
+
+Note: Rotation style (NeoX vs GPT-J) is encoded in the definition name rather than as an input parameter, following the 1-kernel-1-definition principle. For example: `rope_with_cos_sin_cache_neox_style_d128_rd64` vs `rope_with_cos_sin_cache_gptj_style_d128_rd64`.
+
+Outputs (2 tensors, in-place):
+- `q_out`: [num_tokens, num_qo_heads, head_size]
+- `k_out`: [num_tokens, num_kv_heads, head_size]

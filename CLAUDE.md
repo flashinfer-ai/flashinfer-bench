@@ -80,6 +80,7 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
 | `mamba_ssu` | Mamba2 Selective State Update (decode) | `mamba_ssu_decode_h128_d64_s128_ng8` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
+| `rope` | Rotary Position Embedding | `rope_with_cos_sin_cache_neox_style_d128_rd64` |
 | `sampling` | Sampling operations | - |
 
 ### Tensor/Expert Parallelism and Multiple Definitions
@@ -224,6 +225,9 @@ Associate each module with corresponding Definitions:
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
   - Mamba2 SSU: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}` (see note below)
 - **GEMM layers**: `gemm_n{out_dim}_k{in_dim}`
+- **RoPE layers**:
+  - NeoX: `rope_with_cos_sin_cache_neox_style_d{head_size}_rd{rotary_dim}`
+  - GPT-J: `rope_with_cos_sin_cache_gptj_style_d{head_size}_rd{rotary_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
 
 **Mamba2 SSU FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
