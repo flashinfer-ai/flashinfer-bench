@@ -52,10 +52,15 @@ def generate_random_inputs(batch_size, max_q_len, max_kv_len, device="cuda"):
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
 
     return {
-        "q": q, "k": k, "v": v,
-        "qo_indptr": qo_indptr, "kv_indptr": kv_indptr,
-        "q_lens": q_lens, "kv_lens": kv_lens,
-        "total_q": total_q, "total_kv": total_kv,
+        "q": q,
+        "k": k,
+        "v": v,
+        "qo_indptr": qo_indptr,
+        "kv_indptr": kv_indptr,
+        "q_lens": q_lens,
+        "kv_lens": kv_lens,
+        "total_q": total_q,
+        "total_kv": total_kv,
         "sm_scale": sm_scale,
     }
 
@@ -87,8 +92,12 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
     # Run reference
     print("\nRunning reference implementation...")
     ref_o, ref_lse = run(
-        inputs["q"], inputs["k"], inputs["v"],
-        inputs["qo_indptr"], inputs["kv_indptr"], inputs["sm_scale"],
+        inputs["q"],
+        inputs["k"],
+        inputs["v"],
+        inputs["qo_indptr"],
+        inputs["kv_indptr"],
+        inputs["sm_scale"],
     )
 
     # Setup FlashInfer
@@ -113,9 +122,7 @@ def test_correctness(batch_size=4, max_q_len=32, max_kv_len=64, atol=1e-2, rtol=
     )
 
     print("Running FlashInfer...")
-    fi_output, fi_lse = prefill_wrapper.run(
-        inputs["q"], inputs["k"], inputs["v"], return_lse=True
-    )
+    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], inputs["k"], inputs["v"], return_lse=True)
 
     # Compare
     print("\nComparing outputs...")
@@ -153,6 +160,7 @@ def main():
         except Exception as e:
             print(f"✗ Test failed with exception: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     print(f"\n{'='*60}")
