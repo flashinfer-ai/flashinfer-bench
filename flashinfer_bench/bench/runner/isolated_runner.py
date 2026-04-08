@@ -57,7 +57,12 @@ class SubprocessWorker:
         return baseline.handle
 
     def run_solution(
-        self, solution: Solution, baseline: BaselineHandle, cfg: BenchmarkConfig
+        self,
+        solution: Solution,
+        baseline: BaselineHandle,
+        cfg: BenchmarkConfig,
+        workload: Optional[Workload] = None,
+        trace_set_root: Optional[Path] = None,
     ) -> Evaluation:
         """Run solution in an isolated subprocess.
 
@@ -69,6 +74,10 @@ class SubprocessWorker:
             Handle to baseline for comparison.
         cfg : BenchmarkConfig
             Benchmark configuration.
+        workload : Workload, optional
+            Workload for NCU profiling.
+        trace_set_root : Path, optional
+            Trace set root for NCU profiling.
 
         Returns
         -------
@@ -84,7 +93,7 @@ class SubprocessWorker:
 
         proc = ctx.Process(
             target=_solution_worker_main,
-            args=(child_conn, self._device, bl.definition, solution, cfg),
+            args=(child_conn, self._device, bl.definition, solution, cfg, workload, trace_set_root),
             daemon=True,
         )
         proc.start()
@@ -199,6 +208,8 @@ def _solution_worker_main(
     definition: Definition,
     solution: Solution,
     cfg: BenchmarkConfig,
+    workload: Optional[Workload] = None,
+    trace_set_root: Optional[Path] = None,
 ) -> None:
     """Worker process: strong isolation for single Solution.
 
@@ -216,6 +227,10 @@ def _solution_worker_main(
         Solution to evaluate.
     cfg : BenchmarkConfig
         Benchmark configuration.
+    workload : Workload, optional
+        Workload for NCU profiling.
+    trace_set_root : Path, optional
+        Trace set root for NCU profiling.
     """
     log_path = redirect_stdio_to_tempfile()
     try:
@@ -263,6 +278,9 @@ def _solution_worker_main(
             cfg=cfg,
             log_path=log_path,
             device=device,
+            solution=solution,
+            workload=workload,
+            trace_set_root=trace_set_root,
         )
 
         conn.send({"cmd": "EVAL", "evaluation": evaluation})
@@ -458,7 +476,12 @@ class IsolatedRunner(Runner):
                 for i, solution in enumerate(solutions):
                     r = selected[i % len(selected)]
                     sol_futs[solution.name] = pool.submit(
-                        r.run_solution, solution, baselines[r], config
+                        r.run_solution,
+                        solution,
+                        baselines[r],
+                        config,
+                        workload=workload,
+                        trace_set_root=root,
                     )
 
                 results: Dict[str, Evaluation] = {

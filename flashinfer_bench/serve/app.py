@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from flashinfer_bench import __version__
+from flashinfer_bench import __commit__, __upstream__, __version__
 from flashinfer_bench.data import Solution
 from flashinfer_bench.serve.scheduler import Scheduler
 
@@ -94,6 +94,8 @@ async def root():
     return {
         "name": "FlashInfer-Bench Server",
         "version": __version__,
+        "commit": __commit__,
+        "upstream": __upstream__,
         "docs": "/docs",
         "endpoints": [
             {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
@@ -115,6 +117,11 @@ async def root():
                 "method": "POST",
                 "path": "/evaluate",
                 "description": "Submit a solution for evaluation",
+            },
+            {
+                "method": "POST",
+                "path": "/profile",
+                "description": "Submit a solution for evaluation with CUPTI profiling",
             },
             {
                 "method": "GET",
@@ -173,6 +180,16 @@ async def evaluate(req: EvaluateRequest):
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 
+@app.post("/profile", response_model=EvaluateResponse)
+async def profile(req: EvaluateRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+    renamed = req.solution.with_unique_name()
+    task_id = sched.submit(renamed, req.workload_uuids, profile=True)
+    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
+
+
 @app.post("/tasks/batch", response_model=List[TaskResponse])
 async def batch_get_tasks(req: BatchRequest):
     sched = _get_scheduler()
@@ -181,12 +198,14 @@ async def batch_get_tasks(req: BatchRequest):
             raise HTTPException(404, detail=f"Task not found: {task_id}")
 
     if req.timeout > 0:
-        await asyncio.to_thread(sched.task_store.wait_for_all, req.task_ids, req.timeout)
+        await sched.task_store.async_wait_for_all(req.task_ids, req.timeout)
 
     results = []
     for tid in req.task_ids:
         task = sched.task_store.get_task(tid)
-        traces_data = [t.model_dump(mode="json") for t in task.traces] if task.traces else None
+        traces_data = (
+            [t.model_dump(mode="json", by_alias=True) for t in task.traces] if task.traces else None
+        )
         results.append(
             TaskResponse(
                 task_id=task.id,
