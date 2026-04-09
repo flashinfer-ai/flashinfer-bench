@@ -40,8 +40,12 @@
             "--attention-backend", "flashinfer",
             "--tp-size", "2",
             "--disable-radix-cache",
+            "--disable-cuda-graph",
             "--disable-piecewise-cuda-graph",
-            "--chunked-prefill-size", "100000"
+            "--chunked-prefill-size", "100000",
+            "--mem-fraction-static", "0.9",
+            "--disable-flashinfer-autotune",
+            "--skip-server-warmup"
         ]
     }
 }
