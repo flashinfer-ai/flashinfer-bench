@@ -64,7 +64,9 @@ def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
     return output, lse
 
 
-def generate_random_inputs(batch_size, max_seq_len, num_qo_heads=8, qk_dim=192, vo_dim=128, device="cuda"):
+def generate_random_inputs(
+    batch_size, max_seq_len, num_qo_heads=8, qk_dim=192, vo_dim=128, device="cuda"
+):
     seq_lens = torch.randint(1, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device)
     total_tokens = int(seq_lens.sum().item())
 
@@ -87,13 +89,17 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
-        return True
+        return None
 
     inputs = generate_random_inputs(batch_size, max_seq_len, device=device)
 
     ref_o, ref_lse = run(
-        inputs["q"], inputs["k"], inputs["v"],
-        inputs["qo_indptr"], inputs["kv_indptr"], inputs["sm_scale"],
+        inputs["q"],
+        inputs["k"],
+        inputs["v"],
+        inputs["qo_indptr"],
+        inputs["kv_indptr"],
+        inputs["sm_scale"],
     )
 
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
