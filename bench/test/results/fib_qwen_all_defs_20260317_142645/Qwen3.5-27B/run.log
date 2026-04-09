@@ -1,0 +1,25 @@
+Command: /data/workspace/airulan/conda_envs/fib/bin/flashinfer-bench run --local ./bench/test/results/fib_qwen_all_defs_20260317_142645/Qwen3.5-27B --save-results --log-level INFO --warmup-runs 10 --iterations 50 --num-trials 3 --timeout 300
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker

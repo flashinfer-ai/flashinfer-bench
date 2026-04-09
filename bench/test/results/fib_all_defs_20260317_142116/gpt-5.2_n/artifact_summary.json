@@ -1,0 +1,30 @@
+{
+  "trace_set_root": "bench/test/results/fib_all_defs_20260317_142116/gpt-5.2_n",
+  "summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "min_latency_ms": 0.027648000046610832,
+    "max_latency_ms": 0.35566932956377667,
+    "avg_latency_ms": 0.12895085715821814
+  },
+  "status_counts": {
+    "PASSED": 14
+  },
+  "per_definition": {
+    "rmsnorm_h4096": {
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "status_counts": {
+        "PASSED": 14
+      },
+      "best_solution": "gpt-5.2_rmsnorm_h4096_cuda_optimized_r1_c0_high",
+      "best_speedup_factor": 2.4390244032289545,
+      "best_latency_ms": 0.027989333495497704,
+      "best_reference_latency_ms": 0.06826666742563248,
+      "best_max_absolute_error": 0.0,
+      "best_max_relative_error": 0.0
+    }
+  }
+}

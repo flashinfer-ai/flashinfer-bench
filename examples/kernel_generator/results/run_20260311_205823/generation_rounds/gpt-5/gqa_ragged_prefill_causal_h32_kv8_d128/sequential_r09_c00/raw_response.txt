@@ -1,0 +1,554 @@
+<header_file name="kernel.h">
+#ifndef GQA_RAGGED_PREFILL_CAUSAL_H32_KV8_D128_KERNEL_H_
+#define GQA_RAGGED_PREFILL_CAUSAL_H32_KV8_D128_KERNEL_H_
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <torch/extension.h>
+#include <cstdint>
+#include <vector>
+
+#define GQA_QO_HEADS 32
+#define GQA_KV_HEADS 8
+#define GQA_HEAD_DIM 128
+
+// CUDA kernel launcher declaration
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,           // [total_q, 32, 128]
+    const __nv_bfloat16* k,           // [total_kv, 8, 128]
+    const __nv_bfloat16* v,           // [total_kv, 8, 128]
+    const int32_t* qo_indptr,         // [len_indptr]
+    const int32_t* kv_indptr,         // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,            // [total_q, 32, 128]
+    float* lse,                       // [total_q, 32]
+    cudaStream_t stream);
+
+// Host function declaration (Torch binding)
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt);
+
+#endif  // GQA_RAGGED_PREFILL_CAUSAL_H32_KV8_D128_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+#include <cstdio>
+#include <cmath>
+#include <cuda.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
+#include <math_constants.h>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(call)                                                                 \
+  do {                                                                                   \
+    cudaError_t err__ = call;                                                            \
+    if (err__ != cudaSuccess) {                                                          \
+      fprintf(stderr, "CUDA error %s at %s:%d: %s\n", #call, __FILE__, __LINE__,         \
+              cudaGetErrorString(err__));                                                \
+    }                                                                                    \
+  } while (0)
+#endif
+
+// Warp reduce helper (sum) for 32-thread warp
+static __device__ __forceinline__ float warp_reduce_sum(float val) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    val += __shfl_down_sync(0xffffffff, val, offset);
+  }
+  return val;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void load_q_vector_4floats_per_thread(
+    const __nv_bfloat16* __restrict__ q_ptr, int lane, float scale, float qreg[HEAD_DIM / 32]) {
+  static_assert(HEAD_DIM % 32 == 0, "HEAD_DIM must be multiple of warp size");
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    qreg[i] = __bfloat162float(q_ptr[d]) * scale;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ float dot_qk_4floats_per_thread(
+    const float qreg[HEAD_DIM / 32],
+    const __nv_bfloat16* __restrict__ sK_row, // pointer to sK[k * HEAD_DIM]
+    int lane) {
+  float sum = 0.f;
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float kf = __bfloat162float(sK_row[d]);
+    sum = fmaf(qreg[i], kf, sum);
+  }
+  // Reduce across warp and broadcast to all lanes
+  sum = warp_reduce_sum(sum);
+  sum = __shfl_sync(0xffffffff, sum, 0);
+  return sum;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void acc_weighted_v_4floats_per_thread(
+    const __nv_bfloat16* __restrict__ sV_row, // pointer to sV[k * HEAD_DIM]
+    int lane,
+    float weight,
+    float acc[HEAD_DIM / 32]) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float vf = __bfloat162float(sV_row[d]);
+    acc[i] = fmaf(weight, vf, acc[i]);
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void scale_acc_4floats_per_thread(
+    float acc[HEAD_DIM / 32],
+    float scale) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    acc[i] *= scale;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void store_out_vector_4bf16_per_thread(
+    __nv_bfloat16* __restrict__ out_ptr, int lane, const float acc[HEAD_DIM / 32], float norm) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float val = acc[i] * norm;
+    out_ptr[d] = __float2bfloat16_rn(val);
+  }
+}
+
+// Kernel: One block processes one (sequence, qo_head).
+// 4 warps per block; each warp handles one query row concurrently.
+template<int HEAD_DIM, int WARP_Q, int TK>
+__global__ __launch_bounds__(WARP_Q * 32, 2)
+void gqa_ragged_prefill_causal_kernel(
+    const __nv_bfloat16* __restrict__ q,   // [total_q, 32, 128]
+    const __nv_bfloat16* __restrict__ k,   // [total_kv, 8, 128]
+    const __nv_bfloat16* __restrict__ v,   // [total_kv, 8, 128]
+    const int32_t* __restrict__ qo_indptr, // [len_indptr]
+    const int32_t* __restrict__ kv_indptr, // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* __restrict__ out,       // [total_q, 32, 128]
+    float* __restrict__ lse)               // [total_q, 32]
+{
+  constexpr int NUM_QO_HEADS = GQA_QO_HEADS;
+  constexpr int NUM_KV_HEADS = GQA_KV_HEADS;
+  static_assert(NUM_QO_HEADS == 32, "NUM_QO_HEADS must be 32");
+  static_assert(NUM_KV_HEADS == 8, "NUM_KV_HEADS must be 8");
+  constexpr int GQA_RATIO = NUM_QO_HEADS / NUM_KV_HEADS;
+  constexpr float INV_LN2 = 1.4426950408889634073599246810018921f; // 1/ln(2)
+
+  const int b = blockIdx.x;   // sequence index
+  const int hq = blockIdx.y;  // query head [0, 31]
+  const int kv_head = hq / GQA_RATIO;
+
+  if (b >= (len_indptr - 1)) return;
+
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+
+  // Indptr for this sequence
+  const int q_start = qo_indptr[b];
+  const int q_end   = qo_indptr[b + 1];
+  const int kv_start = kv_indptr[b];
+  const int kv_end   = kv_indptr[b + 1];
+
+  const int q_len = max(0, q_end - q_start);
+  const int kv_len = max(0, kv_end - kv_start);
+  const int delta = kv_len - q_len;
+
+  if (q_len <= 0 || kv_len <= 0) return;
+
+  extern __shared__ __align__(16) unsigned char smem_raw[];
+  __nv_bfloat16* sK = reinterpret_cast<__nv_bfloat16*>(smem_raw);                // TK * HEAD_DIM
+  __nv_bfloat16* sV = reinterpret_cast<__nv_bfloat16*>(sK + TK * HEAD_DIM);     // TK * HEAD_DIM
+  float* scores_base = reinterpret_cast<float*>(sV + TK * HEAD_DIM);             // WARP_Q * TK
+  float* scores_warp = scores_base + warp_id * TK;
+
+  for (int q_tile = 0; q_tile < q_len; q_tile += WARP_Q) {
+    const int q_local = q_tile + warp_id;  // index within sequence for this warp
+    const bool valid_q = (q_local < q_len);
+    const int q_global = q_start + q_local;
+
+    // Load Q vector to registers and fuse sm_scale into Q once to avoid per-dot multiply
+    float qreg[HEAD_DIM / 32];
+    if (valid_q) {
+      const __nv_bfloat16* q_ptr = q + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      load_q_vector_4floats_per_thread<HEAD_DIM>(q_ptr, lane, sm_scale, qreg);
+    }
+
+    // Initialize streaming softmax stats per query
+    float m_global = -CUDART_INF_F;
+    float l_global = 0.f;
+    float acc_global[HEAD_DIM / 32];
+#pragma unroll
+    for (int i = 0; i < HEAD_DIM / 32; ++i) acc_global[i] = 0.f;
+
+    // Causal mask bound
+    int allowed_k = 0;
+    if (valid_q) {
+      const int qpos = q_local; // position within sequence
+      int bound = qpos + 1 + delta;
+      bound = max(0, min(bound, kv_len));
+      allowed_k = bound;
+    }
+
+    // Iterate over K/V tiles
+    for (int kt = 0; kt < kv_len; kt += TK) {
+      int k_this_max = kv_len - kt;
+      if (k_this_max > TK) k_this_max = TK;
+
+      // Cooperative load K and V tiles into shared memory (vectorized as uint32 pairs)
+      const int total_pairs = k_this_max * (HEAD_DIM / 2);
+      const uint32_t* __restrict__ k_glob_u32 = reinterpret_cast<const uint32_t*>(k);
+      const uint32_t* __restrict__ v_glob_u32 = reinterpret_cast<const uint32_t*>(v);
+      uint32_t* __restrict__ sK_u32 = reinterpret_cast<uint32_t*>(sK);
+      uint32_t* __restrict__ sV_u32 = reinterpret_cast<uint32_t*>(sV);
+
+      for (int idx = threadIdx.x; idx < total_pairs; idx += blockDim.x) {
+        const int t = idx / (HEAD_DIM / 2);
+        const int d_pair = idx - t * (HEAD_DIM / 2);
+        const int kv_pos = kv_start + kt + t;
+        const size_t base_pair_index =
+            (((size_t)kv_pos * NUM_KV_HEADS + (size_t)kv_head) * (HEAD_DIM / 2) + (size_t)d_pair);
+        // Global loads -> shared, pair-wise to improve bandwidth
+        sK_u32[t * (HEAD_DIM / 2) + d_pair] = *(k_glob_u32 + base_pair_index);
+        sV_u32[t * (HEAD_DIM / 2) + d_pair] = *(v_glob_u32 + base_pair_index);
+      }
+      __syncthreads();
+
+      int k_this_warp = 0;
+      if (valid_q) {
+        int rem = allowed_k - kt;
+        if (rem > 0) k_this_warp = rem < k_this_max ? rem : k_this_max;
+      }
+
+      if (valid_q && k_this_warp > 0) {
+        // First pass: compute scores and tile max
+        float m_tile = -CUDART_INF_F;
+        for (int t = 0; t < k_this_warp; ++t) {
+          const __nv_bfloat16* sK_row = sK + t * HEAD_DIM;
+          float s = dot_qk_4floats_per_thread<HEAD_DIM>(qreg, sK_row, lane);
+          if (lane == 0) {
+            scores_warp[t] = s;
+          }
+          m_tile = fmaxf(m_tile, s);
+        }
+        __syncwarp();
+
+        // Second pass: compute exp sum and weighted V accumulation
+        float l_tile = 0.f;
+        float acc_tile[HEAD_DIM / 32];
+#pragma unroll
+        for (int i = 0; i < HEAD_DIM / 32; ++i) acc_tile[i] = 0.f;
+
+        for (int t = 0; t < k_this_warp; ++t) {
+          float s = (lane == 0) ? scores_warp[t] : 0.f;
+          s = __shfl_sync(0xffffffff, s, 0);
+          float w = __expf(s - m_tile);
+          const __nv_bfloat16* sV_row = sV + t * HEAD_DIM;
+          acc_weighted_v_4floats_per_thread<HEAD_DIM>(sV_row, lane, w, acc_tile);
+          if (lane == 0) {
+            l_tile += w;
+          }
+        }
+        l_tile = __shfl_sync(0xffffffff, l_tile, 0);
+
+        // Combine tile with global accumulators (streaming softmax)
+        float m_new = fmaxf(m_global, m_tile);
+        float exp_mg = __expf(m_global - m_new);
+        float exp_mt = __expf(m_tile - m_new);
+
+        scale_acc_4floats_per_thread<HEAD_DIM>(acc_global, exp_mg);
+#pragma unroll
+        for (int i = 0; i < HEAD_DIM / 32; ++i) {
+          acc_global[i] = fmaf(acc_tile[i], exp_mt, acc_global[i]);
+        }
+        l_global = l_global * exp_mg + l_tile * exp_mt;
+        m_global = m_new;
+      }
+
+      __syncthreads(); // ensure all warps finish this tile before next load
+    } // tiles loop
+
+    if (valid_q) {
+      // Finalize output and LSE (base-2)
+      float lse_val = -INFINITY;
+      if (l_global > 0.f) {
+        // lse_2 = log2(sum_i exp(s_i)) = log2(l_global) + m_global / ln(2)
+        lse_val = log2f(l_global) + m_global * INV_LN2;
+      }
+      if (lane == 0) {
+        lse[(size_t)q_global * NUM_QO_HEADS + (size_t)hq] = lse_val;
+      }
+      const float norm = (l_global > 0.f) ? (1.f / l_global) : 0.f;
+      __nv_bfloat16* out_ptr = out + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      store_out_vector_4bf16_per_thread<HEAD_DIM>(out_ptr, lane, acc_global, norm);
+    }
+  } // q_tile loop
+}
+
+// Host launcher
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,
+    const __nv_bfloat16* k,
+    const __nv_bfloat16* v,
+    const int32_t* qo_indptr,
+    const int32_t* kv_indptr,
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,
+    float* lse,
+    cudaStream_t stream) {
+
+  if (len_indptr <= 1) return; // nothing to do
+
+  dim3 grid(len_indptr - 1, GQA_QO_HEADS, 1);
+  constexpr int WARP_Q = 4;                // number of warps and queries per tile
+  constexpr int BLOCK_THREADS = WARP_Q * 32;
+  constexpr int HEAD_DIM = GQA_HEAD_DIM;
+  constexpr int TK = 64;                   // KV tile size (tuned for SM80/A800)
+
+  // Shared memory: sK + sV (bf16) + scores (float)
+  size_t smem_bytes = (size_t)2 * TK * HEAD_DIM * sizeof(__nv_bfloat16)
+                    + (size_t)WARP_Q * TK * sizeof(float);
+
+  // Prefer larger shared memory carveout and opt-in dynamic shared memory size
+  CUDA_CHECK(cudaFuncSetAttribute(
+      gqa_ragged_prefill_causal_kernel<HEAD_DIM, WARP_Q, TK>,
+      cudaFuncAttributePreferredSharedMemoryCarveout,
+      100));
+  CUDA_CHECK(cudaFuncSetAttribute(
+      gqa_ragged_prefill_causal_kernel<HEAD_DIM, WARP_Q, TK>,
+      cudaFuncAttributeMaxDynamicSharedMemorySize,
+      (int)smem_bytes));
+
+  gqa_ragged_prefill_causal_kernel<HEAD_DIM, WARP_Q, TK>
+      <<<grid, BLOCK_THREADS, smem_bytes, stream>>>(
+          q, k, v, qo_indptr, kv_indptr, len_indptr, sm_scale, output, lse);
+
+  CUDA_CHECK(cudaGetLastError());
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_bf16.h>
+#include <vector>
+#include <stdexcept>
+#include <sstream>
+#include <cmath>
+
+static inline void ensure_cuda_available() {
+  if (!at::cuda::is_available()) {
+    throw std::runtime_error("CUDA is not available but required for this kernel.");
+  }
+}
+
+static inline void check_dtype(const torch::Tensor& t, at::ScalarType dt, const char* name) {
+  if (t.dtype() != dt) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must have dtype " << c10::toString(dt)
+        << " but got " << c10::toString(t.dtype());
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_contiguous(const torch::Tensor& t, const char* name) {
+  if (!t.is_contiguous()) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must be contiguous.";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_sizes_q(const torch::Tensor& q) {
+  if (q.dim() != 3) throw std::invalid_argument("q must be 3D [total_q, 32, 128]");
+  if (q.size(1) != GQA_QO_HEADS) throw std::invalid_argument("q.shape[1] must be 32");
+  if (q.size(2) != GQA_HEAD_DIM) throw std::invalid_argument("q.shape[2] must be 128");
+}
+
+static inline void check_sizes_kv(const torch::Tensor& kv, const char* name) {
+  if (kv.dim() != 3) {
+    std::ostringstream oss; oss << name << " must be 3D [total_kv, 8, 128]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(1) != GQA_KV_HEADS) {
+    std::ostringstream oss; oss << name << ".shape[1] must be 8";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(2) != GQA_HEAD_DIM) {
+    std::ostringstream oss; oss << name << ".shape[2] must be 128";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_indptr(const torch::Tensor& indptr, const char* name) {
+  if (indptr.dim() != 1) {
+    std::ostringstream oss; oss << name << " must be 1D [len_indptr]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (indptr.dtype() != at::kInt) {
+    std::ostringstream oss; oss << name << " must have dtype int32";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static std::vector<torch::Tensor> run_impl(
+    torch::Tensor q_in,
+    torch::Tensor k_in,
+    torch::Tensor v_in,
+    torch::Tensor qo_indptr_in,
+    torch::Tensor kv_indptr_in,
+    c10::optional<float> sm_scale_opt_val) {
+
+  // Dtype checks upfront (before device moves)
+  check_dtype(q_in, at::kBFloat16, "q");
+  check_dtype(k_in, at::kBFloat16, "k");
+  check_dtype(v_in, at::kBFloat16, "v");
+  check_indptr(qo_indptr_in, "qo_indptr");
+  check_indptr(kv_indptr_in, "kv_indptr");
+
+  // Ensure CUDA available; move to GPU if inputs are on CPU
+  ensure_cuda_available();
+  at::Device cuda_dev = at::Device(at::kCUDA, at::cuda::current_device());
+
+  bool on_cuda = q_in.device().is_cuda();
+  if (!on_cuda) {
+    // Move all tensors to CUDA
+    q_in = q_in.to(cuda_dev);
+    k_in = k_in.to(cuda_dev);
+    v_in = v_in.to(cuda_dev);
+    qo_indptr_in = qo_indptr_in.to(cuda_dev);
+    kv_indptr_in = kv_indptr_in.to(cuda_dev);
+  }
+
+  // Validate shapes and contiguity
+  check_sizes_q(q_in);
+  check_sizes_kv(k_in, "k");
+  check_sizes_kv(v_in, "v");
+  check_contiguous(q_in, "q");
+  check_contiguous(k_in, "k");
+  check_contiguous(v_in, "v");
+  check_contiguous(qo_indptr_in, "qo_indptr");
+  check_contiguous(kv_indptr_in, "kv_indptr");
+
+  // sm_scale handling
+  float sm_scale = 1.0f / std::sqrt((float)GQA_HEAD_DIM);
+  if (sm_scale_opt_val.has_value()) {
+    sm_scale = sm_scale_opt_val.value();
+  }
+
+  // Constraint checks: indptr[-1] equals totals
+  const int64_t len_indptr = qo_indptr_in.size(0);
+  if (len_indptr != kv_indptr_in.size(0)) {
+    throw std::invalid_argument("qo_indptr and kv_indptr must have the same length.");
+  }
+
+  // Fetch last elements to CPU to verify constraints
+  int32_t total_q_from_indptr = qo_indptr_in.index({len_indptr - 1}).to(at::kCPU).item<int32_t>();
+  int32_t total_kv_from_indptr = kv_indptr_in.index({len_indptr - 1}).to(at::kCPU).item<int32_t>();
+  const int64_t total_q = q_in.size(0);
+  const int64_t total_kv = k_in.size(0);
+  if (total_q_from_indptr != total_q) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_q (" << total_q << ") != qo_indptr[-1] ("
+        << total_q_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+  if (total_kv_from_indptr != total_kv) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_kv (" << total_kv << ") != kv_indptr[-1] ("
+        << total_kv_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+
+  // Allocate outputs on same device as q_in (CUDA now)
+  auto options_bf16 = torch::TensorOptions().dtype(at::kBFloat16).device(q_in.device());
+  auto options_f32  = torch::TensorOptions().dtype(at::kFloat).device(q_in.device());
+  torch::Tensor output = torch::zeros({total_q, GQA_QO_HEADS, GQA_HEAD_DIM}, options_bf16);
+  torch::Tensor lse = torch::full({total_q, GQA_QO_HEADS}, -INFINITY, options_f32);
+
+  if (len_indptr > 1 && (total_q > 0) && (total_kv > 0)) {
+    // Raw pointers
+    const __nv_bfloat16* q_ptr  = reinterpret_cast<const __nv_bfloat16*>(q_in.data_ptr<at::BFloat16>());
+    const __nv_bfloat16* k_ptr  = reinterpret_cast<const __nv_bfloat16*>(k_in.data_ptr<at::BFloat16>());
+    const __nv_bfloat16* v_ptr  = reinterpret_cast<const __nv_bfloat16*>(v_in.data_ptr<at::BFloat16>());
+    const int32_t* qo_indptr_ptr = qo_indptr_in.data_ptr<int32_t>();
+    const int32_t* kv_indptr_ptr = kv_indptr_in.data_ptr<int32_t>();
+    __nv_bfloat16* out_ptr = reinterpret_cast<__nv_bfloat16*>(output.data_ptr<at::BFloat16>());
+    float* lse_ptr = lse.data_ptr<float>();
+
+    // Launch kernel
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+        q_ptr, k_ptr, v_ptr,
+        qo_indptr_ptr, kv_indptr_ptr,
+        static_cast<int>(len_indptr),
+        sm_scale,
+        out_ptr, lse_ptr,
+        stream);
+  }
+
+  // Ensure errors are propagated
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    std::ostringstream oss;
+    oss << "CUDA kernel launch error: " << cudaGetErrorString(err);
+    throw std::runtime_error(oss.str());
+  }
+
+  // If inputs were on CPU, move outputs back to CPU to match user expectation
+  if (!on_cuda) {
+    output = output.to(at::kCPU);
+    lse = lse.to(at::kCPU);
+  }
+
+  return {output, lse};
+}
+
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt) {
+
+  c10::optional<float> val;
+  if (sm_scale_opt.has_value()) {
+    torch::Tensor smt = sm_scale_opt.value();
+    if (smt.numel() != 1) {
+      throw std::invalid_argument("sm_scale must be a scalar tensor with one element.");
+    }
+    if (smt.dtype() != at::kFloat) {
+      throw std::invalid_argument("sm_scale must be float32 dtype.");
+    }
+    val = smt.to(at::kCPU).item<float>();
+  }
+  return run_impl(q, k, v, qo_indptr, kv_indptr, val);
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function");
+}
+</cpp_file>

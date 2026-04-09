@@ -146,6 +146,36 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("echo", &echo); }
     assert torch.allclose(out, input_tensors[0])
 
 
+def test_clear_stale_lock_if_safe_removes_lock_when_binary_exists(tmp_path: Path):
+    builder = TorchBuilder()
+    package_name = "torch_fake_extension"
+    build_dir = tmp_path / package_name
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    lock_path = build_dir / "lock"
+    binary_path = build_dir / f"{package_name}.so"
+    lock_path.write_text("", encoding="utf-8")
+    binary_path.write_text("", encoding="utf-8")
+
+    builder._clear_stale_lock_if_safe(build_dir, package_name)
+
+    assert not lock_path.exists()
+
+
+def test_clear_stale_lock_if_safe_keeps_lock_without_binary(tmp_path: Path):
+    builder = TorchBuilder()
+    package_name = "torch_fake_extension"
+    build_dir = tmp_path / package_name
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    lock_path = build_dir / "lock"
+    lock_path.write_text("", encoding="utf-8")
+
+    builder._clear_stale_lock_if_safe(build_dir, package_name)
+
+    assert lock_path.exists()
+
+
 @pytest.mark.requires_torch_cuda
 def test_cuda_vector_add():
     """Test building and running a simple CUDA vector add kernel."""

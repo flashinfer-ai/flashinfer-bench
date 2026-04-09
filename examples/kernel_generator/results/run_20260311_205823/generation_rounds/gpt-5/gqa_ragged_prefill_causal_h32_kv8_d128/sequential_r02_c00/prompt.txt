@@ -1,0 +1,844 @@
+You are optimizing a CUDA kernel for A800 GPU. The current implementation has issues that need to be fixed.
+
+Original Specification:
+Name: gqa_ragged_prefill_causal_h32_kv8_d128
+Type: gqa_ragged
+
+Axes:
+  num_qo_heads: constant = 32
+  num_kv_heads: constant = 8
+  head_dim: constant = 128
+  len_indptr: variable (Length of indptr arrays. Should be the same for qo_indptr and kv_indptr (batch_size + 1).)
+  total_q: variable (Total number of query tokens.)
+  total_kv: variable (Total key-value tokens across all sequences.)
+
+Inputs:
+  q: [total_q, num_qo_heads, head_dim] (DType.BFLOAT16)
+  k: [total_kv, num_kv_heads, head_dim] (DType.BFLOAT16)
+  v: [total_kv, num_kv_heads, head_dim] (DType.BFLOAT16)
+  qo_indptr: [len_indptr] (DType.INT32) - Query offsets for each sequence.
+  kv_indptr: [len_indptr] (DType.INT32) - Key-value offsets for each sequence.
+  sm_scale: scalar (DType.FLOAT32) - Softmax scale. Default is (1/sqrt(head_dim)).
+
+Outputs:
+  output: [total_q, num_qo_heads, head_dim] (DType.BFLOAT16) - Attention output tensor.
+  lse: [total_q, num_qo_heads] (DType.FLOAT32) - The 2-based log-sum-exp of attention logits.
+
+Constraints:
+  - total_q == qo_indptr[-1].item()
+  - total_kv == kv_indptr[-1].item()
+
+
+Reference Implementation:
+import torch
+import math
+
+
+@torch.no_grad()
+def run(q, k, v, qo_indptr, kv_indptr, sm_scale):
+    total_q, num_qo_heads, head_dim = q.shape
+    total_kv, num_kv_heads, _ = k.shape
+    len_indptr = qo_indptr.shape[0]
+
+    # Check constants
+    assert num_qo_heads == 32
+    assert num_kv_heads == 8
+    assert head_dim == 128
+
+    # Check constraints
+    assert total_q == qo_indptr[-1].item()
+    assert total_kv == kv_indptr[-1].item()
+
+    device = q.device
+
+    output = torch.zeros(
+        (total_q, num_qo_heads, head_dim), dtype=torch.bfloat16, device=device
+    )
+    lse = torch.full(
+        (total_q, num_qo_heads), -float("inf"), dtype=torch.float32, device=device
+    )
+
+    gqa_ratio = num_qo_heads // num_kv_heads
+
+    q_f32 = q.to(torch.float32)
+    k_f32 = k.to(torch.float32)
+    v_f32 = v.to(torch.float32)
+
+    for b in range(len_indptr - 1):
+        q_start = int(qo_indptr[b].item())
+        q_end = int(qo_indptr[b + 1].item())
+
+        kv_start = int(kv_indptr[b].item())
+        kv_end = int(kv_indptr[b + 1].item())
+
+        if q_start >= q_end or kv_start >= kv_end:
+            # No queries or KV for this batch element
+            continue
+
+        # Get Q, K, V for this batch
+        q_batch = q_f32[q_start:q_end]  # [num_q_tokens, num_qo_heads, head_dim]
+        k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
+        v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, head_dim]
+
+        num_q_tokens = q_batch.shape[0]
+        num_kv_tokens = k_batch.shape[0]
+        delta = num_kv_tokens - num_q_tokens
+
+        k_expanded = k_batch.repeat_interleave(gqa_ratio, dim=1)
+        v_expanded = v_batch.repeat_interleave(gqa_ratio, dim=1)
+
+        # Compute attention scores: Q @ K^T
+        logits = torch.einsum('qhd,khd->qhk', q_batch, k_expanded) * sm_scale
+
+        # For position q_idx, can attend to KV positions [0, min(q_idx + 1 + delta, num_kv_tokens))
+        q_positions = torch.arange(num_q_tokens, device=device)  # [num_q_tokens]
+        kv_positions = torch.arange(num_kv_tokens, device=device)  # [num_kv_tokens]
+        
+        # Apply causal mask
+        causal_mask = kv_positions[None, :] < (q_positions[:, None] + 1 + delta)
+        logits = logits.masked_fill(~causal_mask[:, None, :], float('-inf'))
+
+        # Compute 2-base LSE
+        lse_batch = torch.logsumexp(logits, dim=-1) / math.log(2.0)
+        lse[q_start:q_end] = lse_batch
+
+        attn_weights = torch.softmax(logits, dim=-1)  # [num_q_tokens, num_qo_heads, num_kv_tokens]
+        output_batch = torch.einsum('qhk,khd->qhd', attn_weights, v_expanded)
+        output[q_start:q_end] = output_batch.to(torch.bfloat16)
+
+    return output, lse
+
+Current Implementation Status:
+Status: COMPILE_ERROR
+Timestamp: 2026-03-11T21:01:46.641193
+
+Execution Log:
+[1/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu -o kernel.cuda.o 
+FAILED: [code=2] kernel.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu -o kernel.cuda.o 
+/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(46): error: identifier "__bfloat16_to_float" is undefined
+      qreg[i] = __bfloat16_to_float(q_ptr[d]);
+                ^
+
+/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(59): error: identifier "__bfloat16_to_float" is undefined
+      float kf = __bfloat16_to_float(sK_row[d]);
+                 ^
+
+/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(78): error: identifier "__bfloat16_to_float" is undefined
+      float vf = __bfloat16_to_float(sV_row[d]);
+                 ^
+
+/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(168): error: identifier "CUDART_INF_F" is undefined
+      float m_global = -CUDART_INF_F;
+                        ^
+
+4 errors detected in the compilation of "/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu".
+[2/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/main.cpp -o main.o 
+ninja: build stopped: subcommand failed.
+BuildError: Torch build failed for solution 'gpt-5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high': Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'
+
+Traceback:
+Traceback (most recent call last):
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py", line 2597, in _run_ninja_build
+    subprocess.run(
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 2.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py", line 154, in build
+    ext = load(
+          ^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py", line 1692, in load
+    return _jit_compile(
+           ^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py", line 2134, in _jit_compile
+    _write_ninja_file_and_build_library(
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py", line 2286, in _write_ninja_file_and_build_library
+    _run_ninja_build(
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py", line 2614, in _run_ninja_build
+    raise RuntimeError(message) from e
+RuntimeError: Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/runner/persistent_runner.py", line 712, in _persistent_worker_main
+    runnable_sol = registry.build(definition, solution)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/registry.py", line 148, in build
+    runnable = builder.build(definition, solution)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py", line 164, in build
+    raise BuildError(f"Torch build failed for solution '{solution.name}': {e}") from e
+flashinfer_bench.compile.builder.BuildError: Torch build failed for solution 'gpt-5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high': Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'
+
+
+
+
+Current Implementation:
+<header_file name="kernel.h">
+#ifndef GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+#define GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <torch/extension.h>
+#include <cstdint>
+#include <vector>
+
+#define GQA_QO_HEADS 32
+#define GQA_KV_HEADS 8
+#define GQA_HEAD_DIM 128
+
+// CUDA kernel declaration
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,           // [total_q, 32, 128]
+    const __nv_bfloat16* k,           // [total_kv, 8, 128]
+    const __nv_bfloat16* v,           // [total_kv, 8, 128]
+    const int32_t* qo_indptr,         // [len_indptr]
+    const int32_t* kv_indptr,         // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,            // [total_q, 32, 128]
+    float* lse,                        // [total_q, 32]
+    cudaStream_t stream);
+
+// Host function declaration (Torch binding)
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt);
+
+#endif  // GQA_RAGGED_PREFILL_CASUAL_H32_KV8_D128_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+#include <cstdio>
+#include <cmath>
+#include <cuda.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(call)                                                                 \
+  do {                                                                                   \
+    cudaError_t err__ = call;                                                            \
+    if (err__ != cudaSuccess) {                                                          \
+      fprintf(stderr, "CUDA error %s at %s:%d: %s\n", #call, __FILE__, __LINE__,         \
+              cudaGetErrorString(err__));                                                \
+    }                                                                                    \
+  } while (0)
+#endif
+
+// Constants
+static __device__ __forceinline__ float warp_reduce_sum(float val) {
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    val += __shfl_down_sync(0xffffffff, val, offset);
+  }
+  return val;
+}
+
+static __device__ __forceinline__ float warp_reduce_max(float val) {
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    float other = __shfl_down_sync(0xffffffff, val, offset);
+    val = fmaxf(val, other);
+  }
+  return val;
+}
+
+static __device__ __forceinline__ int div_up_int(int a, int b) {
+  return (a + b - 1) / b;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void load_q_vector_4floats_per_thread(
+    const __nv_bfloat16* q_ptr, int lane, float qreg[4]) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    qreg[i] = __bfloat16_to_float(q_ptr[d]);
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ float dot_qk_4floats_per_thread(
+    const float qreg[4],
+    const __nv_bfloat16* sK_row, // pointer to sK[k * HEAD_DIM]
+    int lane) {
+  float sum = 0.f;
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float kf = __bfloat16_to_float(sK_row[d]);
+    sum += qreg[i] * kf;
+  }
+  // warp reduce sum
+  sum = warp_reduce_sum(sum);
+  // Broadcast to all lanes
+  sum = __shfl_sync(0xffffffff, sum, 0);
+  return sum;
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void acc_weighted_v_4floats_per_thread(
+    const __nv_bfloat16* sV_row, // pointer to sV[k * HEAD_DIM]
+    int lane,
+    float weight,
+    float acc[4]) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float vf = __bfloat16_to_float(sV_row[d]);
+    acc[i] += weight * vf;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void scale_acc_4floats_per_thread(
+    float acc[4],
+    float scale) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    acc[i] *= scale;
+  }
+}
+
+template<int HEAD_DIM>
+static __device__ __forceinline__ void store_out_vector_4bf16_per_thread(
+    __nv_bfloat16* out_ptr, int lane, const float acc[4], float norm) {
+#pragma unroll
+  for (int i = 0; i < HEAD_DIM / 32; ++i) {
+    int d = lane + i * 32;
+    float val = acc[i] * norm;
+    out_ptr[d] = __float2bfloat16_rn(val);
+  }
+}
+
+// Kernel configuration: One block per (sequence, qo_head)
+// Threads: 128 (4 warps), each warp handles one query at a time
+// Shared memory: K and V tiles (bf16) + per-warp scores (float)
+template<int HEAD_DIM, int WARP_Q, int TK>
+__global__ void gqa_ragged_prefill_causal_kernel(
+    const __nv_bfloat16* __restrict__ q,   // [total_q, 32, 128]
+    const __nv_bfloat16* __restrict__ k,   // [total_kv, 8, 128]
+    const __nv_bfloat16* __restrict__ v,   // [total_kv, 8, 128]
+    const int32_t* __restrict__ qo_indptr, // [len_indptr]
+    const int32_t* __restrict__ kv_indptr, // [len_indptr]
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* __restrict__ out,       // [total_q, 32, 128]
+    float* __restrict__ lse)               // [total_q, 32]
+{
+  constexpr int NUM_QO_HEADS = GQA_QO_HEADS;
+  constexpr int NUM_KV_HEADS = GQA_KV_HEADS;
+  constexpr int GQA_RATIO = NUM_QO_HEADS / NUM_KV_HEADS;
+  constexpr float LN2 = 0.693147180559945309417232121458176568f;
+
+  int b = blockIdx.x;  // sequence index
+  int hq = blockIdx.y; // query head [0, 31]
+  int kv_head = hq / GQA_RATIO;
+
+  if (b >= (len_indptr - 1)) return;
+
+  int warp_id = threadIdx.x >> 5;
+  int lane = threadIdx.x & 31;
+
+  // Indptr for this sequence
+  int q_start = qo_indptr[b];
+  int q_end   = qo_indptr[b + 1];
+  int kv_start = kv_indptr[b];
+  int kv_end   = kv_indptr[b + 1];
+
+  int q_len = max(0, q_end - q_start);
+  int kv_len = max(0, kv_end - kv_start);
+  int delta = kv_len - q_len;
+
+  if (q_len <= 0 || kv_len <= 0) {
+    // Nothing to do for this block
+    return;
+  }
+
+  extern __shared__ __align__(16) unsigned char smem_raw[];
+  __nv_bfloat16* sK = reinterpret_cast<__nv_bfloat16*>(smem_raw);                                   // TK * HEAD_DIM
+  __nv_bfloat16* sV = reinterpret_cast<__nv_bfloat16*>(sK + TK * HEAD_DIM);                         // TK * HEAD_DIM
+  float* scores_base = reinterpret_cast<float*>(sV + TK * HEAD_DIM);                                // WARP_Q * TK
+  float* scores_warp = scores_base + warp_id * TK;
+
+  // Loop queries in tiles of WARP_Q (4) per block
+  for (int q_tile = 0; q_tile < q_len; q_tile += WARP_Q) {
+    int q_local = q_tile + warp_id;                 // local index within sequence processed by this warp
+    bool valid_q = (q_local < q_len);
+    int q_global = q_start + q_local;
+
+    // Load Q vector to registers for this warp
+    float qreg[HEAD_DIM / 32];
+    if (valid_q) {
+      const __nv_bfloat16* q_ptr = q + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      load_q_vector_4floats_per_thread<HEAD_DIM>(q_ptr, lane, qreg);
+    }
+
+    // Initialize global running stats per query
+    float m_global = -CUDART_INF_F;
+    float l_global = 0.f;
+    float acc_global[HEAD_DIM / 32] = {0.f};
+
+    // Determine allowed_k for causal mask for this q
+    int allowed_k = 0;
+    if (valid_q) {
+      int qpos = q_local; // position within sequence
+      int bound = qpos + 1 + delta;
+      if (bound < 0) bound = 0;
+      if (bound > kv_len) bound = kv_len;
+      allowed_k = bound;
+    }
+
+    if (valid_q && allowed_k <= 0) {
+      // Write zeros to output and -inf to lse
+      if (lane == 0) {
+        float lse_val = -INFINITY;
+        lse[(size_t)q_global * NUM_QO_HEADS + (size_t)hq] = lse_val;
+      }
+      // zero output vector
+      __nv_bfloat16* out_ptr = out + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+#pragma unroll
+      for (int i = 0; i < HEAD_DIM / 32; ++i) {
+        int d = lane + i * 32;
+        if (d < HEAD_DIM) {
+          out_ptr[d] = __float2bfloat16_rn(0.f);
+        }
+      }
+      continue;
+    }
+
+    // Iterate over K/V tiles
+    for (int kt = 0; kt < kv_len; kt += TK) {
+      int k_this_max = kv_len - kt;
+      if (k_this_max > TK) k_this_max = TK;
+
+      // Cooperative load K and V tiles into shared memory as bf16
+      // Total elements per array: k_this_max * HEAD_DIM
+      int total_pairs = k_this_max * (HEAD_DIM / 2); // load as 2-bf16 (uint32)
+      const uint32_t* __restrict__ k_glob_u32 = reinterpret_cast<const uint32_t*>(k);
+      const uint32_t* __restrict__ v_glob_u32 = reinterpret_cast<const uint32_t*>(v);
+      uint32_t* __restrict__ sK_u32 = reinterpret_cast<uint32_t*>(sK);
+      uint32_t* __restrict__ sV_u32 = reinterpret_cast<uint32_t*>(sV);
+
+      // Compute base offsets in uint32 pairs
+      // Each pair corresponds to 2 bf16 elements along dim
+      // Global pair stride across dim is HEAD_DIM/2
+      for (int idx = threadIdx.x; idx < total_pairs; idx += blockDim.x) {
+        int t = idx / (HEAD_DIM / 2);
+        int d_pair = idx - t * (HEAD_DIM / 2);
+        int kv_pos = kv_start + kt + t;
+        size_t base_pair_index = (((size_t)kv_pos * NUM_KV_HEADS + (size_t)kv_head) * (HEAD_DIM / 2) + (size_t)d_pair);
+        sK_u32[t * (HEAD_DIM / 2) + d_pair] = k_glob_u32[base_pair_index];
+        sV_u32[t * (HEAD_DIM / 2) + d_pair] = v_glob_u32[base_pair_index];
+      }
+      __syncthreads();
+
+      // Each warp processes its query
+      int k_this_warp = 0;
+      if (valid_q) {
+        int rem = allowed_k - kt;
+        if (rem > 0) {
+          k_this_warp = rem < k_this_max ? rem : k_this_max;
+        } else {
+          k_this_warp = 0;
+        }
+      }
+
+      if (valid_q && k_this_warp > 0) {
+        // First pass: compute scores and tile max
+        float m_tile = -CUDART_INF_F;
+        for (int t = 0; t < k_this_warp; ++t) {
+          const __nv_bfloat16* sK_row = sK + t * HEAD_DIM;
+          float dot = dot_qk_4floats_per_thread<HEAD_DIM>(qreg, sK_row, lane);
+          float s = dot * sm_scale;
+          if (lane == 0) {
+            scores_warp[t] = s;
+          }
+          m_tile = fmaxf(m_tile, s);
+        }
+        __syncwarp();
+
+        // Second pass: compute sum exp and weighted accumulator
+        float l_tile = 0.f;
+        float acc_tile[HEAD_DIM / 32] = {0.f};
+        for (int t = 0; t < k_this_warp; ++t) {
+          float s = (lane == 0) ? scores_warp[t] : 0.f;
+          s = __shfl_sync(0xffffffff, s, 0);
+          float w = __expf(s - m_tile);
+          const __nv_bfloat16* sV_row = sV + t * HEAD_DIM;
+          acc_weighted_v_4floats_per_thread<HEAD_DIM>(sV_row, lane, w, acc_tile);
+          if (lane == 0) {
+            l_tile += w;
+          }
+        }
+        // Broadcast l_tile to all lanes
+        l_tile = __shfl_sync(0xffffffff, l_tile, 0);
+
+        // Combine tile with global accumulators
+        float m_new = fmaxf(m_global, m_tile);
+        float exp_mg = __expf(m_global - m_new);
+        float exp_mt = __expf(m_tile - m_new);
+        // Scale previous global acc and add tile acc
+        scale_acc_4floats_per_thread<HEAD_DIM>(acc_global, exp_mg);
+#pragma unroll
+        for (int i = 0; i < HEAD_DIM / 32; ++i) {
+          acc_global[i] += acc_tile[i] * exp_mt;
+        }
+        l_global = l_global * exp_mg + l_tile * exp_mt;
+        m_global = m_new;
+      }
+
+      __syncthreads(); // ensure all warps are done with this tile before loading new
+    } // tiles loop
+
+    if (valid_q) {
+      // Finalize output and LSE
+      // lse = (logsumexp)/log(2) = (log(l_global) + m_global) / ln(2)
+      float lse_val;
+      if (l_global > 0.f && isfinite(m_global)) {
+        lse_val = (logf(l_global) + m_global) / LN2;
+      } else {
+        lse_val = -INFINITY;
+      }
+      if (lane == 0) {
+        lse[(size_t)q_global * NUM_QO_HEADS + (size_t)hq] = lse_val;
+      }
+      // Output normalization: out = acc_global / l_global
+      float norm = (l_global > 0.f) ? (1.f / l_global) : 0.f;
+      __nv_bfloat16* out_ptr = out + ((size_t)q_global * NUM_QO_HEADS + (size_t)hq) * HEAD_DIM;
+      store_out_vector_4bf16_per_thread<HEAD_DIM>(out_ptr, lane, acc_global, norm);
+    }
+  } // q_tile loop
+}
+
+// Host launcher
+void launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+    const __nv_bfloat16* q,
+    const __nv_bfloat16* k,
+    const __nv_bfloat16* v,
+    const int32_t* qo_indptr,
+    const int32_t* kv_indptr,
+    int len_indptr,
+    float sm_scale,
+    __nv_bfloat16* output,
+    float* lse,
+    cudaStream_t stream) {
+
+  dim3 grid(len_indptr - 1, GQA_QO_HEADS, 1);
+  // 4 warps per block
+  constexpr int BLOCK_THREADS = 128;
+  constexpr int HEAD_DIM = GQA_HEAD_DIM;
+  constexpr int WARP_Q = 4;
+  constexpr int TK = 64;
+
+  // Shared memory: sK + sV (bf16) + scores (float)
+  size_t smem_bytes = (size_t)2 * TK * HEAD_DIM * sizeof(__nv_bfloat16)
+                    + (size_t)WARP_Q * TK * sizeof(float);
+
+  // Launch
+  gqa_ragged_prefill_causal_kernel<HEAD_DIM, WARP_Q, TK>
+      <<<grid, BLOCK_THREADS, smem_bytes, stream>>>(
+          q, k, v, qo_indptr, kv_indptr, len_indptr, sm_scale, output, lse);
+
+  CUDA_CHECK(cudaGetLastError());
+}
+
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_bf16.h>
+#include <vector>
+#include <stdexcept>
+#include <sstream>
+
+static inline void check_cuda(const torch::Tensor& t, const char* name) {
+  if (!t.device().is_cuda()) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must be on CUDA device.";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_dtype(const torch::Tensor& t, at::ScalarType dt, const char* name) {
+  if (t.dtype() != dt) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must have dtype " << c10::toString(dt)
+        << " but got " << c10::toString(t.dtype());
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_contiguous(const torch::Tensor& t, const char* name) {
+  if (!t.is_contiguous()) {
+    std::ostringstream oss;
+    oss << "Tensor " << name << " must be contiguous.";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_sizes_q(const torch::Tensor& q) {
+  if (q.dim() != 3) throw std::invalid_argument("q must be 3D [total_q, 32, 128]");
+  if (q.size(1) != GQA_QO_HEADS) throw std::invalid_argument("q.shape[1] must be 32");
+  if (q.size(2) != GQA_HEAD_DIM) throw std::invalid_argument("q.shape[2] must be 128");
+}
+
+static inline void check_sizes_kv(const torch::Tensor& kv, const char* name) {
+  if (kv.dim() != 3) {
+    std::ostringstream oss; oss << name << " must be 3D [total_kv, 8, 128]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(1) != GQA_KV_HEADS) {
+    std::ostringstream oss; oss << name << ".shape[1] must be 8";
+    throw std::invalid_argument(oss.str());
+  }
+  if (kv.size(2) != GQA_HEAD_DIM) {
+    std::ostringstream oss; oss << name << ".shape[2] must be 128";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+static inline void check_indptr(const torch::Tensor& indptr, const char* name) {
+  if (indptr.dim() != 1) {
+    std::ostringstream oss; oss << name << " must be 1D [len_indptr]";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+std::vector<torch::Tensor> run(
+    torch::Tensor q,
+    torch::Tensor k,
+    torch::Tensor v,
+    torch::Tensor qo_indptr,
+    torch::Tensor kv_indptr,
+    c10::optional<torch::Tensor> sm_scale_opt) {
+
+  // Validate devices
+  check_cuda(q, "q");
+  check_cuda(k, "k");
+  check_cuda(v, "v");
+  check_cuda(qo_indptr, "qo_indptr");
+  check_cuda(kv_indptr, "kv_indptr");
+
+  // Validate dtypes
+  check_dtype(q, at::kBFloat16, "q");
+  check_dtype(k, at::kBFloat16, "k");
+  check_dtype(v, at::kBFloat16, "v");
+  check_dtype(qo_indptr, at::kInt, "qo_indptr");
+  check_dtype(kv_indptr, at::kInt, "kv_indptr");
+
+  // Validate contiguity
+  check_contiguous(q, "q");
+  check_contiguous(k, "k");
+  check_contiguous(v, "v");
+  check_contiguous(qo_indptr, "qo_indptr");
+  check_contiguous(kv_indptr, "kv_indptr");
+
+  // Validate sizes
+  check_sizes_q(q);
+  check_sizes_kv(k, "k");
+  check_sizes_kv(v, "v");
+  check_indptr(qo_indptr, "qo_indptr");
+  check_indptr(kv_indptr, "kv_indptr");
+
+  // Validate constants
+  if (k.size(1) != GQA_KV_HEADS || v.size(1) != GQA_KV_HEADS) {
+    throw std::invalid_argument("k and v must have num_kv_heads == 8");
+  }
+  if (q.size(1) != GQA_QO_HEADS) {
+    throw std::invalid_argument("q must have num_qo_heads == 32");
+  }
+  if (q.size(2) != GQA_HEAD_DIM || k.size(2) != GQA_HEAD_DIM || v.size(2) != GQA_HEAD_DIM) {
+    throw std::invalid_argument("head_dim must be 128 for q, k, v");
+  }
+
+  // sm_scale handling
+  float sm_scale = 1.0f / std::sqrt((float)GQA_HEAD_DIM);
+  if (sm_scale_opt.has_value()) {
+    torch::Tensor smt = sm_scale_opt.value();
+    if (smt.numel() != 1) {
+      throw std::invalid_argument("sm_scale must be a scalar tensor with one element.");
+    }
+    if (smt.dtype() != at::kFloat) {
+      throw std::invalid_argument("sm_scale must be float32 dtype.");
+    }
+    // Allow CPU or CUDA scalar; move to CPU to read value
+    sm_scale = smt.to(at::kCPU).item<float>();
+  }
+
+  // Constraint checks: indptr[-1] equals totals
+  int64_t len_indptr = qo_indptr.size(0);
+  if (len_indptr != kv_indptr.size(0)) {
+    throw std::invalid_argument("qo_indptr and kv_indptr must have the same length.");
+  }
+  // Copy last element of indptr to CPU to validate
+  torch::Tensor last_q = qo_indptr.index({len_indptr - 1}).to(at::kCPU);
+  torch::Tensor last_kv = kv_indptr.index({len_indptr - 1}).to(at::kCPU);
+  int64_t total_q = q.size(0);
+  int64_t total_kv = k.size(0);
+  int64_t total_q_from_indptr = last_q.item<int32_t>();
+  int64_t total_kv_from_indptr = last_kv.item<int32_t>();
+  if (total_q_from_indptr != total_q) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_q (" << total_q << ") != qo_indptr[-1] ("
+        << total_q_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+  if (total_kv_from_indptr != total_kv) {
+    std::ostringstream oss;
+    oss << "Constraint violated: total_kv (" << total_kv << ") != kv_indptr[-1] ("
+        << total_kv_from_indptr << ")";
+    throw std::invalid_argument(oss.str());
+  }
+
+  // Allocate outputs on same device
+  auto options_bf16 = torch::TensorOptions().dtype(at::kBFloat16).device(q.device());
+  auto options_f32  = torch::TensorOptions().dtype(at::kFloat).device(q.device());
+  torch::Tensor output = torch::zeros({total_q, GQA_QO_HEADS, GQA_HEAD_DIM}, options_bf16);
+  torch::Tensor lse = torch::full({total_q, GQA_QO_HEADS}, -INFINITY, options_f32);
+
+  // Raw pointers
+  const __nv_bfloat16* q_ptr  = reinterpret_cast<const __nv_bfloat16*>(q.data_ptr<at::BFloat16>());
+  const __nv_bfloat16* k_ptr  = reinterpret_cast<const __nv_bfloat16*>(k.data_ptr<at::BFloat16>());
+  const __nv_bfloat16* v_ptr  = reinterpret_cast<const __nv_bfloat16*>(v.data_ptr<at::BFloat16>());
+  const int32_t* qo_indptr_ptr = qo_indptr.data_ptr<int32_t>();
+  const int32_t* kv_indptr_ptr = kv_indptr.data_ptr<int32_t>();
+  __nv_bfloat16* out_ptr = reinterpret_cast<__nv_bfloat16*>(output.data_ptr<at::BFloat16>());
+  float* lse_ptr = lse.data_ptr<float>();
+
+  // Launch kernel
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  launch_gqa_ragged_prefill_causal_h32_kv8_d128_kernel(
+      q_ptr, k_ptr, v_ptr,
+      qo_indptr_ptr, kv_indptr_ptr,
+      static_cast<int>(len_indptr),
+      sm_scale,
+      out_ptr, lse_ptr,
+      stream);
+
+  // Ensure errors are propagated
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    std::ostringstream oss;
+    oss << "CUDA kernel launch error: " << cudaGetErrorString(err);
+    throw std::runtime_error(oss.str());
+  }
+
+  // Optionally sync (Torch will manage stream semantics, but for safety)
+  // cudaDeviceSynchronize();
+
+  return {output, lse};
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function",
+        py::arg("q"),
+        py::arg("k"),
+        py::arg("v"),
+        py::arg("qo_indptr"),
+        py::arg("kv_indptr"),
+        py::arg("sm_scale") = py::none());
+}
+</cpp_file>
+
+Optimization Strategy:
+1. ENSURE CORRECTNESS: If there are compile errors, runtime errors, or incorrect outputs, focus entirely on fixing these issues
+   - Analyze compilation errors and fix syntax/API usage
+   - Fix runtime errors like shape mismatches, memory access violations, kernel launch failures
+   - Ensure numerical correctness matches the reference implementation
+   - Verify proper CUDA memory management and synchronization
+
+2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
+   - Optimize memory access patterns and coalescing for A800
+   - Tune block sizes and grid dimensions for maximum occupancy
+   - Utilize shared memory effectively to reduce global memory transactions
+   - Optimize register usage and minimize divergent branches
+   - Consider using specialized libraries (such as CUTLASS) where beneficial
+   - Leverage constant axis values for compile-time optimizations
+
+Requirements for the optimized implementation:
+- Write clean, efficient CUDA C++ code optimized for A800 architecture
+- Use proper CUDA syntax and modern features appropriate for A800
+- Fix all identified issues from the feedback
+- Maintain or improve computational accuracy
+- Preserve the same function signatures and device handling as specified
+- For fixed axis values, optimize specifically for those constants rather than general cases
+
+IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
+
+<header_file name="kernel.h">
+- All CUDA kernel function declarations
+- Host function declarations
+- Any necessary struct/type definitions
+- Include guards and necessary headers
+</header_file>
+
+<cuda_file name="kernel.cu">
+- All __global__ kernel implementations
+- All __device__ helper functions
+- CUDA-specific optimizations and memory patterns
+- Proper error checking and memory management
+</cuda_file>
+
+<cpp_file name="main.cpp">
+- Host function that launches kernels
+- Memory allocation and data transfer management
+- Device management and error handling
+- Entry point function named "run" that can be called to execute the implementation
+- Handle both args and kwargs properly
+- Move CPU data to GPU, execute kernels, and return results to CPU
+</cpp_file>
+
+Code Generation Guidelines:
+- Use modern CUDA features appropriate for A800
+- Optimize memory coalescing and reduce bank conflicts
+- Utilize shared memory effectively for data reuse
+- Consider occupancy and register usage
+- Implement proper error checking with cudaGetLastError()
+- Use appropriate grid and block dimensions for the problem size
+- Leverage constant memory for frequently accessed read-only data
+- Ensure proper CUDA stream synchronization and error handling
+
+Generate the corrected and optimized implementation:
+
+
+Use TORCH for your generated kernel host function and bindings
+
+Requirements:
+- Include all necessary headers (torch/extension.h, kernel.h, etc.)
+- Implement the "run" function that:
+  * Takes torch::Tensor arguments
+  * Validates tensor properties (device, dtype, shape)
+  * Extracts raw pointers using .data_ptr<T>()
+  * Calls the CUDA kernel with appropriate launch configuration
+  * Returns results as torch::Tensor
+- Use PYBIND11_MODULE to bind the "run" function:
+  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  *   m.def("run", &run, "Kernel execution function");
+  * }
+- Handle both positional args and kwargs properly
+- Include proper error messages for invalid inputs
+
+- Use torch::Tensor for all tensor arguments
+- Use .device().is_cuda() to check if tensors are on GPU
+- Use .dtype() to validate tensor data types
+- Use .sizes() or .size(dim) to get tensor dimensions
+- Use .data_ptr<float>() or .data_ptr<T>() to get raw pointers
+- Call cudaDeviceSynchronize() or cudaGetLastError() for error checking
+- Return torch::Tensor from the run function
+- Handle exceptions gracefully with proper error messages

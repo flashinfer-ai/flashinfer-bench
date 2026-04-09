@@ -48,8 +48,9 @@ def write_sources_to_path(path: Path, sources: List[SourceFile]) -> List[Path]:
         # Ensure parent directories exist
         src_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write source file
-        src_path.write_text(src.content)
+        # Avoid rewriting unchanged files so downstream build systems can reuse caches.
+        if not src_path.exists() or src_path.read_text(encoding="utf-8") != src.content:
+            src_path.write_text(src.content, encoding="utf-8")
         paths.append(src_path)
 
     return paths

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/compare_api_models_round_traces.py", line 791, in <module>
+    main()
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/compare_api_models_round_traces.py", line 567, in main
+    raise ValueError(f"Definitions not found: {missing_definitions}")
+ValueError: Definitions not found: ['gemm_n5120_k5120']

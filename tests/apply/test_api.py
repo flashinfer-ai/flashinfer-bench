@@ -21,6 +21,7 @@ from flashinfer_bench.data import (
     SupportedLanguages,
     TensorSpec,
     Trace,
+    TraceSet,
     Workload,
     save_json_file,
     save_jsonl_file,
@@ -68,6 +69,17 @@ def test_apply_imperative_raises_without_fallback_when_disabled():
     ApplyRuntime._stack.clear()
     with pytest.raises(RuntimeError):
         apply("d", args=(1,), fallback=None)
+
+
+def test_enable_apply_accepts_in_memory_traceset(tmp_path: Path):
+    _make_dataset(tmp_path)
+    trace_set = TraceSet.from_path(str(tmp_path))
+
+    runtime = enable_apply(trace_set)
+    try:
+        assert ApplyRuntime.get_instance() is runtime
+    finally:
+        disable_apply()
 
 
 def test_apply_decorator_without_runtime_is_transparent(monkeypatch):

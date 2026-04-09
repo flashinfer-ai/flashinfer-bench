@@ -1,0 +1,51 @@
+{
+  "created_at": "2026-03-13T10:36:17.819469",
+  "trace_set_path": "/data1/workspace/airulan/bench/flashinfer-trace",
+  "base_url": "https://aigc.x-see.cn",
+  "api_mode": "auto",
+  "language": "cuda",
+  "target_gpu": "A800",
+  "models": [
+    "gpt-5"
+  ],
+  "definitions": [
+    "gemm_n2048_k4096"
+  ],
+  "workload_mode": "first",
+  "workload_uuid": null,
+  "save_traces": true,
+  "save_generation_round_artifacts": true,
+  "generation_round_artifacts_dir": "generation_rounds",
+  "feedback_benchmark": {
+    "warmup_runs": 2,
+    "iterations": 10,
+    "num_trials": 1,
+    "rtol": 0.01,
+    "atol": 0.01,
+    "log_dir": "/home/airulan/.cache/flashinfer_bench/cache/logs",
+    "use_isolated_runner": false,
+    "required_matched_ratio": null,
+    "sampling_validation_trials": 100,
+    "sampling_tvd_threshold": 0.2,
+    "definitions": null,
+    "solutions": null,
+    "timeout_seconds": 180,
+    "profile_baseline": true
+  },
+  "final_benchmark": {
+    "warmup_runs": 5,
+    "iterations": 20,
+    "num_trials": 3,
+    "rtol": 0.01,
+    "atol": 0.01,
+    "log_dir": "/home/airulan/.cache/flashinfer_bench/cache/logs",
+    "use_isolated_runner": false,
+    "required_matched_ratio": null,
+    "sampling_validation_trials": 100,
+    "sampling_tvd_threshold": 0.2,
+    "definitions": null,
+    "solutions": null,
+    "timeout_seconds": 300,
+    "profile_baseline": true
+  }
+}

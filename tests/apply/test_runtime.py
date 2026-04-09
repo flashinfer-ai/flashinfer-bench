@@ -383,6 +383,70 @@ def test_dispatch_logic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         )
 
 
+def test_dispatch_stats(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Test that dispatch statistics record selected solutions and miss modes."""
+    monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))
+    (tmp_path / "cache").mkdir()
+
+    _, trace_set = make_traces()
+
+    fallback_runtime = ApplyRuntime(
+        trace_set, ApplyConfigRegistry(default=ApplyConfig(on_miss_policy="fallback_only"))
+    )
+    fallback_runtime.dispatch(
+        "add",
+        args=(torch.zeros(2, 2), torch.zeros(2, 2)),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    fallback_runtime.dispatch(
+        "add",
+        args=(torch.zeros(99, 2), torch.zeros(99, 2)),
+        kwargs={},
+        fallback=lambda *_: "fallback",
+    )
+    fallback_stats = fallback_runtime.snapshot_stats()
+    assert fallback_stats["total_calls"] == 2
+    assert fallback_stats["table_hit_calls"] == 1
+    assert fallback_stats["def_best_calls"] == 0
+    assert fallback_stats["fallback_calls"] == 1
+    assert fallback_stats["definitions"] == [
+        {
+            "definition": "add",
+            "total_calls": 2,
+            "table_hit_calls": 1,
+            "def_best_calls": 0,
+            "fallback_calls": 1,
+            "selected_solutions": {"add_fast": 1},
+        }
+    ]
+
+    def_best_runtime = ApplyRuntime(
+        trace_set, ApplyConfigRegistry(default=ApplyConfig(on_miss_policy="use_def_best"))
+    )
+    def_best_runtime.dispatch(
+        "add",
+        args=(torch.zeros(99, 2), torch.zeros(99, 2)),
+        kwargs={},
+        fallback=None,
+    )
+    def_best_stats = def_best_runtime.snapshot_stats()
+    assert def_best_stats["total_calls"] == 1
+    assert def_best_stats["table_hit_calls"] == 0
+    assert def_best_stats["def_best_calls"] == 1
+    assert def_best_stats["fallback_calls"] == 0
+    assert def_best_stats["definitions"] == [
+        {
+            "definition": "add",
+            "total_calls": 1,
+            "table_hit_calls": 0,
+            "def_best_calls": 1,
+            "fallback_calls": 0,
+            "selected_solutions": {"add_fast": 1},
+        }
+    ]
+
+
 def test_dispatch_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Test dispatch with VR/DPS modes and args/kwargs combinations."""
     monkeypatch.setenv("FIB_CACHE_PATH", str(tmp_path / "cache"))

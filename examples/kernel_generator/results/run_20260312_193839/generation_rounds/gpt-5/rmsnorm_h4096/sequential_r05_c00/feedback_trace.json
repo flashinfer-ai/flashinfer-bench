@@ -1,0 +1,33 @@
+{
+  "definition": "rmsnorm_h4096",
+  "workload": {
+    "axes": {
+      "batch_size": 7
+    },
+    "inputs": {
+      "hidden_states": {
+        "type": "random"
+      },
+      "weight": {
+        "type": "random"
+      }
+    },
+    "uuid": "33bf737d-3b37-4e38-be80-ea39b4b46ae6"
+  },
+  "solution": "gpt-5_rmsnorm_h4096_cuda_optimized_r5_c0_high",
+  "evaluation": {
+    "status": "COMPILE_ERROR",
+    "environment": {
+      "hardware": "NVIDIA A800-SXM4-80GB",
+      "libs": {
+        "torch": "2.9.1+cu130",
+        "triton": "3.5.1",
+        "cuda": "13.0"
+      }
+    },
+    "timestamp": "2026-03-12T19:59:18.291100",
+    "log": "[1/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e/kernel.cu -o kernel.cuda.o \n[2/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e/main.cpp -o main.o \nFAILED: [code=1] main.o \nc++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e/main.cpp -o main.o \n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e/main.cpp: In function ‘at::Tensor run(at::Tensor, at::Tensor)’:\n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e/main.cpp:37:15: error: ‘CUDAGuard’ is not a member of ‘at::cuda’\n   37 |     at::cuda::CUDAGuard device_guard(hidden_states.device());\n      |               ^~~~~~~~~\nninja: build stopped: subcommand failed.\nBuildError: Torch build failed for solution 'gpt-5_rmsnorm_h4096_cuda_optimized_r5_c0_high': Error building extension 'torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e'\n\nTraceback:\nTraceback (most recent call last):\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2597, in _run_ninja_build\n    subprocess.run(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 1.\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py\", line 154, in build\n    ext = load(\n          ^^^^^\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 1692, in load\n    return _jit_compile(\n           ^^^^^^^^^^^^^\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2134, in _jit_compile\n    _write_ninja_file_and_build_library(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2286, in _write_ninja_file_and_build_library\n    _run_ninja_build(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2614, in _run_ninja_build\n    raise RuntimeError(message) from e\nRuntimeError: Error building extension 'torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/runner/persistent_runner.py\", line 712, in _persistent_worker_main\n    runnable_sol = registry.build(definition, solution)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/registry.py\", line 148, in build\n    runnable = builder.build(definition, solution)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py\", line 164, in build\n    raise BuildError(f\"Torch build failed for solution '{solution.name}': {e}\") from e\nflashinfer_bench.compile.builder.BuildError: Torch build failed for solution 'gpt-5_rmsnorm_h4096_cuda_optimized_r5_c0_high': Error building extension 'torch_gpt_5_rmsnorm_h4096_cuda_optimized_r5_c0_high_a7b14e'\n\n",
+    "correctness": null,
+    "performance": null
+  }
+}

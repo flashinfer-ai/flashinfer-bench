@@ -1,0 +1,256 @@
+<header_file name="kernel.h">
+#ifndef RMSNORM_H2048_KERNEL_H_
+#define RMSNORM_H2048_KERNEL_H_
+
+#include <cuda_runtime.h>
+#include <cstdint>
+#include <stdexcept>
+#include <torch/extension.h>
+
+// Constants
+constexpr int HIDDEN_SIZE_2048 = 2048;
+
+// Host-side CUDA launcher (does not allocate memory; launches kernel on provided pointers)
+void rmsnorm_h2048_cuda(const uint16_t* hidden_states_bf16,
+                        const uint16_t* weight_bf16,
+                        uint16_t* output_bf16,
+                        int64_t batch_size,
+                        cudaStream_t stream);
+
+// PyTorch binding entry point
+torch::Tensor run(torch::Tensor hidden_states, torch::Tensor weight);
+
+#endif  // RMSNORM_H2048_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cstdio>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(stmt)                                                     \
+  do {                                                                       \
+    cudaError_t err = (stmt);                                                \
+    if (err != cudaSuccess) {                                                \
+      fprintf(stderr, "CUDA error %s at %s:%d: %s\n", #stmt, __FILE__, __LINE__, cudaGetErrorString(err)); \
+    }                                                                        \
+  } while (0)
+#endif
+
+// Convert bf16 <-> float using bit tricks with RNE rounding on store
+static __device__ __forceinline__ float bf16_to_float(uint16_t h) {
+  // Place the 16 high bits into the high 16 bits of float
+  uint32_t u = static_cast<uint32_t>(h) << 16;
+  float f;
+  reinterpret_cast<uint32_t&>(f) = u;
+  return f;
+}
+
+static __device__ __forceinline__ uint16_t float_to_bf16_rne(float f) {
+  uint32_t u = reinterpret_cast<uint32_t&>(f);
+  // Round to nearest even: add 0x7FFF + lsb of upper result
+  uint32_t lsb = (u >> 16) & 1u;
+  uint32_t rounding_bias = 0x7FFFu + lsb;
+  u += rounding_bias;
+  uint16_t h = static_cast<uint16_t>(u >> 16);
+  return h;
+}
+
+static __device__ __forceinline__ float warp_sum(float v) {
+  // Full mask
+  unsigned mask = 0xffffffff;
+  v += __shfl_down_sync(mask, v, 16);
+  v += __shfl_down_sync(mask, v, 8);
+  v += __shfl_down_sync(mask, v, 4);
+  v += __shfl_down_sync(mask, v, 2);
+  v += __shfl_down_sync(mask, v, 1);
+  return v;
+}
+
+template<int BLOCK_SIZE, int HSIZE>
+__launch_bounds__(BLOCK_SIZE, 2)
+__global__ void rmsnorm_h2048_kernel(const uint16_t* __restrict__ x_bf16,
+                                     const uint16_t* __restrict__ w_bf16,
+                                     uint16_t* __restrict__ y_bf16,
+                                     int64_t batch_stride) {
+  static_assert(HSIZE == 2048, "Kernel specialized for HSIZE=2048");
+
+  const int tid = threadIdx.x;
+  const int wid = tid >> 5;   // warp id
+  const int lane = tid & 31;  // lane id
+  const int num_warps = BLOCK_SIZE / 32;
+
+  __shared__ float warp_sums[BLOCK_SIZE / 32];
+  __shared__ float inv_rms_shared;
+
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  const int64_t base = row * batch_stride;
+
+  // Compute partial sums and cache inputs in registers
+  constexpr int ITER = HSIZE / BLOCK_SIZE; // 2048 / BLOCK_SIZE
+  float x_cache[ITER];
+
+  float partial_sum = 0.0f;
+
+#pragma unroll
+  for (int j = 0; j < ITER; ++j) {
+    int idx = j * BLOCK_SIZE + tid;
+    // Load bf16 -> float
+    float xi = bf16_to_float(x_bf16[base + idx]);
+    x_cache[j] = xi;
+    partial_sum += xi * xi;
+  }
+
+  // Warp reduction
+  float warp_total = warp_sum(partial_sum);
+
+  if (lane == 0) {
+    warp_sums[wid] = warp_total;
+  }
+  __syncthreads();
+
+  // Reduce warp sums in first warp
+  if (wid == 0) {
+    float block_sum = (lane < num_warps) ? warp_sums[lane] : 0.0f;
+    block_sum = warp_sum(block_sum);
+    if (lane == 0) {
+      constexpr float EPS = 1e-6f;
+      float mean = block_sum / static_cast<float>(HSIZE);
+      inv_rms_shared = rsqrtf(mean + EPS);
+    }
+  }
+  __syncthreads();
+
+  float inv_rms = inv_rms_shared;
+
+  // Normalize and scale by weight
+#pragma unroll
+  for (int j = 0; j < ITER; ++j) {
+    int idx = j * BLOCK_SIZE + tid;
+    float wi = bf16_to_float(__ldg(&w_bf16[idx]));
+    float yi = (x_cache[j] * inv_rms) * wi;
+    y_bf16[base + idx] = float_to_bf16_rne(yi);
+  }
+}
+
+// CUDA host launcher
+void rmsnorm_h2048_cuda(const uint16_t* hidden_states_bf16,
+                        const uint16_t* weight_bf16,
+                        uint16_t* output_bf16,
+                        int64_t batch_size,
+                        cudaStream_t stream) {
+  if (batch_size <= 0) return;
+  constexpr int H = HIDDEN_SIZE_2048;
+  constexpr int BLOCK = 256; // 8 elements per thread at H=2048
+  dim3 grid(static_cast<unsigned int>(batch_size));
+  dim3 block(BLOCK);
+
+  rmsnorm_h2048_kernel<BLOCK, H><<<grid, block, 0, stream>>>(
+      hidden_states_bf16, weight_bf16, output_bf16, static_cast<int64_t>(H));
+  CUDA_CHECK(cudaGetLastError());
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/core/ScalarType.h>
+#include <c10/core/TensorOptions.h>
+#include <sstream>
+
+static inline void check_inputs(const torch::Tensor& hidden_states,
+                                const torch::Tensor& weight) {
+  // Device checks
+  if (!hidden_states.defined() || !weight.defined()) {
+    throw std::invalid_argument("rmsnorm_h2048: Inputs must be defined tensors");
+  }
+  if (!hidden_states.device().is_cuda() || !weight.device().is_cuda()) {
+    throw std::invalid_argument("rmsnorm_h2048: Inputs must be CUDA tensors");
+  }
+
+  // Dtype checks
+  if (hidden_states.dtype() != torch::kBFloat16) {
+    throw std::invalid_argument("rmsnorm_h2048: hidden_states must be bfloat16 (torch.bfloat16)");
+  }
+  if (weight.dtype() != torch::kBFloat16) {
+    throw std::invalid_argument("rmsnorm_h2048: weight must be bfloat16 (torch.bfloat16)");
+  }
+
+  // Dim and shape checks
+  if (hidden_states.dim() != 2) {
+    throw std::invalid_argument("rmsnorm_h2048: hidden_states must be 2D [batch_size, hidden_size]");
+  }
+  if (weight.dim() != 1) {
+    throw std::invalid_argument("rmsnorm_h2048: weight must be 1D [hidden_size]");
+  }
+
+  auto bs = hidden_states.size(0);
+  auto hs = hidden_states.size(1);
+  if (hs != HIDDEN_SIZE_2048) {
+    std::ostringstream oss;
+    oss << "rmsnorm_h2048: hidden_size must be " << HIDDEN_SIZE_2048
+        << " but got " << hs;
+    throw std::invalid_argument(oss.str());
+  }
+  if (weight.size(0) != HIDDEN_SIZE_2048) {
+    std::ostringstream oss;
+    oss << "rmsnorm_h2048: weight size must be " << HIDDEN_SIZE_2048
+        << " but got " << weight.size(0);
+    throw std::invalid_argument(oss.str());
+  }
+
+  // Contiguity checks (we will make contiguous copies if needed)
+  if (!hidden_states.is_contiguous()) {
+    throw std::invalid_argument("rmsnorm_h2048: hidden_states must be contiguous");
+  }
+  if (!weight.is_contiguous()) {
+    throw std::invalid_argument("rmsnorm_h2048: weight must be contiguous");
+  }
+
+  if (bs <= 0) {
+    throw std::invalid_argument("rmsnorm_h2048: batch_size must be > 0");
+  }
+}
+
+torch::Tensor run(torch::Tensor hidden_states, torch::Tensor weight) {
+  try {
+    check_inputs(hidden_states, weight);
+  } catch (const std::exception& e) {
+    throw;
+  }
+
+  const int64_t batch_size = hidden_states.size(0);
+  const int64_t hidden_size = hidden_states.size(1);
+
+  // Allocate output tensor on same device and dtype
+  torch::Tensor output = torch::empty_like(hidden_states);
+
+  // Raw pointers (BF16 represented as 16-bit)
+  // Note: c10::BFloat16 is a 16-bit storage type; reinterpret as uint16_t* for device code
+  const uint16_t* x_ptr = reinterpret_cast<const uint16_t*>(hidden_states.data_ptr<c10::BFloat16>());
+  const uint16_t* w_ptr = reinterpret_cast<const uint16_t*>(weight.data_ptr<c10::BFloat16>());
+  uint16_t* y_ptr = reinterpret_cast<uint16_t*>(output.data_ptr<c10::BFloat16>());
+
+  // Launch CUDA kernel on current stream
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  rmsnorm_h2048_cuda(x_ptr, w_ptr, y_ptr, batch_size, stream);
+
+  // Optional synchronize or error check
+  cudaError_t err_sync = cudaGetLastError();
+  if (err_sync != cudaSuccess) {
+    std::ostringstream oss;
+    oss << "rmsnorm_h2048: CUDA kernel launch failed: " << cudaGetErrorString(err_sync);
+    throw std::runtime_error(oss.str());
+  }
+
+  return output;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function");
+}
+</cpp_file>

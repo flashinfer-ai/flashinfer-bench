@@ -1,0 +1,498 @@
+You are optimizing a CUDA kernel for A800 GPU. The current implementation has issues that need to be fixed.
+
+Original Specification:
+Name: gemm_n2048_k4096
+Type: gemm
+
+Axes:
+  M: variable
+  N: constant = 2048
+  K: constant = 4096
+
+Inputs:
+  A: [M, K] (DType.FLOAT16)
+  B: [N, K] (DType.FLOAT16)
+
+Outputs:
+  C: [M, N] (DType.FLOAT16)
+
+
+Reference Implementation:
+import torch
+
+def run(A, B):
+    C = torch.matmul(A, B.T)
+    return C
+
+Current Implementation Status:
+Status: PASSED
+Timestamp: 2026-03-13T11:17:25.111393
+
+Execution Log:
+[1/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4/main.cpp -o main.o 
+[2/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4/kernel.cu -o kernel.cuda.o 
+[3/3] c++ kernel.cuda.o main.o -shared -L/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda-13.0/lib64 -lcudart -o torch_gpt_5_gemm_n2048_k4096_cuda_optimized_r8_c0_high_c312e4.so
+/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/timing.py:74: UserWarning: CUPTI is not installed. Try 'pip install -U cupti-python'. Falling back to CUDA events for benchmarking.
+  times = bench_gpu_time_with_cupti(
+
+Max relative error: 0.21509811282157898
+Max absolute error: 0.125
+Latency: 0.1884160041809082ms
+Reference latency: 0.02969600073993206ms
+Speedup factor: 0.15760869608199182x
+
+
+Current Implementation:
+<header_file name="kernel.h">
+#ifndef GEMM_N2048_K4096_KERNEL_H_
+#define GEMM_N2048_K4096_KERNEL_H_
+
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <mma.h>
+#include <cstdint>
+#include <torch/extension.h>
+
+// Fixed problem constants
+constexpr int N_CONST = 2048;
+constexpr int K_CONST = 4096;
+
+// WMMA tile sizes (Ampere-compatible)
+constexpr int WMMA_M = 16;
+constexpr int WMMA_N = 16;
+constexpr int WMMA_K = 16;
+
+// Block tile sizes tuned for A800 (SM80)
+constexpr int BM_TILE = 64;   // block tile in M
+constexpr int BN_TILE = 128;  // block tile in N
+constexpr int BK_TILE = 128;  // K tile (multiple of 16)
+
+// Padding (skew) in shared memory to reduce bank conflicts while keeping stride multiple of 16
+// Using 16 halfs keeps leading dimension aligned for WMMA loads/stores
+constexpr int SKEW_HALF = 16;                 // in units of half
+constexpr int BK_PAD = BK_TILE + SKEW_HALF;   // leading dimension in shared for A/B tiles (multiple of 16)
+
+// Warps per block: WARPS_M x WARPS_N = (BM_TILE/16) x (BN_TILE/(16*TILES_PER_WARP_N))
+constexpr int TILES_PER_WARP_N = 2; // each warp computes two 16x16 tiles along N
+constexpr int WARPS_M = BM_TILE / WMMA_M;  // 4
+constexpr int WARPS_N = (BN_TILE / (WMMA_N * TILES_PER_WARP_N));  // 4
+constexpr int WARPS_PER_BLOCK = WARPS_M * WARPS_N; // 16
+constexpr int THREADS_PER_WARP = 32;
+constexpr int THREADS_PER_BLOCK = WARPS_PER_BLOCK * THREADS_PER_WARP; // 512
+
+// Shared memory usage
+// A tile (half) with padding: BM_TILE x BK_PAD
+// B tile (half) with padding: BK_PAD x BN_TILE
+// C scratch for all warp tiles (float): BM_TILE x BN_TILE
+constexpr int SHMEM_A_ELEMS_HALF = BM_TILE * BK_PAD;                      // 64 * 144 = 9216
+constexpr int SHMEM_B_ELEMS_HALF = BK_PAD * BN_TILE;                      // 144 * 128 = 18432
+constexpr int SHMEM_C_ELEMS_FLOAT = BM_TILE * BN_TILE;                    // 64 * 128  = 8192
+
+// Forward declaration for CUDA kernel launcher
+void launch_gemm_n2048_k4096(const __half* A,
+                             const __half* B,
+                             __half* C,
+                             int M,
+                             cudaStream_t stream);
+
+#endif // GEMM_N2048_K4096_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <cstdio>
+
+using namespace nvcuda;
+
+#define CUDA_CHECK(stmt)                                           \
+  do {                                                             \
+    cudaError_t err__ = (stmt);                                    \
+    if (err__ != cudaSuccess) {                                    \
+      fprintf(stderr, "CUDA error %s at %s:%d (%s)\n",             \
+              cudaGetErrorString(err__), __FILE__, __LINE__, #stmt); \
+    }                                                              \
+  } while (0)
+
+static __device__ __forceinline__ uint4 make_uint4_zero() {
+  uint4 v; v.x = v.y = v.z = v.w = 0u; return v;
+}
+
+// WMMA-based GEMM kernel specialized for:
+// C[M, 2048] = A[M, 4096] * B[2048, 4096]^T
+// A, B, C are row-major in global memory; B is provided as [N, K] and transposed implicitly on the fly.
+__global__ __launch_bounds__(THREADS_PER_BLOCK)
+void gemm_n2048_k4096_kernel(const __half* __restrict__ A,
+                             const __half* __restrict__ B,
+                             __half* __restrict__ C,
+                             int M) {
+#if __CUDA_ARCH__ >= 700
+  // Shared memory layout (aligned):
+  // [ A_sh (BM_TILE x BK_PAD, row-major, __half) |
+  //   B_sh (BK_PAD x BN_TILE, col-major, __half) |
+  //   C_sh (BM_TILE x BN_TILE, row-major, float) ]
+  extern __shared__ __align__(16) unsigned char shmem_raw[];
+  __half* A_sh = reinterpret_cast<__half*>(shmem_raw);
+  __half* B_sh = A_sh + SHMEM_A_ELEMS_HALF;
+  float* C_sh = reinterpret_cast<float*>(B_sh + SHMEM_B_ELEMS_HALF);
+
+  const int block_m0 = blockIdx.y * BM_TILE;
+  const int block_n0 = blockIdx.x * BN_TILE;
+
+  const int warp_id = threadIdx.x / THREADS_PER_WARP;
+  const int lane_id = threadIdx.x % THREADS_PER_WARP;
+
+  const int warp_m = warp_id / WARPS_N; // [0..WARPS_M-1]
+  const int warp_n = warp_id % WARPS_N; // [0..WARPS_N-1]
+
+  // Each warp computes two 16x16 tiles along N to increase compute per data load
+  const int c_row0 = warp_m * WMMA_M;
+  const int c_col_base = warp_n * (WMMA_N * TILES_PER_WARP_N);
+  const int c_col0 = c_col_base;
+  const int c_col1 = c_col_base + WMMA_N;
+
+  // Accumulator fragments initialized to 0 (FP32 accumulation)
+  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag0;
+  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> c_frag1;
+  wmma::fill_fragment(c_frag0, 0.0f);
+  wmma::fill_fragment(c_frag1, 0.0f);
+
+  // Iterate over K dimension in tiles of BK_TILE (128), performing 8 WMMA steps per tile
+  for (int k0 = 0; k0 < K_CONST; k0 += BK_TILE) {
+    // Load A tile [BM_TILE x BK_TILE] into shared memory (row-major) using 16B vectorized loads
+    // Number of 16B chunks in A tile (without padding)
+    constexpr int A_chunks = (BM_TILE * BK_TILE * sizeof(__half)) / 16; // 64*128*2/16 = 1024
+    for (int t = threadIdx.x; t < A_chunks; t += blockDim.x) {
+      int row = t / (BK_TILE / 8);              // BK_TILE/8 chunks per row
+      int col8_chunk = (t % (BK_TILE / 8)) * 8; // starting column (in half) for this 16B chunk
+      int g_row = block_m0 + row;
+      int g_col = k0 + col8_chunk;
+
+      uint4 val4;
+      if (g_row < M) {
+        const uint4* gptr4 = reinterpret_cast<const uint4*>(A + g_row * K_CONST + g_col);
+        val4 = *gptr4;
+      } else {
+        val4 = make_uint4_zero();
+      }
+      uint4* sptr4 = reinterpret_cast<uint4*>(A_sh + row * BK_PAD + col8_chunk);
+      *sptr4 = val4;
+    }
+
+    // Load B tile [BK_TILE x BN_TILE] into shared memory as column-major using 16B vectorized loads
+    // Number of 16B chunks in B tile (without padding)
+    constexpr int B_chunks = (BK_TILE * BN_TILE * sizeof(__half)) / 16; // 128*128*2/16 = 2048
+    for (int t = threadIdx.x; t < B_chunks; t += blockDim.x) {
+      int n = t / (BK_TILE / 8);               // BN_TILE columns (0..127)
+      int k_chunk = (t % (BK_TILE / 8)) * 8;   // starting k for this 16B chunk
+      int g_n = block_n0 + n;
+      int g_k = k0 + k_chunk;
+
+      // Global B is [N, K], row-major; we read a contiguous segment along K
+      const uint4* gptr4 = reinterpret_cast<const uint4*>(B + g_n * K_CONST + g_k);
+      uint4 val4 = *gptr4;
+
+      // Store to shared as col-major with leading dimension BK_PAD
+      uint4* sptr4 = reinterpret_cast<uint4*>(B_sh + k_chunk + n * BK_PAD);
+      *sptr4 = val4;
+    }
+
+    __syncthreads();
+
+    // Compute: each warp processes two 16x16 tiles from the shared A/B tiles along N
+    const int a_tile_row_ofs = (warp_m * WMMA_M) * BK_PAD;
+    const int b_tile_col0_ofs = (c_col0)*BK_PAD;
+    const int b_tile_col1_ofs = (c_col1)*BK_PAD;
+
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, __half, wmma::row_major> a_frag;
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half, wmma::col_major> b_frag0;
+    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, __half, wmma::col_major> b_frag1;
+
+#pragma unroll
+    for (int kk = 0; kk < BK_TILE; kk += WMMA_K) {
+      wmma::load_matrix_sync(a_frag, A_sh + a_tile_row_ofs + kk, BK_PAD);
+      wmma::load_matrix_sync(b_frag0, B_sh + b_tile_col0_ofs + kk, BK_PAD);
+      wmma::load_matrix_sync(b_frag1, B_sh + b_tile_col1_ofs + kk, BK_PAD);
+      wmma::mma_sync(c_frag0, a_frag, b_frag0, c_frag0);
+      wmma::mma_sync(c_frag1, a_frag, b_frag1, c_frag1);
+    }
+
+    __syncthreads(); // Ensure all warps finished using A_sh/B_sh before next K-iteration
+  }
+
+  // Store each warp's 16x32 result tile to shared scratch (float), then convert and write to global (half)
+  float* C_tile0_sh = C_sh + c_row0 * BN_TILE + c_col0;
+  float* C_tile1_sh = C_sh + c_row0 * BN_TILE + c_col1;
+
+  wmma::store_matrix_sync(C_tile0_sh, c_frag0, BN_TILE, wmma::mem_row_major);
+  wmma::store_matrix_sync(C_tile1_sh, c_frag1, BN_TILE, wmma::mem_row_major);
+
+  __syncthreads(); // Ensure all warps' stores to C_sh are visible before conversion
+
+  // Convert to half and store to global memory with coalesced half2 stores along N dimension
+  for (int p = lane_id; p < (WMMA_M * (WMMA_N / 2)); p += THREADS_PER_WARP) {
+    int row = p / (WMMA_N / 2);    // [0..15]
+    int col2 = p % (WMMA_N / 2);   // [0..7]
+    int col = col2 << 1;
+
+    int g_r = block_m0 + c_row0 + row;
+    if (g_r < M) {
+      // Tile 0
+      {
+        int g_c0 = block_n0 + c_col0 + col;
+        float f00 = C_tile0_sh[row * BN_TILE + col + 0];
+        float f01 = C_tile0_sh[row * BN_TILE + col + 1];
+        __half2 h20 = __halves2half2(__float2half_rn(f00), __float2half_rn(f01));
+        reinterpret_cast<__half2*>(C + g_r * N_CONST + g_c0)[0] = h20;
+      }
+      // Tile 1
+      {
+        int g_c1 = block_n0 + c_col1 + col;
+        float f10 = C_tile1_sh[row * BN_TILE + col + 0];
+        float f11 = C_tile1_sh[row * BN_TILE + col + 1];
+        __half2 h21 = __halves2half2(__float2half_rn(f10), __float2half_rn(f11));
+        reinterpret_cast<__half2*>(C + g_r * N_CONST + g_c1)[0] = h21;
+      }
+    }
+  }
+#else
+  (void)A; (void)B; (void)C; (void)M;
+#endif
+}
+
+void launch_gemm_n2048_k4096(const __half* A,
+                             const __half* B,
+                             __half* C,
+                             int M,
+                             cudaStream_t stream) {
+  if (M <= 0) return;
+
+  // Grid/block configuration
+  dim3 block(THREADS_PER_BLOCK, 1, 1);
+  dim3 grid((N_CONST + BN_TILE - 1) / BN_TILE, (M + BM_TILE - 1) / BM_TILE, 1);
+
+  // Shared memory: A (half, padded) + B (half, padded) + block C scratch (float)
+  size_t shmem_bytes = static_cast<size_t>(SHMEM_A_ELEMS_HALF + SHMEM_B_ELEMS_HALF) * sizeof(__half)
+                     + static_cast<size_t>(SHMEM_C_ELEMS_FLOAT) * sizeof(float);
+
+  // Opt-in larger dynamic shared memory if needed (SM80 supports up to 163KB)
+  CUDA_CHECK(cudaFuncSetAttribute(
+      gemm_n2048_k4096_kernel,
+      cudaFuncAttributeMaxDynamicSharedMemorySize,
+      static_cast<int>(shmem_bytes)));
+
+  gemm_n2048_k4096_kernel<<<grid, block, shmem_bytes, stream>>>(A, B, C, M);
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+#include <stdexcept>
+#include <sstream>
+#include "kernel.h"
+
+static inline void throw_runtime_error(const std::string& msg) {
+  throw std::runtime_error(msg);
+}
+
+static inline std::string shape_to_string(const torch::Tensor& t) {
+  std::ostringstream oss;
+  oss << "[";
+  for (int i = 0; i < t.dim(); ++i) {
+    oss << t.size(i);
+    if (i + 1 < t.dim()) oss << ", ";
+  }
+  oss << "]";
+  return oss.str();
+}
+
+static inline int64_t get_int64_arg_or_kwarg(const torch::jit::Stack& /*stack*/, int64_t v) {
+  return v;
+}
+
+torch::Tensor run(torch::Tensor A, torch::Tensor B) {
+  try {
+    // Move to CUDA if tensors are on CPU
+    bool input_was_cpu = false;
+    int device_index = 0;
+    if (A.device().is_cuda()) {
+      device_index = A.device().index();
+    } else if (B.device().is_cuda()) {
+      device_index = B.device().index();
+    } else {
+      input_was_cpu = true;
+      device_index = at::cuda::current_device();
+      A = A.to(torch::Device(torch::kCUDA, device_index));
+      B = B.to(torch::Device(torch::kCUDA, device_index));
+    }
+
+    if (!A.device().is_cuda() || !B.device().is_cuda()) {
+      throw_runtime_error("Inputs must be CUDA tensors or CPU tensors (CPU tensors will be moved to CUDA)");
+    }
+    if (A.device().index() != B.device().index()) {
+      throw_runtime_error("A and B must be on the same CUDA device");
+    }
+
+    // Validate dtype
+    if (A.dtype() != torch::kFloat16 || B.dtype() != torch::kFloat16) {
+      throw_runtime_error("A and B must be torch.float16 (FP16)");
+    }
+
+    // Validate shapes
+    if (A.dim() != 2 || B.dim() != 2) {
+      throw_runtime_error("A and B must be 2D tensors");
+    }
+    const int64_t M64 = A.size(0);
+    if (A.size(1) != K_CONST) {
+      std::ostringstream oss;
+      oss << "A must have shape [M, " << K_CONST << "], got " << shape_to_string(A);
+      throw_runtime_error(oss.str());
+    }
+    if (B.size(0) != N_CONST || B.size(1) != K_CONST) {
+      std::ostringstream oss;
+      oss << "B must have shape [" << N_CONST << ", " << K_CONST << "], got " << shape_to_string(B);
+      throw_runtime_error(oss.str());
+    }
+
+    // Ensure contiguous row-major layout
+    auto A_c = A.contiguous();
+    auto B_c = B.contiguous();
+
+    // Allocate output tensor on device
+    auto options = A_c.options().dtype(torch::kFloat16).device(A_c.device());
+    torch::Tensor C_dev = torch::empty({M64, static_cast<int64_t>(N_CONST)}, options);
+
+    // Get raw device pointers
+    const __half* A_ptr = reinterpret_cast<const __half*>(A_c.data_ptr<c10::Half>());
+    const __half* B_ptr = reinterpret_cast<const __half*>(B_c.data_ptr<c10::Half>());
+    __half* C_ptr = reinterpret_cast<__half*>(C_dev.data_ptr<c10::Half>());
+
+    // Get current CUDA stream from PyTorch
+    auto stream = at::cuda::getCurrentCUDAStream();
+
+    // Launch kernel
+    launch_gemm_n2048_k4096(A_ptr, B_ptr, C_ptr, static_cast<int>(M64), stream.stream());
+
+    // Error checking
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::ostringstream oss;
+      oss << "CUDA kernel launch failed: " << cudaGetErrorString(err);
+      throw_runtime_error(oss.str());
+    }
+
+    // Synchronize to ensure completion before returning
+    err = cudaStreamSynchronize(stream.stream());
+    if (err != cudaSuccess) {
+      std::ostringstream oss;
+      oss << "CUDA stream synchronization failed: " << cudaGetErrorString(err);
+      throw_runtime_error(oss.str());
+    }
+
+    // If inputs were CPU, move result back to CPU
+    if (input_was_cpu) {
+      return C_dev.to(torch::kCPU);
+    }
+    return C_dev;
+  } catch (const std::exception& e) {
+    throw_runtime_error(std::string("run() failed: ") + e.what());
+  } catch (...) {
+    throw_runtime_error("run() failed due to an unknown error");
+  }
+  return torch::Tensor();
+}
+
+// PyBind11 module
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function");
+}
+</cpp_file>
+
+Optimization Strategy:
+1. ENSURE CORRECTNESS: If there are compile errors, runtime errors, or incorrect outputs, focus entirely on fixing these issues
+   - Analyze compilation errors and fix syntax/API usage
+   - Fix runtime errors like shape mismatches, memory access violations, kernel launch failures
+   - Ensure numerical correctness matches the reference implementation
+   - Verify proper CUDA memory management and synchronization
+
+2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
+   - Optimize memory access patterns and coalescing for A800
+   - Tune block sizes and grid dimensions for maximum occupancy
+   - Utilize shared memory effectively to reduce global memory transactions
+   - Optimize register usage and minimize divergent branches
+   - Consider using specialized libraries (such as CUTLASS) where beneficial
+   - Leverage constant axis values for compile-time optimizations
+
+Requirements for the optimized implementation:
+- Write clean, efficient CUDA C++ code optimized for A800 architecture
+- Use proper CUDA syntax and modern features appropriate for A800
+- Fix all identified issues from the feedback
+- Maintain or improve computational accuracy
+- Preserve the same function signatures and device handling as specified
+- For fixed axis values, optimize specifically for those constants rather than general cases
+
+IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
+
+<header_file name="kernel.h">
+- All CUDA kernel function declarations
+- Host function declarations
+- Any necessary struct/type definitions
+- Include guards and necessary headers
+</header_file>
+
+<cuda_file name="kernel.cu">
+- All __global__ kernel implementations
+- All __device__ helper functions
+- CUDA-specific optimizations and memory patterns
+- Proper error checking and memory management
+</cuda_file>
+
+<cpp_file name="main.cpp">
+- Host function that launches kernels
+- Memory allocation and data transfer management
+- Device management and error handling
+- Entry point function named "run" that can be called to execute the implementation
+- Handle both args and kwargs properly
+- Move CPU data to GPU, execute kernels, and return results to CPU
+</cpp_file>
+
+Code Generation Guidelines:
+- Use modern CUDA features appropriate for A800
+- Optimize memory coalescing and reduce bank conflicts
+- Utilize shared memory effectively for data reuse
+- Consider occupancy and register usage
+- Implement proper error checking with cudaGetLastError()
+- Use appropriate grid and block dimensions for the problem size
+- Leverage constant memory for frequently accessed read-only data
+- Ensure proper CUDA stream synchronization and error handling
+
+Generate the corrected and optimized implementation:
+
+
+Use TORCH for your generated kernel host function and bindings
+
+Requirements:
+- Include all necessary headers (torch/extension.h, kernel.h, etc.)
+- Implement the "run" function that:
+  * Takes torch::Tensor arguments
+  * Validates tensor properties (device, dtype, shape)
+  * Extracts raw pointers using .data_ptr<T>()
+  * Calls the CUDA kernel with appropriate launch configuration
+  * Returns results as torch::Tensor
+- Use PYBIND11_MODULE to bind the "run" function:
+  * PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  *   m.def("run", &run, "Kernel execution function");
+  * }
+- Handle both positional args and kwargs properly
+- Include proper error messages for invalid inputs
+
+- Use torch::Tensor for all tensor arguments
+- Use .device().is_cuda() to check if tensors are on GPU
+- Use .dtype() to validate tensor data types
+- Use .sizes() or .size(dim) to get tensor dimensions
+- Use .data_ptr<float>() or .data_ptr<T>() to get raw pointers
+- Call cudaDeviceSynchronize() or cudaGetLastError() for error checking
+- Return torch::Tensor from the run function
+- Handle exceptions gracefully with proper error messages

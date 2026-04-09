@@ -1,0 +1,41 @@
+==================================================
+[Thu Mar 12 08:50:38 PM CST 2026] Start definition: gemm_n128_k2048 | attempt 1/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n128_k2048_attempt1.log
+==================================================
+[SUCCESS] gemm_n128_k2048 succeeded on attempt 1
+==================================================
+[Thu Mar 12 09:41:52 PM CST 2026] Start definition: gemm_n2048_k4096 | attempt 1/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n2048_k4096_attempt1.log
+==================================================
+[FAIL] gemm_n2048_k4096 failed on attempt 1 with exit code 1
+[RETRY] Retrying gemm_n2048_k4096...
+==================================================
+[Thu Mar 12 10:06:15 PM CST 2026] Start definition: gemm_n2048_k4096 | attempt 2/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n2048_k4096_attempt2.log
+==================================================
+[FAIL] gemm_n2048_k4096 failed on attempt 2 with exit code 1
+[SKIP] gemm_n2048_k4096 failed twice, skip to next definition.
+==================================================
+[Thu Mar 12 10:13:06 PM CST 2026] Start definition: rmsnorm_h5120 | attempt 1/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/rmsnorm_h5120_attempt1.log
+==================================================
+[FAIL] rmsnorm_h5120 failed on attempt 1 with exit code 1
+[RETRY] Retrying rmsnorm_h5120...
+==================================================
+[Thu Mar 12 10:13:09 PM CST 2026] Start definition: rmsnorm_h5120 | attempt 2/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/rmsnorm_h5120_attempt2.log
+==================================================
+[FAIL] rmsnorm_h5120 failed on attempt 2 with exit code 1
+[SKIP] rmsnorm_h5120 failed twice, skip to next definition.
+==================================================
+[Thu Mar 12 10:13:12 PM CST 2026] Start definition: gemm_n5120_k5120 | attempt 1/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n5120_k5120_attempt1.log
+==================================================
+[FAIL] gemm_n5120_k5120 failed on attempt 1 with exit code 1
+[RETRY] Retrying gemm_n5120_k5120...
+==================================================
+[Thu Mar 12 10:13:15 PM CST 2026] Start definition: gemm_n5120_k5120 | attempt 2/2
+Log: /data1/workspace/airulan/bench/flashinfer-bench/logs/fib_batch_gpt5_cuda_20260312_205038/gemm_n5120_k5120_attempt2.log
+==================================================
+[FAIL] gemm_n5120_k5120 failed on attempt 2 with exit code 1
+[SKIP] gemm_n5120_k5120 failed twice, skip to next definition.

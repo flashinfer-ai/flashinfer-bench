@@ -1,0 +1,2 @@
+model,definition,solution,solution_path,feedback_workload_uuid,experiment_status,total_traces,passed_traces,compile_errors,runtime_errors,correctness_errors,timeouts,pass_rate,best_speedup,avg_speedup,top_error_bucket,error_message
+gpt-5.4-pro-2026-03-05,gqa_ragged_prefill_causal_h32_kv4_d128,,,ebf7188b-4b31-4746-b57b-fa25b53f5e3e,FAILED,0,0,0,0,0,0,,,,,Request timed out.

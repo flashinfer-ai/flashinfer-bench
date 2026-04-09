@@ -1,0 +1,12 @@
+
+[gpt-5.4-pro-2026-03-05] generating gqa_ragged_prefill_causal_h32_kv8_d128 using feedback workload f7a038e9-6c18-4fd6-9b79-e349a4c79bd8
+Generating optimized solution for gqa_ragged_prefill_causal_h32_kv8_d128
+Using workload f7a038e9-6c18-4fd6-9b79-e349a4c79bd8 for optimization feedback
+Error while generating code: Request timed out.
+[error] gpt-5.4-pro-2026-03-05 / gqa_ragged_prefill_causal_h32_kv8_d128: Request timed out.
+
+Experiment summary
+================================================================================
+gpt-5.4-pro-2026-03-05 | gqa_ragged_prefill_causal_h32_kv8_d128 | FAILED | pass_rate=n/a | best_speedup=n/a | top_bucket=n/a
+
+Artifacts written to: /data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/results/gqa_ragged_20260310_210449/gpt5_kv8/run_20260310_210455

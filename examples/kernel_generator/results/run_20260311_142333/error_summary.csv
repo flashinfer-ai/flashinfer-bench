@@ -1,0 +1,4 @@
+model,definition,secondary_bucket,count
+gpt-5,gqa_ragged_prefill_causal_h32_kv8_d128,correctness.nonfinite,2
+gpt-5,gqa_ragged_prefill_causal_h32_kv8_d128,correctness.numerical,4
+gpt-5,gqa_ragged_prefill_causal_h32_kv8_d128,passed,15

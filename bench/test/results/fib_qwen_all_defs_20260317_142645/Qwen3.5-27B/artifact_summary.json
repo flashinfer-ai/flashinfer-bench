@@ -1,0 +1,45 @@
+{
+  "trace_set_root": "bench/test/results/fib_qwen_all_defs_20260317_142645/Qwen3.5-27B",
+  "summary": {
+    "total": 151,
+    "passed": 0,
+    "failed": 151,
+    "min_latency_ms": null,
+    "max_latency_ms": null,
+    "avg_latency_ms": null
+  },
+  "status_counts": {
+    "COMPILE_ERROR": 128,
+    "RUNTIME_ERROR": 23
+  },
+  "per_definition": {
+    "dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64": {
+      "total": 23,
+      "passed": 0,
+      "failed": 23,
+      "status_counts": {
+        "RUNTIME_ERROR": 23
+      },
+      "best_solution": null,
+      "best_speedup_factor": null,
+      "best_latency_ms": null,
+      "best_reference_latency_ms": null,
+      "best_max_absolute_error": null,
+      "best_max_relative_error": null
+    },
+    "dsa_topk_indexer_fp8_h64_d128_topk2048_ps64": {
+      "total": 128,
+      "passed": 0,
+      "failed": 128,
+      "status_counts": {
+        "COMPILE_ERROR": 128
+      },
+      "best_solution": null,
+      "best_speedup_factor": null,
+      "best_latency_ms": null,
+      "best_reference_latency_ms": null,
+      "best_max_absolute_error": null,
+      "best_max_relative_error": null
+    }
+  }
+}

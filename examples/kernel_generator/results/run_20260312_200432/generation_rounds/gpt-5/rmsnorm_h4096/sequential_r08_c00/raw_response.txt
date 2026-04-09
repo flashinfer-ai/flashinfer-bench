@@ -1,0 +1,246 @@
+<header_file name="kernel.h">
+#ifndef RMSNORM_H4096_KERNEL_H
+#define RMSNORM_H4096_KERNEL_H
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cstdint>
+#include <torch/extension.h>
+
+// Constants
+#ifndef RMSNORM_EPS
+#define RMSNORM_EPS 1e-5f
+#endif
+
+#ifndef RMSNORM_HIDDEN_SIZE
+#define RMSNORM_HIDDEN_SIZE 4096
+#endif
+
+// CUDA kernel declaration
+__global__ void rmsnorm_h4096_kernel(const __nv_bfloat16* __restrict__ hidden_states,
+                                     const __nv_bfloat16* __restrict__ weight,
+                                     __nv_bfloat16* __restrict__ output,
+                                     int batch_size);
+
+// Host function that validates inputs and launches the kernel
+torch::Tensor run(torch::Tensor hidden_states, torch::Tensor weight);
+
+#endif // RMSNORM_H4096_KERNEL_H
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <cuda.h>
+#include <cuda_bf16.h>
+
+// Warp-level sum reduction using shuffles
+__device__ __forceinline__ float warp_reduce_sum(float val) {
+    unsigned mask = 0xffffffffu;
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        val += __shfl_down_sync(mask, val, offset);
+    }
+    return val;
+}
+
+// One block per row (batch element), 256 threads per block.
+// Cache the row as float32 in shared memory to avoid reloading for the second pass.
+__launch_bounds__(256, 4)
+__global__ void rmsnorm_h4096_kernel(const __nv_bfloat16* __restrict__ hidden_states,
+                                     const __nv_bfloat16* __restrict__ weight,
+                                     __nv_bfloat16* __restrict__ output,
+                                     int batch_size) {
+    extern __shared__ float s_x[]; // dynamic shared memory sized to RMSNORM_HIDDEN_SIZE floats
+    // We launch with 256 threads => 8 warps
+    __shared__ float warp_sums[8];
+    __shared__ float s_inv_rms;
+
+    const int tid = threadIdx.x;
+    const int row = blockIdx.x;
+
+    if (row >= batch_size) return;
+
+    constexpr int H = RMSNORM_HIDDEN_SIZE;
+    constexpr int THREADS = 256;
+    static_assert(H % THREADS == 0, "RMSNORM_HIDDEN_SIZE must be divisible by 256");
+    static_assert(THREADS % 32 == 0, "THREADS must be a multiple of warp size");
+    constexpr int ITERS = H / THREADS;
+
+    const int base = row * H;
+
+    // First pass: load BF16 -> FP32 into shared memory and accumulate sum of squares
+    float sum = 0.0f;
+#pragma unroll
+    for (int i = 0; i < ITERS; ++i) {
+        int idx = i * THREADS + tid; // 0..H-1
+        float xi = __bfloat162float(hidden_states[base + idx]);
+        s_x[idx] = xi;
+        sum = fmaf(xi, xi, sum); // sum += xi * xi
+    }
+    __syncthreads();
+
+    // Warp-level reduction
+    sum = warp_reduce_sum(sum);
+
+    const int warp_id = threadIdx.x >> 5; // /32
+    const int lane_id = threadIdx.x & 31;
+
+    if (lane_id == 0) {
+        warp_sums[warp_id] = sum;
+    }
+    __syncthreads();
+
+    // First warp reduces warp sums and computes inverse RMS
+    if (warp_id == 0) {
+        float total = (lane_id < (THREADS >> 5)) ? warp_sums[lane_id] : 0.0f;
+        total = warp_reduce_sum(total);
+        if (lane_id == 0) {
+            constexpr float invH = 1.0f / static_cast<float>(H);
+            float mean_sq = total * invH;
+            s_inv_rms = rsqrtf(mean_sq + RMSNORM_EPS);
+        }
+    }
+    __syncthreads();
+
+    const float inv_rms = s_inv_rms;
+
+    // Second pass: normalize with inv_rms and scale by weight
+#pragma unroll
+    for (int i = 0; i < ITERS; ++i) {
+        int idx = i * THREADS + tid;
+        float xi = s_x[idx];
+        float wi = __bfloat162float(weight[idx]); // weight shared across rows
+        float yi = xi * inv_rms * wi;
+        output[base + idx] = __float2bfloat16_rn(yi);
+    }
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAGuard.h>
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <stdexcept>
+#include <sstream>
+#include <limits>
+#include <string>
+
+#include "kernel.h"
+
+// CUDA error checking helper
+static inline void checkCudaOrThrow(const char* where) {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::ostringstream oss;
+        oss << where << " CUDA Error: " << cudaGetErrorString(err);
+        throw std::runtime_error(oss.str());
+    }
+}
+
+torch::Tensor run(torch::Tensor hidden_states, torch::Tensor weight) {
+    try {
+        // Validate dtypes
+        if (hidden_states.dtype() != torch::kBFloat16) {
+            throw std::invalid_argument("hidden_states must have dtype torch.bfloat16.");
+        }
+        if (weight.dtype() != torch::kBFloat16) {
+            throw std::invalid_argument("weight must have dtype torch.bfloat16.");
+        }
+
+        // Validate shapes
+        if (hidden_states.dim() != 2) {
+            throw std::invalid_argument("hidden_states must be a 2D tensor of shape [batch_size, 4096].");
+        }
+        if (weight.dim() != 1) {
+            throw std::invalid_argument("weight must be a 1D tensor of shape [4096].");
+        }
+
+        const int64_t batch_size64 = hidden_states.size(0);
+        const int64_t hidden_size = hidden_states.size(1);
+        if (hidden_size != RMSNORM_HIDDEN_SIZE) {
+            throw std::invalid_argument("hidden_size must be 4096.");
+        }
+        if (weight.size(0) != RMSNORM_HIDDEN_SIZE) {
+            throw std::invalid_argument("weight must have size 4096.");
+        }
+        if (batch_size64 < 0 || batch_size64 > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+            throw std::invalid_argument("batch_size out of supported range for this kernel.");
+        }
+        const int batch_size = static_cast<int>(batch_size64);
+
+        // Determine device index: use CUDA device if any tensor is CUDA, else current CUDA device
+        int device_index = 0;
+        if (hidden_states.device().is_cuda()) {
+            device_index = hidden_states.get_device();
+        } else if (weight.device().is_cuda()) {
+            device_index = weight.get_device();
+        } else {
+            cudaGetDevice(&device_index);
+        }
+        c10::cuda::CUDAGuard device_guard(device_index);
+
+        // Place tensors on the same CUDA device
+        torch::Tensor hs_gpu = hidden_states;
+        torch::Tensor w_gpu = weight;
+        bool input_was_cpu = false;
+
+        if (!hidden_states.device().is_cuda() || hidden_states.get_device() != device_index) {
+            hs_gpu = hidden_states.to(torch::Device(torch::kCUDA, device_index));
+            input_was_cpu = !hidden_states.device().is_cuda();
+        }
+        if (!weight.device().is_cuda() || weight.get_device() != device_index) {
+            w_gpu = weight.to(torch::Device(torch::kCUDA, device_index));
+            input_was_cpu = input_was_cpu || !weight.device().is_cuda();
+        }
+
+        // Ensure contiguous tensors for efficient memory access
+        auto hs_contig = hs_gpu.is_contiguous() ? hs_gpu : hs_gpu.contiguous();
+        auto w_contig = w_gpu.is_contiguous() ? w_gpu : w_gpu.contiguous();
+
+        // Prepare output tensor on GPU
+        auto output_gpu = torch::empty_like(hs_contig, hs_contig.options());
+
+        // Get current CUDA stream from PyTorch
+        auto stream = at::cuda::getCurrentCUDAStream();
+
+        // Extract raw pointers (reinterpret to __nv_bfloat16)
+        const __nv_bfloat16* hs_ptr = reinterpret_cast<const __nv_bfloat16*>(hs_contig.data_ptr<at::BFloat16>());
+        const __nv_bfloat16* w_ptr  = reinterpret_cast<const __nv_bfloat16*>(w_contig.data_ptr<at::BFloat16>());
+        __nv_bfloat16* out_ptr      = reinterpret_cast<__nv_bfloat16*>(output_gpu.data_ptr<at::BFloat16>());
+
+        // Configure kernel launch
+        const dim3 threads(256);
+        const dim3 blocks(static_cast<unsigned int>(batch_size));
+        const size_t shared_bytes = static_cast<size_t>(RMSNORM_HIDDEN_SIZE) * sizeof(float); // s_x
+
+        if (blocks.x > 0) {
+            rmsnorm_h4096_kernel<<<blocks, threads, shared_bytes, stream.stream()>>>(
+                hs_ptr, w_ptr, out_ptr, batch_size
+            );
+            checkCudaOrThrow("rmsnorm_h4096_kernel launch");
+        }
+
+        // If inputs were on CPU, synchronize and return CPU tensor to mirror input device
+        if (input_was_cpu) {
+            cudaError_t sync_status = cudaStreamSynchronize(stream.stream());
+            if (sync_status != cudaSuccess) {
+                std::ostringstream oss;
+                oss << "Stream synchronization failed: " << cudaGetErrorString(sync_status);
+                throw std::runtime_error(oss.str());
+            }
+            return output_gpu.to(torch::kCPU);
+        }
+
+        return output_gpu;
+    } catch (const std::exception& e) {
+        throw std::runtime_error(std::string("rmsnorm_h4096 run() failed: ") + e.what());
+    }
+}
+
+// PyBind11 module binding
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("run", &run, "Kernel execution function");
+}
+</cpp_file>

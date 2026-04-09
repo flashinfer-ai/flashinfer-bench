@@ -1,0 +1,10 @@
+TraceSet root: bench/test/results/fib_all_defs_20260317_142116/gpt-5.2_n
+Total traces: 14
+Passed traces: 14
+Failed traces: 0
+Min latency (passed): 0.027648000046610832
+Max latency (passed): 0.35566932956377667
+Avg latency (passed): 0.12895085715821814
+
+Status counts:
+  PASSED: 14

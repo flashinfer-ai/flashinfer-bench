@@ -1,0 +1,281 @@
+<header_file name="kernel.h">
+#ifndef GEMM_N128_K2048_KERNEL_H_
+#define GEMM_N128_K2048_KERNEL_H_
+
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+
+// Fixed dimensions for this kernel
+constexpr int GEMM_N = 128;
+constexpr int GEMM_K = 2048;
+
+// CUDA kernel launcher declaration
+void gemm_n128_k2048_launcher(const half* A, const half* B, half* C, int M, cudaStream_t stream);
+
+// PyTorch binding function declaration
+#include <torch/extension.h>
+torch::Tensor run(torch::Tensor A, torch::Tensor B);
+
+#endif // GEMM_N128_K2048_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+#include <mma.h>
+#include <cstdio>
+#include <stdexcept>
+
+using namespace nvcuda;
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(err) do { \
+  cudaError_t err_ = (err); \
+  if (err_ != cudaSuccess) { \
+    fprintf(stderr, "CUDA Error %s at %s:%d: %s\n", #err, __FILE__, __LINE__, cudaGetErrorString(err_)); \
+    throw std::runtime_error(cudaGetErrorString(err_)); \
+  } \
+} while (0)
+#endif
+
+// Utility for integer division rounding up
+__host__ __device__ inline int ceil_div(int a, int b) {
+  return (a + b - 1) / b;
+}
+
+// Kernel configuration
+constexpr int BLOCK_M = 128; // Tile size along M per block
+constexpr int BLOCK_N = GEMM_N; // 128
+constexpr int WMMA_M = 16;
+constexpr int WMMA_N = 16;
+constexpr int WMMA_K = 16;
+
+// The actual CUDA kernel using WMMA on Tensor Cores
+__global__ void gemm_n128_k2048_kernel(const half* __restrict__ A,
+                                       const half* __restrict__ B,
+                                       half* __restrict__ C,
+                                       int M,
+                                       int lda, // leading dimension of A (K)
+                                       int ldb, // leading dimension of B when viewed as KxN col-major (K)
+                                       int ldc  // leading dimension of C (N=128)
+                                       ) {
+  // Shared memory layout:
+  // B_smem: [WMMA_K * BLOCK_N] half = 16*128
+  // A_smem: [BLOCK_M * WMMA_K] half = 128*16 (used only for tail blocks)
+  // Cwarp_smem: [WARPS * WMMA_M * WMMA_N] float = 8*16*16 (per-warp 16x16 buffer for storing and conversion)
+  extern __shared__ unsigned char smem_raw[];
+  half* B_smem = reinterpret_cast<half*>(smem_raw);
+  half* A_smem = B_smem + (WMMA_K * BLOCK_N); // 16*128
+  float* Cwarp_smem = reinterpret_cast<float*>(A_smem + (BLOCK_M * WMMA_K)); // after A_smem
+
+  const int m_block = blockIdx.x * BLOCK_M;
+  const int tail_m = max(0, min(BLOCK_M, M - m_block));
+  const bool full_block = (tail_m == BLOCK_M);
+
+  // Thread info
+  const int tid = threadIdx.x;
+  const int warp_id = tid / 32;
+  const int lane_id = tid % 32;
+
+  // We schedule 8 warps per block, each warp computes a 16x128 tile along M (rows)
+  if (warp_id >= (BLOCK_M / WMMA_M)) {
+    return;
+  }
+
+  // Initialize accumulator fragments (8 fragments across N=128 in 16-wide tiles)
+  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> acc_frag[BLOCK_N / WMMA_N];
+#pragma unroll
+  for (int i = 0; i < (BLOCK_N / WMMA_N); ++i) {
+    wmma::fill_fragment(acc_frag[i], 0.0f);
+  }
+
+  // Main loop over K in steps of 16
+  for (int k0 = 0; k0 < GEMM_K; k0 += WMMA_K) {
+    // Stage B tile (Ktile x Ntile) into shared memory as col-major with ldm=16
+    // B is provided as [N, K] row-major; We treat it as [K, N] col-major with leading dim = K.
+    // So element at (row=k, col=n) is B[n * K + k].
+    for (int idx = tid; idx < WMMA_K * BLOCK_N; idx += blockDim.x) {
+      int r = idx % WMMA_K;         // 0..15 (k within tile)
+      int c = idx / WMMA_K;         // 0..127 (n within tile)
+      B_smem[r + c * WMMA_K] = B[c * ldb + (k0 + r)];
+    }
+
+    // For tail blocks (not full 128 rows), stage A sub-tile into shared memory with zero padding
+    if (!full_block) {
+      for (int idx = tid; idx < BLOCK_M * WMMA_K; idx += blockDim.x) {
+        int r = idx / WMMA_K;       // 0..127 (m within tile)
+        int c = idx % WMMA_K;       // 0..15  (k within tile)
+        if (r < tail_m) {
+          A_smem[r * WMMA_K + c] = A[(m_block + r) * lda + (k0 + c)];
+        } else {
+          A_smem[r * WMMA_K + c] = __float2half(0.0f);
+        }
+      }
+    }
+
+    __syncthreads();
+
+    // Load A fragment for this warp
+    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major> a_frag;
+    if (full_block) {
+      const half* A_ptr = A + (m_block + warp_id * WMMA_M) * lda + k0;
+      wmma::load_matrix_sync(a_frag, A_ptr, lda);
+    } else {
+      const half* A_ptr = A_smem + (warp_id * WMMA_M) * WMMA_K;
+      wmma::load_matrix_sync(a_frag, A_ptr, WMMA_K);
+    }
+
+    // Iterate across N tiles and perform MMA
+#pragma unroll
+    for (int n_frag = 0; n_frag < (BLOCK_N / WMMA_N); ++n_frag) {
+      wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::col_major> b_frag;
+      const half* B_ptr = B_smem + (n_frag * WMMA_N) * WMMA_K; // base of column block
+      wmma::load_matrix_sync(b_frag, B_ptr, WMMA_K);
+      wmma::mma_sync(acc_frag[n_frag], a_frag, b_frag, acc_frag[n_frag]);
+    }
+
+    __syncthreads(); // ensure B_smem is not overwritten before all warps finish this k iteration
+  } // end K loop
+
+  // Each warp stores its 8 accumulator fragments (16x16 each) via a small per-warp shared buffer.
+#pragma unroll
+  for (int n_frag = 0; n_frag < (BLOCK_N / WMMA_N); ++n_frag) {
+    // Per-warp buffer for one 16x16 tile
+    float* warp_buf = Cwarp_smem + warp_id * (WMMA_M * WMMA_N);
+    // Store accumulator to per-warp buffer (row-major, ldm=16)
+    wmma::store_matrix_sync(warp_buf, acc_frag[n_frag], WMMA_N, wmma::mem_row_major);
+
+    // Convert to half and write to global memory
+    // Each warp has 32 lanes; 16x16=256 elements; 8 elements per lane
+#pragma unroll
+    for (int t = lane_id; t < (WMMA_M * WMMA_N); t += 32) {
+      int r = t / WMMA_N; // 0..15
+      int c = t % WMMA_N; // 0..15
+      int global_m = m_block + warp_id * WMMA_M + r;
+      int global_n = n_frag * WMMA_N + c;
+      if (global_m < M) {
+        float v = warp_buf[r * WMMA_N + c];
+        C[global_m * ldc + global_n] = __float2half_rn(v);
+      }
+    }
+  }
+}
+
+// Kernel launcher
+void gemm_n128_k2048_launcher(const half* A, const half* B, half* C, int M, cudaStream_t stream) {
+  if (M <= 0) return;
+
+  dim3 block(256, 1, 1); // 8 warps per block
+  dim3 grid(ceil_div(M, BLOCK_M), 1, 1);
+
+  int lda = GEMM_K;
+  int ldb = GEMM_K; // viewing B as KxN col-major with leading dimension K
+  int ldc = GEMM_N;
+
+  // Dynamic shared memory size calculation:
+  size_t smem_b = WMMA_K * BLOCK_N * sizeof(half);     // 16*128 half
+  size_t smem_a = BLOCK_M * WMMA_K * sizeof(half);     // 128*16 half
+  size_t smem_cwarp = (BLOCK_M / WMMA_M) * WMMA_M * WMMA_N * sizeof(float); // 8*16*16 float
+  size_t smem_bytes = smem_b + smem_a + smem_cwarp;
+
+  // Increase max dynamic shared memory size attribute if necessary (Ampere allows >48KB)
+  cudaFuncSetAttribute(
+      gemm_n128_k2048_kernel,
+      cudaFuncAttributeMaxDynamicSharedMemorySize,
+      static_cast<int>(smem_bytes)
+  );
+
+  gemm_n128_k2048_kernel<<<grid, block, smem_bytes, stream>>>(A, B, C, M, lda, ldb, ldc);
+  CUDA_CHECK(cudaGetLastError());
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+#include <stdexcept>
+#include <sstream>
+
+static void check_inputs(const torch::Tensor& A, const torch::Tensor& B) {
+  if (A.dim() != 2 || B.dim() != 2) {
+    throw std::invalid_argument("A and B must be 2D tensors");
+  }
+  if (A.size(1) != GEMM_K) {
+    std::ostringstream oss;
+    oss << "A must have shape [M, " << GEMM_K << "], but got [" << A.size(0) << ", " << A.size(1) << "]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (B.size(0) != GEMM_N || B.size(1) != GEMM_K) {
+    std::ostringstream oss;
+    oss << "B must have shape [" << GEMM_N << ", " << GEMM_K << "], but got [" << B.size(0) << ", " << B.size(1) << "]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (A.dtype() != torch::kHalf || B.dtype() != torch::kHalf) {
+    throw std::invalid_argument("A and B must be torch.float16 (Half) tensors");
+  }
+}
+
+torch::Tensor run(torch::Tensor A_in, torch::Tensor B_in) {
+  // Validate and move tensors to CUDA if necessary
+  check_inputs(A_in, B_in);
+
+  bool input_on_cuda = (A_in.device().is_cuda() && B_in.device().is_cuda());
+  torch::Tensor A_cuda = A_in;
+  torch::Tensor B_cuda = B_in;
+
+  if (!input_on_cuda) {
+    A_cuda = A_in.to(torch::kCUDA);
+    B_cuda = B_in.to(torch::kCUDA);
+  }
+
+  if (!A_cuda.is_contiguous()) A_cuda = A_cuda.contiguous();
+  if (!B_cuda.is_contiguous()) B_cuda = B_cuda.contiguous();
+
+  const int64_t M64 = A_cuda.size(0);
+  if (M64 < 0) {
+    throw std::invalid_argument("Invalid M dimension for A");
+  }
+  const int M = static_cast<int>(M64);
+
+  auto options = torch::TensorOptions().dtype(torch::kHalf).device(A_cuda.device());
+  torch::Tensor C_cuda = torch::empty({M64, static_cast<int64_t>(GEMM_N)}, options);
+
+  // Raw pointers
+  const at::Half* A_ptr = A_cuda.data_ptr<at::Half>();
+  const at::Half* B_ptr = B_cuda.data_ptr<at::Half>();
+  at::Half* C_ptr = C_cuda.data_ptr<at::Half>();
+
+  // Current CUDA stream from PyTorch
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream().stream();
+
+  // Launch kernel
+  gemm_n128_k2048_launcher(
+      reinterpret_cast<const half*>(A_ptr),
+      reinterpret_cast<const half*>(B_ptr),
+      reinterpret_cast<half*>(C_ptr),
+      M,
+      stream
+  );
+
+  // Check for launch errors
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("CUDA kernel launch error: ") + cudaGetErrorString(err));
+  }
+
+  // If inputs were on CPU, move result back to CPU
+  if (!input_on_cuda) {
+    return C_cuda.to(torch::kCPU);
+  }
+  return C_cuda;
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function");
+}
+</cpp_file>

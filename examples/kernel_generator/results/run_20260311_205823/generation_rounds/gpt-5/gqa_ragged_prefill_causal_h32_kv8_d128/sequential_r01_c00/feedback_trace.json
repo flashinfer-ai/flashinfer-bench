@@ -1,0 +1,52 @@
+{
+  "definition": "gqa_ragged_prefill_causal_h32_kv8_d128",
+  "workload": {
+    "axes": {
+      "len_indptr": 2,
+      "total_q": 7,
+      "total_kv": 7
+    },
+    "inputs": {
+      "q": {
+        "type": "random"
+      },
+      "k": {
+        "type": "random"
+      },
+      "v": {
+        "type": "random"
+      },
+      "qo_indptr": {
+        "type": "safetensors",
+        "path": "./blob/workloads/gqa_ragged/gqa_ragged_prefill_causal_h32_kv8_d128/gqa_ragged_prefill_causal_h32_kv8_d128_0d89861d476847c9ad9d88dffa6a74f7.safetensors",
+        "tensor_key": "qo_indptr"
+      },
+      "kv_indptr": {
+        "type": "safetensors",
+        "path": "./blob/workloads/gqa_ragged/gqa_ragged_prefill_causal_h32_kv8_d128/gqa_ragged_prefill_causal_h32_kv8_d128_0d89861d476847c9ad9d88dffa6a74f7.safetensors",
+        "tensor_key": "kv_indptr"
+      },
+      "sm_scale": {
+        "type": "scalar",
+        "value": 0.0883883461356163
+      }
+    },
+    "uuid": "f7a038e9-6c18-4fd6-9b79-e349a4c79bd8"
+  },
+  "solution": "gpt-5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high",
+  "evaluation": {
+    "status": "COMPILE_ERROR",
+    "environment": {
+      "hardware": "NVIDIA A800-SXM4-80GB",
+      "libs": {
+        "torch": "2.9.1+cu130",
+        "triton": "3.5.1",
+        "cuda": "13.0"
+      }
+    },
+    "timestamp": "2026-03-11T21:01:46.641193",
+    "log": "[1/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu -o kernel.cuda.o \nFAILED: [code=2] kernel.cuda.o \n/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu -o kernel.cuda.o \n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(46): error: identifier \"__bfloat16_to_float\" is undefined\n      qreg[i] = __bfloat16_to_float(q_ptr[d]);\n                ^\n\n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(59): error: identifier \"__bfloat16_to_float\" is undefined\n      float kf = __bfloat16_to_float(sK_row[d]);\n                 ^\n\n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(78): error: identifier \"__bfloat16_to_float\" is undefined\n      float vf = __bfloat16_to_float(sV_row[d]);\n                 ^\n\n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu(168): error: identifier \"CUDART_INF_F\" is undefined\n      float m_global = -CUDART_INF_F;\n                        ^\n\n4 errors detected in the compilation of \"/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/kernel.cu\".\n[2/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9/main.cpp -o main.o \nninja: build stopped: subcommand failed.\nBuildError: Torch build failed for solution 'gpt-5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high': Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'\n\nTraceback:\nTraceback (most recent call last):\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2597, in _run_ninja_build\n    subprocess.run(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 2.\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py\", line 154, in build\n    ext = load(\n          ^^^^^\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 1692, in load\n    return _jit_compile(\n           ^^^^^^^^^^^^^\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2134, in _jit_compile\n    _write_ninja_file_and_build_library(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2286, in _write_ninja_file_and_build_library\n    _run_ninja_build(\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/utils/cpp_extension.py\", line 2614, in _run_ninja_build\n    raise RuntimeError(message) from e\nRuntimeError: Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/runner/persistent_runner.py\", line 712, in _persistent_worker_main\n    runnable_sol = registry.build(definition, solution)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/registry.py\", line 148, in build\n    runnable = builder.build(definition, solution)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/compile/builders/torch_builder.py\", line 164, in build\n    raise BuildError(f\"Torch build failed for solution '{solution.name}': {e}\") from e\nflashinfer_bench.compile.builder.BuildError: Torch build failed for solution 'gpt-5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high': Error building extension 'torch_gpt_5_gqa_ragged_prefill_causal_h32_kv8_d128_cuda_optimized_r1_c0_high_cd10b9'\n\n",
+    "correctness": null,
+    "performance": null
+  }
+}

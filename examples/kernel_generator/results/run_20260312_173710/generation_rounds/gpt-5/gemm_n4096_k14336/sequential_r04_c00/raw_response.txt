@@ -1,0 +1,302 @@
+<header_file name="kernel.h">
+#ifndef GEMM_N4096_K14336_KERNEL_H_
+#define GEMM_N4096_K14336_KERNEL_H_
+
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+
+// Fixed problem constants
+constexpr int N_CONST = 4096;
+constexpr int K_CONST = 14336;
+
+// Tiling parameters (carefully chosen to fit shared memory and map well to A800)
+// Block tile sizes
+constexpr int BM = 64;    // rows of C per block
+constexpr int BN = 128;   // cols of C per block
+constexpr int BK = 64;    // K tile per iteration
+
+// Threadblock geometry (256 threads per block)
+constexpr int TB_THREADS_X = 16;
+constexpr int TB_THREADS_Y = 16;
+
+// CUDA kernel declaration
+// Note: For best memory access, we expect B to be pre-transposed to B_T with shape [K_CONST, N_CONST] (row-major).
+//       The host launcher handles this conversion (B_T = B.transpose(0,1).contiguous()).
+__global__ void gemm_n4096_k14336_kernel(const __half* __restrict__ A,   // [M, K_CONST], row-major
+                                         const __half* __restrict__ B_T, // [K_CONST, N_CONST], row-major
+                                         __half* __restrict__ C,         // [M, N_CONST], row-major
+                                         int M);
+
+// Host launcher declaration (uses given CUDA stream)
+// Assumes B_ptr points to B_T of shape [K_CONST, N_CONST] (i.e., B transposed and made contiguous).
+void launch_gemm_n4096_k14336(const __half* A,
+                              const __half* B_T,
+                              __half* C,
+                              int M,
+                              cudaStream_t stream);
+
+#endif  // GEMM_N4096_K14336_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <cstdio>
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(call)                                                           \
+    do {                                                                           \
+        cudaError_t _e = (call);                                                   \
+        if (_e != cudaSuccess) {                                                   \
+            fprintf(stderr, "CUDA error %s at %s:%d: %s\n",                        \
+                    #call, __FILE__, __LINE__, cudaGetErrorString(_e));            \
+        }                                                                          \
+    } while (0)
+#endif
+
+// Threadblock params
+constexpr int THREADS_PER_BLOCK = TB_THREADS_X * TB_THREADS_Y;
+
+// Validate shared memory tiling divisibility
+static_assert((BM * BK) % THREADS_PER_BLOCK == 0, "A tile must be divisible by threads per block");
+static_assert((BK * BN) % THREADS_PER_BLOCK == 0, "B_T tile must be divisible by threads per block");
+
+// Per-thread load counts
+constexpr int LOADS_PER_THREAD_A = (BM * BK) / THREADS_PER_BLOCK; // 64*64 / 256 = 16
+constexpr int LOADS_PER_THREAD_B = (BK * BN) / THREADS_PER_BLOCK; // 64*128 / 256 = 32
+
+// Micro-tile per thread (TM x TN)
+constexpr int TM = 4;
+static_assert(TB_THREADS_Y * TM == BM, "TB_THREADS_Y * TM must equal BM");
+constexpr int TN = 8;
+static_assert(TB_THREADS_X * TN == BN, "TB_THREADS_X * TN must equal BN");
+
+// Kernel implements: C[M, N_CONST] = A[M, K_CONST] * (B[MUST_BE_TRANSPOSED][K_CONST,N_CONST])
+// A and B_T are half-precision; we convert to float and accumulate in float for better accuracy.
+__global__ void gemm_n4096_k14336_kernel(const __half* __restrict__ A,
+                                         const __half* __restrict__ B_T,
+                                         __half* __restrict__ C,
+                                         const int M)
+{
+    // Compute block origin in output matrix C
+    const int block_m0 = blockIdx.y * BM; // row start of C tile
+    const int block_n0 = blockIdx.x * BN; // col start of C tile
+
+    // Thread coordinates within block
+    const int tx = threadIdx.x; // 0..TB_THREADS_X-1
+    const int ty = threadIdx.y; // 0..TB_THREADS_Y-1
+    const int linear_tid = ty * blockDim.x + tx; // 0..255
+
+    // Shared memory (store as float for improved accumulation stability)
+    __shared__ float As[BM][BK]; // 64 x 64 x 4B = 16KB
+    __shared__ float Bs[BK][BN]; // 64 x 128 x 4B = 32KB
+
+    // Per-thread accumulators
+    float acc[TM][TN];
+    #pragma unroll
+    for (int i = 0; i < TM; ++i) {
+        #pragma unroll
+        for (int j = 0; j < TN; ++j) {
+            acc[i][j] = 0.0f;
+        }
+    }
+
+    // Loop across K dimension in tiles
+    for (int k0 = 0; k0 < K_CONST; k0 += BK) {
+
+        // Cooperative load of A tile [BM x BK] from A[M, K_CONST] into As (row-major)
+        #pragma unroll
+        for (int i = 0; i < LOADS_PER_THREAD_A; ++i) {
+            int idx = linear_tid + i * THREADS_PER_BLOCK; // 0..BM*BK-1
+            int r = idx / BK; // 0..BM-1
+            int c = idx % BK; // 0..BK-1
+            int gr = block_m0 + r;
+            int gk = k0 + c;
+
+            float val = 0.0f;
+            if (gr < M) {
+                // A[gr, gk] with row-major stride K_CONST
+                val = __half2float(A[gr * K_CONST + gk]);
+            }
+            As[r][c] = val;
+        }
+
+        // Cooperative load of B_T tile [BK x BN] from B_T[K_CONST, N_CONST] into Bs (row-major)
+        // Bs[kk][n] = B_T[k0 + kk, block_n0 + n]
+        #pragma unroll
+        for (int i = 0; i < LOADS_PER_THREAD_B; ++i) {
+            int idx = linear_tid + i * THREADS_PER_BLOCK; // 0..BK*BN-1
+            int r = idx / BN; // 0..BK-1
+            int c = idx % BN; // 0..BN-1
+            int gk = k0 + r;
+            int gn = block_n0 + c; // within bounds due to fixed N
+
+            // B_T is [K_CONST, N_CONST], row-major
+            Bs[r][c] = __half2float(B_T[gk * N_CONST + gn]);
+        }
+
+        __syncthreads();
+
+        // Compute on the loaded tiles
+        // Each thread computes a TM x TN micro-tile within the block tile [BM x BN]
+        const int ar0 = ty * TM; // starting row within BM for this thread
+        const int bn0 = tx * TN; // starting col within BN for this thread
+
+        #pragma unroll 8
+        for (int kk = 0; kk < BK; ++kk) {
+            float a_frag[TM];
+            float b_frag[TN];
+
+            // Load A fragment (TM values along rows for current kk)
+            #pragma unroll
+            for (int im = 0; im < TM; ++im) {
+                a_frag[im] = As[ar0 + im][kk];
+            }
+
+            // Load B fragment (TN values along cols for current kk)
+            #pragma unroll
+            for (int jn = 0; jn < TN; ++jn) {
+                b_frag[jn] = Bs[kk][bn0 + jn];
+            }
+
+            // FMA accumulate
+            #pragma unroll
+            for (int im = 0; im < TM; ++im) {
+                float a_val = a_frag[im];
+                #pragma unroll
+                for (int jn = 0; jn < TN; ++jn) {
+                    acc[im][jn] += a_val * b_frag[jn];
+                }
+            }
+        }
+
+        __syncthreads();
+    }
+
+    // Write results to C (convert float accumulators to half)
+    const int ar0 = ty * TM;
+    const int bn0 = tx * TN;
+    #pragma unroll
+    for (int im = 0; im < TM; ++im) {
+        int gr = block_m0 + ar0 + im;
+        if (gr < M) {
+            #pragma unroll
+            for (int jn = 0; jn < TN; ++jn) {
+                int gc = block_n0 + bn0 + jn; // guaranteed within [0, N_CONST)
+                C[gr * N_CONST + gc] = __float2half_rn(acc[im][jn]);
+            }
+        }
+    }
+}
+
+void launch_gemm_n4096_k14336(const __half* A,
+                              const __half* B_T,
+                              __half* C,
+                              int M,
+                              cudaStream_t stream)
+{
+    if (M <= 0) return;
+
+    dim3 block(TB_THREADS_X, TB_THREADS_Y, 1);             // 256 threads
+    dim3 grid(N_CONST / BN, (M + BM - 1) / BM, 1);         // (32, ceil(M/64), 1)
+
+    gemm_n4096_k14336_kernel<<<grid, block, 0, stream>>>(A, B_T, C, M);
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAStream.h>
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <limits>
+#include "kernel.h"
+
+#ifndef CUDA_CHECK_THROW
+#define CUDA_CHECK_THROW(call)                                                     \
+    do {                                                                           \
+        cudaError_t _e = (call);                                                   \
+        if (_e != cudaSuccess) {                                                   \
+            throw std::runtime_error(std::string("CUDA error at ") + __FILE__ +    \
+                                     ":" + std::to_string(__LINE__) + " " +        \
+                                     cudaGetErrorString(_e));                      \
+        }                                                                          \
+    } while (0)
+#endif
+
+static void validate_inputs(const torch::Tensor& A, const torch::Tensor& B) {
+    if (!A.device().is_cuda() || !B.device().is_cuda()) {
+        throw std::invalid_argument("Inputs A and B must be CUDA tensors.");
+    }
+    if (A.dtype() != torch::kFloat16 || B.dtype() != torch::kFloat16) {
+        throw std::invalid_argument("Inputs A and B must be of dtype torch.float16.");
+    }
+    if (A.dim() != 2 || B.dim() != 2) {
+        throw std::invalid_argument("Inputs A and B must be 2D tensors.");
+    }
+    if (A.size(1) != K_CONST) {
+        throw std::invalid_argument("A must have shape [M, 14336] (K_CONST).");
+    }
+    if (B.size(0) != N_CONST || B.size(1) != K_CONST) {
+        throw std::invalid_argument("B must have shape [4096, 14336] ([N_CONST, K_CONST]).");
+    }
+    if (A.device().index() != B.device().index()) {
+        throw std::invalid_argument("A and B must be on the same CUDA device.");
+    }
+}
+
+torch::Tensor run(torch::Tensor A, torch::Tensor B) {
+    try {
+        // Validate inputs
+        validate_inputs(A, B);
+
+        // Ensure contiguous memory layout
+        if (!A.is_contiguous()) A = A.contiguous();
+        if (!B.is_contiguous()) B = B.contiguous();
+
+        // Extract dimensions
+        const int64_t M64 = A.size(0);
+        if (M64 < 0 || M64 > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+            throw std::invalid_argument("Invalid M dimension size.");
+        }
+        const int M = static_cast<int>(M64);
+
+        // Prepare output tensor C on same device
+        auto options = torch::TensorOptions().dtype(torch::kFloat16).device(A.device());
+        torch::Tensor C = torch::empty({M64, static_cast<int64_t>(N_CONST)}, options);
+
+        // For best memory access and numerical stability, explicitly transpose B -> B_T on device:
+        // B: [N_CONST, K_CONST] -> B_T: [K_CONST, N_CONST], both contiguous
+        // This makes B_T row-major with stride N_CONST, enabling coalesced loads along N.
+        torch::Tensor B_T = B.transpose(0, 1).contiguous();
+
+        // Get raw pointers
+        const __half* A_ptr  = reinterpret_cast<const __half*>(A.data_ptr<at::Half>());
+        const __half* BT_ptr = reinterpret_cast<const __half*>(B_T.data_ptr<at::Half>());
+        __half* C_ptr        = reinterpret_cast<__half*>(C.data_ptr<at::Half>());
+
+        // Use current PyTorch CUDA stream
+        c10::cuda::CUDAStream torch_stream = at::cuda::getCurrentCUDAStream();
+        cudaStream_t stream = torch_stream.stream();
+
+        // Launch kernel (expects B_T pointer)
+        launch_gemm_n4096_k14336(A_ptr, BT_ptr, C_ptr, M, stream);
+
+        // Error checking and synchronize the stream
+        CUDA_CHECK_THROW(cudaGetLastError());
+        CUDA_CHECK_THROW(cudaStreamSynchronize(stream));
+
+        return C;
+    } catch (const std::exception& e) {
+        throw std::runtime_error(std::string("gemm_n4096_k14336::run failed: ") + e.what());
+    }
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("run", &run, "Kernel execution function",
+          py::arg("A"), py::arg("B"));
+}
+</cpp_file>

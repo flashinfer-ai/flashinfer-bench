@@ -1,0 +1,4 @@
+model,definition,secondary_bucket,count
+gpt-5,gemm_n2048_k4096,correctness.nonfinite,4
+gpt-5,gemm_n2048_k4096,correctness.numerical,8
+gpt-5,gemm_n2048_k4096,passed,17

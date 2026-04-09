@@ -9,6 +9,7 @@ implementation for each function call based on workload characteristics.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 from flashinfer_bench.compile import BuilderRegistry
@@ -16,7 +17,7 @@ from flashinfer_bench.data import TraceSet
 from flashinfer_bench.env import get_fib_dataset_path, get_fib_enable_apply
 
 from .config import ApplyConfig, ApplyConfigRegistry
-from .key import ApplyKeyBuilder, ApplyKeyFactory
+from .key import ApplyKey, ApplyKeyBuilder, ApplyKeyFactory
 from .presets import get_default_registry
 from .table import ApplyTable
 
@@ -39,6 +40,8 @@ class ApplyRuntime:
     """Global runtime stack."""
     _env_initialized: ClassVar[bool] = False
     """Whether initialization from environment variables has been attempted."""
+    _thread_state: ClassVar[threading.local] = threading.local()
+    """Thread-local state for currently executing selected solutions."""
 
     @classmethod
     def _create_from_env(cls) -> Optional[ApplyRuntime]:
@@ -71,6 +74,34 @@ class ApplyRuntime:
             return cls._stack[-1]
         return None
 
+    @classmethod
+    def _active_solution_stack(cls) -> List[str]:
+        stack = getattr(cls._thread_state, "active_solution_stack", None)
+        if stack is None:
+            stack = []
+            cls._thread_state.active_solution_stack = stack
+        return stack
+
+    @classmethod
+    def current_solution_name(cls) -> Optional[str]:
+        stack = getattr(cls._thread_state, "active_solution_stack", None)
+        if not stack:
+            return None
+        return stack[-1]
+
+    @classmethod
+    def _push_active_solution(cls, solution_name: Optional[str]) -> bool:
+        if not solution_name:
+            return False
+        cls._active_solution_stack().append(solution_name)
+        return True
+
+    @classmethod
+    def _pop_active_solution(cls) -> None:
+        stack = getattr(cls._thread_state, "active_solution_stack", None)
+        if stack:
+            stack.pop()
+
     def __init__(
         self,
         trace_set: TraceSet,
@@ -100,13 +131,111 @@ class ApplyRuntime:
 
         self._table = ApplyTable.load_or_build(self._trace_set, self._config_registry)
 
-        # def_name -> callable: (runtime_kwargs) -> ApplyKey
+        # def_name -> callable: (kwargs) -> ApplyKey
         self._key_builders: Dict[str, ApplyKeyBuilder] = {}
+        self._dispatch_stats: Dict[str, Any] = {}
+        self.reset_stats()
 
         # Install integrations
         from flashinfer_bench.integration.flashinfer import install_flashinfer_integrations
 
         install_flashinfer_integrations()
+
+    def reset_stats(self) -> None:
+        """Reset aggregated dispatch statistics."""
+
+        self._dispatch_stats = {
+            "total_calls": 0,
+            "table_hit_calls": 0,
+            "def_best_calls": 0,
+            "fallback_calls": 0,
+            "unconfigured_calls": 0,
+            "definition_missing_calls": 0,
+            "definitions": {},
+        }
+
+    def snapshot_stats(self) -> Dict[str, Any]:
+        """Return a JSON-serializable snapshot of dispatch statistics."""
+
+        definitions = []
+        for def_name in sorted(self._dispatch_stats["definitions"]):
+            bucket = self._dispatch_stats["definitions"][def_name]
+            definitions.append(
+                {
+                    "definition": def_name,
+                    "total_calls": bucket["total_calls"],
+                    "table_hit_calls": bucket["table_hit_calls"],
+                    "def_best_calls": bucket["def_best_calls"],
+                    "fallback_calls": bucket["fallback_calls"],
+                    "selected_solutions": dict(
+                        sorted(
+                            bucket["selected_solutions"].items(),
+                            key=lambda item: (-item[1], item[0]),
+                        )
+                    ),
+                    "observed_axes": [
+                        {"axes": axes_name, "calls": count}
+                        for axes_name, count in sorted(
+                            bucket["observed_axes"].items(),
+                            key=lambda item: (-item[1], item[0]),
+                        )
+                    ],
+                }
+            )
+
+        return {
+            "total_calls": self._dispatch_stats["total_calls"],
+            "table_hit_calls": self._dispatch_stats["table_hit_calls"],
+            "def_best_calls": self._dispatch_stats["def_best_calls"],
+            "fallback_calls": self._dispatch_stats["fallback_calls"],
+            "unconfigured_calls": self._dispatch_stats["unconfigured_calls"],
+            "definition_missing_calls": self._dispatch_stats["definition_missing_calls"],
+            "definitions": definitions,
+        }
+
+    def _record_dispatch(
+        self,
+        def_name: str,
+        *,
+        mode: str,
+        selected_solution: Optional[str] = None,
+        key: Optional[ApplyKey] = None,
+    ) -> None:
+        bucket = self._dispatch_stats["definitions"].setdefault(
+            def_name,
+            {
+                "total_calls": 0,
+                "table_hit_calls": 0,
+                "def_best_calls": 0,
+                "fallback_calls": 0,
+                "selected_solutions": {},
+                "observed_axes": {},
+            },
+        )
+        self._dispatch_stats["total_calls"] += 1
+        bucket["total_calls"] += 1
+
+        if mode == "table_hit":
+            self._dispatch_stats["table_hit_calls"] += 1
+            bucket["table_hit_calls"] += 1
+        elif mode == "def_best":
+            self._dispatch_stats["def_best_calls"] += 1
+            bucket["def_best_calls"] += 1
+        elif mode == "fallback":
+            self._dispatch_stats["fallback_calls"] += 1
+            bucket["fallback_calls"] += 1
+        elif mode == "unconfigured":
+            self._dispatch_stats["unconfigured_calls"] += 1
+        elif mode == "definition_missing":
+            self._dispatch_stats["definition_missing_calls"] += 1
+
+        if selected_solution:
+            bucket["selected_solutions"][selected_solution] = (
+                bucket["selected_solutions"].get(selected_solution, 0) + 1
+            )
+        if key is not None:
+            axes_name = ",".join(f"{name}={value}" for name, value in key.axes) or "<none>"
+            bucket["observed_axes"][axes_name] = bucket["observed_axes"].get(axes_name, 0) + 1
 
     def dispatch(
         self,
@@ -154,6 +283,7 @@ class ApplyRuntime:
         # Check if apply is configured for this definition
         apply_config = self._config_registry.get(def_name)
         if apply_config is None:
+            self._record_dispatch(def_name, mode="unconfigured")
             if fallback is None:
                 raise RuntimeError(
                     f"Apply config not configured for '{def_name}' and no fallback provided"
@@ -162,6 +292,7 @@ class ApplyRuntime:
 
         definition = self._trace_set.definitions.get(def_name)
         if definition is None:
+            self._record_dispatch(def_name, mode="definition_missing")
             if fallback is None:
                 raise RuntimeError(f"Definition '{def_name}' not found and no fallback provided")
             return fallback(*args, **kwargs)
@@ -197,10 +328,15 @@ class ApplyRuntime:
         # Lookup solution
         sol_name = self._table.match_solution(def_name, key)
         runnable = None
+        dispatch_mode = "fallback"
+        selected_solution = None
         if sol_name:
             solution = self._trace_set.get_solution(sol_name)
             if solution:
                 runnable = BuilderRegistry.get_instance().build(definition, solution)
+                if runnable is not None:
+                    dispatch_mode = "table_hit"
+                    selected_solution = sol_name
 
         # Miss policy
         if runnable is None:
@@ -209,18 +345,28 @@ class ApplyRuntime:
                 solution = self._trace_set.get_solution(best_sol_name)
                 if definition and solution:
                     runnable = BuilderRegistry.get_instance().build(definition, solution)
+                    if runnable is not None:
+                        dispatch_mode = "def_best"
+                        selected_solution = best_sol_name
 
         if runnable is None:
+            self._record_dispatch(def_name, mode="fallback", key=key)
             if fallback is None:
                 raise RuntimeError(f"Apply miss for '{def_name}' and no fallback provided")
             return fallback(*args, **kwargs)
 
+        self._record_dispatch(def_name, mode=dispatch_mode, selected_solution=selected_solution, key=key)
+
         # Call the runnable with appropriate style
-        if is_dps:
-            runnable.call_destination_passing(*merged_args)
-            return None
-        else:
+        pushed_solution = self._push_active_solution(selected_solution)
+        try:
+            if is_dps:
+                runnable.call_destination_passing(*merged_args)
+                return None
             return runnable.call_value_returning(*input_args)
+        finally:
+            if pushed_solution:
+                self._pop_active_solution()
 
     def start(self) -> None:
         """Activate this runtime instance.

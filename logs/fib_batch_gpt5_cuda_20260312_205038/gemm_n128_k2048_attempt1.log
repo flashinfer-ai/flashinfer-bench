@@ -1,0 +1,139 @@
+
+[gpt-5] generating gemm_n128_k2048 using feedback workload 6ba7c7de-dc5a-48d2-8ada-1382feb5ceac
+Generating optimized solution for gemm_n128_k2048
+Using workload 6ba7c7de-dc5a-48d2-8ada-1382feb5ceac for optimization feedback
+
+Generation Round 1/10
+/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/timing.py:74: UserWarning: CUPTI is not installed. Try 'pip install -U cupti-python'. Falling back to CUDA events for benchmarking.
+  times = bench_gpu_time_with_cupti(
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.03x
+Generating code for round 2...
+
+Generation Round 2/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.03x
+Generating code for round 3...
+
+Generation Round 3/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.01x
+Generating code for round 4...
+
+Generation Round 4/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.11x
+Generating code for round 5...
+
+Generation Round 5/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.10x
+Generating code for round 6...
+
+Generation Round 6/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.09x
+Generating code for round 7...
+
+Generation Round 7/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.10x
+Generating code for round 8...
+
+Generation Round 8/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.18x
+Generating code for round 9...
+
+Generation Round 9/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.15x
+Generating code for round 10...
+
+Generation Round 10/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.15x
+
+Returning best solution with speedup: 0.18x
+Solution 'gpt-5_gemm_n128_k2048_cuda_optimized_r8_c0_high' for workload c49c96bd-bee4-479b-8000-3e6bf297aef1: INCORRECT_NUMERICAL
+Solution 'gpt-5_gemm_n128_k2048_cuda_optimized_r8_c0_high' for workload b241cadb-ab4d-4113-8579-4eae2ba74a37: INCORRECT_NUMERICAL
+Solution 'gpt-5_gemm_n128_k2048_cuda_optimized_r8_c0_high' for workload 63929760-1e74-4c64-8016-4d8e1223f97a: INCORRECT_NUMERICAL
+
+Experiment summary
+================================================================================
+gpt-5 | gemm_n128_k2048 | OK | pass_rate=88.00% | best_speedup=0.27 | top_bucket=passed
+
+Generation feedback records written to: /data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/results/run_20260312_205041/generation_feedback_records.csv
+Generation round artifacts written to: /data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/results/run_20260312_205041/generation_rounds
+
+Artifacts written to: /data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/results/run_20260312_205041

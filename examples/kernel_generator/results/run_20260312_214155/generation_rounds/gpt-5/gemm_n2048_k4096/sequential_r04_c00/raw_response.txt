@@ -1,0 +1,315 @@
+<header_file name="kernel.h">
+#ifndef GEMM_N2048_K4096_KERNEL_H_
+#define GEMM_N2048_K4096_KERNEL_H_
+
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <torch/extension.h>
+
+// Fixed axes
+static constexpr int N_CONST = 2048;
+static constexpr int K_CONST = 4096;
+
+// CUDA launcher for the GEMM kernel
+void gemm_n2048_k4096_launch(const __half* A, const __half* B, __half* C, int M, cudaStream_t stream);
+
+// PyTorch-bound host function entry point
+torch::Tensor run(torch::Tensor A, torch::Tensor B);
+
+#endif // GEMM_N2048_K4096_KERNEL_H_
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+#include <mma.h>
+#include <cstdio>
+
+using namespace nvcuda;
+
+#ifndef CUDA_CHECK
+#define CUDA_CHECK(err) \
+  do { \
+    cudaError_t err_ = (err); \
+    if (err_ != cudaSuccess) { \
+      fprintf(stderr, "CUDA Error %s at %s:%d: %s\n", #err, __FILE__, __LINE__, cudaGetErrorString(err_)); \
+    } \
+  } while (0)
+#endif
+
+// Tile configuration tuned for SM80/A800
+// One CTA computes a [BLOCK_M x BLOCK_N] tile of C
+// Each warp computes a [WARP_M x WARP_N] tile using 8 WMMA fragments.
+static constexpr int BLOCK_M = 128;          // CTA tile in M
+static constexpr int BLOCK_N = 128;          // CTA tile in N (N is fixed 2048)
+static constexpr int BLOCK_K = 16;           // WMMA requires K tile = 16
+static constexpr int WARP_M  = 32;           // Warp tile in M
+static constexpr int WARP_N  = 64;           // Warp tile in N
+static constexpr int THREADS_PER_BLOCK = 256;
+
+static_assert(BLOCK_K == 16, "WMMA K dimension must be 16");
+static_assert(BLOCK_M % 16 == 0 && BLOCK_N % 16 == 0, "BLOCK_M and BLOCK_N must be multiples of 16");
+static_assert(K_CONST % BLOCK_K == 0, "K_CONST must be divisible by BLOCK_K");
+static_assert(N_CONST % BLOCK_N == 0, "N_CONST must be divisible by BLOCK_N");
+static_assert((BLOCK_M % WARP_M) == 0 && (BLOCK_N % WARP_N) == 0, "Warp tiles must divide block tiles");
+
+// Kernel computes C[M, 2048] = A[M, 4096] * B[2048, 4096]^T
+// A, B are FP16; accumulation is FP32; output FP16
+__global__ __launch_bounds__(THREADS_PER_BLOCK, 2)
+void gemm_n2048_k4096_kernel(const __half* __restrict__ A,
+                             const __half* __restrict__ B,
+                             __half* __restrict__ C,
+                             int M) {
+  const int tid    = threadIdx.x;
+  const int warpId = tid >> 5;            // 0..7
+  const int laneId = tid & 31;
+
+  constexpr int WARPS_M = BLOCK_M / WARP_M; // 4
+  constexpr int WARPS_N = BLOCK_N / WARP_N; // 2
+  constexpr int WARPS_PER_BLOCK = WARPS_M * WARPS_N; // 8
+  static_assert(WARPS_PER_BLOCK * 32 == THREADS_PER_BLOCK, "Warp/thread config mismatch.");
+
+  const int block_m = blockIdx.y;        // along M
+  const int block_n = blockIdx.x;        // along N
+
+  const int m_tile_origin = block_m * BLOCK_M;   // starting row in M for this CTA
+  const int n_tile_origin = block_n * BLOCK_N;   // starting col in N for this CTA
+
+  // Shared memory tiles
+  __shared__ __half A_sh[BLOCK_M][BLOCK_K];             // [128 x 16], row-major
+  __shared__ __half B_sh_col[BLOCK_N * BLOCK_K];        // [16 x 128] stored column-major as 1D: (k, n_local) -> [n_local*BLOCK_K + k]
+
+  // Per-warp small scratch for final store (one 16x16 float tile)
+  __shared__ float warp_scratch[WARPS_PER_BLOCK][16 * 16];
+
+  // Compute warp coordinates within the block
+  const int warp_m = warpId % WARPS_M;   // 0..3
+  const int warp_n = warpId / WARPS_M;   // 0..1
+
+  // Accumulator fragments for the warp's 32x64 tile: 2 (rows) x 4 (cols) = 8 frags
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> c[2][4];
+  #pragma unroll
+  for (int i = 0; i < 2; ++i) {
+    #pragma unroll
+    for (int j = 0; j < 4; ++j) {
+      wmma::fill_fragment(c[i][j], 0.0f);
+    }
+  }
+
+  // Loop across K in steps of 16
+  for (int k_base = 0; k_base < K_CONST; k_base += BLOCK_K) {
+    // Cooperative load A tile [BLOCK_M x BLOCK_K] from global to shared
+    for (int idx = tid; idx < BLOCK_M * BLOCK_K; idx += THREADS_PER_BLOCK) {
+      int row = idx / BLOCK_K;   // 0..127
+      int kk  = idx % BLOCK_K;   // 0..15
+      int g_m = m_tile_origin + row;
+      int g_k = k_base + kk;
+      __half val = __float2half(0.0f);
+      if (g_m < M) {
+        val = A[g_m * K_CONST + g_k];
+      }
+      A_sh[row][kk] = val;
+    }
+
+    // Cooperative load B tile [BLOCK_K x BLOCK_N], stored column-major in shared
+    for (int idx = tid; idx < BLOCK_K * BLOCK_N; idx += THREADS_PER_BLOCK) {
+      int n_local = idx / BLOCK_K;   // 0..127
+      int kk      = idx % BLOCK_K;   // 0..15
+      int g_n = n_tile_origin + n_local;
+      int g_k = k_base + kk;
+      __half val = __float2half(0.0f);
+      // B is [N, K] row-major; we fetch B[n, k]
+      val = B[g_n * K_CONST + g_k];  // g_n always valid as N is fixed and tiled exactly
+      // Store (k, n_local) -> column-major slot
+      B_sh_col[n_local * BLOCK_K + kk] = val;
+    }
+
+    __syncthreads();
+
+    // Warp-level compute for this K tile
+    // A rows
+    const int a_row0 = warp_m * WARP_M + 0;     // starting row for this warp's 32 rows
+    const int a_row1 = a_row0 + 16;
+    // B cols
+    const int b_col0 = warp_n * WARP_N + 0;     // starting col for this warp's 64 cols
+    const int b_col1 = b_col0 + 16;
+    const int b_col2 = b_col0 + 32;
+    const int b_col3 = b_col0 + 48;
+
+    // Load A fragments (row-major)
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a0, a1;
+    wmma::load_matrix_sync(a0, &A_sh[a_row0][0], BLOCK_K);
+    wmma::load_matrix_sync(a1, &A_sh[a_row1][0], BLOCK_K);
+
+    // Load B fragments (col-major) for 4 column subtiles
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b0, b1, b2, b3;
+    wmma::load_matrix_sync(b0, &B_sh_col[b_col0 * BLOCK_K + 0], BLOCK_K);
+    wmma::load_matrix_sync(b1, &B_sh_col[b_col1 * BLOCK_K + 0], BLOCK_K);
+    wmma::load_matrix_sync(b2, &B_sh_col[b_col2 * BLOCK_K + 0], BLOCK_K);
+    wmma::load_matrix_sync(b3, &B_sh_col[b_col3 * BLOCK_K + 0], BLOCK_K);
+
+    // MMA accumulate for 8 combinations
+    wmma::mma_sync(c[0][0], a0, b0, c[0][0]);
+    wmma::mma_sync(c[0][1], a0, b1, c[0][1]);
+    wmma::mma_sync(c[0][2], a0, b2, c[0][2]);
+    wmma::mma_sync(c[0][3], a0, b3, c[0][3]);
+    wmma::mma_sync(c[1][0], a1, b0, c[1][0]);
+    wmma::mma_sync(c[1][1], a1, b1, c[1][1]);
+    wmma::mma_sync(c[1][2], a1, b2, c[1][2]);
+    wmma::mma_sync(c[1][3], a1, b3, c[1][3]);
+
+    __syncthreads(); // ensure safe reuse of shared memory in next iteration
+  }
+
+  // Helper lambda to store one 16x16 accumulator fragment to global as FP16
+  auto store_frag_16x16 = [&](const wmma::fragment<wmma::accumulator, 16, 16, 16, float>& frag,
+                              int g_m_base, int g_n_base) {
+    // Store to per-warp scratch in row-major with leading dim 16
+    wmma::store_matrix_sync(&warp_scratch[warpId][0], frag, 16, wmma::mem_row_major);
+    __syncwarp();
+
+    // Convert to FP16 and write to global
+    // 256 elements per tile; each lane handles 8 elements strided by 32
+    for (int idx = laneId; idx < 16 * 16; idx += 32) {
+      int r = idx / 16;
+      int c = idx % 16;
+      int g_m = g_m_base + r;
+      int g_n = g_n_base + c;
+      if (g_m < M) {
+        float v = warp_scratch[warpId][idx];
+        C[g_m * N_CONST + g_n] = __float2half(v);
+      }
+    }
+    __syncwarp();
+  };
+
+  // Store accumulators to global memory
+  {
+    const int m_base0 = m_tile_origin + warp_m * WARP_M + 0;
+    const int m_base1 = m_base0 + 16;
+    const int n_base0 = n_tile_origin + warp_n * WARP_N + 0;
+
+    // 4 column tiles: offsets 0,16,32,48 within the 64-wide warp tile
+    store_frag_16x16(c[0][0], m_base0, n_base0 + 0);
+    store_frag_16x16(c[0][1], m_base0, n_base0 + 16);
+    store_frag_16x16(c[0][2], m_base0, n_base0 + 32);
+    store_frag_16x16(c[0][3], m_base0, n_base0 + 48);
+
+    store_frag_16x16(c[1][0], m_base1, n_base0 + 0);
+    store_frag_16x16(c[1][1], m_base1, n_base0 + 16);
+    store_frag_16x16(c[1][2], m_base1, n_base0 + 32);
+    store_frag_16x16(c[1][3], m_base1, n_base0 + 48);
+  }
+}
+
+// Host-side launcher
+void gemm_n2048_k4096_launch(const __half* A,
+                             const __half* B,
+                             __half* C,
+                             int M,
+                             cudaStream_t stream) {
+  if (M <= 0) return;
+
+  dim3 block(THREADS_PER_BLOCK, 1, 1);
+  dim3 grid(N_CONST / BLOCK_N, (M + BLOCK_M - 1) / BLOCK_M, 1);
+
+  gemm_n2048_k4096_kernel<<<grid, block, 0, stream>>>(A, B, C, M);
+
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    fprintf(stderr, "gemm_n2048_k4096_kernel launch failed: %s\n", cudaGetErrorString(err));
+  }
+}
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <stdexcept>
+#include <sstream>
+
+static void validate_shapes_and_types(const torch::Tensor& A, const torch::Tensor& B) {
+  if (A.dim() != 2 || B.dim() != 2) {
+    throw std::invalid_argument("A and B must be 2D tensors.");
+  }
+  if (A.dtype() != torch::kHalf || B.dtype() != torch::kHalf) {
+    throw std::invalid_argument("A and B must have dtype torch.float16.");
+  }
+  int64_t M_a = A.size(0);
+  int64_t K_a = A.size(1);
+  int64_t N_b = B.size(0);
+  int64_t K_b = B.size(1);
+  if (K_a != K_CONST) {
+    std::ostringstream oss;
+    oss << "A must have shape [M, " << K_CONST << "], got [" << M_a << ", " << K_a << "]";
+    throw std::invalid_argument(oss.str());
+  }
+  if (N_b != N_CONST || K_b != K_CONST) {
+    std::ostringstream oss;
+    oss << "B must have shape [" << N_CONST << ", " << K_CONST << "], got [" << N_b << ", " << K_b << "]";
+    throw std::invalid_argument(oss.str());
+  }
+}
+
+torch::Tensor run(torch::Tensor A, torch::Tensor B) {
+  try {
+    validate_shapes_and_types(A, B);
+
+    bool inputs_on_cuda = A.device().is_cuda() && B.device().is_cuda();
+    torch::Tensor A_cuda = A;
+    torch::Tensor B_cuda = B;
+    bool move_back_to_cpu = false;
+
+    if (!inputs_on_cuda) {
+      A_cuda = A.to(torch::kCUDA, /*non_blocking=*/false, /*copy=*/true);
+      B_cuda = B.to(torch::kCUDA, /*non_blocking=*/false, /*copy=*/true);
+      move_back_to_cpu = true;
+    }
+
+    if (!A_cuda.is_contiguous()) A_cuda = A_cuda.contiguous();
+    if (!B_cuda.is_contiguous()) B_cuda = B_cuda.contiguous();
+
+    int64_t M = A_cuda.size(0);
+
+    auto options = A_cuda.options();
+    torch::Tensor C_cuda = torch::empty({M, static_cast<int64_t>(N_CONST)}, options);
+
+    auto stream = at::cuda::getCurrentCUDAStream();
+
+    const __half* A_ptr = reinterpret_cast<const __half*>(A_cuda.data_ptr<at::Half>());
+    const __half* B_ptr = reinterpret_cast<const __half*>(B_cuda.data_ptr<at::Half>());
+    __half* C_ptr = reinterpret_cast<__half*>(C_cuda.data_ptr<at::Half>());
+
+    gemm_n2048_k4096_launch(A_ptr, B_ptr, C_ptr, static_cast<int>(M), stream.stream());
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+      std::ostringstream oss;
+      oss << "CUDA kernel launch error: " << cudaGetErrorString(err);
+      throw std::runtime_error(oss.str());
+    }
+    err = cudaStreamSynchronize(stream.stream());
+    if (err != cudaSuccess) {
+      std::ostringstream oss;
+      oss << "CUDA stream sync error: " << cudaGetErrorString(err);
+      throw std::runtime_error(oss.str());
+    }
+
+    if (move_back_to_cpu) {
+      return C_cuda.to(torch::kCPU, /*non_blocking=*/false, /*copy=*/true);
+    } else {
+      return C_cuda;
+    }
+  } catch (const std::exception& e) {
+    throw;
+  }
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function", pybind11::arg("A"), pybind11::arg("B"));
+}
+</cpp_file>

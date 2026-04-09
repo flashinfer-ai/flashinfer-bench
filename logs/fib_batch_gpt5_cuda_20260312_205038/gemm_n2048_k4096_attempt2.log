@@ -1,0 +1,123 @@
+
+[gpt-5] generating gemm_n2048_k4096 using feedback workload bcc2cc41b7464e54b0c4d11e65da96d8
+Generating optimized solution for gemm_n2048_k4096
+Using workload bcc2cc41b7464e54b0c4d11e65da96d8 for optimization feedback
+
+Generation Round 1/10
+/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/timing.py:74: UserWarning: CUPTI is not installed. Try 'pip install -U cupti-python'. Falling back to CUDA events for benchmarking.
+  times = bench_gpu_time_with_cupti(
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.02x
+Generating code for round 2...
+
+Generation Round 2/10
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Shutting down worker
+Evaluation status: PASSED
+Solution PASSED! Speedup: 0.04x
+Generating code for round 3...
+Error while generating code: Request timed out.
+[error] gpt-5 / gemm_n2048_k4096: Request timed out.
+Traceback (most recent call last):
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+    raise exc
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_async/connection.py", line 124, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_backends/auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_backends/anyio.py", line 113, in connect_tcp
+    with map_exceptions(exc_map):
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/openai/_base_client.py", line 1604, in request
+    response = await self._client.send(
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectTimeout
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/compare_api_models_round_traces.py", line 791, in <module>
+    main()
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/compare_api_models_round_traces.py", line 641, in main
+    solution = generator.generate(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/kernel_generator.py", line 186, in generate
+    return asyncio.run(
+           ^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/compare_api_models_round_traces.py", line 292, in _sequential_generate_async
+    code_result = await self._generate_code_from_prompt(next_prompt)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data1/workspace/airulan/bench/flashinfer-bench/examples/kernel_generator/kernel_generator.py", line 675, in _generate_code_from_prompt
+    response = await self.client.chat.completions.create(**request_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 2714, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/openai/_base_client.py", line 1884, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/openai/_base_client.py", line 1622, in request
+    raise APITimeoutError(request=request) from err
+openai.APITimeoutError: Request timed out.

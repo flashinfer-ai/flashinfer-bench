@@ -1,0 +1,33 @@
+{
+  "definition": "gemm_n4096_k14336",
+  "workload": {
+    "axes": {
+      "M": 256
+    },
+    "inputs": {
+      "A": {
+        "type": "random"
+      },
+      "B": {
+        "type": "random"
+      }
+    },
+    "uuid": "501f81c6-97cd-477c-b091-5068a52c385d"
+  },
+  "solution": "gpt-5_gemm_n4096_k14336_cuda_optimized_r1_c0_high",
+  "evaluation": {
+    "status": "RUNTIME_ERROR",
+    "environment": {
+      "hardware": "NVIDIA A800-SXM4-80GB",
+      "libs": {
+        "torch": "2.9.1+cu130",
+        "triton": "3.5.1",
+        "cuda": "13.0"
+      }
+    },
+    "timestamp": "2026-03-12T18:24:04.364939",
+    "log": "[1/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1/main.cpp -o main.o \n[2/3] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1/kernel.cu -o kernel.cuda.o \n[3/3] c++ kernel.cuda.o main.o -shared -L/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda-13.0/lib64 -lcudart -o torch_gpt_5_gemm_n4096_k14336_cuda_optimized_r1_c0_high_d7c2b1.so\nTraceback (most recent call last):\n  File \"/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/evaluators/default.py\", line 117, in check_correctness\n    torch.cuda.synchronize(device)\n  File \"/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/cuda/__init__.py\", line 1083, in synchronize\n    return torch._C._cuda_synchronize()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntorch.AcceleratorError: CUDA error: misaligned address\nSearch for `cudaErrorMisalignedAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n\n",
+    "correctness": null,
+    "performance": null
+  }
+}

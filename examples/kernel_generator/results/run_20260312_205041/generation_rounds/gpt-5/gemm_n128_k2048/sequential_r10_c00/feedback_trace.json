@@ -1,0 +1,40 @@
+{
+  "definition": "gemm_n128_k2048",
+  "workload": {
+    "axes": {
+      "M": 6
+    },
+    "inputs": {
+      "A": {
+        "type": "random"
+      },
+      "B": {
+        "type": "random"
+      }
+    },
+    "uuid": "6ba7c7de-dc5a-48d2-8ada-1382feb5ceac"
+  },
+  "solution": "gpt-5_gemm_n128_k2048_cuda_optimized_r10_c0_high",
+  "evaluation": {
+    "status": "PASSED",
+    "environment": {
+      "hardware": "NVIDIA A800-SXM4-80GB",
+      "libs": {
+        "torch": "2.9.1+cu130",
+        "triton": "3.5.1",
+        "cuda": "13.0"
+      }
+    },
+    "timestamp": "2026-03-12T21:35:29.006620",
+    "log": "[1/3] c++ -MMD -MF main.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-12.4/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -fPIC -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20/main.cpp -o main.o \n[2/3] /usr/local/cuda-12.4/bin/nvcc --generate-dependencies-with-compile --dependency-output kernel.cuda.o.d -DTORCH_EXTENSION_NAME=torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20 -DTORCH_API_INCLUDE_EXTENSION_H -I/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20 -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include -isystem /data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-12.4/include -isystem /data/workspace/airulan/conda_envs/fib/include/python3.11 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 --compiler-options '-fPIC' -std=c++17 -c /home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20/kernel.cu -o kernel.cuda.o \n/home/airulan/.cache/flashinfer_bench/cache/torch/torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20/kernel.cu(66): warning #177-D: variable \"WARPS_PER_BLOCK\" was declared but never referenced\n    constexpr int WARPS_PER_BLOCK = WARPS_M * WARPS_N;\n                  ^\n\nRemark: The warnings can be suppressed with \"-diag-suppress <warning-number>\"\n\n[3/3] c++ kernel.cuda.o main.o -shared -L/data/workspace/airulan/conda_envs/fib/lib/python3.11/site-packages/torch/lib -lc10 -lc10_cuda -ltorch_cpu -ltorch_cuda -ltorch -ltorch_python -L/usr/local/cuda-12.4/lib64 -lcudart -o torch_gpt_5_gemm_n128_k2048_cuda_optimized_r10_c0_high_ccbe20.so\n/data1/workspace/airulan/bench/flashinfer-bench/flashinfer_bench/bench/timing.py:74: UserWarning: CUPTI is not installed. Try 'pip install -U cupti-python'. Falling back to CUDA events for benchmarking.\n  times = bench_gpu_time_with_cupti(\n",
+    "correctness": {
+      "max_relative_error": 0.0,
+      "max_absolute_error": 0.0
+    },
+    "performance": {
+      "latency_ms": 0.11059200018644333,
+      "reference_latency_ms": 0.016383999958634377,
+      "speedup_factor": 0.14814814752435207
+    }
+  }
+}

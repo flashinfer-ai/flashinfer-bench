@@ -1,0 +1,11 @@
+TraceSet root: bench/test/results/fib_qwen_all_defs_20260317_142645/Qwen3.5-27B
+Total traces: 151
+Passed traces: 0
+Failed traces: 151
+Min latency (passed): None
+Max latency (passed): None
+Avg latency (passed): None
+
+Status counts:
+  COMPILE_ERROR: 128
+  RUNTIME_ERROR: 23

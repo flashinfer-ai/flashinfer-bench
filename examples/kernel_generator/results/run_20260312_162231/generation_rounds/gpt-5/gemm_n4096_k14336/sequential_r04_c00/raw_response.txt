@@ -1,0 +1,275 @@
+<header_file name="kernel.h">
+#ifndef GEMM_N4096_K14336_KERNEL_H
+#define GEMM_N4096_K14336_KERNEL_H
+
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <torch/extension.h>
+#include <c10/cuda/CUDACachingAllocator.h>
+#include <stdexcept>
+#include <cstdio>
+#include <string>
+
+#define CUDA_CHECK(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort=true) {
+  if (code != cudaSuccess) {
+    fprintf(stderr, "CUDA_CHECK: %s %s %d\n", cudaGetErrorString(code), file, line);
+    if (abort) {
+      throw std::runtime_error(std::string("CUDA error: ") + cudaGetErrorString(code));
+    }
+  }
+}
+
+namespace gemm_n4096_k14336 {
+  // Fixed axes
+  static constexpr int N_CONST = 4096;
+  static constexpr int K_CONST = 14336;
+
+  // Threadblock tile sizes (tuned for correctness and reasonable performance)
+  static constexpr int TILE_M = 64;
+  static constexpr int TILE_N = 64;
+  static constexpr int TILE_K = 64;
+
+  // Threads per block (16x16 threads, each computes a 4x4 output sub-tile)
+  static constexpr int TB_THREADS_X = 16;
+  static constexpr int TB_THREADS_Y = 16;
+  static constexpr int THREADS_PER_BLOCK = TB_THREADS_X * TB_THREADS_Y;
+
+  // Host launcher declaration
+  void launch_gemm_n4096_k14336(const at::Half* A, const at::Half* B, at::Half* C, int64_t M, cudaStream_t stream);
+}
+
+// CUDA kernel declaration
+__global__ void gemm_n4096_k14336_kernel(const __half* __restrict__ A,
+                                         const __half* __restrict__ B,
+                                         __half* __restrict__ C,
+                                         int M);
+
+// Torch entry point
+torch::Tensor run(torch::Tensor A, torch::Tensor B);
+
+#endif // GEMM_N4096_K14336_KERNEL_H
+</header_file>
+
+<cuda_file name="kernel.cu">
+#include "kernel.h"
+
+// Tiled GEMM computing C[M, N] = A[M, K] * B[N, K]^T
+// A: [M x K] row-major (FP16)
+// B: [N x K] row-major (FP16) -> we access as B^T [K x N]
+// C: [M x N] row-major (FP16)
+// Accumulate in FP32 for numerical stability.
+__global__ __launch_bounds__(gemm_n4096_k14336::THREADS_PER_BLOCK)
+void gemm_n4096_k14336_kernel(const __half* __restrict__ A,
+                              const __half* __restrict__ B,
+                              __half* __restrict__ C,
+                              int M) {
+  constexpr int N = gemm_n4096_k14336::N_CONST;
+  constexpr int K = gemm_n4096_k14336::K_CONST;
+  constexpr int TILE_M = gemm_n4096_k14336::TILE_M; // 64
+  constexpr int TILE_N = gemm_n4096_k14336::TILE_N; // 64
+  constexpr int TILE_K = gemm_n4096_k14336::TILE_K; // 64
+
+  // Thread block coordinates
+  const int block_row = blockIdx.y * TILE_M; // along M
+  const int block_col = blockIdx.x * TILE_N; // along N
+
+  // Thread indices
+  const int tx = threadIdx.x; // 0..15
+  const int ty = threadIdx.y; // 0..15
+  const int tLinear = ty * blockDim.x + tx; // 0..255
+
+  // Shared memory tiles
+  __shared__ __align__(16) __half sA[TILE_M * TILE_K]; // 64 x 64
+  __shared__ __align__(16) __half sB[TILE_K * TILE_N]; // 64 x 64 (holds B^T tile: [Ktile x Ntile])
+
+  // Each thread computes a 4x4 sub-tile in the 64x64 output tile
+  constexpr int TM = 4; // per-thread rows
+  constexpr int TN = 4; // per-thread cols
+
+  // Initialize accumulators
+  float acc[TM][TN];
+  #pragma unroll
+  for (int i = 0; i < TM; ++i) {
+    #pragma unroll
+    for (int j = 0; j < TN; ++j) {
+      acc[i][j] = 0.0f;
+    }
+  }
+
+  // Loop over K dimension in TILE_K chunks
+  for (int k0 = 0; k0 < K; k0 += TILE_K) {
+    // Cooperative load of A tile: sA[i, j] = A[block_row + i, k0 + j]
+    // Map linear loads across 64x64 elements
+    for (int idx = tLinear; idx < TILE_M * TILE_K; idx += gemm_n4096_k14336::THREADS_PER_BLOCK) {
+      int i = idx / TILE_K; // row in [0..63]
+      int j = idx % TILE_K; // col in [0..63]
+      int g_row = block_row + i;
+      int g_k   = k0 + j;
+      __half val = __float2half(0.0f);
+      if (g_row < M) {
+        // K range is exact due to loop bounds
+        val = A[g_row * K + g_k];
+      }
+      sA[i * TILE_K + j] = val;
+    }
+
+    // Cooperative load of B^T tile as [Ktile x Ntile]: sB[i, j] = B[block_col + j, k0 + i]
+    for (int idx = tLinear; idx < TILE_K * TILE_N; idx += gemm_n4096_k14336::THREADS_PER_BLOCK) {
+      int i = idx / TILE_N; // k in [0..63]
+      int j = idx % TILE_N; // n in [0..63]
+      int g_n = block_col + j;
+      int g_k = k0 + i;
+      // N range is exact due to grid dimension
+      __half val = B[g_n * K + g_k];
+      sB[i * TILE_N + j] = val;
+    }
+
+    __syncthreads();
+
+    // Compute on the loaded tiles
+    // Each thread computes a 4x4 block: rows = ty*4 .. ty*4+3, cols = tx*4 .. tx*4+3
+    #pragma unroll
+    for (int kk = 0; kk < TILE_K; ++kk) {
+      // Load 4 A values for the thread's rows at this kk
+      __half a_h[TM];
+      #pragma unroll
+      for (int i = 0; i < TM; ++i) {
+        int row = ty * TM + i;
+        a_h[i] = sA[row * TILE_K + kk];
+      }
+
+      // Load 4 B values for the thread's columns at this kk
+      __half b_h[TN];
+      #pragma unroll
+      for (int j = 0; j < TN; ++j) {
+        int col = tx * TN + j;
+        b_h[j] = sB[kk * TILE_N + col];
+      }
+
+      // FMA accumulate
+      #pragma unroll
+      for (int i = 0; i < TM; ++i) {
+        float a_f = __half2float(a_h[i]);
+        #pragma unroll
+        for (int j = 0; j < TN; ++j) {
+          float b_f = __half2float(b_h[j]);
+          acc[i][j] += a_f * b_f;
+        }
+      }
+    }
+
+    __syncthreads();
+  }
+
+  // Write results to C with boundary check on M
+  #pragma unroll
+  for (int i = 0; i < TM; ++i) {
+    int row = block_row + ty * TM + i;
+    if (row < M) {
+      #pragma unroll
+      for (int j = 0; j < TN; ++j) {
+        int col = block_col + tx * TN + j; // col always within [0..4095]
+        C[row * N + col] = __float2half_rn(acc[i][j]);
+      }
+    }
+  }
+}
+
+namespace gemm_n4096_k14336 {
+
+static inline int ceil_div_int64(int64_t a, int b) {
+  return static_cast<int>((a + b - 1) / b);
+}
+
+void launch_gemm_n4096_k14336(const at::Half* A_h, const at::Half* B_h, at::Half* C_h, int64_t M, cudaStream_t stream) {
+  if (M <= 0) return;
+
+  constexpr int TILE_M = gemm_n4096_k14336::TILE_M;
+  constexpr int TILE_N = gemm_n4096_k14336::TILE_N;
+  constexpr int N = gemm_n4096_k14336::N_CONST;
+
+  dim3 block(gemm_n4096_k14336::TB_THREADS_X, gemm_n4096_k14336::TB_THREADS_Y, 1);
+  dim3 grid(N / TILE_N, ceil_div_int64(M, TILE_M), 1); // N divisible by TILE_N (4096/64 = 64)
+
+  const __half* A = reinterpret_cast<const __half*>(A_h);
+  const __half* B = reinterpret_cast<const __half*>(B_h);
+  __half* C = reinterpret_cast<__half*>(C_h);
+
+  gemm_n4096_k14336_kernel<<<grid, block, 0, stream>>>(A, B, C, static_cast<int>(M));
+  CUDA_CHECK(cudaGetLastError());
+}
+
+} // namespace gemm_n4096_k14336
+</cuda_file>
+
+<cpp_file name="main.cpp">
+#include "kernel.h"
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <vector>
+#include <stdexcept>
+#include <string>
+
+using namespace gemm_n4096_k14336;
+
+static inline void validate_inputs(const torch::Tensor& A, const torch::Tensor& B) {
+  if (!A.device().is_cuda() || !B.device().is_cuda()) {
+    throw std::runtime_error("Inputs A and B must be CUDA tensors.");
+  }
+  if (A.dtype() != torch::kHalf || B.dtype() != torch::kHalf) {
+    throw std::runtime_error("Inputs A and B must have dtype torch::kHalf (float16).");
+  }
+  if (A.dim() != 2 || B.dim() != 2) {
+    throw std::runtime_error("Inputs A and B must be 2D tensors.");
+  }
+
+  const int64_t M = A.size(0);
+  const int64_t K_A = A.size(1);
+  const int64_t N_B = B.size(0);
+  const int64_t K_B = B.size(1);
+
+  if (K_A != K_CONST) {
+    throw std::runtime_error("Invalid shape for A: expected A.shape = [M, 14336].");
+  }
+  if (N_B != N_CONST || K_B != K_CONST) {
+    throw std::runtime_error("Invalid shape for B: expected B.shape = [4096, 14336].");
+  }
+  if (A.device().index() != B.device().index()) {
+    throw std::runtime_error("A and B must be on the same CUDA device.");
+  }
+  if (M <= 0) {
+    throw std::runtime_error("M dimension must be positive.");
+  }
+}
+
+torch::Tensor run(torch::Tensor A, torch::Tensor B) {
+  try {
+    validate_inputs(A, B);
+
+    // Ensure contiguous layout for simple indexing
+    if (!A.is_contiguous()) A = A.contiguous();
+    if (!B.is_contiguous()) B = B.contiguous();
+
+    const int64_t M = A.size(0);
+    auto options = torch::TensorOptions().dtype(torch::kHalf).device(A.device());
+    torch::Tensor C = torch::empty({M, N_CONST}, options);
+
+    const at::Half* Ap = A.data_ptr<at::Half>();
+    const at::Half* Bp = B.data_ptr<at::Half>();
+    at::Half* Cp = C.data_ptr<at::Half>();
+
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+    gemm_n4096_k14336::launch_gemm_n4096_k14336(Ap, Bp, Cp, M, stream);
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    return C;
+  } catch (const std::exception& e) {
+    throw std::runtime_error(std::string("run() failed: ") + e.what());
+  }
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("run", &run, "Kernel execution function", py::arg("A"), py::arg("B"));
+}
+</cpp_file>

@@ -186,7 +186,7 @@ def _dispatch_apply_or_tracing(
 
 
 def enable_apply(
-    dataset_path: Optional[str] = None,
+    dataset_path: Union[str, TraceSet, None] = None,
     apply_config: Union[ApplyConfig, ApplyConfigRegistry, None] = None,
 ) -> ApplyRuntime:
     """Enable apply functionality globally and return a ApplyRuntime instance that manages the
@@ -197,8 +197,8 @@ def enable_apply(
 
     Parameters
     ----------
-    dataset_path : str, optional
-        Path to the dataset/trace_set directory
+    dataset_path : Union[str, TraceSet], optional
+        Path to the dataset/trace_set directory, or an in-memory TraceSet.
     apply_config : Union[ApplyConfig, ApplyConfigRegistry], optional
         Configuration for the apply runtime. Can be:
         - ApplyConfig: A single config used as the default for all definitions
@@ -228,7 +228,7 @@ def enable_apply(
     ...     out = apply("rmsnorm_d4096", args=(...), kwargs={...}, fallback=ref_fn)
     >>> # Apply is now disabled.
     """
-    trace_set = TraceSet.from_path(dataset_path)
+    trace_set = dataset_path if isinstance(dataset_path, TraceSet) else TraceSet.from_path(dataset_path)
     apply_runtime = ApplyRuntime(trace_set, apply_config)
     apply_runtime.start()
     return apply_runtime

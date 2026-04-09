@@ -1,0 +1,2 @@
+model,definition,solution,solution_path,feedback_workload_uuid,experiment_status,total_traces,passed_traces,compile_errors,runtime_errors,correctness_errors,timeouts,pass_rate,best_speedup,avg_speedup,top_error_bucket,error_message
+gpt-5-2025-08-07,rmsnorm_h128,gpt-5-2025-08-07_rmsnorm_h128_cuda_optimized_r4_c0_high,/data1/workspace/airulan/bench/flashinfer-trace/solutions/gpt-5-2025-08-07/rmsnorm/rmsnorm_h128/gpt-5-2025-08-07_rmsnorm_h128_cuda_optimized_r4_c0_high.json,4b7f0d02-8404-4eb4-be5c-64b0fd639684,OK,14,14,0,0,0,0,1.0,5.472972952045959,4.069649652593368,passed,
