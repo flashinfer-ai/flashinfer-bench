@@ -106,9 +106,9 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
 
 
 def main():
-    configs = [(1, 16), (4, 64), (8, 128)]
+    configs = [(1, 16), (4, 32), (8, 64), (16, 128)]
     passed = sum(1 for b, s in configs if test_correctness(b, s))
-    print(f"{passed}/{len(configs)} passed")
+    print(f"\nSummary: {passed}/{len(configs)} tests passed")
 
 
 if __name__ == "__main__":
