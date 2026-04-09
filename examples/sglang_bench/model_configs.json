@@ -191,6 +191,31 @@
             ]
         }
     },
+    "qwen3-30b": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer"
+        ]
+    },
+    "gemma-3-27b": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer"
+        ]
+    },
+    "qwen3-next-80b-ragged": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "2",
+            "--disable-radix-cache",
+            "--disable-cuda-graph",
+            "--disable-piecewise-cuda-graph",
+            "--chunked-prefill-size", "100000",
+            "--mem-fraction-static", "0.9",
+            "--disable-flashinfer-autotune",
+            "--skip-server-warmup"
+        ]
     "mi300x": {
         "llama-3.1-8b": {
             "server_flags": [
