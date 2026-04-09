@@ -212,8 +212,8 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h3072` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h3072` | rmsnorm | ❌ |
+| `rmsnorm_h3072` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h3072` | rmsnorm | ✅ |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ❌ |
@@ -227,7 +227,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3072.
+**Coverage**: 5 / 14 definitions present. Missing: all GQA and GEMM definitions for hidden=3072.
 
 ---
 
