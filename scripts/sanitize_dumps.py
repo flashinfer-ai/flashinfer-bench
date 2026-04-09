@@ -318,8 +318,9 @@ def process_call_dump(
     # For wrapper class run() dumps: supplement with structural tensors from paired plan() dump.
     # plan() captures int32/int64 structural tensors (qo_indptr, paged_kv_indptr,
     # paged_kv_indices, paged_kv_last_page_len); run() only has the query tensor.
+    _WRAPPER_RUN_SUFFIXES = (".run", ".forward", ".forward_return_lse")
     plan_record = None
-    if plan_dir is not None and func_name_in_dump.endswith(".run"):
+    if plan_dir is not None and any(func_name_in_dump.endswith(s) for s in _WRAPPER_RUN_SUFFIXES):
         plan_tensors = _load_input_tensors(plan_dir)
         plan_meta_path = plan_dir / "metadata.jsonl"
         if plan_meta_path.exists() and plan_tensors:
@@ -574,15 +575,23 @@ def sanitize_dumps(
         # Build function name → definition mapping using fi_api tags.
         # FlashInfer may log wrapper class methods as either "ClassName.run" or just "run";
         # index both so the lookup works regardless.
+        # RaggedKVCacheWrapper: SGLang calls .forward()/.forward_return_lse() instead of .run().
         for tag in defn.get("tags", []):
             if tag.startswith("fi_api:"):
                 api_path = tag[len("fi_api:") :]
                 last = api_path.split(".")[-1]
                 if last[0].isupper():
-                    # Qualified name (e.g. "BatchPrefillWithPagedKVCacheWrapper.run")
-                    func_name_to_defs[f"{last}.run"].append(def_name)
-                    # Unqualified fallback (e.g. "run") — in case FlashInfer logs just the method name
-                    func_name_to_defs["run"].append(def_name)
+                    if "Ragged" in last:
+                        # RaggedKVCacheWrapper: SGLang calls .forward()/.forward_return_lse()
+                        func_name_to_defs[f"{last}.forward"].append(def_name)
+                        func_name_to_defs[f"{last}.forward_return_lse"].append(def_name)
+                        func_name_to_defs["forward"].append(def_name)
+                        func_name_to_defs["forward_return_lse"].append(def_name)
+                    else:
+                        # Qualified name (e.g. "BatchPrefillWithPagedKVCacheWrapper.run")
+                        func_name_to_defs[f"{last}.run"].append(def_name)
+                        # Unqualified fallback (e.g. "run") — in case FlashInfer logs just the method name
+                        func_name_to_defs["run"].append(def_name)
                 else:
                     func_name_to_defs[last].append(def_name)
 
@@ -658,10 +667,11 @@ def sanitize_dumps(
         if not matching_defs:
             continue
 
-        # For any wrapper class .run(), find the paired .plan() dump (same pid, most
-        # recent plan dir whose name sorts before this run dir's name).
+        # For any wrapper class .run()/.forward()/.forward_return_lse(), find the paired
+        # .plan() dump (same pid, most recent plan dir whose name sorts before this run dir's name).
+        _WRAPPER_RUN_SUFFIXES = (".run", ".forward", ".forward_return_lse")
         plan_dir = None
-        if func_name.endswith(".run") and plan_dirs_by_pid:
+        if any(func_name.endswith(s) for s in _WRAPPER_RUN_SUFFIXES) and plan_dirs_by_pid:
             m = re.search(r"_pid(\d+)_", call_dir.name)
             if m:
                 pid = m.group(1)
