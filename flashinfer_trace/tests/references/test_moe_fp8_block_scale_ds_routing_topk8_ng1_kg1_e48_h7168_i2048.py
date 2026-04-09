@@ -93,16 +93,18 @@ def run(
         tok_idx = torch.nonzero(sel_mask, as_tuple=False).squeeze(1)
         A_e = A.index_select(0, tok_idx)
 
-        W13_e = (gemm1_weights[le].to(torch.float32).view(
-            2 * num_i_blocks, BLOCK, num_h_blocks, BLOCK
-        ) * gemm1_weights_scale[le].to(torch.float32).unsqueeze(1).unsqueeze(3)).view(2 * I, H)
+        W13_e = (
+            gemm1_weights[le].to(torch.float32).view(2 * num_i_blocks, BLOCK, num_h_blocks, BLOCK)
+            * gemm1_weights_scale[le].to(torch.float32).unsqueeze(1).unsqueeze(3)
+        ).view(2 * I, H)
         g1 = A_e @ W13_e.t()
         up, gate = g1[:, :I], g1[:, I:]
         c = torch.nn.functional.silu(gate) * up
 
-        W2_e = (gemm2_weights[le].to(torch.float32).view(
-            num_h_blocks, BLOCK, num_i_blocks, BLOCK
-        ) * gemm2_weights_scale[le].to(torch.float32).unsqueeze(1).unsqueeze(3)).view(H, I)
+        W2_e = (
+            gemm2_weights[le].to(torch.float32).view(num_h_blocks, BLOCK, num_i_blocks, BLOCK)
+            * gemm2_weights_scale[le].to(torch.float32).unsqueeze(1).unsqueeze(3)
+        ).view(H, I)
         o = c @ W2_e.t()
         w_tok = weights[tok_idx, ge].unsqueeze(1)
         output.index_add_(0, tok_idx, o * w_tok)
@@ -159,7 +161,9 @@ def generate_random_inputs(seq_len: int, local_expert_offset: int = 0, device: s
     }
 
 
-def test_correctness(seq_len: int = 4, local_expert_offset: int = 0, atol: float = 0.5, rtol: float = 0.1):
+def test_correctness(
+    seq_len: int = 4, local_expert_offset: int = 0, atol: float = 0.5, rtol: float = 0.1
+):
     print(f"\n{'='*60}")
     print(f"Testing MoE FP8 e48 (Kimi K2 EP=8), T={seq_len}, offset={local_expert_offset}")
     print(f"{'='*60}")
