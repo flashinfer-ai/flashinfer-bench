@@ -218,7 +218,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h24_kv8_d128_ps64` | gqa_paged | ❌ |
-| `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ❌ |
+| `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ✅ |
 | `gemm_n5120_k3072` | gemm | ❌ |
 | `gemm_n3072_k3072` | gemm | ❌ |
 | `gemm_n16384_k3072` | gemm | ❌ |
@@ -227,7 +227,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3072.
+**Coverage**: 4 / 14 definitions present. GQA ragged prefill kernel added. Missing: rmsnorm h3072, paged GQA variants, and GEMM kernels for hidden=3072.
 
 ---
 
