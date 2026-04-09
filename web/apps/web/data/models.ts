@@ -826,6 +826,314 @@ const models: Model[] = [
       },
     },
   },
+  {
+    id: "kimi-k2",
+    name: "Kimi K2",
+    description:
+      "Moonshot AI Kimi K2. 61 decoder layers, MLA attention (64 heads, TP=8 → h=8), sparse MoE (384 experts, top-8 DeepSeek routing, EP=8 → 48 local experts). Servable on 8×B200 (4×B200×2) at FP8.",
+    modules: {
+      KimiK2ForCausalLM: {
+        count: 1,
+        type: "block",
+      },
+      embed_tokens: {
+        count: 1,
+        parent: "KimiK2ForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+      KimiK2DecoderLayer: {
+        count: 61,
+        parent: "KimiK2ForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm: {
+        count: 61,
+        parent: "KimiK2DecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h7168", "fused_add_rmsnorm_h7168"],
+      },
+      self_attn: {
+        count: 61,
+        parent: "KimiK2DecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      fused_qkv_a_proj_with_mqa: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      q_a_layernorm: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["rmsnorm_h1536"],
+      },
+      q_b_proj: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      kv_a_layernorm: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: ["rmsnorm_h512"],
+      },
+      kv_b_proj: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      rotary_emb: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      attn_mla: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [
+          "mla_ragged_prefill_causal_h8_qk192_vo128",
+          "mla_paged_prefill_causal_h8_ckv512_kpe64_ps1",
+          "mla_paged_decode_h8_ckv512_kpe64_ps1",
+        ],
+      },
+      o_proj: {
+        count: 61,
+        parent: "self_attn",
+        type: "layer",
+        definitions: [],
+      },
+      post_attention_layernorm: {
+        count: 61,
+        parent: "KimiK2DecoderLayer",
+        type: "layer",
+        definitions: ["rmsnorm_h7168", "fused_add_rmsnorm_h7168"],
+      },
+      mlp: {
+        count: 61,
+        parent: "KimiK2DecoderLayer",
+        type: "block",
+        definitions: [],
+      },
+      mlp_dense: {
+        count: 1,
+        parent: "mlp",
+        type: "block",
+        definitions: [],
+      },
+      moe: {
+        count: 60,
+        parent: "mlp",
+        type: "block",
+        definitions: [],
+      },
+      moe_gate: {
+        count: 60,
+        parent: "moe",
+        type: "layer",
+        definitions: ["moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e48_h7168_i2048"],
+      },
+      moe_topk: {
+        count: 60,
+        parent: "moe",
+        type: "layer",
+        definitions: ["moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e48_h7168_i2048"],
+      },
+      moe_experts: {
+        count: 60,
+        parent: "moe",
+        type: "layer",
+        definitions: ["moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e48_h7168_i2048"],
+      },
+      norm: {
+        count: 1,
+        parent: "KimiK2ForCausalLM",
+        type: "layer",
+        definitions: ["rmsnorm_h7168", "fused_add_rmsnorm_h7168"],
+      },
+      lm_head: {
+        count: 1,
+        parent: "KimiK2ForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+    },
+  },
+  {
+    id: "llama-4-scout-17b-16e",
+    name: "Llama 4 Scout 17B-16E",
+    description:
+      "Meta Llama 4 Scout 17B-16E. 48 decoder layers with interleaved local (RoPE chunked, ×40) and global (NoPE, ×8) attention, MoE FFN (16 experts, top-1). TP=8 on 8×B200 (4×B200×2): 40/8=5 q-heads, 8/8=1 kv-head.",
+    modules: {
+      Llama4ScoutForCausalLM: {
+        count: 1,
+        type: "block",
+        definitions: [],
+      },
+      Llama4TextModel: {
+        count: 1,
+        parent: "Llama4ScoutForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      // --- Local attention layers (RoPE chunked): 5 of every 6 layers = 40 total ---
+      Llama4TextDecoderLayer_Local: {
+        count: 40,
+        parent: "Llama4TextModel",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_local: {
+        count: 40,
+        parent: "Llama4TextDecoderLayer_Local",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      self_attn_local: {
+        count: 40,
+        parent: "Llama4TextDecoderLayer_Local",
+        type: "block",
+        definitions: [],
+      },
+      attn_local: {
+        count: 40,
+        parent: "self_attn_local",
+        type: "layer",
+        definitions: [
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_ragged_prefill_causal_h5_kv1_d128",
+        ],
+      },
+      post_attention_layernorm_local: {
+        count: 40,
+        parent: "Llama4TextDecoderLayer_Local",
+        type: "layer",
+        definitions: ["fused_add_rmsnorm_h5120"],
+      },
+      feed_forward_local: {
+        count: 40,
+        parent: "Llama4TextDecoderLayer_Local",
+        type: "block",
+        definitions: [],
+      },
+      moe_local: {
+        count: 40,
+        parent: "feed_forward_local",
+        type: "block",
+        definitions: [],
+      },
+      moe_gate_local: {
+        count: 40,
+        parent: "moe_local",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192",
+        ],
+      },
+      moe_experts_local: {
+        count: 40,
+        parent: "moe_local",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192",
+        ],
+      },
+      // --- Global attention layers (NoPE / full context): 1 of every 6 layers = 8 total ---
+      Llama4TextDecoderLayer_Global: {
+        count: 8,
+        parent: "Llama4TextModel",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_global: {
+        count: 8,
+        parent: "Llama4TextDecoderLayer_Global",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      self_attn_global: {
+        count: 8,
+        parent: "Llama4TextDecoderLayer_Global",
+        type: "block",
+        definitions: [],
+      },
+      attn_global: {
+        count: 8,
+        parent: "self_attn_global",
+        type: "layer",
+        definitions: [
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_ragged_prefill_causal_h5_kv1_d128",
+        ],
+      },
+      post_attention_layernorm_global: {
+        count: 8,
+        parent: "Llama4TextDecoderLayer_Global",
+        type: "layer",
+        definitions: ["fused_add_rmsnorm_h5120"],
+      },
+      feed_forward_global: {
+        count: 8,
+        parent: "Llama4TextDecoderLayer_Global",
+        type: "block",
+        definitions: [],
+      },
+      moe_global: {
+        count: 8,
+        parent: "feed_forward_global",
+        type: "block",
+        definitions: [],
+      },
+      moe_gate_global: {
+        count: 8,
+        parent: "moe_global",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192",
+        ],
+      },
+      moe_experts_global: {
+        count: 8,
+        parent: "moe_global",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192",
+        ],
+      },
+      // --- Final norm + head ---
+      norm: {
+        count: 1,
+        parent: "Llama4TextModel",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      lm_head: {
+        count: 1,
+        parent: "Llama4ScoutForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+    },
+  },
 ] satisfies Model[]
 
 export default models
