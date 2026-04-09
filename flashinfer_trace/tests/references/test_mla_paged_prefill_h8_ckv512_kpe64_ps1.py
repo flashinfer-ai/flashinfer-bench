@@ -173,7 +173,9 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         print(f"✓ PASSED (atol={atol}, rtol={rtol})")
     else:
         print(f"✗ FAILED (atol={atol}, rtol={rtol})")
-        print(f"  Max output abs diff: {torch.abs(ref_o.float() - fi_output.float()).max().item():.6e}")
+        print(
+            f"  Max output abs diff: {torch.abs(ref_o.float() - fi_output.float()).max().item():.6e}"
+        )
         print(f"  Max LSE abs diff: {torch.abs(ref_lse - fi_lse).max().item():.6e}")
 
     return all_close
