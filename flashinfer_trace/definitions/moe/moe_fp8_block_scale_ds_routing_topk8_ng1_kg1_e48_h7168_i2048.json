@@ -3,7 +3,7 @@
   "description": "FP8 block-scale MoE (DeepSeek-style). Kimi K2 (EP=8). DeepSeek routing, n_group=1, topk_group=1. 48 local experts per device (384 total / 8 EP).",
   "op_type": "moe",
   "tags": [
-    "status:unverified",
+    "status:verified",
     "model:kimi-k2",
     "quantization:float8_e4m3fn",
     "fi_api:flashinfer.fused_moe.trtllm_fp8_block_scale_moe",
