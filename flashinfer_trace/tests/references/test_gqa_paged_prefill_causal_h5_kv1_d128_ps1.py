@@ -32,17 +32,26 @@ def compile_reference(reference_code: str):
 
 
 def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
-    total_q_per_seq = torch.randint(
+    q_len_per_seq = torch.randint(
         1, max_seq_len + 1, (batch_size,), dtype=torch.int32, device=device
     )
-    total_q = total_q_per_seq.sum().item()
-    total_pages = total_q_per_seq.sum().item()
-    kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    kv_indptr[1:] = torch.cumsum(total_q_per_seq, dim=0)
-    kv_indices = torch.arange(total_pages, dtype=torch.int32, device=device)
+    # kv_len >= q_len to test the general prefill case (query attending to pre-existing KV cache)
+    kv_len_per_seq = torch.tensor(
+        [torch.randint(int(q.item()), max_seq_len + 1, (1,)).item() for q in q_len_per_seq],
+        dtype=torch.int32,
+        device=device,
+    )
+
+    total_q = int(q_len_per_seq.sum().item())
+    total_pages = int(kv_len_per_seq.sum().item())
 
     qo_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    qo_indptr[1:] = torch.cumsum(total_q_per_seq, dim=0)
+    qo_indptr[1:] = torch.cumsum(q_len_per_seq, dim=0)
+
+    kv_indptr = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    kv_indptr[1:] = torch.cumsum(kv_len_per_seq, dim=0)
+    kv_indices = torch.arange(total_pages, dtype=torch.int32, device=device)
+    kv_last_page_len = torch.ones(batch_size, dtype=torch.int32, device=device)
 
     q = torch.randn(total_q, NUM_QO_HEADS, HEAD_DIM, dtype=torch.bfloat16, device=device)
     num_cache_pages = total_pages + 100
@@ -54,17 +63,16 @@ def generate_random_inputs(batch_size, max_seq_len, device="cuda"):
     )
     sm_scale = torch.tensor(1.0 / math.sqrt(HEAD_DIM), dtype=torch.float32, device=device)
 
-    result = {
+    return {
         "q": q,
         "k_cache": k_cache,
         "v_cache": v_cache,
         "qo_indptr": qo_indptr,
         "kv_indptr": kv_indptr,
         "kv_indices": kv_indices,
+        "kv_last_page_len": kv_last_page_len,
         "sm_scale": sm_scale,
     }
-
-    return result
 
 
 def test_correctness(batch_size=2, max_seq_len=64, atol=1e-2, rtol=5e-2):
@@ -97,16 +105,17 @@ def test_correctness(batch_size=2, max_seq_len=64, atol=1e-2, rtol=5e-2):
         qo_indptr=inputs["qo_indptr"],
         paged_kv_indptr=inputs["kv_indptr"],
         paged_kv_indices=inputs["kv_indices"],
+        paged_kv_last_page_len=inputs["kv_last_page_len"],
         num_qo_heads=NUM_QO_HEADS,
         num_kv_heads=fi_kv_heads,
-        head_dim=HEAD_DIM,
+        head_dim_qk=HEAD_DIM,
         page_size=PAGE_SIZE,
         causal=True,
         q_data_type=torch.bfloat16,
         kv_data_type=torch.bfloat16,
         sm_scale=inputs["sm_scale"].item(),
     )
-    fi_o, fi_lse = wrapper.run((k_cache_exp, v_cache_exp), return_lse=True)
+    fi_o, fi_lse = wrapper.run(inputs["q"], (k_cache_exp, v_cache_exp), return_lse=True)
 
     out_ok = torch.allclose(ref_o.float(), fi_o.float(), atol=atol, rtol=rtol)
     lse_ok = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
@@ -114,9 +123,9 @@ def test_correctness(batch_size=2, max_seq_len=64, atol=1e-2, rtol=5e-2):
 
 
 def main():
-    configs = [(1, 16), (2, 64)]
+    configs = [(1, 16), (4, 32), (8, 64), (16, 128)]
     passed = sum(1 for b, s in configs if test_correctness(b, s))
-    print(f"{passed}/{len(configs)} passed")
+    print(f"\nSummary: {passed}/{len(configs)} tests passed")
 
 
 if __name__ == "__main__":
