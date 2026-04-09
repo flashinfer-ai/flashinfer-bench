@@ -87,6 +87,11 @@ def _build_fi_include_pattern(def_files: list[Path]) -> str:
         if last[0].isupper():
             # Wrapper class: always capture .run
             patterns.append(f"{last}.run")
+            # RaggedKVCacheWrapper: SGLang calls .forward()/.forward_return_lse() (deprecated path),
+            # not .run() — capture those too so FlashInfer logging instruments them.
+            if "Ragged" in last:
+                patterns.append(f"{last}.forward")
+                patterns.append(f"{last}.forward_return_lse")
             # Also capture .plan if any definition has int32/int64 inputs
             # (structural tensors like indptrs/indices come from plan(), not run())
             needs_plan = any(
@@ -171,6 +176,17 @@ def _uses_paged_prefill_specifically(def_files: list[Path]) -> bool:
             defn = json.load(f)
         for tag in defn.get("tags", []):
             if "BatchPrefillWithPagedKVCacheWrapper" in tag:
+                return True
+    return False
+
+
+def _uses_ragged_prefill(def_files: list[Path]) -> bool:
+    """Return True if any definition uses BatchPrefillWithRaggedKVCacheWrapper."""
+    for path in def_files:
+        with open(path) as f:
+            defn = json.load(f)
+        for tag in defn.get("tags", []):
+            if "BatchPrefillWithRaggedKVCacheWrapper" in tag:
                 return True
     return False
 
@@ -611,8 +627,11 @@ def run_sglang_mode(
     # to force use_ragged=False. Ragged prefill must NOT have that flag (it would disable the wrapper).
     force_prefill_server = _uses_prefill_server(def_files)
     force_paged_prefill = _uses_paged_prefill_specifically(def_files)
+    force_ragged_prefill = _uses_ragged_prefill(def_files)
     if force_prefill_server:
         extra = " + --enable-deterministic-inference" if force_paged_prefill else ""
+        if force_ragged_prefill:
+            extra += " + --disable-piecewise-cuda-graph"
         print(f"  Detected prefill definition — will use HTTP server{extra}")
 
     env = os.environ.copy()
@@ -658,7 +677,7 @@ def run_sglang_mode(
     # The HTTP server mode fails in this case because synchronous CPU-GPU weight
     # transfers during inference block the uvicorn event loop, preventing health checks
     # from responding.
-    use_offline = not force_prefill_server
+    use_offline = not force_prefill_server and not force_ragged_prefill
     use_offline_paged_prefill = force_paged_prefill and cpu_offload_gb > 0
     if use_offline:
         print(
@@ -720,6 +739,12 @@ def run_sglang_mode(
             # Force use_ragged=False so all prefill goes through BatchPrefillWithPagedKVCacheWrapper.
             # Must NOT be set for ragged prefill — it would disable BatchPrefillWithRaggedKVCacheWrapper.
             server_cmd += ["--enable-deterministic-inference"]
+        if force_ragged_prefill:
+            # Disable piecewise CUDA graph capture so prefill calls go through the ragged wrapper.
+            # During CUDA graph capture, is_in_piecewise_cuda_graph()=True forces use_ragged=False,
+            # so the captured graph only uses the paged wrapper. With this flag, every prefill
+            # is executed eagerly and can use BatchPrefillWithRaggedKVCacheWrapper.
+            server_cmd += ["--disable-piecewise-cuda-graph"]
         if ep > 1:
             server_cmd += ["--ep", str(ep)]
         if quantization:
@@ -763,7 +788,12 @@ def run_sglang_mode(
             raise RuntimeError("SGLang server did not become ready within 30 minutes")
 
         try:
-            _run_sglang_inference(num_samples, dataset_path, paged_prefill=True)
+            _run_sglang_inference(
+                num_samples,
+                dataset_path,
+                paged_prefill=force_paged_prefill,
+                max_tokens_override=1 if force_ragged_prefill else None,
+            )
         finally:
             server_proc.terminate()
             server_proc.wait()
@@ -791,7 +821,10 @@ def run_sglang_mode(
 
 
 def _run_sglang_inference(
-    num_samples: int, dataset_path: str | None, paged_prefill: bool = False
+    num_samples: int,
+    dataset_path: str | None,
+    paged_prefill: bool = False,
+    max_tokens_override: int | None = None,
 ) -> None:
     """Send ShareGPT inference requests to a running SGLang server.
 
@@ -802,6 +835,10 @@ def _run_sglang_inference(
     When paged_prefill=True, uses a prefix-sharing strategy to generate diverse
     workloads: a long shared system prompt is prepended to every request, producing
     varied (num_tokens, prefix_len) pairs for the paged prefill wrapper.
+
+    When max_tokens_override is set, all requests use that value for max_tokens
+    regardless of strategy (useful for ragged prefill where max_tokens=1 ensures
+    we capture only prefill steps, not decode).
     """
     import threading
 
@@ -1037,6 +1074,8 @@ def _run_sglang_inference(
         total_sent = 0
 
         for B, prompt_tokens, max_tokens in rounds:
+            if max_tokens_override is not None:
+                max_tokens = max_tokens_override
             # All B requests use the same prompt length so they prefill together.
             msgs_group = []
             for _ in range(B):
