@@ -444,7 +444,7 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 
 ## Qwen3 235B A22B
 
-**Architecture**: 94 decoder layers, GQA attention, sparse MoE FFN (128 experts, top-8 routing). Uses head_dim=64 (hidden=4096, 64 query heads). Standard serving configuration: **TP=8, EP=2** (FP8 variant from sgl-cookbook). With 4 KV heads, effective per-device TP for attention is TP=4 (kv=1 per device).
+**Architecture**: 94 decoder layers, GQA attention, sparse MoE FFN (128 experts, top-8 routing). Uses head_dim=128 (hidden=8192, 64 query heads). Standard serving configuration: **TP=8, EP=2** (FP8 variant from sgl-cookbook). With 4 KV heads, effective per-device TP for attention is TP=4 (kv=1 per device).
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
