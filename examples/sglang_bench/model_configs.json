@@ -33,5 +33,15 @@
             "--trust-remote-code",
             "--attention-backend", "flashinfer"
         ]
+    },
+    "qwen3-next-80b-ragged": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "2",
+            "--disable-radix-cache",
+            "--disable-piecewise-cuda-graph",
+            "--chunked-prefill-size", "100000"
+        ]
     }
 }
