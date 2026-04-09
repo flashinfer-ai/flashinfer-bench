@@ -44,10 +44,6 @@ def run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):
         pages = kv_indices[page_beg:page_end]
         L_tokens = page_end - page_beg
 
-        if L_tokens <= 0 or pages.numel() == 0:
-            output[b].zero_()
-            continue
-
         tok_idx = pages[:L_tokens].to(torch.long)
 
         Kc = Kc_all[tok_idx]  # [L_tokens, head_dim_ckv]
@@ -118,7 +114,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
-        return True
+        return None
 
     num_qo_heads = 8
     head_dim_ckv = 512
