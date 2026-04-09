@@ -72,13 +72,15 @@ FlashInfer-Bench supports the following op_types (corresponding to different Def
 | Operation Type | Description | Example |
 |---------------|-------------|---------|
 | `rmsnorm` | RMS Layer Normalization | `rmsnorm_h4096` |
-| `gemm` | General Matrix Multiplication | `gemm_n_6144_k_4096` |
+| `gemm` | General Matrix Multiplication | `gemm_n6144_k4096` |
 | `gqa_ragged` | Group Query Attention (ragged) | `gqa_ragged_prefill_causal_h32_kv8_d128` |
 | `gqa_paged` | Group Query Attention (paged) | `gqa_paged_decode_h32_kv8_d128_ps1` |
 | `mla_paged` | Multi-Head Latent Attention (paged) | `mla_paged_decode_h16_ckv512_kpe64_ps1` |
 | `dsa_paged` | DeepSeek Sparse Attention (paged) | `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1` |
 | `gdn` | Gated Delta Net (linear attention) | `gdn_decode_qk4_v8_d128_k_last` |
+| `mamba_ssu` | Mamba2 Selective State Update (decode) | `mamba_ssu_decode_h128_d64_s128_ng8` |
 | `moe` | Mixture of Experts | `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048` |
+| `rope` | Rotary Position Embedding | `rope_with_cos_sin_cache_neox_style_d128_rd64` |
 | `sampling` | Sampling operations | - |
 
 ### Tensor/Expert Parallelism and Multiple Definitions
@@ -221,8 +223,19 @@ Associate each module with corresponding Definitions:
   - MLA: `mla_paged_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_ps1`
   - DSA: `dsa_sparse_decode_h{num_heads}_ckv{ckv_dim}_kpe{kpe_dim}_topk{topk}_ps1` (sparse MLA)
   - GDN: `gdn_decode_qk{q_heads}_v{v_heads}_d{head_dim}` (linear attention)
-- **GEMM layers**: `gemm_n_{out_dim}_k_{in_dim}`
+  - Mamba2 SSU: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}` (see note below)
+- **GEMM layers**: `gemm_n{out_dim}_k{in_dim}`
+- **RoPE layers**:
+  - NeoX: `rope_with_cos_sin_cache_neox_style_d{head_size}_rd{rotary_dim}`
+  - GPT-J: `rope_with_cos_sin_cache_gptj_style_d{head_size}_rd{rotary_dim}`
 - **MoE layers**: `moe_fp8_block_scale_ds_routing_topk{topk}_ng{num_groups}_kg{group_size}_e{num_experts}_h{hidden}_i{intermediate}`
+
+**Mamba2 SSU FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
+- Supported `head_dim` (d): 64, 128, 256
+- Supported `dstate` (s): 64, 128, 256
+- Supported `nheads/ngroups` ratio: 1, 8, 16
+- Example: NemotronH-8B: `nheads=128, head_dim=64, dstate=128, ngroups=8` → ratio=16 ✓
+- TP splits both nheads and ngroups equally, keeping the ratio constant
 
 #### 5. Validation and Testing
 
@@ -381,6 +394,39 @@ Where GDN maintains a recurrent state [B, H, K, V] and uses:
 - `A_log`: learnable log decay parameter
 - `a`: input-dependent decay (combined with dt_bias)
 - `b`: update gate input (transformed via sigmoid)
+
+### Mamba2 SSM Architecture (e.g., NemotronH-8B)
+
+Hybrid models interleave Mamba2 SSM layers with standard attention and MLP-only layers:
+```
+Model (52 layers total: 24 Mamba, 4 Attention, 24 MLP-only)
+├── NemotronHMambaDecoderLayer (×24)   # 'M' positions in hybrid_override_pattern
+│   ├── input_layernorm → rmsnorm
+│   └── mamba_mixer → mamba_ssu_decode  (SSM state update, decode step)
+├── NemotronHAttentionDecoderLayer (×4)  # '*' positions
+│   ├── input_layernorm → rmsnorm
+│   ├── self_attn → gqa_paged_decode/prefill
+│   ├── post_attention_layernorm → rmsnorm
+│   └── mlp → gemm
+└── NemotronHMLPDecoderLayer (×24)     # '-' positions
+    ├── input_layernorm → rmsnorm
+    └── mlp → gemm
+```
+
+Mamba2 SSU decode step (per layer, per decode token):
+- `in_proj → gemm` (x, dt, B, C from hidden states)
+- `conv1d` (causal convolution on x, B, C)
+- `mamba_ssu_decode → mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
+- `out_proj → gemm` (SSM output to hidden states)
+
+Key Mamba2 SSU parameters:
+- `nheads`: SSM heads (split by TP)
+- `head_dim`: head dimension (d_ssm / nheads, NOT split by TP)
+- `dstate`: SSM state size (NOT split by TP)
+- `ngroups`: B/C groups (split by TP alongside nheads)
+
+Supported FlashInfer models (mamba_ssu kernel constraints: head_dim∈[64,128,256], dstate∈[64,128,256], nheads/ngroups∈[1,8,16]):
+- **NemotronH-8B** (nvidia/Nemotron-H-8B-Base): nheads=128, head_dim=64, dstate=128, ngroups=8, ratio=16 ✓
 
 ## Extension and Contributing
 

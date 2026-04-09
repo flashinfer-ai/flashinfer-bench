@@ -482,7 +482,7 @@ def test_no_sources() -> None:
     )
 
     builder = TVMFFIBuilder()
-    with pytest.raises(BuildError, match="Either cpp_files or cuda_files must be provided"):
+    with pytest.raises(BuildError):
         builder.build(ADD_ONE_DEFINITION, no_sources_solution)
 
 

@@ -171,6 +171,7 @@ kernel (even if no definition JSON exists yet).
 | `moe` | `flashinfer/fused_moe/` — check for specific variant |
 | `gemm` | Always available via PyTorch |
 | `sampling` | `flashinfer/sampling.py` |
+| `rope` | `flashinfer/rope.py` — grep for `apply_rope_with_cos_sin_cache` |
 
 Additionally check `tmp/flashinfer/tests/` for a corresponding test file — its presence is a
 strong signal that the kernel is implemented and tested.
