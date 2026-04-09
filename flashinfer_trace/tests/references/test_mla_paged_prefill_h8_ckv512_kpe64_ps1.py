@@ -122,18 +122,26 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
         print("WARNING: CUDA not available, skipping test")
-        return True
+        return None
 
     num_qo_heads = 8
     head_dim_ckv = 512
     head_dim_kpe = 64
     page_size = 1
 
-    inputs = generate_random_inputs(batch_size, max_seq_len, num_qo_heads, head_dim_ckv, head_dim_kpe, page_size, device)
+    inputs = generate_random_inputs(
+        batch_size, max_seq_len, num_qo_heads, head_dim_ckv, head_dim_kpe, page_size, device
+    )
 
     ref_o, ref_lse = run(
-        inputs["q_nope"], inputs["q_pe"], inputs["ckv_cache"], inputs["kpe_cache"],
-        inputs["qo_indptr"], inputs["kv_indptr"], inputs["kv_indices"], inputs["sm_scale"],
+        inputs["q_nope"],
+        inputs["q_pe"],
+        inputs["ckv_cache"],
+        inputs["kpe_cache"],
+        inputs["qo_indptr"],
+        inputs["kv_indptr"],
+        inputs["kv_indices"],
+        inputs["sm_scale"],
     )
 
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
