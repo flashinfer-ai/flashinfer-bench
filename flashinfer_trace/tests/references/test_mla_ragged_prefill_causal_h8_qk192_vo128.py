@@ -78,7 +78,14 @@ def generate_random_inputs(
     v = torch.randn(total_tokens, num_qo_heads, vo_dim, dtype=torch.bfloat16, device=device)
     sm_scale = torch.tensor(1.0 / math.sqrt(qk_dim), dtype=torch.float32, device=device)
 
-    return {"q": q, "k": k, "v": v, "qo_indptr": indptr, "kv_indptr": indptr.clone(), "sm_scale": sm_scale}
+    return {
+        "q": q,
+        "k": k,
+        "v": v,
+        "qo_indptr": indptr,
+        "kv_indptr": indptr.clone(),
+        "sm_scale": sm_scale,
+    }
 
 
 def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
@@ -103,7 +110,9 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
     )
 
     workspace_buffer = torch.empty(128 * 1024 * 1024, dtype=torch.int8, device=device)
-    prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(workspace_buffer, backend="auto")
+    prefill_wrapper = flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper(
+        workspace_buffer, backend="auto"
+    )
     prefill_wrapper.plan(
         qo_indptr=inputs["qo_indptr"],
         kv_indptr=inputs["kv_indptr"],
@@ -115,9 +124,7 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         q_data_type=torch.bfloat16,
         kv_data_type=torch.bfloat16,
     )
-    fi_output, fi_lse = prefill_wrapper.run(
-        inputs["q"], inputs["k"], inputs["v"], return_lse=True
-    )
+    fi_output, fi_lse = prefill_wrapper.run(inputs["q"], inputs["k"], inputs["v"], return_lse=True)
 
     output_close = torch.allclose(ref_o.float(), fi_output.float(), atol=atol, rtol=rtol)
     lse_close = torch.allclose(ref_lse, fi_lse, atol=atol, rtol=rtol)
@@ -127,7 +134,9 @@ def test_correctness(batch_size=4, max_seq_len=64, atol=1e-2, rtol=5e-2):
         print(f"✓ PASSED (atol={atol}, rtol={rtol})")
     else:
         print(f"✗ FAILED (atol={atol}, rtol={rtol})")
-        print(f"  Max output abs diff: {torch.abs(ref_o.float() - fi_output.float()).max().item():.6e}")
+        print(
+            f"  Max output abs diff: {torch.abs(ref_o.float() - fi_output.float()).max().item():.6e}"
+        )
         print(f"  Max LSE abs diff: {torch.abs(ref_lse - fi_lse).max().item():.6e}")
 
     return all_close
