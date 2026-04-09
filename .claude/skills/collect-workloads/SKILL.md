@@ -48,6 +48,7 @@ conda run -n flashinfer_bench pip install -e "tmp/sglang/python[all]"
 
 Parses `fi_api:<dotted.api.name>` tags from each definition to build `FLASHINFER_DUMP_INCLUDE`:
 - Wrapper class APIs (e.g. `BatchDecodeWithPagedKVCacheWrapper`) → include `.run`, and `.plan` if the definition has `int32`/`int64` inputs
+- **`BatchPrefillWithRaggedKVCacheWrapper`**: SGLang calls `.forward()`/`.forward_return_lse()` (not `.run()`) — those are automatically added to `FLASHINFER_DUMP_INCLUDE` for Ragged wrappers
 - Plain function APIs (e.g. `rmsnorm`) → include by function name
 
 Key env vars set automatically:
@@ -67,14 +68,15 @@ FLASHINFER_DUMP_MAX_SIZE_GB=30
 
 **Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run 4 rounds each with fresh ShareGPT slices for natural KV-length diversity.
 
-**Two execution modes** (chosen automatically based on definition type):
+**Three execution modes** (chosen automatically based on definition type):
 
 | Mode | When | How |
 |------|------|-----|
 | SGLang offline Engine | Decode-only definitions | `engine.generate()` with exact batch size per call — guarantees decode sees `B` concurrent sequences |
-| SGLang HTTP server | Paged-prefill definitions | Launches server + sends bursts of ShareGPT requests via `/v1/chat/completions` |
+| SGLang HTTP server (paged) | Paged-prefill definitions | Launches server with `--enable-deterministic-inference` to force `use_ragged=False`, sends prefix-sharing requests via `/v1/chat/completions` |
+| SGLang HTTP server (ragged) | Ragged-prefill definitions (`BatchPrefillWithRaggedKVCacheWrapper`) | Launches server with `--disable-piecewise-cuda-graph` (no `--enable-deterministic-inference`), sends requests with `max_tokens=1` |
 
-**Both CUDA graph flags are always set** (`--disable-cuda-graph --disable-piecewise-cuda-graph`). Without them, `run()` executes inside a CUDA stream capture context, causing `cudaErrorStreamCaptureUnsupported` — FlashInfer cannot copy tensors to CPU, so `q`/`k_cache`/`v_cache` are never dumped. This silently breaks const-axis validation (e.g. `head_dim` from `q.shape[2]` is never checked). Batch diversity comes from the ShareGPT sweep, not CUDA graph capture.
+**Critical ragged prefill flags**: `--disable-cuda-graph` alone is insufficient. SGLang always captures a piecewise CUDA graph for prefill; during capture `is_in_piecewise_cuda_graph()=True` forces `use_ragged=False`, so the captured graph only uses `BatchPrefillWithPagedKVCacheWrapper`. Adding `--disable-piecewise-cuda-graph` prevents the capture, ensuring every prefill executes eagerly through `BatchPrefillWithRaggedKVCacheWrapper`. Do **not** add `--enable-deterministic-inference` for ragged — it forces `use_ragged=False` entirely.
 
 ### Phase 4: Tensor Dump Sanitization
 
@@ -145,6 +147,8 @@ Each JSONL line:
 **No tensor dumps generated**: verify `FLASHINFER_LOGLEVEL=10` is set before any FlashInfer import; check `FLASHINFER_DUMP_INCLUDE` matches actual API function names; confirm `--attention-backend flashinfer`.
 
 **`run()` not captured**: look for `cudaErrorStreamCaptureUnsupported` in SGLang log. Fix: always pass both `--disable-cuda-graph` and `--disable-piecewise-cuda-graph`.
+
+**Ragged prefill yields 0 workloads**: two possible causes — (1) `--enable-deterministic-inference` is set, which forces `use_ragged=False` globally — never set this for ragged definitions; (2) piecewise CUDA graph is active (default even without `--enable-deterministic-inference`), so `is_in_piecewise_cuda_graph()=True` during capture forces `use_ragged=False`, and the cached graph always routes to `BatchPrefillWithPagedKVCacheWrapper`. Fix: add `--disable-piecewise-cuda-graph`. The script auto-detects ragged prefill definitions and adds this flag automatically.
 
 **Constant axis mismatch across TP**: use `--skip-const-axis-check` when collecting TP=1 dumps for a TP=2 definition (structural tensors are identical across TP).
 
