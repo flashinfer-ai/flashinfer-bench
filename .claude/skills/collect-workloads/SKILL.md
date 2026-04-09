@@ -5,413 +5,160 @@ description: Auto-collect workloads from SGLang inference runs using FlashInfer 
 
 # Collect Workloads
 
-Automatically collect real-world workloads by running SGLang inference with FlashInfer Level 10 logging, then sanitize and submit to the flashinfer-ai/flashinfer-trace HuggingFace dataset repository.
+Collect real-world workloads by running SGLang inference with FlashInfer Level 10 logging, then sanitize and submit to the flashinfer-ai/flashinfer-trace HuggingFace dataset.
 
-## Design Principle
-
-**No code changes to SGLang or FlashInfer are required.** Collection works entirely through FlashInfer's built-in logging API:
-
-1. **Run SGLang** with `--attention-backend flashinfer` and FlashInfer Level 10 logging env vars → FlashInfer dumps per-call tensors automatically
-2. **Sanitize dumps** with `scripts/sanitize_dumps.py` → converts raw FlashInfer dump directories into flashinfer-trace JSONL + safetensors
-
-Then optionally submit a PR to the flashinfer-trace repo.
+**No code changes to SGLang or FlashInfer are required.** Collection works entirely through FlashInfer's built-in logging API.
 
 ## Scripts
 
-### Scripts Overview
-
-| Script | Purpose | When to use |
-|--------|---------|-------------|
-| `collect_workloads.py` | **Primary entry point.** `sglang` mode (**default**): full pipeline (SGLang server + inference + sanitize). `direct` mode: call FlashInfer APIs directly with synthetic inputs — **only when FlashInfer API is not integrated into SGLang**. | Default for any workload collection |
-| `sanitize_dumps.py` | Converts FlashInfer Level 10 per-call dump directories → flashinfer-trace JSONL + safetensors | Called automatically by `collect_workloads.py`; also run manually to re-sanitize existing dumps |
-
-Always provide `--flashinfer-trace-dir` to specify the flashinfer-trace repo location.
-
-### `scripts/collect_workloads.py` ← **primary collection script**
-
-The main entry point. **Always use `sglang` mode by default.** Only fall back to `direct` mode when the FlashInfer API is not integrated into SGLang (e.g., a new op_type not yet wired into SGLang's FlashInfer backend).
+| Script | Purpose |
+|--------|---------|
+| `scripts/collect_workloads.py` | Primary entry point: runs SGLang inference + sanitizes dumps |
+| `scripts/sanitize_dumps.py` | Converts FlashInfer Level 10 dump dirs → JSONL + safetensors; called automatically by `collect_workloads.py`, or run manually to re-sanitize |
 
 ```bash
-# SGLang mode (DEFAULT): real inference → real structural tensors
-CUDA_VISIBLE_DEVICES=0,0 python scripts/collect_workloads.py sglang \
-  --model-path ~/.cache/huggingface/hub/models--Qwen--Qwen3-14B/snapshots/<hash> \
-  --definitions gqa_paged_prefill_causal_h20_kv4_d128_ps64 \
-  --flashinfer-trace-dir tmp/flashinfer-trace \
-  --replace \
-  --skip-install  # skip if packages already installed
-
-# Direct mode (FALLBACK ONLY): use only when FlashInfer API is not integrated into SGLang
-# e.g. a new kernel type that SGLang does not yet call via FlashInfer
-python scripts/collect_workloads.py direct \
-  --definitions gdn_mtp_qk4_v8_d128_k_last \
+python scripts/collect_workloads.py sglang \
+  --model-path /path/to/model \
+  --definitions gqa_paged_decode_h32_kv8_d128_ps1 \
   --flashinfer-trace-dir tmp/flashinfer-trace \
   --replace
 ```
 
 **Auto-detection from definition tags:**
-- `tp:N` tag → auto-sets `--tp N` (use `CUDA_VISIBLE_DEVICES=0,0` to simulate TP=2 on 1 GPU)
-- `page_size` const axis → auto-sets `--page-size N`
+- `tp:N` → sets `--tp N` (use `CUDA_VISIBLE_DEVICES=0,0` to simulate TP=2 on 1 GPU)
+- `page_size` const axis → sets `--page-size N`
 
-### `scripts/sanitize_dumps.py` ← **converts FlashInfer dumps to workload format**
-
-Reads FlashInfer Level 10 per-call dump directories and converts to flashinfer-trace JSONL format. Called automatically by `collect_workloads.py sglang`, but can also be run manually to re-sanitize an existing dump dir.
-
-```bash
-python scripts/sanitize_dumps.py \
-  --dump-dir ./workload_dumps_20260326_123456 \
-  --definitions gqa_paged_prefill_causal_h20_kv4_d128_ps64 \
-  --flashinfer-trace-dir tmp/flashinfer-trace \
-  --replace
-```
-
-**Key flag**: `--skip-const-axis-check` — skip const-axis shape verification when collecting TP=1 dumps for a TP=2 definition (structural tensors like indptrs/indices are identical across TP; only head-count axes differ).
-
-**Output:**
-- `{flashinfer_trace_dir}/workloads/{op_type}/{def_name}.jsonl`
-- `{flashinfer_trace_dir}/blob/workloads/{op_type}/{def_name}/{def_name}_{uuid}.safetensors`
-
-## Usage
-
-```bash
-# Collect workloads for specific definitions
-/collect-workloads --definition-names mla_paged_decode_h16_ckv512_kpe64_ps1 rmsnorm_h7168
-
-# Collect for all definitions of an op_type
-/collect-workloads --op-type mla_paged --model-name deepseek-v3
-
-# Collect for all definitions (comprehensive collection)
-/collect-workloads --all --model-name llama-3.1-8b
-
-# Collect without submitting PR (local testing)
-/collect-workloads --op-type gqa_paged --submit-pr false
-
-# Custom dataset and sample size
-/collect-workloads --op-type rmsnorm --dataset /path/to/custom_sharegpt.jsonl --num-samples 500
-```
-
-## Parameters
-
-- `definition_names` (optional): List of specific definition names to collect workloads for
-- `op_type` (optional): Collect workloads for all definitions of a specific op_type
-- `all` (optional): Collect workloads for ALL definitions in definitions directory (default: false)
-- `model_name` (required): Model to run inference on (e.g., "deepseek-v3", "llama-3.1-8b")
-- `dataset` (optional): Path to ShareGPT-format JSONL dataset (default: download from Hugging Face)
-- `num_samples` (optional): Number of inference samples to process (default: 100)
-- `submit_pr` (optional): Whether to submit PR to flashinfer-trace repo (default: true)
-
-## Prerequisites
-
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer.
-
-## What This Skill Does
+## Workflow
 
 ### Phase 0: Install Latest Packages
 
-**Always** install the latest SGLang and FlashInfer from source before collecting workloads.
-
 ```bash
-git -C tmp/flashinfer pull
-git -C tmp/sglang pull
+git -C tmp/flashinfer pull && git -C tmp/sglang pull
 conda run -n flashinfer_bench pip install -e tmp/flashinfer --no-build-isolation
 conda run -n flashinfer_bench pip install -e "tmp/sglang/python[all]"
-
-# Verify
-conda run -n flashinfer_bench python -c "import sglang, flashinfer; print(f'SGLang: {sglang.__version__}, FlashInfer: {flashinfer.__version__}')"
 ```
 
 ### Phase 1: Resolve Target Definitions
 
-- `--definitions`: load specific definitions by name (searched across all op_type dirs)
-- `--op-type`: load all definitions from `{flashinfer-trace-dir}/definitions/{op_type}/`
-- `--all`: scan all definitions in `{flashinfer-trace-dir}/definitions/`
+- `--definitions <name> [name ...]`: specific definitions by name
+- `--op-type <type>`: all definitions under `definitions/{op_type}/`
+- `--all`: all definitions in the repo
 
 ### Phase 2: FlashInfer Logging Configuration
 
-Each definition JSON has `fi_api:<dotted.api.name>` tags identifying which FlashInfer API to capture. `collect_workloads.py` parses these to build a precise `FLASHINFER_DUMP_INCLUDE` filter:
+Parses `fi_api:<dotted.api.name>` tags from each definition to build `FLASHINFER_DUMP_INCLUDE`:
+- Wrapper class APIs (e.g. `BatchDecodeWithPagedKVCacheWrapper`) → include `.run`, and `.plan` if the definition has `int32`/`int64` inputs
+- **`BatchPrefillWithRaggedKVCacheWrapper`**: SGLang calls `.forward()`/`.forward_return_lse()` (not `.run()`) — those are automatically added to `FLASHINFER_DUMP_INCLUDE` for Ragged wrappers
+- Plain function APIs (e.g. `rmsnorm`) → include by function name
 
-```python
-# Class/Wrapper APIs → matched as ClassName.run (and ClassName.plan if def has int32/int64 inputs)
-# Plain function APIs → matched as function name
-# e.g. fi_api:flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper → "BatchPrefillWithPagedKVCacheWrapper.run"
-#      + "BatchPrefillWithPagedKVCacheWrapper.plan" (since it has int32 qo_indptr, kv_indptr, kv_indices)
-# e.g. fi_api:flashinfer.norm.rmsnorm → "rmsnorm"
-```
-
-**`.plan` inclusion rule**: `ClassName.plan` is added to `FLASHINFER_DUMP_INCLUDE` only if any definition using that API has `int32` or `int64` inputs. This ensures structural tensors (indptrs, indices) from `plan()` are captured without logging unnecessary data.
-
-Environment variables set automatically:
-
+Key env vars set automatically:
 ```bash
-FLASHINFER_LOGLEVEL=10               # enable Flight Recorder (Metadata + Tensors) mode
+FLASHINFER_LOGLEVEL=10
 FLASHINFER_DUMP_DIR=./workload_dumps_<timestamp>
-FLASHINFER_DUMP_SAFETENSORS=1        # save tensors as .safetensors (not .pt)
-FLASHINFER_DUMP_MAX_SIZE_GB=50
-FLASHINFER_DUMP_MAX_COUNT=10000
+FLASHINFER_DUMP_SAFETENSORS=1
 FLASHINFER_DUMP_INCLUDE=<fi_api patterns>   # only log matching API calls
-FLASHINFER_DUMP_EXCLUDE=*.__init__           # skip constructors (plan() only excluded if not needed)
+FLASHINFER_DUMP_EXCLUDE=*.__init__
+FLASHINFER_DUMP_MAX_COUNT=50000
+FLASHINFER_DUMP_MAX_SIZE_GB=30
 ```
 
-`FLASHINFER_DUMP_INCLUDE` is **critical** — without it, every FlashInfer call gets logged (gigabytes of irrelevant data).
+### Phase 3: SGLang Inference
 
-**Reference**: [FlashInfer Logging Documentation](https://docs.flashinfer.ai/logging.html)
+**Inference source**: real ShareGPT prompts (from `--dataset` path or downloaded from HuggingFace `anon8231489123/ShareGPT_Vicuna_unfiltered`). Falls back to synthetic prompts only if ShareGPT is unavailable.
 
-### Phase 3: SGLang Inference (sglang mode — DEFAULT)
+**Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run 4 rounds each with fresh ShareGPT slices for natural KV-length diversity.
 
-**Always use this mode.** `collect_workloads.py sglang` handles everything automatically — no changes to SGLang needed:
+**Three execution modes** (chosen automatically based on definition type):
 
-1. Launch SGLang with `--attention-backend flashinfer --disable-cuda-graph`
-2. Wait for server ready (polls `/health`, timeout 30min)
-3. Run ShareGPT inference via `/v1/chat/completions`
-4. Shut down via SIGTERM
+| Mode | When | How |
+|------|------|-----|
+| SGLang offline Engine | Decode-only definitions | `engine.generate()` with exact batch size per call — guarantees decode sees `B` concurrent sequences |
+| SGLang HTTP server (paged) | Paged-prefill definitions | Launches server with `--enable-deterministic-inference` to force `use_ragged=False`, sends prefix-sharing requests via `/v1/chat/completions` |
+| SGLang HTTP server (ragged) | Ragged-prefill definitions (`BatchPrefillWithRaggedKVCacheWrapper`) | Launches server with `--disable-piecewise-cuda-graph` (no `--enable-deterministic-inference`), sends requests with `max_tokens=1` |
 
-`--disable-cuda-graph` is required so every kernel call is logged individually.
-
-### Phase 3: Direct API Calls (direct mode — FALLBACK ONLY)
-
-**Only use this mode when the FlashInfer API is not integrated into SGLang** — for example, a brand-new kernel type that SGLang does not yet route through FlashInfer. In all other cases, prefer `sglang` mode for real structural tensors.
-
-`collect_workloads.py direct` calls FlashInfer APIs directly with synthetic inputs — no SGLang or model needed. Spawns a subprocess per definition with FlashInfer env vars set before any import.
-
-Default variable axis combinations per op_type (`OP_TYPE_VAR_CONFIGS` in `collect_workloads.py`):
-- `gdn`: 21 (batch_size, seq_len, pool_size) combinations
-- `gqa_paged` / `mla_paged`: 4–5 (batch_size, num_pages) combinations
-- `rmsnorm`: 4 (batch_size, seq_len) combinations
-- `gemm` / `sampling`: 4 batch_size variants
-
-Definition constraints (e.g. `"seq_len > 1"`) are enforced before calling the API.
+**Critical ragged prefill flags**: `--disable-cuda-graph` alone is insufficient. SGLang always captures a piecewise CUDA graph for prefill; during capture `is_in_piecewise_cuda_graph()=True` forces `use_ragged=False`, so the captured graph only uses `BatchPrefillWithPagedKVCacheWrapper`. Adding `--disable-piecewise-cuda-graph` prevents the capture, ensuring every prefill executes eagerly through `BatchPrefillWithRaggedKVCacheWrapper`. Do **not** add `--enable-deterministic-inference` for ragged — it forces `use_ragged=False` entirely.
 
 ### Phase 4: Tensor Dump Sanitization
 
-`scripts/sanitize_dumps.py` processes the FlashInfer dump directory:
+`sanitize_dumps.py` processes dump dirs:
+1. Matches dumps to definitions via `fi_api` function name
+2. Pairs `plan()` dumps with the following `run()` dump (same PID) to get structural tensors
+3. Maps plan kwargs: `paged_kv_indptr→kv_indptr`, `paged_kv_indices→kv_indices`, etc.
+4. Tensor storage policy:
+   - `int32`/`int64` (structural: indptrs, indices) → saved to safetensors blob
+   - float activations (`q`, `k_cache`, `v_cache`) → `{"type": "random"}` (shapes validated but values irrelevant for benchmarking)
+   - scalars (`sm_scale`) → `{"type": "scalar", "value": <float>}`
+5. Trims `kv_indices` to `kv_indptr[-1]` (SGLang over-allocates KV pool)
+6. Deduplicates: at most 2 entries per unique axes combination
 
-1. **Match by function name** — reads `function_name` from `metadata.jsonl`, matches to definitions via `fi_api` tags
-2. **Skip plan() dumps** — consumed as supplements to paired run() dumps
-3. **Pair plan() with run()** — for wrapper class APIs (any `.plan` function), find the most recent preceding `.plan` dump from the same PID (by directory sort order) to get structural tensors
-4. **Plan kwarg → definition input mapping**:
-   - `paged_kv_indptr` → `kv_indptr`
-   - `paged_kv_indices` → `kv_indices`
-   - `paged_kv_last_page_len` → `kv_last_page_len`
-   - `qo_indptr` → `qo_indptr`
-5. **Tensor storage policy** (based on definition input dtype):
-   - `int32`/`int64` (structural) → saved to safetensors blob
-   - `float32`/`bfloat16`/`float16` (activations) → `{"type": "random"}` (values don't affect benchmarking)
-   - null shape (scalars like `sm_scale`) → `{"type": "scalar", "value": <float>}`
-6. **kv_indices trimming**: SGLang KV pool is over-allocated; trim to `kv_indptr[-1]` valid entries
-7. **Deduplication**: at most 2 entries per unique axes combination per definition
+### Phase 5: Baseline Evaluation
 
-### Phase 5: Submit Pull Request (1 HuggingFace PR per definition)
-
-This skill produces **PR 2** in the two-PR workflow. PR 1 (definition JSON + reference tests +
-model_coverage.mdx) is submitted by `extract-kernel-definitions` and should already be open
-before submitting workloads.
-
-For each definition with newly collected workloads, submit **one HuggingFace PR** containing
-five things together: baseline solution, workload JSONL, safetensors traces, kernel definition
-JSON, and reference test (the last two copied from flashinfer-bench PR 1):
-
+Runs the baseline solution against collected workloads before PR submission:
 ```bash
-cd tmp/flashinfer-trace
-BRANCH="workloads-$(date +%Y%m%d)-{definition_name}"
-git checkout -b "$BRANCH"
-
-# 1. Baseline solution (Python reference extracted from definition JSON reference_impl field)
-cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-   solutions/{op_type}/{definition_name}.py
-# (extract the reference_impl field into a standalone runnable script)
-git add solutions/{op_type}/{definition_name}.py
-
-# 2. Workload JSONL and safetensors blobs
-git add workloads/{op_type}/{definition_name}.jsonl \
-        blob/workloads/{op_type}/{definition_name}/
-
-# 3. Kernel definition JSON (mirrored from flashinfer-bench)
-cp {REPO_ROOT}/flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-   definitions/{op_type}/{definition_name}.json
-git add definitions/{op_type}/{definition_name}.json
-
-# 4. Reference test (mirrored from flashinfer-bench)
-cp {REPO_ROOT}/tests/test_{op_type}_{definition_name}.py \
-   tests/{op_type}/test_{op_type}_{definition_name}.py
-git add tests/{op_type}/test_{op_type}_{definition_name}.py
-
-git commit -m "Add {definition_name}: baseline solution + workloads + traces + def + tests
-
-Model: {hf_repo_id}
-SGLang: {sglang_commit_sha}
-FlashInfer: {flashinfer_commit_sha}
-Workload entries: {num_workload_entries}
-GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
-"
-pre-commit run --all-files
-git push origin "$BRANCH"
-python -c "
-from huggingface_hub import HfApi
-HfApi().create_pull_request(
-    repo_id='flashinfer-ai/flashinfer-trace',
-    repo_type='dataset',
-    title='Add {definition_name}: baseline solution + workloads + traces + def + tests',
-    description='...',
-    head='$BRANCH',
-)
-"
+flashinfer-bench run --local {trace_dir} --definitions {def_name} --solutions baseline
+# → writes {trace_dir}/traces/{def_name}_baseline.jsonl
 ```
 
-**Rule: one definition = one HuggingFace PR.** Do not batch multiple definitions into a
-single PR. Always wait for PR 1 (GitHub) to be open before submitting PR 2, so the
-`pr1_number` cross-reference in the commit message is valid.
+All entries must have `evaluation.status == "PASSED"`. If any fail, do not submit PR 2.
 
-### Parallelizing across definitions with git worktrees
+### Phase 6: Submit PR 2 (HuggingFace flashinfer-trace)
 
-When submitting PRs for multiple definitions, use git worktrees so all submissions happen
-in parallel — one worktree per definition in each repo, one agent per definition.
+One HuggingFace PR per definition. PR 1 (GitHub flashinfer-bench) must already be open.
 
-```bash
-DATE=$(date +%Y%m%d)
+**PR 2 contents:**
+1. `solutions/baseline/{op_type}/{def_name}/flashinfer_wrapper_*.json` — FlashInfer API wrapper (calls `BatchDecodeWithPagedKVCacheWrapper` or `BatchPrefillWithPagedKVCacheWrapper`, **not** `reference_impl`)
+2. `workloads/{op_type}/{def_name}.jsonl`
+3. `blob/workloads/{op_type}/{def_name}/*.safetensors`
+4. `definitions/{op_type}/{def_name}.json` (copied from PR 1)
+5. `tests/references/test_{def_name}.py` (copied from PR 1)
+6. `traces/{op_type}/{def_name}.jsonl` (baseline eval trace, all PASSED)
 
-# Create trace worktrees up front for all definitions
-for DEF in {definition_name_1} {definition_name_2} ...; do
-  git -C tmp/flashinfer-trace worktree add \
-    ../worktrees/trace-${DEF} \
-    -b workloads-${DATE}-${DEF}
-done
-
-# Spawn one agent per definition — all run simultaneously
-# Each agent: copies solution + workload files into its worktree, commits, pushes, creates HF PR
-# Clean up after all agents report their PR URLs:
-for DEF in {definition_names}; do
-  git -C tmp/flashinfer-trace worktree remove ../worktrees/trace-${DEF}
-  git worktree remove tmp/worktrees/bench-${DEF}
-done
-```
-
-See `onboard-model` SKILL.md Phase 4 for the full agent prompt template and per-step details.
+**PR description must include** the full stdout of `collect_workloads.py sglang` under `## SGLang Collection Log`. The log must show real ShareGPT inference with diverse `(batch_size, kv_length)` pairs — uniform tiny KV caches (e.g. `batch_size=4096` with 1-page contexts) indicate synthetic data, not real inference.
 
 ## Output Format
 
-### Workload JSONL
-
 ```
 {flashinfer_trace_dir}/workloads/{op_type}/{def_name}.jsonl
+{flashinfer_trace_dir}/blob/workloads/{op_type}/{def_name}/{def_name}_{uuid}.safetensors
 ```
 
-Each line:
+Each JSONL line:
 ```json
 {
-  "definition": "gqa_paged_prefill_causal_h20_kv4_d128_ps64",
-  "solution": null,
+  "definition": "gqa_paged_decode_h32_kv8_d128_ps1",
   "workload": {
     "uuid": "a1b2c3d4-...",
-    "axes": {"len_indptr": 5, "total_q": 1024, "num_kv_indices": 512, "num_pages": 576},
+    "axes": {"len_indptr": 33, "num_kv_indices": 4096},
     "inputs": {
       "q": {"type": "random"},
       "k_cache": {"type": "random"},
       "v_cache": {"type": "random"},
-      "qo_indptr": {
-        "type": "safetensors",
-        "path": "./blob/workloads/gqa_paged/gqa_paged_prefill_causal_h20_kv4_d128_ps64/gqa_paged_prefill_causal_h20_kv4_d128_ps64_<uuid>.safetensors",
-        "tensor_key": "qo_indptr"
-      },
       "kv_indptr": {"type": "safetensors", "path": "...", "tensor_key": "kv_indptr"},
       "kv_indices": {"type": "safetensors", "path": "...", "tensor_key": "kv_indices"},
-      "sm_scale": {"type": "scalar", "value": 0.08838834764831843}
+      "kv_last_page_len": {"type": "safetensors", "path": "...", "tensor_key": "kv_last_page_len"},
+      "sm_scale": {"type": "scalar", "value": 0.0883}
     }
-  },
-  "evaluation": null
+  }
 }
-```
-
-### Safetensors Blobs
-
-```
-{flashinfer_trace_dir}/blob/workloads/{op_type}/{def_name}/{def_name}_{uuid}.safetensors
-```
-
-One file per workload entry containing all structural tensors.
-
-## Advanced Usage
-
-### Custom FLASHINFER_DUMP_INCLUDE
-
-The skill auto-builds `FLASHINFER_DUMP_INCLUDE` from `fi_api` tags. For ad-hoc runs:
-
-```bash
-export FLASHINFER_DUMP_INCLUDE="*Wrapper.run,*Wrapper.plan"  # all attention wrappers + plan
-export FLASHINFER_DUMP_INCLUDE="*decode*"                    # decode kernels only
-export FLASHINFER_DUMP_EXCLUDE="*.__init__"                  # always exclude constructors
-```
-
-### Cross-TP Collection
-
-Collect TP=1 dumps for a TP=2 definition (structural tensors are identical across TP):
-
-```bash
-python scripts/sanitize_dumps.py \
-  --dump-dir ./workload_dumps_tp1 \
-  --definitions gqa_paged_prefill_causal_h20_kv4_d128_ps64 \
-  --flashinfer-trace-dir tmp/flashinfer-trace \
-  --skip-const-axis-check \
-  --replace
 ```
 
 ## Error Handling
 
-### No Tensor Dumps Generated
+**No tensor dumps generated**: verify `FLASHINFER_LOGLEVEL=10` is set before any FlashInfer import; check `FLASHINFER_DUMP_INCLUDE` matches actual API function names; confirm `--attention-backend flashinfer`.
 
-- Verify `FLASHINFER_LOGLEVEL=10` is set before any FlashInfer import (subprocess env)
-- Check `FLASHINFER_DUMP_INCLUDE` matches the actual API function names
-- Ensure SGLang is using FlashInfer backend (`--attention-backend flashinfer`)
+**`run()` not captured**: look for `cudaErrorStreamCaptureUnsupported` in SGLang log. Fix: always pass both `--disable-cuda-graph` and `--disable-piecewise-cuda-graph`.
 
-### Constant Axis Mismatch
+**Ragged prefill yields 0 workloads**: two possible causes — (1) `--enable-deterministic-inference` is set, which forces `use_ragged=False` globally — never set this for ragged definitions; (2) piecewise CUDA graph is active (default even without `--enable-deterministic-inference`), so `is_in_piecewise_cuda_graph()=True` during capture forces `use_ragged=False`, and the cached graph always routes to `BatchPrefillWithPagedKVCacheWrapper`. Fix: add `--disable-piecewise-cuda-graph`. The script auto-detects ragged prefill definitions and adds this flag automatically.
 
-- Use `--skip-const-axis-check` when collecting across TP configurations
-- May need a new definition variant if model config (num_heads, head_dim) doesn't match
+**Constant axis mismatch across TP**: use `--skip-const-axis-check` when collecting TP=1 dumps for a TP=2 definition (structural tensors are identical across TP).
 
-### SGLang Server Fails to Start
+**SGLang not wired to target FlashInfer API**: grep for the `fi_api` function name in `tmp/sglang/python/sglang/srt/`. If missing, the `onboard-model` skill handles submitting a SGLang PR to wire it in.
 
-- Check GPU memory (`nvidia-smi`)
-- Reduce `--tp` or try a smaller model
-- Check server log in the dump directory
+## Prerequisites
 
-### PR Submission Fails
-
-- Verify HuggingFace auth: `huggingface-cli login`
-- Check write permissions to flashinfer-ai/flashinfer-trace
-
-## Checking SGLang Integration Before Collection
-
-Before running `sglang` mode, verify that SGLang actually routes the target kernel through
-FlashInfer. Use the `fi_api` tag from the definition JSON as the search term:
-
-```bash
-# e.g. for fi_api:flashinfer.gdn.gated_delta_rule_decode
-grep -r "gated_delta_rule_decode" tmp/sglang/python/sglang/srt/ --include="*.py" | grep -v __pycache__
-```
-
-If the API is **not found** in SGLang:
-1. SGLang needs to be updated to wire in this FlashInfer kernel.
-2. The `onboard-model` skill (Phase 3c) handles drafting and submitting the SGLang PR.
-3. While the SGLang PR is pending, use `direct` mode if the kernel supports standalone calls.
-
-## Integration with Other Skills
-
+Run `/clone-repos` first. Then:
 ```bash
 /clone-repos
-/extract-kernel-definitions --model-name deepseek_v3
-/collect-workloads --op-type mla_paged --model-name deepseek-v3
-/add-reference-tests --op-type mla_paged
-
-# Or use the full end-to-end pipeline (handles SGLang integration check + PR automatically)
-/onboard-model --model-name qwen3-235b-a22b
+/extract-kernel-definitions --model-name <model>
+/collect-workloads --op-type <op_type> --model-path /path/to/model
 ```
-
-## References
-
-- [FlashInfer Logging Documentation](https://docs.flashinfer.ai/logging.html)
-- [flashinfer-ai/flashinfer-trace Dataset](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
-- [SGLang Documentation](https://sgl-project.github.io/)
-
-## See Also
-
-- [clone-repos](../clone-repos/SKILL.md)
-- [extract-kernel-definitions](../extract-kernel-definitions/SKILL.md)
-- [add-reference-tests](../add-reference-tests/SKILL.md)
