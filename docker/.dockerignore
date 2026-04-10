@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+.gitmodules
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+.cursor
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+
+# Test artifacts
+.pytest_cache
+.coverage
+htmlcov
+
+# Temporary files
+tmp/
+tmp-repos/
+*.tmp
+
+# Large submodules (not needed for runtime)
+thirdparty/cutlass/docs
+thirdparty/cutlass/test
+thirdparty/cutlass/examples
+thirdparty/cutlass/media
+
+# Web frontend (not needed for kernel benchmarking)
+web/
+
+# Local environment
+.env
+*.local
