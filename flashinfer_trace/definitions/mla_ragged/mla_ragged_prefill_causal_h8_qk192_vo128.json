@@ -1,0 +1,118 @@
+{
+  "name": "mla_ragged_prefill_causal_h8_qk192_vo128",
+  "description": "Batched Multi-head Latent Attention prefill with ragged (variable-length) inputs. Uses the absorbed MLA formulation with combined QK dimension (qk_nope=128 + qk_rope=64 = 192) and value output dimension 128. Causal mask is applied. Captured from Kimi K2 during total prefill (no prefix cache) with tensor parallel size 8 (64/8=8 query heads).",
+  "op_type": "mla_ragged",
+  "tags": [
+    "stage:prefill",
+    "status:unverified",
+    "model:kimi-k2",
+    "fi_api:flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper",
+    "tp:8"
+  ],
+  "axes": {
+    "num_qo_heads": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of query/output heads after tensor parallel split (64/8=8)."
+    },
+    "num_kv_heads": {
+      "type": "const",
+      "value": 8,
+      "description": "Number of key/value heads. Equal to num_qo_heads in the absorbed MLA formulation."
+    },
+    "qk_dim": {
+      "type": "const",
+      "value": 192,
+      "description": "Combined QK head dimension: qk_nope_head_dim (128) + qk_rope_head_dim (64) = 192."
+    },
+    "vo_dim": {
+      "type": "const",
+      "value": 128,
+      "description": "Value/output head dimension (v_head_dim = 128)."
+    },
+    "total_q": {
+      "type": "var",
+      "description": "Total number of query tokens across all sequences."
+    },
+    "total_kv": {
+      "type": "var",
+      "description": "Total number of key-value tokens across all sequences."
+    },
+    "len_indptr": {
+      "type": "var",
+      "description": "Length of indptr arrays (batch_size + 1)."
+    }
+  },
+  "constraints": [
+    "total_q == qo_indptr[-1].item()",
+    "total_kv == kv_indptr[-1].item()"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "qk_dim"
+      ],
+      "dtype": "bfloat16",
+      "description": "Query tensor in absorbed MLA form, combining nope and rope components."
+    },
+    "k": {
+      "shape": [
+        "total_kv",
+        "num_kv_heads",
+        "qk_dim"
+      ],
+      "dtype": "bfloat16",
+      "description": "Key tensor in absorbed MLA form, combining nope and rope components."
+    },
+    "v": {
+      "shape": [
+        "total_kv",
+        "num_kv_heads",
+        "vo_dim"
+      ],
+      "dtype": "bfloat16",
+      "description": "Value tensor."
+    },
+    "qo_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32",
+      "description": "Query offsets for each sequence."
+    },
+    "kv_indptr": {
+      "shape": [
+        "len_indptr"
+      ],
+      "dtype": "int32",
+      "description": "Key-value offsets for each sequence."
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32",
+      "description": "Softmax scale. Default is 1/sqrt(qk_dim) = 1/sqrt(192)."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "total_q",
+        "num_qo_heads",
+        "vo_dim"
+      ],
+      "dtype": "bfloat16",
+      "description": "Attention output tensor."
+    },
+    "lse": {
+      "shape": [
+        "total_q",
+        "num_qo_heads"
+      ],
+      "dtype": "float32",
+      "description": "The 2-based log-sum-exp of attention logits."
+    }
+  },
+  "reference": "import torch\nimport math\n\n\n@torch.no_grad()\ndef run(q, k, v, qo_indptr, kv_indptr, sm_scale):\n    total_q, num_qo_heads, qk_dim = q.shape\n    total_kv, num_kv_heads, vo_dim = v.shape\n    len_indptr = qo_indptr.shape[0]\n\n    # Check constants\n    assert num_qo_heads == 8\n    assert num_kv_heads == 8\n    assert qk_dim == 192\n    assert vo_dim == 128\n\n    # Check constraints\n    assert total_q == qo_indptr[-1].item()\n    assert total_kv == kv_indptr[-1].item()\n\n    device = q.device\n\n    output = torch.zeros(\n        (total_q, num_qo_heads, vo_dim), dtype=torch.bfloat16, device=device\n    )\n    lse = torch.full(\n        (total_q, num_qo_heads), -float(\"inf\"), dtype=torch.float32, device=device\n    )\n\n    q_f32 = q.to(torch.float32)\n    k_f32 = k.to(torch.float32)\n    v_f32 = v.to(torch.float32)\n\n    for b in range(len_indptr - 1):\n        q_start = int(qo_indptr[b].item())\n        q_end = int(qo_indptr[b + 1].item())\n\n        kv_start = int(kv_indptr[b].item())\n        kv_end = int(kv_indptr[b + 1].item())\n\n        if q_start >= q_end or kv_start >= kv_end:\n            continue\n\n        q_batch = q_f32[q_start:q_end]   # [num_q_tokens, num_qo_heads, qk_dim]\n        k_batch = k_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, qk_dim]\n        v_batch = v_f32[kv_start:kv_end]  # [num_kv_tokens, num_kv_heads, vo_dim]\n\n        num_q_tokens = q_batch.shape[0]\n        num_kv_tokens = k_batch.shape[0]\n        delta = num_kv_tokens - num_q_tokens\n\n        # num_kv_heads == num_qo_heads for absorbed MLA, no GQA expansion needed\n        logits = torch.einsum(\"qhd,khd->qhk\", q_batch, k_batch) * sm_scale\n\n        # Apply causal mask\n        q_positions = torch.arange(num_q_tokens, device=device)\n        kv_positions = torch.arange(num_kv_tokens, device=device)\n        causal_mask = kv_positions[None, :] < (q_positions[:, None] + 1 + delta)\n        logits = logits.masked_fill(~causal_mask[:, None, :], float(\"-inf\"))\n\n        # Compute 2-base LSE\n        lse_batch = torch.logsumexp(logits, dim=-1) / math.log(2.0)\n        lse[q_start:q_end] = lse_batch\n\n        attn_weights = torch.softmax(logits, dim=-1)  # [num_q_tokens, num_qo_heads, num_kv_tokens]\n        output_batch = torch.einsum(\"qhk,khd->qhd\", attn_weights, v_batch)\n        output[q_start:q_end] = output_batch.to(torch.bfloat16)\n\n    return output, lse"
+}
