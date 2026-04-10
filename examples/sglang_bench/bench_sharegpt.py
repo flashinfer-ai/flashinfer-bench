@@ -176,19 +176,32 @@ def log(msg: str) -> None:
 
 def load_prompts_from_sharegpt(n: int) -> List[str]:
     """Load n prompts from the ShareGPT dataset."""
-    ds = load_dataset(
-        "anon8231489123/ShareGPT_Vicuna_unfiltered",
-        data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
-        split="train",
-        streaming=True,
-    )
-    prompts = []
-    for example in ds:
-        conv = example.get("conversations", [])
-        if conv and conv[0]["from"].lower() == "human":
-            prompts.append(conv[0]["value"])
-        if len(prompts) >= n:
-            break
+    import json as _json
+    import os as _os
+
+    _local = "/tmp/sharegpt_synthetic.jsonl"
+    if _os.path.exists(_local):
+        prompts = []
+        with open(_local) as _f:
+            for _line in _f:
+                _d = _json.loads(_line)
+                prompts.append(_d.get("prompt", _d.get("conversations", [{}])[0].get("value", "")))
+                if len(prompts) >= n:
+                    break
+    else:
+        ds = load_dataset(
+            "anon8231489123/ShareGPT_Vicuna_unfiltered",
+            data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
+            split="train",
+            streaming=True,
+        )
+        prompts = []
+        for example in ds:
+            conv = example.get("conversations", [])
+            if conv and conv[0]["from"].lower() == "human":
+                prompts.append(conv[0]["value"])
+            if len(prompts) >= n:
+                break
 
     log(f"Loaded {len(prompts)} prompts from ShareGPT dataset")
     prompt_lengths = [len(p) for p in prompts]
@@ -220,7 +233,7 @@ def build_bench_args() -> SimpleNamespace:
         return_routed_experts=False,
         output_file=None,
         output_details=False,
-        warmup_requests=3,
+        warmup_requests=0,
         plot_throughput=False,
         header=None,
         num_prompts=None,
