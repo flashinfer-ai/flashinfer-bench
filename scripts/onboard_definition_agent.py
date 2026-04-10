@@ -253,6 +253,10 @@ def tool_check_workloads(flashinfer_trace_dir: str, definition: str) -> str:
     results["workload_count"] = len(wf.read_text().splitlines()) if wf.exists() else 0
     blobs = list((trace_dir / "blob" / "workloads" / op_type / definition).glob("*.safetensors"))
     results["blob_count"] = len(blobs)
+    baseline_dir = trace_dir / "solutions" / "baseline" / op_type / definition
+    baseline_files = list(baseline_dir.glob("*.json")) if baseline_dir.exists() else []
+    results["baseline_solution_exists"] = len(baseline_files) > 0
+    results["baseline_solution_files"] = [f.name for f in baseline_files]
     tf = trace_dir / "traces" / op_type / f"{definition}.jsonl"
     if tf.exists():
         records = [json.loads(l) for l in tf.read_text().splitlines() if l.strip()]
@@ -361,7 +365,7 @@ TOOLS = [
     },
     {
         "name": "run_baseline_eval",
-        "description": "Run flashinfer-bench eval for a definition against collected workloads. Produces traces JSONL with PASSED/FAILED status.",
+        "description": "Run flashinfer-bench eval for a definition against collected workloads. Produces traces JSONL with PASSED/FAILED status. Only call this when a NEW baseline solution was just written — skip if check_workloads reports baseline_solution_exists=true.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -501,11 +505,15 @@ SYSTEM_PROMPT = textwrap.dedent(
         rm -rf ~/.cache/flashinfer/*/100a/cached_ops/fused_moe_trtllm_sm100
 
     ── Phase 6: Create baseline solution + run eval ──
-    - Read an existing baseline solution of the same op_type for the pattern.
-    - Write: {trace_dir}/solutions/baseline/{{op_type}}/{{definition_name}}/flashinfer_wrapper_<hash>.json
-      The solution calls flashinfer.BatchPrefillWithPagedKVCacheWrapper (or equivalent).
-      The hash is the first 6 chars of sha256 of the main.py content.
-    - Run run_baseline_eval. All workloads must PASSED.
+    - First call check_workloads to inspect the current state of the trace repo.
+    - If baseline_solution_exists=true: skip this entire phase — do NOT write a new solution
+      and do NOT run run_baseline_eval. Proceed directly to Phase 7.
+    - If baseline_solution_exists=false (new baseline needed):
+      - Read an existing baseline solution of the same op_type for the pattern.
+      - Write: {trace_dir}/solutions/baseline/{{op_type}}/{{definition_name}}/flashinfer_wrapper_<hash>.json
+        The solution calls flashinfer.BatchPrefillWithPagedKVCacheWrapper (or equivalent).
+        The hash is the first 6 chars of sha256 of the main.py content.
+      - Run run_baseline_eval with --solutions baseline. All workloads must PASSED.
 
     ── Phase 7: Assemble and open PR2 ──
     - In the trace worktree, ALWAYS branch from origin/main:
