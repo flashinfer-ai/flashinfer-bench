@@ -105,6 +105,26 @@ class TraceSet:
                 if trace.solution:
                     self._traces_by_solution.setdefault(trace.solution, []).append(trace)
 
+    def add_solution(self, solution: Solution) -> None:
+        """Add a solution to the dataset, updating both the solutions dict and the name index.
+
+        Raises
+        ------
+        ValueError
+            If a solution with the same name already exists.
+        KeyError
+            If the solution's definition is not loaded in this TraceSet.
+        """
+        if solution.definition not in self.definitions:
+            raise KeyError(
+                f"Unknown definition: {solution.definition!r}. "
+                "Load the definition before adding solutions."
+            )
+        if solution.name in self._solution_by_name:
+            raise ValueError(f"Duplicate solution name: {solution.name}")
+        self.solutions.setdefault(solution.definition, []).append(solution)
+        self._solution_by_name[solution.name] = solution
+
     @property
     def definitions_path(self) -> Path:
         if self.root is None:
