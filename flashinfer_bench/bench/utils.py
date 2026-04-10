@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import safetensors.torch as st
 import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
@@ -219,11 +220,6 @@ def _ensure_lfs_downloaded(
 def load_safetensors(
     definition: Definition, workload: Workload, trace_set_root: Optional[Path] = None
 ) -> Dict[str, torch.Tensor]:
-    try:
-        import safetensors.torch as st
-    except Exception as e:
-        raise RuntimeError("safetensors is not available in the current environment") from e
-
     shapes_list = definition.get_input_shapes(workload.axes)
     input_names = list(definition.inputs.keys())
     expected = dict(zip(input_names, shapes_list))
