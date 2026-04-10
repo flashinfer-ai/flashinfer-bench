@@ -488,11 +488,12 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e96_h7168_i2048` | moe EP=4 | ❌ |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e48_h7168_i2048` | moe EP=8 | 🟡 |
 | `top_k_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
-**Coverage**: 5 / 14 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 definition added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+**Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
 
 ---
 
