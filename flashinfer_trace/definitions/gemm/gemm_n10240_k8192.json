@@ -1,0 +1,48 @@
+{
+  "name": "gemm_n10240_k8192",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.1/3.3 70B attn.qkv_proj (fused q+k+v: 64*128 + 8*128 + 8*128 = 10240).",
+  "op_type": "gemm",
+  "tags": [
+    "status:verified",
+    "model:llama-3.1-70b"
+  ],
+  "axes": {
+    "M": {
+      "type": "var"
+    },
+    "N": {
+      "type": "const",
+      "value": 10240
+    },
+    "K": {
+      "type": "const",
+      "value": 8192
+    }
+  },
+  "inputs": {
+    "A": {
+      "shape": [
+        "M",
+        "K"
+      ],
+      "dtype": "float16"
+    },
+    "B": {
+      "shape": [
+        "N",
+        "K"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "outputs": {
+    "C": {
+      "shape": [
+        "M",
+        "N"
+      ],
+      "dtype": "float16"
+    }
+  },
+  "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
+}
