@@ -197,6 +197,12 @@
             "--attention-backend", "flashinfer"
         ]
     },
+    "gemma-3-27b": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer"
+        ]
+    },
     "qwen3-next-80b-ragged": {
         "server_flags": [
             "--trust-remote-code",
