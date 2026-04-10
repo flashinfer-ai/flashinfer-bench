@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import time
 import traceback
 import uuid as uuid_mod
 from pathlib import Path
@@ -294,10 +293,6 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
         topk = definition.axes["topk"].value
 
         for trial, inp in enumerate(inputs):
-            _log(f"[dsa_topk_indexer] trial {trial}:")
-
-            # --- run solution ---
-            t0 = time.perf_counter()
             try:
                 if is_dps:
                     out = allocate_outputs(definition, inp, device)
@@ -314,8 +309,6 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
                 return None, make_eval(
                     status=EvaluationStatus.RUNTIME_ERROR, device=device, log_path=log_path
                 )
-            t1 = time.perf_counter()
-            _log(f"  run_solution:     {(t1 - t0) * 1000:.2f} ms")
 
             sol_indices = out[0]
             ref_indices = ref_outputs[trial][0]
@@ -329,7 +322,6 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
                     status=EvaluationStatus.INCORRECT_DTYPE, device=device, log_path=log_path
                 )
 
-            # --- extract inputs ---
             input_names = list(definition.inputs.keys())
             inputs_by_name = dict(zip(input_names, inp))
             q_fp8 = inputs_by_name["q_index_fp8"]
@@ -339,19 +331,14 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
             block_table = inputs_by_name["block_table"]
             num_pages = k_cache_fp8.shape[0]
 
-            # --- validate indices ---
-            t0 = time.perf_counter()
             out_of_range, has_dup = _validate_indices(
                 sol_indices, num_pages, page_size, seq_lens, block_table
             )
-            torch.cuda.synchronize(device)
-            t1 = time.perf_counter()
-            _log(f"  validate_indices: {(t1 - t0) * 1000:.2f} ms")
 
             if out_of_range.any().item():
                 bad_batches = out_of_range.nonzero(as_tuple=True)[0].tolist()
                 msg = f"out-of-range indices in batch {bad_batches}"
-                _log(f"  ERROR: {msg}")
+                _log(f"ERROR: {msg}")
                 correctness = Correctness(
                     max_relative_error=float("inf"), max_absolute_error=float("inf")
                 )
@@ -366,7 +353,7 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
             if has_dup.any().item():
                 bad_batches = has_dup.nonzero(as_tuple=True)[0].tolist()
                 msg = f"duplicate indices in batch {bad_batches}"
-                _log(f"  ERROR: {msg}")
+                _log(f"ERROR: {msg}")
                 correctness = Correctness(
                     max_relative_error=float("inf"), max_absolute_error=float("inf")
                 )
@@ -378,34 +365,19 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
                     extra_msg=msg,
                 )
 
-            # --- dequant ---
-            t0 = time.perf_counter()
             k_all = _dequant_all_pages(k_cache_fp8)
-            torch.cuda.synchronize(device)
-            t1 = time.perf_counter()
-            _log(f"  dequant:          {(t1 - t0) * 1000:.2f} ms")
-
-            # --- compute scores (ref+sol combined in one bmm) ---
-            t0 = time.perf_counter()
             combined = torch.cat([ref_indices, sol_indices], dim=1)
             all_scores = _compute_scores_at_indices(combined, k_all, q_fp8, weights, page_size)
             ref_scores, sol_scores = all_scores.split(topk, dim=1)
-            torch.cuda.synchronize(device)
-            t1 = time.perf_counter()
-            _log(f"  compute_scores:   {(t1 - t0) * 1000:.2f} ms")
 
-            # --- sort and compare ---
-            t0 = time.perf_counter()
             ref_sorted = ref_scores.sort(dim=1, descending=True).values
             sol_sorted = sol_scores.sort(dim=1, descending=True).values
             abs_err, rel_err, exceeds_tol, matched_ratio = _compute_sorted_score_error_stats(
                 sol_sorted, ref_sorted, cfg
             )
-            torch.cuda.synchronize(device)
-            t1 = time.perf_counter()
-            _log(f"  sort_and_compare: {(t1 - t0) * 1000:.2f} ms")
+
             _log(
-                f"  result: max_abs={abs_err:.6f} max_rel={rel_err:.6f} "
+                f"trial {trial}: max_abs={abs_err:.6f} max_rel={rel_err:.6f} "
                 f"matched_ratio={matched_ratio:.4f}"
             )
 
@@ -414,7 +386,7 @@ class DsaTopkIndexerEvaluator(DefaultEvaluator):
                     f"score mismatch: max_abs={abs_err:.6f} "
                     f"max_rel={rel_err:.6f} matched_ratio={matched_ratio:.4f}"
                 )
-                _log(f"  ERROR: {msg}")
+                _log(f"ERROR: {msg}")
                 numerical_incorrect = True
 
             max_abs = max(max_abs, abs_err)
