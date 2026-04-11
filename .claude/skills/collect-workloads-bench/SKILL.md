@@ -39,6 +39,12 @@ For paged prefill: always include `--disable-radix-cache` and `--enable-determin
 Run one batch size at a time to avoid node overload. After each run, sanitize to collect
 2–3 workloads, then delete the dump dir before the next run.
 
+**Multi-node auto-detection**: when model config TP > local GPU count (e.g. TP=8 config but
+only 4 GPUs visible via `nvidia-smi`), `bench_sharegpt.py` automatically triggers multi-node
+mode. Peer nodes are discovered from `SLURM_JOB_ID`; workers are launched via SSH.
+FLASHINFER dump env vars are forwarded only to the head node (rank 0) — workers don't dump.
+Passwordless SSH between allocated nodes is required (standard in SLURM environments).
+
 ```bash
 DUMP_DIR=/tmp/flashinfer_dumps_<name>
 TRACE_DIR=<trace_dir>
@@ -71,7 +77,7 @@ for BS in 1 64 128 256; do
       --disable-cuda-graph \
       2>&1 | tee -a $LOG
 
-  # Kill any lingering processes
+  # Kill any lingering processes (including remote workers if multi-node)
   pkill -f bench_sharegpt.py || true
   pkill -f sglang.launch_server || true
 
@@ -84,6 +90,42 @@ for BS in 1 64 128 256; do
   # Delete dumps before next run to free disk space
   rm -rf $DUMP_DIR
 done
+```
+
+#### Multi-node flags (bench_sharegpt.py)
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--peer-node-addr HOST [HOST ...]` | auto (SLURM) | Override peer node hostname(s)/IP(s) |
+| `--dist-init-port PORT` | `20010` | PyTorch dist rendezvous port (must differ from `--port`) |
+| `--no-multinode` | off | Disable auto multi-node even when config TP > local GPUs |
+| `--conda-env ENV` | `$CONDA_DEFAULT_ENV` | Conda env to activate on peer nodes via SSH |
+
+**Two independent decisions**:
+
+1. **What TP to use** — always from model config:
+   - Config has `--tp-size N` → use N as-is
+   - Config has no `--tp-size` → fall back to local GPU count
+   - **Config TP is never overridden**
+
+2. **How many nodes to use** — derived from TP and local GPU count:
+   - `needed_nodes = ceil(config_tp / local_gpus)`
+   - Only launch multi-node if `needed_nodes > 1` — peer nodes are looked up from SLURM/`--peer-node-addr` only when needed
+
+**Examples** (4 GPUs per node, 2-node SLURM allocation):
+| Config TP | needed_nodes | Launch mode |
+|-----------|-------------|-------------|
+| `--tp-size 4` | 1 | Single-node, TP=4 (fits on one node) |
+| `--tp-size 8` | 2 | Multi-node, TP=8 (4 GPUs × 2 nodes) |
+| *(no flag)* | 1 | Single-node, TP=4 (local GPU count fallback) |
+
+**Manual peer override** (when not in SLURM or peer auto-detection fails):
+```bash
+python examples/sglang_bench/bench_sharegpt.py \
+  --model deepseek-v3 --model-path /path/to/model \
+  --peer-node-addr nvl72155-T14 \
+  --dist-init-port 20010 \
+  ...
 ```
 
 **Note**: Omit `--replace` during the loop so each batch size's workloads are appended.
