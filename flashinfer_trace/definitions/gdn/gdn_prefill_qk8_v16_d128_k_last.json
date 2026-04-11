@@ -6,6 +6,7 @@
     "stage:prefill",
     "status:verified",
     "model:qwen3-next",
+    "model:qwen3.5-35b-a3b",
     "layout:k-last",
     "fi_api:flashinfer.gdn.chunk_gated_delta_rule",
     "tp:2"
