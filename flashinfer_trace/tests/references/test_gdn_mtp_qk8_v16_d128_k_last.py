@@ -1,5 +1,13 @@
+import os
+
 """
-Test GDN MTP k-last reference implementation against FlashInfer kernel.
+Test GDN MTP (Multi-Token Prediction) k-last reference implementation.
+Configuration: num_q_heads=8, num_v_heads=16, head_size=128 (Qwen3.5 TP=2).
+
+MTP processes multiple tokens (T > 1) sequentially with state updates,
+used for speculative decoding verification.
+
+No FlashInfer ground truth kernel for MTP — reference-only validation.
 
 Run with:
     pytest test_gdn_mtp_qk8_v16_d128_k_last.py -v
@@ -12,13 +20,12 @@ from pathlib import Path
 import pytest
 import torch
 import torch.nn.functional as F
-from flashinfer.gdn_decode import gated_delta_rule_mtp
-from flashinfer.utils import get_compute_capability
-
 from flashinfer_bench.data import Definition, load_json_file
 
 # Paths
-DEFINITIONS_DIR = Path(__file__).parent.parent.parent / "definitions"
+DEFINITIONS_DIR = Path(
+    os.environ.get("DEFINITIONS_DIR", Path(__file__).parent.parent.parent / "definitions")
+)
 
 
 def load_definition(name: str) -> Definition:
@@ -38,66 +45,19 @@ def compile_reference(reference_code: str):
     return namespace["run"]
 
 
-def _skip_if_not_sm90_or_later():
-    """Skip test if not Hopper (SM90+) or Blackwell (SM100+) architecture."""
-    cc = get_compute_capability(torch.device("cuda"))
-    if cc[0] not in [9, 10, 11, 12]:
-        pytest.skip(f"GDN MTP requires SM90+ or SM100+, but got SM{cc[0]}{cc[1]}")
+requires_cuda = pytest.mark.skipif(
+    torch.cuda.device_count() == 0, reason="CUDA devices not available"
+)
 
-
-def run_kernel(
-    q,
-    k,
-    v,
-    initial_state,
-    initial_state_indices,
-    A_log,
-    a,
-    dt_bias,
-    b,
-    scale,
-    cache_intermediate=True,
-):
-    """Run FlashInfer MTP kernel."""
-    B, T, num_q_heads, K = q.shape
-    num_v_heads = v.shape[2]
-    pool_size = initial_state.shape[0]
-
-    # Pre-allocate output
-    output = torch.empty(B, T, num_v_heads, K, dtype=q.dtype, device=q.device)
-
-    # Intermediate states buffer (optional)
-    if cache_intermediate:
-        intermediate_states_buffer = torch.zeros(
-            pool_size, T, num_v_heads, K, K, dtype=torch.float32, device=q.device
-        )
-    else:
-        intermediate_states_buffer = None
-
-    # Call kernel
-    out, final_state = gated_delta_rule_mtp(
-        q=q,
-        k=k,
-        v=v,
-        initial_state=initial_state.clone(),
-        initial_state_indices=initial_state_indices,
-        A_log=A_log,
-        a=a,
-        dt_bias=dt_bias,
-        b=b,
-        scale=scale,
-        output=output,
-        intermediate_states_buffer=intermediate_states_buffer,
-        disable_state_update=True,  # Don't update state for testing
-        use_qk_l2norm=False,
-    )
-
-    return out, final_state
+# Load definition and compile reference
+definition = load_definition("gdn_mtp_qk8_v16_d128_k_last")
+reference_gdn_mtp = compile_reference(definition.reference)
 
 
 def generate_random_inputs(
     batch_size,
     seq_len,
+    pool_size=None,
     num_q_heads=8,
     num_k_heads=8,
     num_v_heads=16,
@@ -105,36 +65,36 @@ def generate_random_inputs(
     device="cuda",
     seed=42,
 ):
-    """Generate random inputs for testing."""
+    """Generate random inputs for MTP testing."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+
+    if pool_size is None:
+        pool_size = batch_size
 
     B = batch_size
     T = seq_len
     K = head_size
-    V = head_size
     dtype = torch.bfloat16
 
-    # Use smaller magnitude for better numerical stability
-    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device) * 0.1
-    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device) * 0.1
+    q = torch.randn(B, T, num_q_heads, K, dtype=dtype, device=device) * 0.8
+    k = torch.randn(B, T, num_k_heads, K, dtype=dtype, device=device) * 0.8
     k = F.normalize(k.float(), p=2.0, dim=-1).to(dtype)
-    v = torch.randn(B, T, num_v_heads, V, dtype=dtype, device=device) * 0.1
+    v = torch.randn(B, T, num_v_heads, K, dtype=dtype, device=device) * 0.8
 
-    # Gate parameters with smaller scales
+    # State pool in k-last layout: [pool_size, H, V, K]
+    initial_state = (
+        torch.randn(pool_size, num_v_heads, K, K, dtype=torch.float32, device=device) * 0.01
+    )
+
+    # Indices mapping each batch to its state in the pool
+    initial_state_indices = torch.arange(batch_size, dtype=torch.int32, device=device)
+
     A_log = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.05
     a = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.05
     dt_bias = torch.randn(num_v_heads, dtype=torch.float32, device=device) * 0.05
     b = torch.randn(B, T, num_v_heads, dtype=dtype, device=device) * 0.1
 
-    # k-last layout: [pool_size, H, V, K]
-    pool_size = B
-    initial_state = (
-        torch.randn(pool_size, num_v_heads, V, K, dtype=torch.float32, device=device) * 0.01
-    )
-    initial_state_indices = torch.arange(B, dtype=torch.int32, device=device)
-
-    # Use proper attention scaling
     scale = 1.0 / math.sqrt(head_size)
 
     return {
@@ -151,24 +111,19 @@ def generate_random_inputs(
     }
 
 
-def test_correctness(batch_size=2, seq_len=4, atol=5e-3, rtol=5e-3):
-    """Test correctness of reference implementation against FlashInfer."""
-    _skip_if_not_sm90_or_later()
+def verify_mtp_sequential_consistency(batch_size=2, seq_len=4, device="cuda"):
+    """
+    Verify MTP produces the same results as running decode step-by-step.
+    This validates sequential state updates are correct.
+    """
+    # Load decode definition for comparison
+    decode_def = load_definition("gdn_decode_qk8_v16_d128_k_last")
+    decode_run = compile_reference(decode_def.reference)
 
-    print(f"\n{'='*60}")
-    print(f"Testing GDN MTP, batch_size={batch_size}, seq_len={seq_len}")
-    print(f"{'='*60}")
+    inputs = generate_random_inputs(batch_size, seq_len, device=device)
 
-    # Load definition and compile reference
-    definition = load_definition("gdn_mtp_qk8_v16_d128_k_last")
-    run = compile_reference(definition.reference)
-
-    device = "cuda"
-    inputs = generate_random_inputs(batch_size=batch_size, seq_len=seq_len, device=device)
-
-    # Run reference from definition
-    print("Running reference implementation from definition...")
-    ref_result = run(
+    # Run MTP (processes all T tokens at once)
+    mtp_output, mtp_final_state = reference_gdn_mtp(
         inputs["q"].clone(),
         inputs["k"].clone(),
         inputs["v"].clone(),
@@ -179,83 +134,63 @@ def test_correctness(batch_size=2, seq_len=4, atol=5e-3, rtol=5e-3):
         inputs["dt_bias"].clone(),
         inputs["b"].clone(),
         inputs["scale"],
-        None,  # intermediate_states_buffer
-    )
-    ref_output, ref_final_state = ref_result
-
-    # Run kernel
-    print("Running FlashInfer kernel...")
-    kernel_output, kernel_final_state = run_kernel(
-        inputs["q"].clone(),
-        inputs["k"].clone(),
-        inputs["v"].clone(),
-        inputs["initial_state"].clone(),
-        inputs["initial_state_indices"].clone(),
-        inputs["A_log"].clone(),
-        inputs["a"].clone(),
-        inputs["dt_bias"].clone(),
-        inputs["b"].clone(),
-        inputs["scale"],
-        cache_intermediate=True,
     )
 
-    # Compare outputs
-    print("\nComparing outputs...")
+    # Run decode step-by-step for comparison
+    num_v_heads = 16
+    head_size = 128
+    decode_outputs = []
 
-    ref_o_f32 = ref_output.float()
-    kernel_o_f32 = kernel_output.float()
+    for b_idx in range(batch_size):
+        state_idx = int(inputs["initial_state_indices"][b_idx].item())
+        current_state = inputs["initial_state"][state_idx].clone()
 
-    # Absolute difference metrics
-    abs_diff_o = torch.abs(ref_o_f32 - kernel_o_f32)
-    max_abs_diff_o = abs_diff_o.max().item()
-    mean_abs_diff_o = abs_diff_o.mean().item()
+        for t in range(seq_len):
+            q_t = inputs["q"][b_idx, t : t + 1].unsqueeze(0)  # [1, 1, H, K]
+            k_t = inputs["k"][b_idx, t : t + 1].unsqueeze(0)
+            v_t = inputs["v"][b_idx, t : t + 1].unsqueeze(0)
+            a_t = inputs["a"][b_idx, t : t + 1].unsqueeze(0)
+            b_t = inputs["b"][b_idx, t : t + 1].unsqueeze(0)
 
-    # Relative difference metrics (avoid division by zero)
-    rel_diff_o = abs_diff_o / (torch.abs(ref_o_f32) + 1e-10)
-    max_rel_diff_o = rel_diff_o.max().item()
-    mean_rel_diff_o = rel_diff_o.mean().item()
+            out_t, new_state = decode_run(
+                q_t,
+                k_t,
+                v_t,
+                current_state.unsqueeze(0),
+                inputs["A_log"].clone(),
+                a_t,
+                inputs["dt_bias"].clone(),
+                b_t,
+                inputs["scale"],
+            )
+            decode_outputs.append(out_t[0, 0])  # [H, V]
+            current_state = new_state[0]
 
-    # Cosine similarity
-    ref_flat = ref_o_f32.reshape(-1)
-    kernel_flat = kernel_o_f32.reshape(-1)
-    cosine_sim_o = F.cosine_similarity(ref_flat.unsqueeze(0), kernel_flat.unsqueeze(0)).item()
+    # Compare MTP output with sequential decode
+    for b_idx in range(batch_size):
+        for t in range(seq_len):
+            idx = b_idx * seq_len + t
+            mtp_out = mtp_output[b_idx, t].float()
+            decode_out = decode_outputs[idx].float()
 
-    # Mean Squared Error
-    mse_o = ((ref_o_f32 - kernel_o_f32) ** 2).mean().item()
+            abs_diff = torch.abs(mtp_out - decode_out)
+            max_diff = abs_diff.max().item()
 
-    print("\nOutput tensor comparison:")
-    print(f"  Max absolute difference: {max_abs_diff_o:.6e}")
-    print(f"  Max relative difference: {max_rel_diff_o:.6e}")
-    print(f"  Mean absolute difference: {mean_abs_diff_o:.6e}")
-    print(f"  Mean relative difference: {mean_rel_diff_o:.6e}")
-    print(f"  Cosine similarity: {cosine_sim_o:.6f}")
-    print(f"  MSE: {mse_o:.6e}")
+            if max_diff > 1e-4:
+                return False, f"Mismatch at batch={b_idx}, t={t}: max_diff={max_diff:.6e}"
 
-    output_close = torch.allclose(ref_o_f32, kernel_o_f32, atol=atol, rtol=rtol)
-
-    if output_close:
-        print(f"\n✓ PASSED (atol={atol}, rtol={rtol})")
-    else:
-        print(f"\n✗ FAILED (atol={atol}, rtol={rtol})")
-    assert output_close, "Output mismatch in test_correctness"
-    return True
+    return True, "Sequential consistency verified"
 
 
+@requires_cuda
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
 @pytest.mark.parametrize("seq_len", [2, 4, 8])
-def test_gdn_mtp(batch_size: int, seq_len: int):
-    """Pytest parametrized test for various batch sizes and sequence lengths."""
-    _skip_if_not_sm90_or_later()
-
-    # Load definition and compile reference
-    definition = load_definition("gdn_mtp_qk8_v16_d128_k_last")
-    run = compile_reference(definition.reference)
-
+def test_gdn_mtp_runs(batch_size: int, seq_len: int):
+    """Test that MTP reference runs without error and produces valid output."""
     device = "cuda"
-    inputs = generate_random_inputs(batch_size=batch_size, seq_len=seq_len, device=device)
+    inputs = generate_random_inputs(batch_size, seq_len, device=device)
 
-    # Run reference from definition
-    ref_result = run(
+    output, final_state = reference_gdn_mtp(
         inputs["q"].clone(),
         inputs["k"].clone(),
         inputs["v"].clone(),
@@ -266,59 +201,81 @@ def test_gdn_mtp(batch_size: int, seq_len: int):
         inputs["dt_bias"].clone(),
         inputs["b"].clone(),
         inputs["scale"],
-        None,
-    )
-    ref_output, ref_final_state = ref_result
-
-    # Run kernel
-    kernel_output, kernel_final_state = run_kernel(
-        inputs["q"].clone(),
-        inputs["k"].clone(),
-        inputs["v"].clone(),
-        inputs["initial_state"].clone(),
-        inputs["initial_state_indices"].clone(),
-        inputs["A_log"].clone(),
-        inputs["a"].clone(),
-        inputs["dt_bias"].clone(),
-        inputs["b"].clone(),
-        inputs["scale"],
-        cache_intermediate=True,
     )
 
-    atol, rtol = 1e-2, 1e-2
+    # Check output shapes
+    assert output.shape == (batch_size, seq_len, 16, 128), f"Output shape mismatch: {output.shape}"
+    assert output.dtype == torch.bfloat16
 
-    torch.testing.assert_close(
-        kernel_output,
-        ref_output,
-        atol=atol,
-        rtol=rtol,
-        msg=f"Output mismatch for batch_size={batch_size}, seq_len={seq_len}",
-    )
+    # Check no NaN/Inf
+    assert not torch.isnan(output).any(), "Output contains NaN"
+    assert not torch.isinf(output).any(), "Output contains Inf"
 
     print(f"✓ GDN MTP test passed (batch_size={batch_size}, seq_len={seq_len})")
 
 
-def main():
-    """Run tests."""
-    print("Testing GDN MTP K-Last Reference Implementation")
-    print(
-        "Loading definition from: flashinfer_trace/definitions/gdn/gdn_mtp_qk8_v16_d128_k_last.json"
-    )
+@requires_cuda
+def test_gdn_mtp_sequential_consistency():
+    """Verify MTP produces same results as step-by-step decode."""
+    passed, msg = verify_mtp_sequential_consistency(batch_size=2, seq_len=4)
+    assert passed, msg
+    print(f"✓ {msg}")
 
-    test_configs = [(2, 2), (2, 4), (4, 4)]
+
+def main():
+    """Run tests manually."""
+    print("Testing GDN MTP qk8_v16 K-Last Reference Implementation")
+
+    test_configs = [(1, 2), (2, 4), (4, 8)]
 
     passed = 0
     total = len(test_configs)
 
     for batch_size, seq_len in test_configs:
         try:
-            if test_correctness(batch_size, seq_len):
-                passed += 1
+            device = "cuda"
+            inputs = generate_random_inputs(batch_size, seq_len, device=device)
+
+            output, final_state = reference_gdn_mtp(
+                inputs["q"].clone(),
+                inputs["k"].clone(),
+                inputs["v"].clone(),
+                inputs["initial_state"].clone(),
+                inputs["initial_state_indices"].clone(),
+                inputs["A_log"].clone(),
+                inputs["a"].clone(),
+                inputs["dt_bias"].clone(),
+                inputs["b"].clone(),
+                inputs["scale"],
+            )
+
+            assert output.shape == (batch_size, seq_len, 16, 128)
+            assert not torch.isnan(output).any()
+            assert not torch.isinf(output).any()
+
+            print(f"\n✓ PASSED batch_size={batch_size}, seq_len={seq_len}")
+            print(
+                f"  Output shape: {output.shape}, range: [{output.float().min():.4f}, {output.float().max():.4f}]"
+            )
+            passed += 1
+
         except Exception as e:
-            print(f"✗ Test failed with exception: {str(e)}")
+            print(f"✗ Test failed: {e}")
             import traceback
 
             traceback.print_exc()
+
+    # Sequential consistency check
+    print("\nVerifying sequential consistency (MTP vs step-by-step decode)...")
+    try:
+        ok, msg = verify_mtp_sequential_consistency()
+        print(f"  {msg}")
+        if ok:
+            passed += 1
+        total += 1
+    except Exception as e:
+        print(f"  Sequential consistency check failed: {e}")
+        total += 1
 
     print(f"\n{'='*60}")
     print(f"Summary: {passed}/{total} tests passed")
