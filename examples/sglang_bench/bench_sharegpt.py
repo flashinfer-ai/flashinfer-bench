@@ -94,8 +94,15 @@ def load_prompts_from_sharegpt(n: int) -> List[str]:
     prompts = []
     for example in ds:
         conv = example.get("conversations", [])
-        if conv and conv[0]["from"].lower() == "human":
-            prompts.append(conv[0]["value"])
+        if conv:
+            item = conv[0]
+            if isinstance(item, str):
+                try:
+                    item = json.loads(item)
+                except Exception:
+                    item = {}
+            if isinstance(item, dict) and item.get("from", "").lower() == "human":
+                prompts.append(item["value"])
         if len(prompts) >= n:
             break
 
