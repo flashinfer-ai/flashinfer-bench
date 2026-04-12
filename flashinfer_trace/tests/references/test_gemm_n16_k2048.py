@@ -61,8 +61,8 @@ def main():
 
     for M in test_configs:
         try:
-            if test_correctness(M):
-                passed += 1
+            test_correctness(M)
+            passed += 1
         except Exception as e:
             print(f"✗ Test failed with exception: {e}")
             import traceback
