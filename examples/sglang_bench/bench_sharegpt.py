@@ -65,9 +65,7 @@ _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 # visible to every subprocess (SGLang server, SSH peer worker) without patching
 # individual compile commands.
 _NVIDIA_INCLUDES: List[str] = sorted(
-    str(p) for p in Path(sys.prefix).glob(
-        "lib/python*/site-packages/nvidia/cu*/include"
-    )
+    str(p) for p in Path(sys.prefix).glob("lib/python*/site-packages/nvidia/cu*/include")
 )
 _NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
 
@@ -144,8 +142,7 @@ def get_slurm_peer_nodes() -> List[Tuple[str, str]]:
         return []
     try:
         result = subprocess.run(
-            ["scontrol", "show", "job", job_id],
-            capture_output=True, text=True, timeout=10,
+            ["scontrol", "show", "job", job_id], capture_output=True, text=True, timeout=10
         )
         node_list = None
         for line in result.stdout.splitlines():
@@ -157,8 +154,7 @@ def get_slurm_peer_nodes() -> List[Tuple[str, str]]:
             return []
 
         result = subprocess.run(
-            ["scontrol", "show", "hostnames", node_list],
-            capture_output=True, text=True, timeout=10,
+            ["scontrol", "show", "hostnames", node_list], capture_output=True, text=True, timeout=10
         )
         all_nodes = [n for n in result.stdout.strip().splitlines() if n]
         current_host = socket.gethostname().split(".")[0]
@@ -181,8 +177,7 @@ def get_head_node_ip_for_peer(peer_ip: str) -> str:
     """Return the local IP address that routes to peer_ip (used as --dist-init-addr host)."""
     try:
         result = subprocess.run(
-            ["ip", "route", "get", peer_ip],
-            capture_output=True, text=True, timeout=5,
+            ["ip", "route", "get", peer_ip], capture_output=True, text=True, timeout=5
         )
         tokens = result.stdout.split()
         for i, tok in enumerate(tokens):
@@ -217,10 +212,14 @@ def launch_peer_worker(
     are only collected from rank 0 (the head node).
     """
     worker_args = [
-        "--model-path", model_path,
-        "--nnodes", str(total_nodes),
-        "--node-rank", str(node_rank),
-        "--dist-init-addr", f"{head_ip}:{dist_port}",
+        "--model-path",
+        model_path,
+        "--nnodes",
+        str(total_nodes),
+        "--node-rank",
+        str(node_rank),
+        "--dist-init-addr",
+        f"{head_ip}:{dist_port}",
     ] + server_args
 
     # Use sys.executable so the remote worker runs in the same Python environment
@@ -249,8 +248,8 @@ def launch_peer_worker(
         # FLASHINFER_WORKSPACE_BASE: point peer node JIT cache to local /tmp so the
         #   peer doesn't share the NFS lock files with the head node, which causes
         #   OSError: [Errno 116] Stale file handle during FileLock acquisition.
-        conda_bin_dir = os.path.dirname(python_bin)          # .../envs/XXX/bin
-        conda_prefix = os.path.dirname(conda_bin_dir)        # .../envs/XXX
+        conda_bin_dir = os.path.dirname(python_bin)  # .../envs/XXX/bin
+        conda_prefix = os.path.dirname(conda_bin_dir)  # .../envs/XXX
         base_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         env_vars = (
             f"CUDA_HOME={shlex.quote(conda_prefix)}"
@@ -262,7 +261,15 @@ def launch_peer_worker(
         remote_cmd = f"env {env_vars} {cmd_str}"
 
     log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
-    ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", peer_host, remote_cmd]
+    ssh_cmd = [
+        "ssh",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "BatchMode=yes",
+        peer_host,
+        remote_cmd,
+    ]
     log(f"Launching peer worker (rank {node_rank}) on {peer_host} (log: {log_file.name})")
     return subprocess.Popen(ssh_cmd, stdout=log_file, stderr=log_file)
 
@@ -348,6 +355,7 @@ def load_prompts_from_sharegpt(n: int) -> List[str]:
         first = conv[0]
         if isinstance(first, str):
             import json as _json
+
             try:
                 first = _json.loads(first)
             except Exception:
@@ -523,7 +531,7 @@ def main():
         type=int,
         default=20010,
         help="Port for PyTorch distributed rendezvous (--dist-init-addr). "
-             "Must differ from --port. Default: 20010.",
+        "Must differ from --port. Default: 20010.",
     )
     parser.add_argument(
         "--no-multinode",
@@ -535,7 +543,7 @@ def main():
         type=str,
         default=os.environ.get("CONDA_DEFAULT_ENV", "flashinfer_bench"),
         help="Conda environment to activate on peer nodes via SSH. "
-             "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
+        "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
     )
     args = parser.parse_args()
 
@@ -642,9 +650,12 @@ def main():
 
         # Prepend multi-node flags to head server args
         server_args = [
-            "--nnodes", str(nnodes),
-            "--node-rank", "0",
-            "--dist-init-addr", dist_addr,
+            "--nnodes",
+            str(nnodes),
+            "--node-rank",
+            "0",
+            "--dist-init-addr",
+            dist_addr,
         ] + server_args
 
     log(f"Server args:    {server_args}")
@@ -654,7 +665,8 @@ def main():
     # we prepend our nvidia includes to any existing CPATH so we don't shadow others.
     _existing_cpath = os.environ.get("CPATH", "")
     _server_cpath = (
-        f"{_NVIDIA_CPATH}:{_existing_cpath}" if _existing_cpath and _NVIDIA_CPATH
+        f"{_NVIDIA_CPATH}:{_existing_cpath}"
+        if _existing_cpath and _NVIDIA_CPATH
         else (_NVIDIA_CPATH or _existing_cpath)
     )
     process = popen_launch_server(
@@ -683,10 +695,17 @@ def main():
         for p in peer_processes:
             try:
                 # Kill the remote sglang worker via SSH, then close the local SSH process.
-                peer_host = p.args[4]  # ssh cmd: ["ssh", opts..., HOST, remote_cmd]
+                peer_host = p.args[5]  # ssh cmd: ["ssh", "-o", OPT, "-o", OPT, HOST, remote_cmd]
                 subprocess.run(
-                    ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
-                     peer_host, "pkill -f 'sglang.launch_server'"],
+                    [
+                        "ssh",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        "BatchMode=yes",
+                        peer_host,
+                        "pkill -f 'sglang.launch_server'",
+                    ],
                     timeout=10,
                 )
             except Exception:

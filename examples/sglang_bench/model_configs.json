@@ -17,6 +17,7 @@
         "llama-4-scout": {
             "server_flags": [
                 "--trust-remote-code",
+                "--attention-backend", "flashinfer",
                 "--tp-size", "8",
                 "--mem-fraction-static", "0.75",
                 "--max-running-requests", "512"
