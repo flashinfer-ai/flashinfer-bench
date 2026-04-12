@@ -44,7 +44,6 @@ import asyncio
 import json
 import math
 import os
-
 import shlex
 import socket
 import subprocess
@@ -216,9 +215,10 @@ def launch_peer_worker(
     else:
         remote_cmd = cmd_str
 
+    log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", peer_host, remote_cmd]
-    log(f"Launching peer worker (rank {node_rank}) on {peer_host}")
-    return subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    log(f"Launching peer worker (rank {node_rank}) on {peer_host} (log: {log_file.name})")
+    return subprocess.Popen(ssh_cmd, stdout=log_file, stderr=log_file)
 
 
 from datasets import load_dataset
@@ -622,6 +622,16 @@ def main():
         log("Shutting down server...")
         kill_process_tree(process.pid)
         for p in peer_processes:
+            try:
+                # Kill the remote sglang worker via SSH, then close the local SSH process.
+                peer_host = p.args[4]  # ssh cmd: ["ssh", opts..., HOST, remote_cmd]
+                subprocess.run(
+                    ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+                     peer_host, "pkill -f 'sglang.launch_server'"],
+                    timeout=10,
+                )
+            except Exception:
+                pass
             try:
                 kill_process_tree(p.pid)
             except Exception:
