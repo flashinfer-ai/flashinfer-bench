@@ -569,7 +569,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: GQA paged ps1 workloads now collected from Llama 4 Scout TP=8 runs on B200 (2-node): decode 20 workloads, prefill 14 workloads, all PASSED. rmsnorm h5120 shared with Qwen3 14B. Missing: ps64 GQA variants (no definition), ragged prefill workloads, MoE trtllm workloads, sampling v202048.
+**Coverage**: 8 / 13 definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 16 experts, Llama4 routing). Missing: ps64 GQA variants (no definition files), sampling v202048.
 
 ---
 
@@ -596,7 +596,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: GQA paged ps1 workloads now collected (shared with Llama 4 Scout — same TP=8 dimensions): decode 20 workloads, prefill 14 workloads, all PASSED. rmsnorm h5120 shared with Qwen3 14B. Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: ps64 GQA variants, ragged prefill workloads, MoE trtllm workloads, sampling v202048.
+**Coverage**: 8 / 13 definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 128 experts, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: ps64 GQA variants (no definition files), sampling v202048.
 
 ---
 
