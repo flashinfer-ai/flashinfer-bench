@@ -20,7 +20,8 @@
                 "--attention-backend", "flashinfer",
                 "--tp-size", "8",
                 "--mem-fraction-static", "0.75",
-                "--max-running-requests", "512"
+                "--max-running-requests", "512",
+                "--skip-server-warmup"
             ]
         },
         "deepseek-v3": {
