@@ -39,6 +39,12 @@ For paged prefill: always include `--disable-radix-cache` and `--enable-determin
 Run one batch size at a time to avoid node overload. After each run, sanitize to collect
 2–3 workloads, then delete the dump dir before the next run.
 
+**Multi-node auto-detection**: when model config TP > local GPU count (e.g. TP=8 config but
+only 4 GPUs visible via `nvidia-smi`), `bench_sharegpt.py` automatically triggers multi-node
+mode. Peer nodes are discovered from `SLURM_JOB_ID`; workers are launched via SSH.
+FLASHINFER dump env vars are forwarded only to the head node (rank 0) — workers don't dump.
+Passwordless SSH between allocated nodes is required (standard in SLURM environments).
+
 ```bash
 DUMP_DIR=/tmp/flashinfer_dumps_<name>
 TRACE_DIR=<trace_dir>
@@ -71,7 +77,7 @@ for BS in 1 64 128 256; do
       --disable-cuda-graph \
       2>&1 | tee -a $LOG
 
-  # Kill any lingering processes
+  # Kill any lingering processes (including remote workers if multi-node)
   pkill -f bench_sharegpt.py || true
   pkill -f sglang.launch_server || true
 
@@ -85,6 +91,77 @@ for BS in 1 64 128 256; do
   rm -rf $DUMP_DIR
 done
 ```
+
+#### Multi-node flags (bench_sharegpt.py)
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--peer-node-addr HOST [HOST ...]` | auto (SLURM) | Override peer node hostname(s)/IP(s) |
+| `--dist-init-port PORT` | `20010` | PyTorch dist rendezvous port (must differ from `--port`) |
+| `--no-multinode` | off | Disable auto multi-node even when config TP > local GPUs |
+| `--conda-env ENV` | `$CONDA_DEFAULT_ENV` | Fallback: conda env for peer SSH (only used when `sys.executable` is a relative path, i.e. non-NFS clusters) |
+
+**Peer worker SSH environment**: on NFS-shared clusters (e.g. SLURM where `/home` is shared),
+`bench_sharegpt.py` passes `sys.executable` (absolute path) as the Python binary on the remote
+node — no conda activation needed. It also passes:
+
+- `CUDA_HOME=<conda_prefix>`: `deep_gemm` checks this first; conda prefix contains nvcc/include/lib
+- `PATH=<conda_bin>:/usr/...`: JIT build tools like `ninja` (needed by SGLang's JIT kernels) are found
+- `CPATH=<nvidia_include_dirs>`: pip-installed nvidia packages (`nvidia-cuda-nvrtc-cu13` etc.) put
+  `nvrtc.h` and other CUDA headers under `site-packages/nvidia/cuXX/include`. These are not on the
+  system compiler's default include path, but FlashInfer's TRT-LLM FMHA JIT kernel (`fmha_gen`)
+  `#includes <nvrtc.h>`. Without CPATH, the peer node's JIT compilation fails with
+  `nvrtc.h: No such file or directory`. The head node's SGLang server also gets CPATH set via
+  the `env` dict passed to `popen_launch_server`.
+- `FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer`: redirects the peer node's FlashInfer JIT
+  cache to local `/tmp`. Without this, both head and peer nodes try to acquire the same NFS-path
+  `FileLock` (at `~/.cache/flashinfer/.../cached_ops/tmp/fmha_gen.lock`), causing
+  `OSError: [Errno 116] Stale file handle` on the peer.
+
+SSH sessions don't inherit the conda env's `CUDA_HOME`, `PATH`, or `CPATH`, and csh/tcsh don't
+support inline `KEY=value cmd` syntax, so `env` (an external binary) is used for portability.
+The `--conda-env` flag is only a fallback for non-NFS setups where `sys.executable` resolves to
+a relative path.
+
+**Pre-compile TRT-LLM FMHA on head node before first run** (optional but speeds up server startup):
+```bash
+# Warm the NFS JIT cache so head-node TP ranks don't all compile simultaneously
+CPATH="$(python -c "import sys,pathlib; print(':'.join(str(p) for p in pathlib.Path(sys.prefix).glob('lib/python*/site-packages/nvidia/cu*/include')))")" \
+  python -c "from flashinfer.prefill import get_trtllm_gen_fmha_module; get_trtllm_gen_fmha_module()"
+```
+
+**Two independent decisions**:
+
+1. **What TP to use** — always from model config:
+   - Config has `--tp-size N` → use N as-is
+   - Config has no `--tp-size` → fall back to local GPU count
+   - **Config TP is never overridden**
+
+2. **How many nodes to use** — derived from TP and local GPU count:
+   - `needed_nodes = ceil(config_tp / local_gpus)`
+   - Only launch multi-node if `needed_nodes > 1` — peer nodes are looked up from SLURM/`--peer-node-addr` only when needed
+
+**Examples** (4 GPUs per node, 2-node SLURM allocation):
+| Config TP | needed_nodes | Launch mode |
+|-----------|-------------|-------------|
+| `--tp-size 4` | 1 | Single-node, TP=4 (fits on one node) |
+| `--tp-size 8` | 2 | Multi-node, TP=8 (4 GPUs × 2 nodes) |
+| *(no flag)* | 1 | Single-node, TP=4 (local GPU count fallback) |
+
+**Manual peer override** (when not in SLURM or peer auto-detection fails):
+```bash
+SLURM_JOB_NODELIST=head-node,peer-node \
+python examples/sglang_bench/bench_sharegpt.py \
+  --model deepseek-v3 --model-path /nfs/path/to/model \
+  --peer-node-addr peer-node \
+  --dist-init-port 20010 \
+  ...
+```
+
+**Model path must be NFS-accessible on all nodes**: `--model-path` is passed directly to the
+SGLang server on each node. Local paths (e.g. `/data/...`) that exist only on one node will
+cause `HFValidationError` or `FileNotFoundError` on the peer. Use NFS-shared paths (e.g.
+`/home/user/models/...`) or a shared file system mount that exists on all allocated nodes.
 
 **Note**: Omit `--replace` during the loop so each batch size's workloads are appended.
 Use `--replace` only on the first run if you want to start fresh.

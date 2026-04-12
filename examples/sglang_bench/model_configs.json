@@ -17,8 +17,9 @@
         "llama-4-scout": {
             "server_flags": [
                 "--trust-remote-code",
-                "--attention-backend", "flashinfer",
-                "--tp-size", "8"
+                "--tp-size", "8",
+                "--mem-fraction-static", "0.75",
+                "--max-running-requests", "512"
             ]
         },
         "deepseek-v3": {
@@ -216,6 +217,7 @@
             "--disable-flashinfer-autotune",
             "--skip-server-warmup"
         ]
+    },
     "mi300x": {
         "llama-3.1-8b": {
             "server_flags": [
