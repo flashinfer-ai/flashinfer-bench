@@ -17,7 +17,9 @@
         "llama-4-scout": {
             "server_flags": [
                 "--trust-remote-code",
-                "--tp-size", "8"
+                "--tp-size", "8",
+                "--mem-fraction-static", "0.75",
+                "--max-running-requests", "512"
             ]
         },
         "deepseek-v3": {
