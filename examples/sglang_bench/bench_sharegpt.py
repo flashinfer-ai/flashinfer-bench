@@ -222,15 +222,20 @@ def launch_peer_worker(
         conda_bin = shutil.which("conda") or "conda"
         remote_cmd = f"{conda_bin} run --no-capture-output -n {shlex.quote(conda_env)} {cmd_str}"
     else:
-        # SSH sessions don't inherit the conda env's CUDA_HOME.
-        # Use `env` to set it so the command works in any remote shell
+        # SSH sessions don't inherit the conda env's CUDA_HOME or PATH.
+        # Use `env` to set both so the command works in any remote shell
         # (csh/tcsh don't support the `KEY=value cmd` inline-assignment syntax;
         # `env` is an external binary that works universally).
-        # deep_gemm checks CUDA_HOME first; pointing it at the conda prefix
-        # (which contains bin/nvcc, include/, lib/) satisfies the requirement.
+        # CUDA_HOME: deep_gemm checks it first; conda prefix contains nvcc/include/lib.
+        # PATH: conda env's bin is prepended so JIT tools (ninja, nvcc) are found.
         conda_bin_dir = os.path.dirname(python_bin)          # .../envs/XXX/bin
         conda_prefix = os.path.dirname(conda_bin_dir)        # .../envs/XXX
-        remote_cmd = f"env CUDA_HOME={shlex.quote(conda_prefix)} {cmd_str}"
+        base_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        remote_cmd = (
+            f"env CUDA_HOME={shlex.quote(conda_prefix)}"
+            f" PATH={shlex.quote(conda_bin_dir)}:{base_path}"
+            f" {cmd_str}"
+        )
 
     log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", peer_host, remote_cmd]
