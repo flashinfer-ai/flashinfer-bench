@@ -166,7 +166,7 @@ DSA introduces a learned TopK indexer that selects a sparse subset of KV pages b
 | `gdn_mtp_qk4_v8_d128_k_last` | gdn TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
 | `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
-| `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ❌ |
+| `gqa_ragged_prefill_causal_h8_kv1_d256` | gqa_ragged TP=2 | ✅ |
 | MoE gate / topk / experts (GDN layers) | moe | — |
 | MoE gate / topk / experts (GQA layers) | moe | — |
 | `moe_fp8_block_scale_renorm_topk10_e128_h2048_i512` | moe EP=1 | 🟡 |
@@ -190,10 +190,10 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `rmsnorm_h8192` | rmsnorm | ❌ |
 | `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
-| `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ❌ |
+| `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_decode_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
-| `gqa_paged_decode_h16_kv2_d128_ps64` | gqa_paged TP=4 | ❌ |
-| `gqa_ragged_prefill_causal_h16_kv2_d128` | gqa_ragged TP=4 | ❌ |
+| `gqa_paged_decode_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
+| `gqa_ragged_prefill_causal_h16_kv2_d128` | gqa_ragged TP=4 | ✅ |
 | `gemm_n10240_k8192` | gemm | ❌ |
 | `gemm_n8192_k8192` | gemm | ❌ |
 | `gemm_n57344_k8192` | gemm | ❌ |
@@ -202,7 +202,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: rmsnorm h8192, all GQA definitions (h16_kv2_d128 at TP=4), all GEMM definitions for hidden=8192.
+**Coverage**: 8 / 14 definitions present. GQA kernels shared with Qwen3-32B (same h=16, kv=2, d=128 at TP=4). Missing: rmsnorm h8192, all GEMM definitions for hidden=8192.
 
 ---
 
@@ -212,22 +212,22 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h3072` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h3072` | rmsnorm | ❌ |
+| `rmsnorm_h3072` | rmsnorm | 🟡 |
+| `fused_add_rmsnorm_h3072` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ❌ |
-| `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ❌ |
-| `gqa_paged_decode_h24_kv8_d128_ps64` | gqa_paged | ❌ |
+| `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h24_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ❌ |
-| `gemm_n5120_k3072` | gemm | ❌ |
-| `gemm_n3072_k3072` | gemm | ❌ |
-| `gemm_n16384_k3072` | gemm | ❌ |
-| `gemm_n3072_k8192` | gemm | ❌ |
+| `gemm_n5120_k3072` | gemm | 🟡 |
+| `gemm_n3072_k3072` | gemm | 🟡 |
+| `gemm_n16384_k3072` | gemm | 🟡 |
+| `gemm_n3072_k8192` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3072.
+**Coverage**: 7 / 14 definitions present. Missing: all GQA definitions for hidden=3072.
 
 ---
 
@@ -419,32 +419,32 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 
 ## Qwen3 32B
 
-**Architecture**: 64 decoder layers, GQA attention, dense MLP. Uses a non-standard head_dim=64 (hidden=4096, 64 query heads). Standard serving configuration: **TP=4**.
+**Architecture**: 64 decoder layers, GQA attention, dense MLP. hidden=5120, 64 query heads, 8 KV heads, head_dim=128, intermediate=25600. Standard serving configuration: **TP=4**.
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h4096` | rmsnorm | ✅ |
-| `fused_add_rmsnorm_h4096` | rmsnorm | ✅ |
-| `gqa_paged_prefill_causal_h16_kv2_d64_ps1` | gqa_paged TP=4 | ❌ |
-| `gqa_paged_prefill_causal_h16_kv2_d64_ps64` | gqa_paged TP=4 | ❌ |
-| `gqa_paged_decode_h16_kv2_d64_ps1` | gqa_paged TP=4 | ❌ |
-| `gqa_paged_decode_h16_kv2_d64_ps64` | gqa_paged TP=4 | ❌ |
-| `gqa_ragged_prefill_causal_h16_kv2_d64` | gqa_ragged TP=4 | ❌ |
-| `gemm_n5120_k4096` | gemm | ❌ |
-| `gemm_n4096_k4096` | gemm | ✅ |
-| `gemm_n44032_k4096` | gemm | ❌ |
-| `gemm_n4096_k22016` | gemm | ❌ |
+| `rmsnorm_h5120` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h5120` | rmsnorm | ✅ |
+| `gqa_paged_prefill_causal_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
+| `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
+| `gqa_paged_decode_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
+| `gqa_paged_decode_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
+| `gqa_ragged_prefill_causal_h16_kv2_d128` | gqa_ragged TP=4 | ✅ |
+| `gemm_n10240_k5120` | gemm (QKV) | ❌ |
+| `gemm_n5120_k8192` | gemm (o_proj) | ❌ |
+| `gemm_n51200_k5120` | gemm (gate_up) | ❌ |
+| `gemm_n5120_k25600` | gemm (down) | ❌ |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 6 / 14 definitions present. Missing: all GQA definitions (head_dim=64 is a new value; all existing GQA defs use d=128), QKV and MLP GEMM defs. The o_proj GEMM (`gemm_n4096_k4096`) is shared because 64 heads × 64 head_dim = 4096 = hidden_size.
+**Coverage**: 10 / 14 definitions present. RMSNorm shared with Qwen3 14B (same hidden=5120). GQA kernels shared with Llama 3.1/3.3 70B (same h=16, kv=2, d=128 at TP=4). Sampling shared with other Qwen3 models (same vocab=151936). Missing: all GEMM definitions.
 
 ---
 
 ## Qwen3 235B A22B
 
-**Architecture**: 94 decoder layers, GQA attention, sparse MoE FFN (128 experts, top-8 routing). Uses head_dim=64 (hidden=4096, 64 query heads). Standard serving configuration: **TP=8, EP=2** (FP8 variant from sgl-cookbook). With 4 KV heads, effective per-device TP for attention is TP=4 (kv=1 per device).
+**Architecture**: 94 decoder layers, GQA attention, sparse MoE FFN (128 experts, top-8 routing). Uses head_dim=128 (hidden=8192, 64 query heads). Standard serving configuration: **TP=8, EP=2** (FP8 variant from sgl-cookbook). With 4 KV heads, effective per-device TP for attention is TP=4 (kv=1 per device).
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
@@ -481,11 +481,11 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
 | `rmsnorm_h1536` | rmsnorm | ✅ |
 | `rmsnorm_h512` | rmsnorm | ✅ |
-| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ❌ |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
 | `mla_paged_prefill_causal_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
-| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ❌ |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
 | `mla_paged_decode_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
-| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | ❌ |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e96_h7168_i2048` | moe EP=4 | ❌ |
 | `top_k_sampling_from_probs_v160000` | sampling | ❌ |
@@ -556,11 +556,11 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
-| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
-| `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
+| `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
 | MoE experts (top-1, 16 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
 | `trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
@@ -583,11 +583,11 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
-| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
-| `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | ❌ |
+| `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
 | `trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
@@ -704,7 +704,7 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | `gqa_paged_prefill_causal_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
 | `gqa_paged_decode_h32_kv16_d128_ps1` | gqa_paged | 🟡 |
 | `gqa_paged_decode_h32_kv16_d128_ps64` | gqa_paged | 🟡 |
-| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | 🟡 |
+| `gqa_ragged_prefill_causal_h32_kv16_d128` | gqa_ragged | ✅ |
 | `gemm_n4096_k5376` | gemm (q_proj) | 🟡 |
 | `gemm_n2048_k5376` | gemm (k/v proj) | 🟡 |
 | `gemm_n5376_k4096` | gemm (o_proj) | 🟡 |
@@ -730,7 +730,7 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | `gqa_paged_prefill_causal_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
 | `gqa_paged_decode_h20_kv4_d128_ps1` | gqa_paged TP=2 | 🟡 |
 | `gqa_paged_decode_h20_kv4_d128_ps64` | gqa_paged TP=2 | 🟡 |
-| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | 🟡 |
+| `gqa_ragged_prefill_causal_h20_kv4_d128` | gqa_ragged TP=2 | ✅ |
 | `gemm_n7168_k5120` | gemm (qkv_proj combined) | 🟡 |
 | `gemm_n5120_k5120` | gemm (o_proj) | 🟡 |
 | `gemm_n34816_k5120` | gemm (gate_up combined) | 🟡 |
