@@ -33,5 +33,33 @@
             "--trust-remote-code",
             "--attention-backend", "flashinfer"
         ]
+    },
+    "minimax-m2": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "8",
+            "--moe-runner-backend", "flashinfer_trtllm",
+            "--disable-radix-cache"
+        ]
+    },
+    "minimax-m2-ps64": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "8",
+            "--moe-runner-backend", "flashinfer_trtllm",
+            "--disable-radix-cache",
+            "--page-size", "64"
+        ]
+    },
+    "minimax-m2-ragged": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "8",
+            "--moe-runner-backend", "flashinfer_trtllm",
+            "--disable-piecewise-cuda-graph"
+        ]
     }
 }
