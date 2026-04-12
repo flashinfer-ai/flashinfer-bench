@@ -103,10 +103,32 @@ done
 
 **Peer worker SSH environment**: on NFS-shared clusters (e.g. SLURM where `/home` is shared),
 `bench_sharegpt.py` passes `sys.executable` (absolute path) as the Python binary on the remote
-node — no conda activation needed. It also prepends `env CUDA_HOME=<conda_prefix>` so that
-`deep_gemm` can locate the CUDA toolkit on the SSH session (SSH does not inherit `CUDA_HOME`
-and csh/tcsh don't support the inline `KEY=value cmd` syntax). The `--conda-env` flag is only
-a fallback for non-NFS setups where `sys.executable` resolves to a relative path.
+node — no conda activation needed. It also passes:
+
+- `CUDA_HOME=<conda_prefix>`: `deep_gemm` checks this first; conda prefix contains nvcc/include/lib
+- `PATH=<conda_bin>:/usr/...`: JIT build tools like `ninja` (needed by SGLang's JIT kernels) are found
+- `CPATH=<nvidia_include_dirs>`: pip-installed nvidia packages (`nvidia-cuda-nvrtc-cu13` etc.) put
+  `nvrtc.h` and other CUDA headers under `site-packages/nvidia/cuXX/include`. These are not on the
+  system compiler's default include path, but FlashInfer's TRT-LLM FMHA JIT kernel (`fmha_gen`)
+  `#includes <nvrtc.h>`. Without CPATH, the peer node's JIT compilation fails with
+  `nvrtc.h: No such file or directory`. The head node's SGLang server also gets CPATH set via
+  the `env` dict passed to `popen_launch_server`.
+- `FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer`: redirects the peer node's FlashInfer JIT
+  cache to local `/tmp`. Without this, both head and peer nodes try to acquire the same NFS-path
+  `FileLock` (at `~/.cache/flashinfer/.../cached_ops/tmp/fmha_gen.lock`), causing
+  `OSError: [Errno 116] Stale file handle` on the peer.
+
+SSH sessions don't inherit the conda env's `CUDA_HOME`, `PATH`, or `CPATH`, and csh/tcsh don't
+support inline `KEY=value cmd` syntax, so `env` (an external binary) is used for portability.
+The `--conda-env` flag is only a fallback for non-NFS setups where `sys.executable` resolves to
+a relative path.
+
+**Pre-compile TRT-LLM FMHA on head node before first run** (optional but speeds up server startup):
+```bash
+# Warm the NFS JIT cache so head-node TP ranks don't all compile simultaneously
+CPATH="$(python -c "import sys,pathlib; print(':'.join(str(p) for p in pathlib.Path(sys.prefix).glob('lib/python*/site-packages/nvidia/cu*/include')))")" \
+  python -c "from flashinfer.prefill import get_trtllm_gen_fmha_module; get_trtllm_gen_fmha_module()"
+```
 
 **Two independent decisions**:
 
@@ -128,12 +150,18 @@ a fallback for non-NFS setups where `sys.executable` resolves to a relative path
 
 **Manual peer override** (when not in SLURM or peer auto-detection fails):
 ```bash
+SLURM_JOB_NODELIST=head-node,peer-node \
 python examples/sglang_bench/bench_sharegpt.py \
-  --model deepseek-v3 --model-path /path/to/model \
-  --peer-node-addr nvl72155-T14 \
+  --model deepseek-v3 --model-path /nfs/path/to/model \
+  --peer-node-addr peer-node \
   --dist-init-port 20010 \
   ...
 ```
+
+**Model path must be NFS-accessible on all nodes**: `--model-path` is passed directly to the
+SGLang server on each node. Local paths (e.g. `/data/...`) that exist only on one node will
+cause `HFValidationError` or `FileNotFoundError` on the peer. Use NFS-shared paths (e.g.
+`/home/user/models/...`) or a shared file system mount that exists on all allocated nodes.
 
 **Note**: Omit `--replace` during the loop so each batch size's workloads are appended.
 Use `--replace` only on the first run if you want to start fresh.

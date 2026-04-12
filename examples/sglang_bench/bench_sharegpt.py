@@ -57,6 +57,20 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 
+# Compute nvidia CUDA header paths once at startup.
+# pip-installed nvidia packages (nvidia-cuda-nvrtc-cu13 etc.) place nvrtc.h,
+# cuda_runtime.h etc. under site-packages/nvidia/cuXX/include.  These are not
+# on the default include path of the system compiler, but JIT kernels such as
+# flashinfer's TRT-LLM FMHA module need them.  Exporting CPATH makes them
+# visible to every subprocess (SGLang server, SSH peer worker) without patching
+# individual compile commands.
+_NVIDIA_INCLUDES: List[str] = sorted(
+    str(p) for p in Path(sys.prefix).glob(
+        "lib/python*/site-packages/nvidia/cu*/include"
+    )
+)
+_NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
+
 # Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
 _GPU_NAME_MAP = [
     ("B200", "b200"),
@@ -228,14 +242,24 @@ def launch_peer_worker(
         # `env` is an external binary that works universally).
         # CUDA_HOME: deep_gemm checks it first; conda prefix contains nvcc/include/lib.
         # PATH: conda env's bin is prepended so JIT tools (ninja, nvcc) are found.
+        # CPATH: pip-installed nvidia packages put nvrtc.h etc. under
+        #   site-packages/nvidia/cuXX/include; add them so TRT-LLM JIT can find them.
+        #   We use the module-level _NVIDIA_CPATH constant (computed from sys.prefix on
+        #   the head node; the path is identical on the peer node via NFS).
+        # FLASHINFER_WORKSPACE_BASE: point peer node JIT cache to local /tmp so the
+        #   peer doesn't share the NFS lock files with the head node, which causes
+        #   OSError: [Errno 116] Stale file handle during FileLock acquisition.
         conda_bin_dir = os.path.dirname(python_bin)          # .../envs/XXX/bin
         conda_prefix = os.path.dirname(conda_bin_dir)        # .../envs/XXX
         base_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        remote_cmd = (
-            f"env CUDA_HOME={shlex.quote(conda_prefix)}"
+        env_vars = (
+            f"CUDA_HOME={shlex.quote(conda_prefix)}"
             f" PATH={shlex.quote(conda_bin_dir)}:{base_path}"
-            f" {cmd_str}"
+            f" FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer"
         )
+        if _NVIDIA_CPATH:
+            env_vars += f" CPATH={shlex.quote(_NVIDIA_CPATH)}"
+        remote_cmd = f"env {env_vars} {cmd_str}"
 
     log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", peer_host, remote_cmd]
@@ -625,12 +649,25 @@ def main():
 
     log(f"Server args:    {server_args}")
 
+    # Build server environment: inherit os.environ, then override/add specific vars.
+    # CPATH must come AFTER **os.environ so it takes precedence over any ambient value;
+    # we prepend our nvidia includes to any existing CPATH so we don't shadow others.
+    _existing_cpath = os.environ.get("CPATH", "")
+    _server_cpath = (
+        f"{_NVIDIA_CPATH}:{_existing_cpath}" if _existing_cpath and _NVIDIA_CPATH
+        else (_NVIDIA_CPATH or _existing_cpath)
+    )
     process = popen_launch_server(
         args.model_path,
         args.base_url,
         timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
         other_args=server_args,
-        env={"SGLANG_RECORD_STEP_TIME": "1", "SGLANG_TEST_REQUEST_TIME_STATS": "1", **os.environ},
+        env={
+            "SGLANG_RECORD_STEP_TIME": "1",
+            "SGLANG_TEST_REQUEST_TIME_STATS": "1",
+            **os.environ,
+            **({"CPATH": _server_cpath} if _server_cpath else {}),
+        },
     )
 
     try:
