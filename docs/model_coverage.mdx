@@ -182,12 +182,12 @@ Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, k
 | `gdn_prefill_qk8_v16_d128_k_last` | gdn TP=2 | ❌ |
 | `gdn_mtp_qk8_v16_d128_k_last` | gdn TP=2 | ❌ |
 | `gemm_n16_k2048` | gemm | ✅ |
-| `gemm_n256_k2048` | gemm | ❌ |
-| `gemm_n512_k2048` | gemm | ❌ |
-| `gemm_n2048_k256` | gemm | ❌ |
-| `gemm_n2048_k2048` | gemm | ❌ |
-| `gemm_n4096_k2048` | gemm | ❌ |
-| `gemm_n4608_k2048` | gemm | ❌ |
+| `gemm_n256_k2048` | gemm | ✅ |
+| `gemm_n512_k2048` | gemm | ✅ |
+| `gemm_n2048_k256` | gemm | ✅ |
+| `gemm_n2048_k2048` | gemm | ✅ |
+| `gemm_n4096_k2048` | gemm | ✅ |
+| `gemm_n4608_k2048` | gemm | ✅ |
 | `gqa_paged_decode_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
 | `gqa_paged_prefill_causal_h8_kv1_d256_ps1` | gqa_paged TP=2 | ❌ |
 | `moe_bf16_topk8_e256_h2048_i256` | moe | ❌ |
@@ -196,7 +196,7 @@ Missing GDN definitions: TP=1 prefill and decode (qk16_v32). Missing GQA: h=8, k
 | `gemma_rmsnorm_h256` | rmsnorm | ❌ |
 | `top_k_top_p_sampling_from_probs_v248320` | sampling | ❌ |
 
-**Coverage**: 1 / 17 definitions present.
+**Coverage**: 7 / 17 definitions present.
 
 ---
 

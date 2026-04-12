@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 
@@ -24,8 +25,7 @@ def test_correctness(M=32, atol=1e-2, rtol=1e-2):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cpu":
-        print("WARNING: CUDA not available, skipping test")
-        return True
+        pytest.skip("CUDA not available")
 
     inputs = generate_random_inputs(M, device=device)
 
@@ -47,7 +47,7 @@ def test_correctness(M=32, atol=1e-2, rtol=1e-2):
         print(f"\n✓ PASSED (atol={atol}, rtol={rtol})")
     else:
         print(f"\n✗ FAILED (atol={atol}, rtol={rtol})")
-    return close
+    assert close, f"Outputs differ beyond tolerance (atol={atol}, rtol={rtol})"
 
 
 def main():
