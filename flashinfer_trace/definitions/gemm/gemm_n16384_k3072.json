@@ -1,11 +1,10 @@
 {
   "name": "gemm_n16384_k3072",
-  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.2 3B mlp.gate_up_proj (fused gate+up: 2 * intermediate=2 * 8192 = 16384). Also used by MiniMax M2 MoE FC1/W13.",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.2 3B mlp.gate_up_proj (fused gate+up: 2 * intermediate=2 * 8192 = 16384).",
   "op_type": "gemm",
   "tags": [
     "status:unverified",
-    "model:llama-3.2-3b",
-    "model:minimax-m2"
+    "model:llama-3.2-3b"
   ],
   "axes": {
     "M": {
