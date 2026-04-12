@@ -99,7 +99,14 @@ done
 | `--peer-node-addr HOST [HOST ...]` | auto (SLURM) | Override peer node hostname(s)/IP(s) |
 | `--dist-init-port PORT` | `20010` | PyTorch dist rendezvous port (must differ from `--port`) |
 | `--no-multinode` | off | Disable auto multi-node even when config TP > local GPUs |
-| `--conda-env ENV` | `$CONDA_DEFAULT_ENV` | Conda env to activate on peer nodes via SSH |
+| `--conda-env ENV` | `$CONDA_DEFAULT_ENV` | Fallback: conda env for peer SSH (only used when `sys.executable` is a relative path, i.e. non-NFS clusters) |
+
+**Peer worker SSH environment**: on NFS-shared clusters (e.g. SLURM where `/home` is shared),
+`bench_sharegpt.py` passes `sys.executable` (absolute path) as the Python binary on the remote
+node — no conda activation needed. It also prepends `env CUDA_HOME=<conda_prefix>` so that
+`deep_gemm` can locate the CUDA toolkit on the SSH session (SSH does not inherit `CUDA_HOME`
+and csh/tcsh don't support the inline `KEY=value cmd` syntax). The `--conda-env` flag is only
+a fallback for non-NFS setups where `sys.executable` resolves to a relative path.
 
 **Two independent decisions**:
 
