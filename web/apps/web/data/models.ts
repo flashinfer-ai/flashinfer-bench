@@ -810,7 +810,11 @@ const models: Model[] = [
         count: 62,
         parent: "block_sparse_moe",
         type: "layer",
-        definitions: [],
+        definitions: [
+          "moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e256_h3072_i8192",
+          "gemm_n16384_k3072",
+          "gemm_n3072_k8192",
+        ],
       },
       norm: {
         count: 1,
