@@ -17,7 +17,6 @@
         "llama-4-scout": {
             "server_flags": [
                 "--trust-remote-code",
-                "--attention-backend", "flashinfer",
                 "--tp-size", "8"
             ]
         },

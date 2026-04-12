@@ -45,8 +45,10 @@ import json
 import math
 import os
 import shlex
+import shutil
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -207,13 +209,28 @@ def launch_peer_worker(
         "--dist-init-addr", f"{head_ip}:{dist_port}",
     ] + server_args
 
-    python_cmd = ["python", "-m", "sglang.launch_server"] + worker_args
+    # Use sys.executable so the remote worker runs in the same Python environment
+    # as the head node.  This works because /home is NFS-shared across nodes.
+    # Fall back to "conda run -n <env>" only when sys.executable is unavailable
+    # (e.g. dry-run testing or a non-NFS cluster).
+    python_bin = sys.executable
+    python_cmd = [python_bin, "-m", "sglang.launch_server"] + worker_args
     cmd_str = " ".join(shlex.quote(c) for c in python_cmd)
 
-    if conda_env:
-        remote_cmd = f"conda run --no-capture-output -n {shlex.quote(conda_env)} {cmd_str}"
+    if conda_env and not os.path.isabs(python_bin):
+        # Fallback: use conda run when sys.executable is a relative path
+        conda_bin = shutil.which("conda") or "conda"
+        remote_cmd = f"{conda_bin} run --no-capture-output -n {shlex.quote(conda_env)} {cmd_str}"
     else:
-        remote_cmd = cmd_str
+        # SSH sessions don't inherit the conda env's CUDA_HOME.
+        # Use `env` to set it so the command works in any remote shell
+        # (csh/tcsh don't support the `KEY=value cmd` inline-assignment syntax;
+        # `env` is an external binary that works universally).
+        # deep_gemm checks CUDA_HOME first; pointing it at the conda prefix
+        # (which contains bin/nvcc, include/, lib/) satisfies the requirement.
+        conda_bin_dir = os.path.dirname(python_bin)          # .../envs/XXX/bin
+        conda_prefix = os.path.dirname(conda_bin_dir)        # .../envs/XXX
+        remote_cmd = f"env CUDA_HOME={shlex.quote(conda_prefix)} {cmd_str}"
 
     log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
     ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", peer_host, remote_cmd]
