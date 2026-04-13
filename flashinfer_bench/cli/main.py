@@ -284,19 +284,19 @@ def run(args: argparse.Namespace):
     for path in args.local:
         trace_set = TraceSet.from_path(str(path))
 
-        cli_overrides = dict(
-            warmup_runs=args.warmup_runs,
-            iterations=args.iterations,
-            num_trials=args.num_trials,
-            rtol=args.rtol,
-            atol=args.atol,
-            use_isolated_runner=args.use_isolated_runner,
-            definitions=args.definitions,
-            solutions=args.solutions,
-            timeout_seconds=args.timeout,
-            required_matched_ratio=args.required_matched_ratio,
-            profile_baseline=getattr(args, "profile_baseline", True),
-        )
+        cli_overrides = {
+            "warmup_runs": args.warmup_runs,
+            "iterations": args.iterations,
+            "num_trials": args.num_trials,
+            "rtol": args.rtol,
+            "atol": args.atol,
+            "use_isolated_runner": args.use_isolated_runner,
+            "definitions": args.definitions,
+            "solutions": args.solutions,
+            "timeout_seconds": args.timeout,
+            "required_matched_ratio": args.required_matched_ratio,
+            "profile_baseline": getattr(args, "profile_baseline", True),
+        }
         config_path = getattr(args, "config", None)
         if config_path:
             config = BenchmarkConfig.from_yaml(config_path, **cli_overrides)
