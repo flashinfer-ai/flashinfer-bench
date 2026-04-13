@@ -111,6 +111,13 @@ For each layer component AND each serving configuration (TP/EP setting), extract
 - **Parameters**: M (variable), N (output dim), K (input dim)
 - **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
 
+#### RoPE Kernels (NOT affected by TP/EP — skip tp/ep tags)
+- **Naming**: `rope_with_cos_sin_cache_{style}_d{head_dim}_rd{rotary_dim}`
+  - NeoX style: `rope_with_cos_sin_cache_neox_style_d{head_dim}_rd{rotary_dim}`
+  - GPT-J style: `rope_with_cos_sin_cache_gptj_style_d{head_dim}_rd{rotary_dim}`
+- **Parameters**: head_dim, rotary_dim, cos_sin_cache, positions
+- **Note**: Rotation style (NeoX vs GPT-J) is encoded in the definition name, not as an input parameter. RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
+
 #### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.
 - **Parameters**: vocab_size, batch_size
@@ -176,8 +183,8 @@ Tags follow the pattern `{category}:{value}`:
 | `status` | `verified`, `unverified` | Whether reference implementation is validated |
 | `stage` | `decode`, `prefill` | Inference execution mode |
 | `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
-| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — refer to sgl-cookbook to confirm TP but do not add this tag. |
-| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, sampling). |
+| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, rope, sampling) — refer to sgl-cookbook to confirm TP but do not add this tag. |
+| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, rope, sampling). |
 | `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
 | `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
 | `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
@@ -198,6 +205,7 @@ Tags follow the pattern `{category}:{value}`:
 | `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
 | `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
 | `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
+| `rope` | `flashinfer.apply_rope_with_cos_sin_cache_inplace` | Uses pre-computed cos/sin cache, matching SGLang runtime dispatch |
 | `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
 | `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
 
@@ -668,6 +676,7 @@ The `reference` field in Definition JSON contains a `run()` function. **Always p
   | GQA prefill | `test_batch_prefill.py` | `ref_attention()` or inline reference |
   | MLA | `test_mla.py` | `ref_mla()` or inline reference |
   | RMSNorm | `test_norm.py` | `ref_rmsnorm()` or `ref_fused_add_rmsnorm()` |
+  | RoPE | `test_rope.py` | `apply_rotary_emb()` from `test_helpers/rope_reference.py` |
   | Sampling | `test_sampling.py` | Reference sampling implementations |
 
 - **Important**: The reference `run()` should match FlashInfer's test implementation exactly, with constant values updated to match SGLang model config

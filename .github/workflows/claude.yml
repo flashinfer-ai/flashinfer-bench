@@ -80,6 +80,22 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Fetch fork PR branch into base repo
+        if: steps.check-permission.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+            PR_NUMBER="${{ github.event.issue.number }}"
+            IS_FORK=$(gh pr view "$PR_NUMBER" --json isCrossRepository -q '.isCrossRepository' 2>/dev/null || echo "false")
+            if [[ "$IS_FORK" == "true" ]]; then
+              BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName')
+              echo "Fork PR detected. Syncing branch '$BRANCH' (PR #$PR_NUMBER) into base repo..."
+              git fetch origin "refs/pull/$PR_NUMBER/head"
+              git push origin "FETCH_HEAD:refs/heads/$BRANCH" --force
+            fi
+          fi
+
       - name: Run Claude Code
         if: steps.check-permission.outputs.authorized == 'true'
         id: claude

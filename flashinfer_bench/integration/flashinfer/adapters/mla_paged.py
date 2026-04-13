@@ -104,7 +104,7 @@ class MLAPagedAdapter:
                 H = ctx.get("num_heads", None)
                 D_ckv = ctx.get("head_dim_ckv", None)
                 D_kpe = ctx.get("head_dim_kpe", None)
-                if (H, D_ckv, D_kpe) != (16, 512, 64):
+                if (H, D_ckv, D_kpe) not in {(16, 512, 64), (8, 512, 64)}:
                     return orig(inst, *args, **kwargs)
                 if (
                     q_nope.dim() != 3
