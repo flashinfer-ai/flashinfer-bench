@@ -284,7 +284,7 @@ def run(args: argparse.Namespace):
     for path in args.local:
         trace_set = TraceSet.from_path(str(path))
 
-        cli_overrides = {
+        raw_cli_overrides = {
             "warmup_runs": args.warmup_runs,
             "iterations": args.iterations,
             "num_trials": args.num_trials,
@@ -295,8 +295,9 @@ def run(args: argparse.Namespace):
             "solutions": args.solutions,
             "timeout_seconds": args.timeout,
             "required_matched_ratio": args.required_matched_ratio,
-            "profile_baseline": getattr(args, "profile_baseline", True),
+            "profile_baseline": args.profile_baseline,
         }
+        cli_overrides = {k: v for k, v in raw_cli_overrides.items() if v is not None}
         config_path = getattr(args, "config", None)
         if config_path:
             config = BenchmarkConfig.from_yaml(config_path, **cli_overrides)
@@ -370,19 +371,19 @@ def cli():
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
     run_parser.add_argument(
-        "--warmup-runs", type=int, default=10, help="Number of warmup runs before measurement"
+        "--warmup-runs", type=int, default=None, help="Number of warmup runs before measurement"
     )
     run_parser.add_argument(
-        "--iterations", type=int, default=50, help="Number of iterations for benchmarking"
+        "--iterations", type=int, default=None, help="Number of iterations for benchmarking"
     )
     run_parser.add_argument(
-        "--num-trials", type=int, default=3, help="Number of trials for each benchmark"
+        "--num-trials", type=int, default=None, help="Number of trials for each benchmark"
     )
     run_parser.add_argument(
-        "--rtol", type=float, default=1e-2, help="Relative tolerance for correctness checks"
+        "--rtol", type=float, default=None, help="Relative tolerance for correctness checks"
     )
     run_parser.add_argument(
-        "--atol", type=float, default=1e-2, help="Absolute tolerance for correctness checks"
+        "--atol", type=float, default=None, help="Absolute tolerance for correctness checks"
     )
     run_parser.add_argument(
         "--required-matched-ratio",
@@ -399,6 +400,7 @@ def cli():
     run_parser.add_argument(
         "--use-isolated-runner",
         action="store_true",
+        default=None,
         help="Use IsolatedRunner instead of the default PersistentRunner",
     )
     run_parser.add_argument("--save-results", action=argparse.BooleanOptionalAction, default=True)
@@ -422,14 +424,14 @@ def cli():
     run_parser.add_argument(
         "--timeout",
         type=int,
-        default=300,
+        default=None,
         help="Timeout in seconds for each solution evaluation (default: 300)",
     )
     run_parser.add_argument(
         "--no-profile-baseline",
         dest="profile_baseline",
         action="store_false",
-        default=True,
+        default=None,
         help="Skip profiling the reference implementation (correctness check still runs). "
         "Useful when the reference is slow (e.g. large prefill workloads).",
     )

@@ -18,6 +18,8 @@ from .utils import allocate_outputs, normalize_result
 
 
 class LowBitEvaluator(DefaultEvaluator):
+    DEFAULT_REQUIRED_MATCHED_RATIO = 0.95
+
     @override
     @classmethod
     def can_evaluate(cls, definition: Definition) -> bool:
@@ -35,6 +37,11 @@ class LowBitEvaluator(DefaultEvaluator):
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
+        if cfg.required_matched_ratio is None:
+            cfg = cfg.model_copy(
+                update={"required_matched_ratio": cls.DEFAULT_REQUIRED_MATCHED_RATIO}
+            )
+
         max_abs = 0.0
         max_rel = 0.0
         numerical_incorrect = False
