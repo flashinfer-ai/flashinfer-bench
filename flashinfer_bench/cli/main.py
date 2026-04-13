@@ -337,6 +337,76 @@ def _load_traces(args: argparse.Namespace) -> List[TraceSet]:
     return trace_sets
 
 
+def _add_validate_run_args(parser):
+    """Add shared arguments for validate / validate run."""
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Dataset root directory. Defaults to FIB_DATASET_PATH env var.",
+    )
+    parser.add_argument(
+        "--checks",
+        type=str,
+        default=None,
+        help="Comma-separated check categories: layout,definition,workload,solution,trace,baseline,benchmark",
+    )
+    parser.add_argument(
+        "--disable-gpu", action="store_true", help="Skip benchmark checks (GPU-dependent)."
+    )
+    parser.add_argument(
+        "--op-types",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Filter by op_type (union with --definitions).",
+    )
+    parser.add_argument(
+        "--definitions",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Filter by definition name (union with --op-types).",
+    )
+    parser.add_argument(
+        "--output-folder",
+        type=str,
+        default=None,
+        help="Report output folder. Defaults to <dataset>/reports/.",
+    )
+    parser.add_argument(
+        "--outputs",
+        type=str,
+        default="stdout,json,text",
+        help="Comma-separated output targets: stdout,json,text (default: all).",
+    )
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+
+
+def _validate_run(args: argparse.Namespace):
+    from flashinfer_bench.data.validate import validate_dataset
+
+    checks = args.checks.split(",") if args.checks else None
+    outputs = args.outputs.split(",") if args.outputs else ["stdout", "json", "text"]
+    validate_dataset(
+        dataset=args.dataset,
+        op_types=args.op_types,
+        definitions=args.definitions,
+        checks=checks,
+        disable_gpu=args.disable_gpu,
+        output_folder=args.output_folder,
+        outputs=outputs,
+    )
+
+
+def _validate_render(args: argparse.Namespace):
+    from flashinfer_bench.data.validate_render import render_report
+
+    render_report(report_json=args.report_json, output=args.output)
+
+
 def cli():
     parser = argparse.ArgumentParser(
         description="FlashInfer Bench CLI", formatter_class=argparse.RawTextHelpFormatter
@@ -508,6 +578,26 @@ def cli():
         help="Specifies one or more local paths to load traces from.",
     )
     visualize_parser.set_defaults(func=visualize)
+
+    # --- validate ---
+    validate_parser = command_subparsers.add_parser(
+        "validate", help="Validate dataset correctness and completeness."
+    )
+    _add_validate_run_args(validate_parser)
+    validate_parser.set_defaults(func=_validate_run)
+
+    # --- validate-render ---
+    render_parser = command_subparsers.add_parser(
+        "validate-render", help="Render an existing validation report JSON as text."
+    )
+    render_parser.add_argument("report_json", type=str, help="Path to report JSON file.")
+    render_parser.add_argument(
+        "--output", type=str, default=None, help="Path to write the text output."
+    )
+    render_parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+    render_parser.set_defaults(func=_validate_render)
 
     args = parser.parse_args()
 

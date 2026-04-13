@@ -1,0 +1,230 @@
+---
+title: "Dataset Validation"
+description: "Validate the correctness and completeness of a FlashInfer Trace dataset."
+---
+
+## Overview
+
+The dataset validator checks a FlashInfer Trace dataset for structural correctness, schema compliance, and coverage completeness. It produces a JSON report and an optional human-readable text summary.
+
+Two subcommands under `flashinfer-bench validate`:
+
+- **`flashinfer-bench validate`** — scans the dataset, runs checks, outputs a report
+- **`flashinfer-bench validate-render`** — renders an existing report JSON as readable text
+
+The core logic lives in `flashinfer_bench.data.validate` and `flashinfer_bench.data.validate_render`, which can also be called as Python functions.
+
+## Quick Start
+
+```bash
+# Assumes FIB_DATASET_PATH is set, or pass --dataset explicitly
+
+# Full validation (CPU + GPU)
+flashinfer-bench validate
+
+# Full CPU validation (skip GPU benchmark)
+flashinfer-bench validate --disable-gpu
+
+# Only check specific categories
+flashinfer-bench validate --checks layout,definition,workload,solution --disable-gpu
+
+# Validate a specific op_type
+flashinfer-bench validate --op-types mla_paged --disable-gpu
+
+# Validate a specific definition
+flashinfer-bench validate --definitions rmsnorm_h4096 --disable-gpu
+
+# Customize output: only write files, no stdout
+flashinfer-bench validate --outputs json,text --disable-gpu
+
+# Customize output: write files to a specific folder, no stdout
+flashinfer-bench validate --outputs json,text --output-folder /tmp/reports --disable-gpu
+
+# Re-render an existing report as text
+flashinfer-bench validate-render reports/report-20260413-120000.json
+flashinfer-bench validate-render reports/report-20260413-120000.json --output report.txt
+```
+
+## Check Categories
+
+The validator covers 7 categories, each independently selectable via `--checks`:
+
+### layout
+
+Verifies directory structure and path-field consistency.
+
+- Duplicate definition names across op_types (error if two definitions share a stem)
+- `definitions/<op_type>/<definition>.json` — `name` and `op_type` fields match path
+- `workloads/<op_type>/<definition>.jsonl` — `op_type` matches path; `definition` field inside each trace entry matches path
+- `solutions/<author>/<op_type>/<definition>/<solution>.json` — `author`, `op_type`, `definition`, and `name` fields all match path components
+- `traces/<author>/<op_type>/<definition>.jsonl` — `op_type` matches path; `definition` field inside each trace entry matches path
+- Referenced safetensors blob files exist under `blob/`
+
+### definition
+
+Validates definition schema and content quality.
+
+- JSON conforms to the `Definition` pydantic schema, which also validates:
+  - `reference` is valid Python syntax with a top-level `run` function
+  - All input/output shape axis references exist in the axes dict
+  - Constraints are valid Python expressions
+  - Input and output names do not overlap
+- Definition description is non-empty (warning if missing)
+- All axes have non-empty `description` (warning if missing)
+- All inputs and outputs have non-empty `description` (warning if missing)
+- (GPU only) Build reference implementation via `BuilderRegistry` (error if build fails)
+
+### workload
+
+Validates workload entries against their definition.
+
+- Each JSONL line conforms to the `Trace` schema (workload-only)
+- Each entry must be workload-only (no `solution` or `evaluation`)
+- All variable axes from the definition are provided, no extra axes, all values > 0
+- Input names exactly match the definition (no missing, no extra)
+- Input types are consistent with definition (scalar vs tensor)
+- Tensor shapes match definition's shape inference (const axes + workload axes)
+- For `safetensors` inputs: blob file exists, tensor key present, shape matches inferred shape
+
+### solution
+
+Validates solution schemas and field consistency.
+
+- JSON conforms to the `Solution` pydantic schema, which also validates:
+  - `entry_point` follows the `{file_path}::{function_name}` format
+  - Entry source file exists in the sources list
+  - Sources list is non-empty
+- `definition`, `author`, and `name` fields all match their path components
+
+### trace
+
+Validates trace structure and workload coverage for all authors.
+
+- Each JSONL line conforms to the `Trace` schema
+- Each entry must have `solution` and `evaluation` (not workload-only)
+- `definition` field inside each trace entry matches the expected definition name
+- Referenced solutions must exist in the solution index (error if unknown)
+- Per-author workload coverage compared to the full workload set (warning if incomplete)
+
+### baseline
+
+Checks baseline solution and trace existence and status.
+
+- Baseline solution exists under `solutions/baseline/` (warning if missing)
+- (GPU only) Build each baseline solution via `BuilderRegistry` (error if build fails)
+- Baseline trace exists under `traces/baseline/` (warning if missing)
+- Baseline trace `solution` fields map to `solutions/baseline/` (error if not)
+- All baseline trace entries have `PASSED` evaluation status (warning if not)
+- Baseline trace covers all workloads for the definition (warning if incomplete)
+
+### benchmark
+
+GPU dynamic validation (skipped with `--disable-gpu`).
+
+- Packages the definition's reference code as a pseudo-solution
+- Runs both baseline solutions and reference via `Benchmark.run_all()`
+- Uses lightweight config: `warmup_runs=2, iterations=5, num_trials=1`
+- All workloads must pass for both baseline and reference
+
+## CLI Reference
+
+### flashinfer-bench validate
+
+```
+flashinfer-bench validate [options]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--dataset` | `FIB_DATASET_PATH` env var | Dataset root directory |
+| `--op-types` | all | Only check these op_types |
+| `--definitions` | all | Only check these definitions |
+| `--checks` | all (or CPU-only with `--disable-gpu`) | Comma-separated check categories |
+| `--disable-gpu` | false | Skip benchmark checks |
+| `--output-folder` | `<dataset>/reports/` | Report output directory |
+| `--outputs` | `stdout,json,text` | Comma-separated output targets |
+
+**Filtering**: `--op-types` and `--definitions` use union logic. If both are given, any definition matching either filter is included.
+
+**Output files** are named with a timestamp (`report-YYYYMMDD-HHMMSS.json/.txt`) to avoid overwriting. If a target file already exists, the script exits with an error.
+
+### flashinfer-bench validate-render
+
+```
+flashinfer-bench validate-render <report.json> [--output <path>]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `report.json` | (required) | Path to report JSON |
+| `--output` | stdout | Write text report to file |
+
+## Report Structure
+
+The report JSON uses pydantic models defined in `flashinfer_bench.data.validate_render`.
+
+### Python API
+
+```python
+from flashinfer_bench.data.validate import validate_dataset
+from flashinfer_bench.data.validate_render import render_report
+
+report = validate_dataset(dataset="/path/to/flashinfer-trace", disable_gpu=True)
+render_report("reports/report-20260413-120000.json")
+```
+
+### JSON Structure
+
+```json
+{
+  "config": {
+    "dataset": "/path/to/dataset",
+    "checks": ["layout", "definition", "workload", "solution", "trace", "baseline", "benchmark"],
+    "disable_gpu": false,
+    "op_types": [],
+    "definitions": []
+  },
+  "definitions": {
+    "rmsnorm_h4096": {
+      "status": "ok",
+      "layout": { "status": "ok", "messages": [] },
+      "definition": { "status": "warning", "messages": [{"level": "warning", "message": "..."}] },
+      "workload": { "status": "ok", "messages": [{"level": "info", "message": "14 valid"}] },
+      "solution": null,
+      "trace": null,
+      "baseline": null,
+      "benchmark": null
+    }
+  }
+}
+```
+
+Each check category is either a `CheckResult` object (with `status` and `messages`) or `null` if the check was not run. The definition-level `status` is the worst status across all non-null checks.
+
+## Text Report Example
+
+```
+=== Dataset Validation Report ===
+dataset:       /path/to/flashinfer-trace
+checks:        layout, definition, workload, solution, trace, baseline
+disable_gpu:   true
+op_types:      (all)
+definitions:   (all)
+
+97 definitions: 3 ok, 88 warning, 6 error
+
+--- rmsnorm_h4096 [OK] ---
+  layout:      ok
+  definition:  warning
+    - missing description: axes.batch_size
+  workload:    ok
+    - 14 valid
+  solution:    ok
+    - 9 solutions
+  trace:       ok
+  baseline:    ok
+    - solution: flashinfer_wrapper_2e27cd
+    - trace: all passed
+    - trace: 14/14 workloads
+  benchmark:   None (skipped)
+```
