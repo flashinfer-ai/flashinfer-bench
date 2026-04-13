@@ -38,7 +38,7 @@ import sys
 from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-import matplotlib
+import matplotlib.pyplot as plt  # lazy import
 
 # ---------- Parsing helpers ----------
 
@@ -349,8 +349,6 @@ def make_win_at_p_plot(
     """
     Render a single Win@p plot. If out_path is provided, saves there; otherwise shows interactively.
     """
-    import matplotlib.pyplot as plt  # lazy import
-
     if not p_grid or not authors_to_plot:
         raise RuntimeError("Nothing to plot: empty p-grid or no authors selected.")
 
