@@ -17,6 +17,10 @@ Usage:
     # Custom batch sizes and number of batches
     python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct --batch-sizes 32 128 --num-batches 8 --disable-cuda-graph
 
+    # Per-batch-size server restart (isolates dump budgets for diverse workload collection)
+    python3 bench_sharegpt.py --model llama-4-scout-ps64 --model-path /path/to/model \
+        --batch-sizes 64 128 --num-batches 4 --disable-cuda-graph --restart-per-batch-size
+
 Environment variables (optional, for flashinfer-bench tracing):
     FIB_ENABLE_APPLY=1        Enable the flashinfer-bench apply hook
     FIB_DATASET_PATH=<dir>    Directory to write flashinfer trace data
@@ -30,6 +34,7 @@ import asyncio
 import json
 import math
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -520,6 +525,15 @@ def main():
         help="Conda environment to activate on peer nodes via SSH. "
         "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
     )
+    parser.add_argument(
+        "--restart-per-batch-size",
+        action="store_true",
+        help="Restart the server between each batch size and clear FLASHINFER_DUMP_DIR. "
+        "Each batch size gets its own isolated dump budget so the diversity selector "
+        "can pick representative workloads for every batch size independently. "
+        "Without this flag, a large early batch size can exhaust FLASHINFER_DUMP_MAX_COUNT "
+        "before smaller (or larger) batch sizes are reached.",
+    )
     args = parser.parse_args()
 
     model_config = get_model_config(args.model)
@@ -544,26 +558,41 @@ def main():
     server_args.extend(model_config["server_flags"])
     log(f"Server arguments: {server_args}")
 
-    process = popen_launch_server(
-        args.model_path,
-        args.base_url,
-        timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
-        other_args=server_args,
-        env={"SGLANG_RECORD_STEP_TIME": "1", "SGLANG_TEST_REQUEST_TIME_STATS": "1", **os.environ},
-    )
+    def _run_server_session(batch_sizes: List[int]) -> None:
+        """Launch server, benchmark the given batch sizes, then shut down."""
+        process = popen_launch_server(
+            args.model_path,
+            args.base_url,
+            timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
+            other_args=server_args,
+            env={"SGLANG_RECORD_STEP_TIME": "1", "SGLANG_TEST_REQUEST_TIME_STATS": "1", **os.environ},
+        )
+        try:
+            for batch_size in batch_sizes:
+                log(f"Running benchmark with batch size {batch_size}")
+                run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size, temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
+        except Exception as e:
+            log(f"Benchmark failed: {e}")
+            raise
+        finally:
+            log("Shutting down server...")
+            kill_process_tree(process.pid)
+            time.sleep(3)
+            log("Server shutdown complete")
 
-    try:
+    if args.restart_per_batch_size:
         for batch_size in args.batch_sizes:
-            log(f"Running benchmark with batch size {batch_size}")
-            run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size, temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
-    except Exception as e:
-        log(f"Benchmark failed: {e}")
-        raise
-    finally:
-        log("Shutting down server...")
-        kill_process_tree(process.pid)
-        time.sleep(3)
-        log("Server shutdown complete")
+            dump_dir = os.environ.get("FLASHINFER_DUMP_DIR")
+            if dump_dir:
+                p = Path(dump_dir)
+                if p.exists():
+                    shutil.rmtree(p)
+                p.mkdir(parents=True, exist_ok=True)
+                log(f"Cleared FLASHINFER_DUMP_DIR: {dump_dir}")
+            log(f"=== Starting session for batch_size={batch_size} ===")
+            _run_server_session([batch_size])
+    else:
+        _run_server_session(args.batch_sizes)
 
 
 if __name__ == "__main__":
