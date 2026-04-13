@@ -359,9 +359,9 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `gemm_n3584_k3584` | gemm | ❌ |
 | `gemm_n37888_k3584` | gemm | ❌ |
 | `gemm_n3584_k18944` | gemm | ❌ |
-| `top_k_sampling_from_probs_v152064` | sampling | ✅ |
-| `top_k_top_p_sampling_from_probs_v152064` | sampling | ✅ |
-| `top_p_sampling_from_probs_v152064` | sampling | ✅ |
+| `top_k_sampling_from_probs_v152064` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v152064` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v152064` | sampling | 🟡 |
 
 **Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3584.
 
@@ -384,9 +384,9 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `gemm_n8192_k8192` | gemm | ❌ |
 | `gemm_n59392_k8192` | gemm | ❌ |
 | `gemm_n8192_k29696` | gemm | ❌ |
-| `top_k_sampling_from_probs_v152064` | sampling | ✅ |
-| `top_k_top_p_sampling_from_probs_v152064` | sampling | ✅ |
-| `top_p_sampling_from_probs_v152064` | sampling | ✅ |
+| `top_k_sampling_from_probs_v152064` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v152064` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v152064` | sampling | 🟡 |
 
 **Coverage**: 3 / 14 definitions present. Missing: rmsnorm h8192, all GQA definitions (h8_kv1_d128 at TP=8), all GEMM definitions for hidden=8192.
 
