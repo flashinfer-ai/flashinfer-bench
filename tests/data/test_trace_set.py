@@ -21,6 +21,7 @@ from flashinfer_bench.data import (
     Trace,
     TraceSet,
     Workload,
+    load_jsonl_file,
     save_json_file,
     save_jsonl_file,
 )
@@ -28,9 +29,12 @@ from flashinfer_bench.data import (
 
 def test_trace_set_from_path_and_queries(tmp_path: Path):
     # Create directory structure
-    (tmp_path / "definitions").mkdir()
-    (tmp_path / "solutions").mkdir()
-    (tmp_path / "traces").mkdir()
+    (tmp_path / "definitions" / "op").mkdir(parents=True)
+    (tmp_path / "solutions" / "a" / "op" / "d1").mkdir(parents=True)
+    (tmp_path / "solutions" / "b" / "op" / "d1").mkdir(parents=True)
+    (tmp_path / "workloads" / "op").mkdir(parents=True)
+    (tmp_path / "traces" / "a" / "op").mkdir(parents=True)
+    (tmp_path / "traces" / "b" / "op").mkdir(parents=True)
 
     # Definition
     ref = "def run(a):\n    return a\n"
@@ -42,7 +46,7 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
         outputs={"B": TensorSpec(shape=["M", "N"], dtype="float32")},
         reference=ref,
     )
-    save_json_file(definition, tmp_path / "definitions" / "d1.json")
+    save_json_file(definition, tmp_path / "definitions" / "op" / "d1.json")
 
     # Solutions
     solution1 = Solution(
@@ -63,8 +67,8 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
         ),
         sources=[SourceFile(path="main.py", content="def run():\n    pass\n")],
     )
-    save_json_file(solution1, tmp_path / "solutions" / "s1.json")
-    save_json_file(solution2, tmp_path / "solutions" / "s2.json")
+    save_json_file(solution1, tmp_path / "solutions" / "a" / "op" / "d1" / "s1.json")
+    save_json_file(solution2, tmp_path / "solutions" / "b" / "op" / "d1" / "s2.json")
 
     # Traces JSONL
     trace_pass = Trace(
@@ -94,8 +98,9 @@ def test_trace_set_from_path_and_queries(tmp_path: Path):
     trace_workload = Trace(
         definition="d1", workload=Workload(axes={"M": 3}, inputs={"A": RandomInput()}, uuid="tw3")
     )
-    save_jsonl_file([trace_workload], tmp_path / "workloads" / "d1.jsonl")
-    save_jsonl_file([trace_pass, trace_fail], tmp_path / "traces" / "d1.jsonl")
+    save_jsonl_file([trace_workload], tmp_path / "workloads" / "op" / "d1.jsonl")
+    save_jsonl_file([trace_pass], tmp_path / "traces" / "a" / "op" / "d1.jsonl")
+    save_jsonl_file([trace_fail], tmp_path / "traces" / "b" / "op" / "d1.jsonl")
 
     # Load
     trace_set = TraceSet.from_path(str(tmp_path))
@@ -161,7 +166,7 @@ def test_trace_set_ranking_uses_avg_speedup():
         definitions={"d1": definition},
         solutions={
             "d1": [
-                make_solution("baseline", "flashinfer"),
+                make_solution("baseline", "baseline"),
                 make_solution("alice", "alice"),
                 make_solution("bob", "bob"),
             ]
@@ -258,7 +263,7 @@ def test_trace_set_ranking_counts_missing_pass_as_zero():
         definitions={"d1": definition},
         solutions={
             "d1": [
-                make_solution("baseline", "flashinfer"),
+                make_solution("baseline", "baseline"),
                 make_solution("alice", "alice"),
                 make_solution("bob", "bob"),
             ]
@@ -345,7 +350,7 @@ def test_trace_set_ranking_uses_best_solution_per_author_and_definition():
         definitions={"d1": definition},
         solutions={
             "d1": [
-                make_solution("baseline", "flashinfer"),
+                make_solution("baseline", "baseline"),
                 make_solution("alice_bad", "alice"),
                 make_solution("alice_good", "alice"),
                 make_solution("bob", "bob"),
@@ -475,12 +480,12 @@ def test_multi_definition_scope_and_best_solutions():
         definitions={"d1": make_def("d1", "attn"), "d2": make_def("d2", "norm")},
         solutions={
             "d1": [
-                make_solution("bl_d1", "flashinfer", "d1"),
+                make_solution("bl_d1", "baseline", "d1"),
                 make_solution("alice_d1_slow", "alice", "d1"),
                 make_solution("alice_d1_fast", "alice", "d1"),
             ],
             "d2": [
-                make_solution("bl_d2", "flashinfer", "d2"),
+                make_solution("bl_d2", "baseline", "d2"),
                 make_solution("alice_d2", "alice", "d2"),
             ],
         },
@@ -568,9 +573,7 @@ def test_summary_includes_rankings():
 
     trace_set = TraceSet(
         definitions={"d1": definition},
-        solutions={
-            "d1": [make_solution("baseline", "flashinfer"), make_solution("alice", "alice")]
-        },
+        solutions={"d1": [make_solution("baseline", "baseline"), make_solution("alice", "alice")]},
         traces={"d1": [make_trace("baseline", "w1", 10.0), make_trace("alice", "w1", 5.0)]},
     )
 

@@ -214,10 +214,12 @@ def tool_check_workloads(flashinfer_trace_dir: str, definition: str) -> str:
     blobs = list(blob_dir.glob("*.safetensors")) if blob_dir.exists() else []
     results["blob_count"] = len(blobs)
 
-    trace_file = trace_dir / "traces" / op_type / f"{definition}.jsonl"
-    results["trace_exists"] = trace_file.exists()
-    if trace_file.exists():
-        records = [json.loads(l) for l in trace_file.read_text().splitlines() if l.strip()]
+    trace_files = list((trace_dir / "traces").glob(f"*/{op_type}/{definition}.jsonl"))
+    results["trace_exists"] = bool(trace_files)
+    if trace_files:
+        records = []
+        for tf in trace_files:
+            records.extend(json.loads(l) for l in tf.read_text().splitlines() if l.strip())
         statuses = [r.get("evaluation", {}).get("status") for r in records]
         results["trace_statuses"] = dict(
             passed=statuses.count("PASSED"), failed=statuses.count("FAILED"), total=len(statuses)

@@ -17,15 +17,15 @@ Outputs:
   (n_total is the number of workload groups where this author had a valid run; n_wins counts those with r>p)
 
 Examples:
-  python win_at_p.py traces/*/*.jsonl -o win_at_p.csv
-  python win_at_p.py traces/*/*.jsonl -o win_at_p.csv --baseline-author torch
-  python win_at_p.py traces/*/*.jsonl -o win_at_p.csv --author-map author_map.json
+  python win_at_p.py traces/*/*/*.jsonl -o win_at_p.csv
+  python win_at_p.py traces/*/*/*.jsonl -o win_at_p.csv --baseline-author torch
+  python win_at_p.py traces/*/*/*.jsonl -o win_at_p.csv --author-map author_map.json
   # author_map.json example:
   # { "rmsnorm_triton_v1": "alice", "my_fast_impl": "bob" }
 
 Notes:
 - If multiple runs exist for the same author within a group, we take the MIN latency for that author in that group.
-- By default, the baseline author ('flashinfer') is EXCLUDED from output curves; use --include-baseline to include it.
+- By default, the baseline author ('baseline') is EXCLUDED from output curves; use --include-baseline to include it.
 """
 
 import argparse
@@ -404,8 +404,8 @@ def main():
     )
     ap.add_argument(
         "--baseline-author",
-        default="flashinfer",
-        help="Baseline author name to prefer when present (default: flashinfer).",
+        default="baseline",
+        help="Baseline author name to prefer when present (default: baseline).",
     )
     ap.add_argument(
         "--include-baseline",
