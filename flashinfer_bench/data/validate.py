@@ -74,7 +74,7 @@ from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from flashinfer_bench.data.trace import EvaluationStatus, Trace
 from flashinfer_bench.data.trace_set import TraceSet
-from flashinfer_bench.data.validator_report import (
+from flashinfer_bench.data.validate_render import (
     CheckMessage,
     CheckResult,
     DatasetReport,

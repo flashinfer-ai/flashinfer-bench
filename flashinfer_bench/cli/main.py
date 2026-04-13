@@ -380,7 +380,7 @@ def _add_validate_run_args(parser):
 
 
 def _validate_run(args: argparse.Namespace):
-    from flashinfer_bench.data.validator import validate_dataset
+    from flashinfer_bench.data.validate import validate_dataset
 
     checks = args.checks.split(",") if args.checks else None
     outputs = args.outputs.split(",") if args.outputs else ["stdout", "json", "text"]
@@ -396,7 +396,7 @@ def _validate_run(args: argparse.Namespace):
 
 
 def _validate_render(args: argparse.Namespace):
-    from flashinfer_bench.data.validator_report import render_report
+    from flashinfer_bench.data.validate_render import render_report
 
     render_report(report_json=args.report_json, output=args.output)
 
@@ -570,20 +570,12 @@ def cli():
     validate_parser = command_subparsers.add_parser(
         "validate", help="Validate dataset correctness and completeness."
     )
-    validate_subparsers = validate_parser.add_subparsers(
-        dest="validate_subcommand", help="Validate actions"
-    )
-
-    validate_run_parser = validate_subparsers.add_parser(
-        "run", help="Run dataset validation checks."
-    )
-    _add_validate_run_args(validate_run_parser)
-    validate_run_parser.set_defaults(func=_validate_run)
     _add_validate_run_args(validate_parser)
     validate_parser.set_defaults(func=_validate_run)
 
-    render_parser = validate_subparsers.add_parser(
-        "render", help="Render an existing report JSON as text."
+    # --- validate-render ---
+    render_parser = command_subparsers.add_parser(
+        "validate-render", help="Render an existing validation report JSON as text."
     )
     render_parser.add_argument("report_json", type=str, help="Path to report JSON file.")
     render_parser.add_argument(

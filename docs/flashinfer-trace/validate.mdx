@@ -10,29 +10,39 @@ The dataset validator checks a FlashInfer Trace dataset for structural correctne
 Two subcommands under `flashinfer-bench validate`:
 
 - **`flashinfer-bench validate`** — scans the dataset, runs checks, outputs a report
-- **`flashinfer-bench validate render`** — renders an existing report JSON as readable text
+- **`flashinfer-bench validate-render`** — renders an existing report JSON as readable text
 
-The core logic lives in `flashinfer_bench.data.validator` and `flashinfer_bench.data.validator_report`, which can also be called as Python functions.
+The core logic lives in `flashinfer_bench.data.validate` and `flashinfer_bench.data.validate_render`, which can also be called as Python functions.
 
 ## Quick Start
 
 ```bash
-# Full CPU validation (default: stdout + json + text output)
-flashinfer-bench validate --dataset /path/to/flashinfer-trace --disable-gpu
+# Assumes FIB_DATASET_PATH is set, or pass --dataset explicitly
 
-# Only check layout and definition for rmsnorm ops
-flashinfer-bench validate --dataset /path/to/flashinfer-trace \
-  --checks layout,definition --op-types rmsnorm --disable-gpu
+# Full validation (CPU + GPU)
+flashinfer-bench validate
 
-# Check a single definition with all CPU checks
-flashinfer-bench validate --dataset /path/to/flashinfer-trace \
-  --definitions rmsnorm_h4096 --disable-gpu
+# Full CPU validation (skip GPU benchmark)
+flashinfer-bench validate --disable-gpu
 
-# Full validation including GPU benchmark
-flashinfer-bench validate --dataset /path/to/flashinfer-trace
+# Only check specific categories
+flashinfer-bench validate --checks layout,definition,workload,solution --disable-gpu
 
-# Re-render an existing report
-flashinfer-bench validate render reports/report-20260413-120000.json
+# Validate a specific op_type
+flashinfer-bench validate --op-types mla_paged --disable-gpu
+
+# Validate a specific definition
+flashinfer-bench validate --definitions rmsnorm_h4096 --disable-gpu
+
+# Customize output: only write files, no stdout
+flashinfer-bench validate --outputs json,text --disable-gpu
+
+# Customize output: write files to a specific folder, no stdout
+flashinfer-bench validate --outputs json,text --output-folder /tmp/reports --disable-gpu
+
+# Re-render an existing report as text
+flashinfer-bench validate-render reports/report-20260413-120000.json
+flashinfer-bench validate-render reports/report-20260413-120000.json --output report.txt
 ```
 
 ## Check Categories
@@ -135,10 +145,10 @@ flashinfer-bench validate [options]
 
 **Output files** are named with a timestamp (`report-YYYYMMDD-HHMMSS.json/.txt`) to avoid overwriting. If a target file already exists, the script exits with an error.
 
-### flashinfer-bench validate render
+### flashinfer-bench validate-render
 
 ```
-flashinfer-bench validate render <report.json> [--output <path>]
+flashinfer-bench validate-render <report.json> [--output <path>]
 ```
 
 | Parameter | Default | Description |
@@ -148,13 +158,13 @@ flashinfer-bench validate render <report.json> [--output <path>]
 
 ## Report Structure
 
-The report JSON uses pydantic models defined in `flashinfer_bench.data.validator_report`.
+The report JSON uses pydantic models defined in `flashinfer_bench.data.validate_render`.
 
 ### Python API
 
 ```python
-from flashinfer_bench.data.validator import validate_dataset
-from flashinfer_bench.data.validator_report import render_report
+from flashinfer_bench.data.validate import validate_dataset
+from flashinfer_bench.data.validate_render import render_report
 
 report = validate_dataset(dataset="/path/to/flashinfer-trace", disable_gpu=True)
 render_report("reports/report-20260413-120000.json")
