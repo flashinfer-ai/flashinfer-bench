@@ -1,7 +1,7 @@
 {
   "name": "top_p_sampling_from_probs_v152064",
   "op_type": "sampling",
-  "description": "Top-p (nucleus) sampling from probabilities with vocab_size=152064. Filters probabilities using cumulative probability threshold, then samples from the filtered distribution.",
+  "description": "Top-p (nucleus) sampling from probabilities with vocab_size=152064. Filters probabilities using cumulative probability threshold, then samples from the filtered distribution. Captured from Qwen2.5 7B.",
   "tags": [
     "status:unverified",
     "model:qwen2.5-7b",
