@@ -24,12 +24,19 @@ Usage:
     #   Manual override: --peer-node-addr nvl72155-T14
     #   Disable auto multi-node: --no-multinode
 
+
     # Tracing flags
     python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
     python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
 
     # Custom batch sizes and number of batches
     python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
+
+    # Workload collection: restart server per batch size so each gets its own DUMP_MAX_COUNT budget
+    FLASHINFER_DUMP_MAX_COUNT=500 FLASHINFER_DUMP_INCLUDE="BatchDecodeWithPagedKVCacheWrapper*" \
+    FLASHINFER_DUMP_EXCLUDE="*.__init__" \
+    python3 bench_sharegpt.py --model llama-4-scout-ps64 --model-path /path/to/model \
+        --batch-sizes 64 128 --num-batches 4 --restart-per-batch-size --disable-cuda-graph
 
 Environment variables (optional, for flashinfer-bench tracing):
     FIB_ENABLE_APPLY=1        Enable the flashinfer-bench apply hook
@@ -66,6 +73,13 @@ _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 # individual compile commands.
 _NVIDIA_INCLUDES: List[str] = sorted(
     str(p) for p in Path(sys.prefix).glob("lib/python*/site-packages/nvidia/cu*/include")
+)
+# Also include CUDA CTK headers from conda env's targets/ directory (e.g.
+# targets/sbsa-linux/include on ARM, targets/x86_64-linux/include on x86).
+# These provide <nv/target> and other CTK-private headers required by the
+# FlashInfer TRT-LLM JIT compilation.
+_NVIDIA_INCLUDES += sorted(
+    str(p) for p in Path(sys.prefix).glob("targets/*/include") if (p / "nv" / "target").exists()
 )
 _NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
 
@@ -255,6 +269,9 @@ def launch_peer_worker(
             f"CUDA_HOME={shlex.quote(conda_prefix)}"
             f" PATH={shlex.quote(conda_bin_dir)}:{base_path}"
             f" FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer"
+            f" FLASHINFER_CUBIN_DIR=/tmp/flashinfer_cubins"
+            f" SGLANG_ENABLE_JIT_DEEPGEMM=0"
+            f" TRITON_CACHE_DIR=/tmp/triton_cache_peer"
         )
         if _NVIDIA_CPATH:
             env_vars += f" CPATH={shlex.quote(_NVIDIA_CPATH)}"
@@ -413,7 +430,14 @@ def build_bench_args() -> SimpleNamespace:
     )
 
 
-def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
+def run_benchmark(
+    base_url: str,
+    prompts: List[str],
+    batch_size: int,
+    temperature: float = 0.0,
+    top_k: int = -1,
+    top_p: float = 1.0,
+) -> list:
     """Run the benchmark over prompts in batches and return all results."""
     tokenizer = DummyTokenizer()
     set_global_args(build_bench_args())
@@ -451,13 +475,98 @@ def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
                 lora_names=None,
                 lora_request_distribution=None,
                 lora_zipf_alpha=None,
-                extra_request_body={"sampling_params": {"temperature": 0}},
+                extra_request_body={
+                    "sampling_params": {
+                        "temperature": temperature,
+                        **({"top_k": top_k} if top_k > 0 else {}),
+                        **({"top_p": top_p} if top_p < 1.0 else {}),
+                    }
+                },
                 profile=False,
             )
         )
         all_results.append(results)
 
     return all_results
+
+
+def _shutdown_server(process: subprocess.Popen, peer_processes: List[subprocess.Popen]) -> None:
+    """Kill the SGLang head server and all peer workers."""
+    kill_process_tree(process.pid)
+    for p in peer_processes:
+        try:
+            peer_host = p.args[5]  # ssh cmd: ["ssh", "-o", OPT, "-o", OPT, HOST, remote_cmd]
+            subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    "BatchMode=yes",
+                    peer_host,
+                    "pkill -f 'sglang.launch_server'",
+                ],
+                timeout=10,
+            )
+        except Exception:
+            pass
+        try:
+            kill_process_tree(p.pid)
+        except Exception:
+            pass
+    time.sleep(3)
+    log("Server shutdown complete")
+
+
+def _launch_server_session(
+    model_path: str,
+    base_url: str,
+    server_args: List[str],
+    server_env: Dict[str, str],
+    need_multinode: bool,
+    peers: List[Tuple[str, str]],
+    nnodes: int,
+    head_ip: Optional[str],
+    dist_addr: Optional[str],
+    dist_port: int,
+    conda_env: str,
+    timeout: int,
+) -> Tuple[subprocess.Popen, List[subprocess.Popen]]:
+    """Launch peer workers (if multi-node) and the SGLang head server.
+
+    Returns ``(head_process, peer_processes)``.  The caller is responsible for
+    shutting the session down via :func:`_shutdown_server` when done.
+    """
+    peer_processes: List[subprocess.Popen] = []
+    launch_args = list(server_args)
+
+    if need_multinode:
+        for rank, (peer_host, _) in enumerate(peers, start=1):
+            p = launch_peer_worker(
+                peer_host=peer_host,
+                model_path=model_path,
+                server_args=server_args,
+                head_ip=head_ip,
+                dist_port=dist_port,
+                total_nodes=nnodes,
+                node_rank=rank,
+                conda_env=conda_env,
+            )
+            peer_processes.append(p)
+
+        launch_args = [
+            "--nnodes",
+            str(nnodes),
+            "--node-rank",
+            "0",
+            "--dist-init-addr",
+            dist_addr,
+        ] + launch_args
+
+    process = popen_launch_server(
+        model_path, base_url, timeout=timeout, other_args=launch_args, env=server_env
+    )
+    return process, peer_processes
 
 
 def main():
@@ -539,11 +648,42 @@ def main():
         help="Disable automatic multi-node mode even when config TP > local GPU count.",
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature for inference requests (default: 0.0 = greedy). "
+        "Set to e.g. 0.7 to enable top-k/top-p sampling for workload collection.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=-1,
+        help="Top-k value for sampling (default: -1 = no filtering). "
+        "Set to e.g. 1000 to force top-k sampling path in SGLang.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Top-p (nucleus) value for sampling (default: 1.0 = no filtering). "
+        "Set to e.g. 0.9 to force top-p sampling path in SGLang.",
+    )
+    parser.add_argument(
         "--conda-env",
         type=str,
         default=os.environ.get("CONDA_DEFAULT_ENV", "flashinfer_bench"),
         help="Conda environment to activate on peer nodes via SSH. "
         "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
+    )
+    parser.add_argument(
+        "--restart-per-batch-size",
+        action="store_true",
+        help=(
+            "Restart the SGLang server between batch sizes. "
+            "Useful for workload collection: each server session gets its own "
+            "FLASHINFER_DUMP_MAX_COUNT budget, preventing early batch sizes from "
+            "exhausting the dump budget before later ones run."
+        ),
     )
     args = parser.parse_args()
 
@@ -626,8 +766,9 @@ def main():
     if need_multinode:
         log(f"Multi-node: {nnodes} nodes × {local_gpus} GPUs, TP={effective_tp}")
 
-    # --- Multi-node setup ---
-    peer_processes: List[subprocess.Popen] = []
+    # --- Multi-node setup (compute once; reused across server sessions) ---
+    head_ip: Optional[str] = None
+    dist_addr: Optional[str] = None
 
     if need_multinode:
         head_ip = get_head_node_ip_for_peer(peers[0][1])
@@ -635,32 +776,9 @@ def main():
         log(f"dist-init-addr: {dist_addr}")
         log(f"Peer nodes:     {[p[0] for p in peers]}")
 
-        for rank, (peer_host, _) in enumerate(peers, start=1):
-            p = launch_peer_worker(
-                peer_host=peer_host,
-                model_path=args.model_path,
-                server_args=server_args,
-                head_ip=head_ip,
-                dist_port=args.dist_init_port,
-                total_nodes=nnodes,
-                node_rank=rank,
-                conda_env=args.conda_env,
-            )
-            peer_processes.append(p)
-
-        # Prepend multi-node flags to head server args
-        server_args = [
-            "--nnodes",
-            str(nnodes),
-            "--node-rank",
-            "0",
-            "--dist-init-addr",
-            dist_addr,
-        ] + server_args
-
     log(f"Server args:    {server_args}")
 
-    # Build server environment: inherit os.environ, then override/add specific vars.
+    # Build server environment once: inherit os.environ, then override/add specific vars.
     # CPATH must come AFTER **os.environ so it takes precedence over any ambient value;
     # we prepend our nvidia includes to any existing CPATH so we don't shadow others.
     _existing_cpath = os.environ.get("CPATH", "")
@@ -669,53 +787,82 @@ def main():
         if _existing_cpath and _NVIDIA_CPATH
         else (_NVIDIA_CPATH or _existing_cpath)
     )
-    process = popen_launch_server(
-        args.model_path,
-        args.base_url,
-        timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
-        other_args=server_args,
-        env={
-            "SGLANG_RECORD_STEP_TIME": "1",
-            "SGLANG_TEST_REQUEST_TIME_STATS": "1",
-            **os.environ,
-            **({"CPATH": _server_cpath} if _server_cpath else {}),
-        },
-    )
+    server_env: Dict[str, str] = {
+        "SGLANG_RECORD_STEP_TIME": "1",
+        "SGLANG_TEST_REQUEST_TIME_STATS": "1",
+        **os.environ,
+        **({"CPATH": _server_cpath} if _server_cpath else {}),
+    }
 
-    try:
+    if args.restart_per_batch_size:
+        # Per-batch-size isolation: each batch size gets its own server session and
+        # therefore its own fresh FLASHINFER_DUMP_MAX_COUNT budget.
+        log("restart-per-batch-size: ON — server will restart between batch sizes")
         for batch_size in args.batch_sizes:
-            log(f"Running benchmark with batch size {batch_size}")
-            run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size)
-    except Exception as e:
-        log(f"Benchmark failed: {e}")
-        raise
-    finally:
-        log("Shutting down server...")
-        kill_process_tree(process.pid)
-        for p in peer_processes:
+            log(f"=== Starting server session for batch_size={batch_size} ===")
+            process, peer_processes = _launch_server_session(
+                model_path=args.model_path,
+                base_url=args.base_url,
+                server_args=server_args,
+                server_env=server_env,
+                need_multinode=need_multinode,
+                peers=peers,
+                nnodes=nnodes,
+                head_ip=head_ip,
+                dist_addr=dist_addr,
+                dist_port=args.dist_init_port,
+                conda_env=args.conda_env,
+                timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
+            )
             try:
-                # Kill the remote sglang worker via SSH, then close the local SSH process.
-                peer_host = p.args[5]  # ssh cmd: ["ssh", "-o", OPT, "-o", OPT, HOST, remote_cmd]
-                subprocess.run(
-                    [
-                        "ssh",
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        "-o",
-                        "BatchMode=yes",
-                        peer_host,
-                        "pkill -f 'sglang.launch_server'",
-                    ],
-                    timeout=10,
+                log(f"Running benchmark with batch size {batch_size}")
+                run_benchmark(
+                    args.base_url,
+                    prompts[: batch_size * args.num_batches],
+                    batch_size,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
                 )
-            except Exception:
-                pass
-            try:
-                kill_process_tree(p.pid)
-            except Exception:
-                pass
-        time.sleep(3)
-        log("Server shutdown complete")
+            except Exception as e:
+                log(f"Benchmark failed: {e}")
+                raise
+            finally:
+                log(f"Shutting down server session for batch_size={batch_size}...")
+                _shutdown_server(process, peer_processes)
+    else:
+        # Default: single server session for all batch sizes.
+        process, peer_processes = _launch_server_session(
+            model_path=args.model_path,
+            base_url=args.base_url,
+            server_args=server_args,
+            server_env=server_env,
+            need_multinode=need_multinode,
+            peers=peers,
+            nnodes=nnodes,
+            head_ip=head_ip,
+            dist_addr=dist_addr,
+            dist_port=args.dist_init_port,
+            conda_env=args.conda_env,
+            timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
+        )
+        try:
+            for batch_size in args.batch_sizes:
+                log(f"Running benchmark with batch size {batch_size}")
+                run_benchmark(
+                    args.base_url,
+                    prompts[: batch_size * args.num_batches],
+                    batch_size,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
+                )
+        except Exception as e:
+            log(f"Benchmark failed: {e}")
+            raise
+        finally:
+            log("Shutting down server...")
+            _shutdown_server(process, peer_processes)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,39 @@
                 "--skip-server-warmup"
             ]
         },
+        "llama-4-scout-ps64": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--mem-fraction-static", "0.75",
+                "--max-running-requests", "512",
+                "--skip-server-warmup",
+                "--page-size", "64"
+            ]
+        },
+        "llama-4-scout-tp4": {
+            "_comment": "Single-node TP=4 config for sampling workload collection when peer node unavailable.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "4",
+                "--mem-fraction-static", "0.75",
+                "--max-running-requests", "512",
+                "--skip-server-warmup"
+            ]
+        },
+        "llama-4-scout-moe": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--mem-fraction-static", "0.75",
+                "--max-running-requests", "512",
+                "--skip-server-warmup",
+                "--moe-runner-backend", "flashinfer_trtllm_routed"
+            ]
+        },
         "deepseek-v3": {
             "server_flags": [
                 "--trust-remote-code",
@@ -86,6 +119,63 @@
                 "--tp-size", "8",
                 "--moe-runner-backend", "triton",
                 "--page-size", "64",
+                "--disable-piecewise-cuda-graph"
+            ]
+        },
+        "minimax-m2": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "flashinfer_trtllm",
+                "--disable-radix-cache"
+            ]
+        },
+        "minimax-m2-ps64": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "flashinfer_trtllm",
+                "--disable-radix-cache",
+                "--page-size", "64"
+            ]
+        },
+        "minimax-m2-ragged": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "flashinfer_trtllm",
+                "--disable-piecewise-cuda-graph"
+            ]
+        },
+        "minimax-m2-triton": {
+            "_comment": "triton MoE backend for non-MoE trace collection (phases 1-8). flashinfer_trtllm crashes on MiniMax M2 due to n_group=0 (M2 has no grouped routing).",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--disable-radix-cache"
+            ]
+        },
+        "minimax-m2-triton-ps64": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--disable-radix-cache",
+                "--page-size", "64"
+            ]
+        },
+        "minimax-m2-triton-ragged": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
                 "--disable-piecewise-cuda-graph"
             ]
         }
@@ -193,6 +283,29 @@
                 "--tp-size", "8"
             ]
         }
+    },
+    "deepseek-v3": {
+        "server_flags": [
+            "--trust-remote-code",
+            "--attention-backend", "flashinfer",
+            "--tp-size", "8",
+            "--ep-size", "8",
+            "--moe-runner-backend", "flashinfer_trtllm"
+        ]
+    },
+    "deepseek-v3.2": {
+        "server_flags": [
+            "--tp", "8",
+            "--dp", "8",
+            "--enable-dp-attention",
+            "--nsa-decode-backend", "trtllm",
+            "--kv-cache-dtype", "bfloat16",
+            "--reasoning-parser", "deepseek-v3",
+            "--trust-remote-code",
+            "--skip-server-warmup",
+            "--mem-fraction-static", "0.7",
+            "--disable-flashinfer-autotune"
+        ]
     },
     "qwen3-30b": {
         "server_flags": [
