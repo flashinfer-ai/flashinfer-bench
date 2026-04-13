@@ -83,7 +83,6 @@ _NVIDIA_INCLUDES += sorted(
 )
 _NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
 
-
 # Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
 _GPU_NAME_MAP = [
     ("B200", "b200"),
