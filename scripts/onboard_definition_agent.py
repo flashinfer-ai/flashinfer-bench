@@ -257,9 +257,11 @@ def tool_check_workloads(flashinfer_trace_dir: str, definition: str) -> str:
     baseline_files = list(baseline_dir.glob("*.json")) if baseline_dir.exists() else []
     results["baseline_solution_exists"] = len(baseline_files) > 0
     results["baseline_solution_files"] = [f.name for f in baseline_files]
-    tf = trace_dir / "traces" / op_type / f"{definition}.jsonl"
-    if tf.exists():
-        records = [json.loads(l) for l in tf.read_text().splitlines() if l.strip()]
+    trace_files = list((trace_dir / "traces").glob(f"*/{op_type}/{definition}.jsonl"))
+    if trace_files:
+        records = []
+        for tf in trace_files:
+            records.extend(json.loads(l) for l in tf.read_text().splitlines() if l.strip())
         statuses = [r.get("evaluation", {}).get("status") for r in records]
         results["trace_passed"] = statuses.count("PASSED")
         results["trace_failed"] = statuses.count("FAILED")
