@@ -910,6 +910,9 @@ FlashInfer kernel to be available.
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
 
+# Update model coverage documentation
+/track-models --refresh-status
+
 # Or use the full end-to-end pipeline (recommended for new models)
 /onboard-model --model-name qwen3-235b-a22b
 ```
@@ -931,3 +934,4 @@ Update this file when adding new op_types, changing Definition JSON schema, or m
 - [onboard-model](../onboard-model/SKILL.md)
 - [clone-repos](../clone-repos/SKILL.md)
 - [add-reference-tests](../add-reference-tests/SKILL.md)
+- [track-models](../track-models/SKILL.md)
