@@ -350,7 +350,7 @@ class TraceSet:
 
     def summary(
         self,
-        baseline_author: str = "flashinfer",
+        baseline_author: str = "baseline",
         op_type: Optional[str] = None,
         definition_name: Optional[str] = None,
     ) -> TraceSetSummary:
@@ -383,7 +383,7 @@ class TraceSet:
         )
 
     def get_solution_score(
-        self, solution_name: str, baseline_author: str = "flashinfer"
+        self, solution_name: str, baseline_author: str = "baseline"
     ) -> Optional[SpeedupMetrics]:
         """Get the score for a single solution against the baseline.
 
@@ -404,7 +404,7 @@ class TraceSet:
         solution_name : str
             Solution name to score.
         baseline_author : str
-            Author name to use as baseline (default: 'flashinfer').
+            Author name to use as baseline (default: 'baseline').
 
         Returns
         -------
@@ -520,7 +520,7 @@ class TraceSet:
     def get_author_score(
         self,
         author: str,
-        baseline_author: str = "flashinfer",
+        baseline_author: str = "baseline",
         op_type: Optional[str] = None,
         definition_name: Optional[str] = None,
     ) -> Optional[SpeedupMetrics]:
@@ -536,7 +536,7 @@ class TraceSet:
         author : str
             Author name to score.
         baseline_author : str
-            Author name to use as baseline (default: 'flashinfer').
+            Author name to use as baseline (default: 'baseline').
         op_type : Optional[str]
             Operation type to score within.
         definition_name : Optional[str]
@@ -596,7 +596,7 @@ class TraceSet:
 
     def rank_authors(
         self,
-        baseline_author: str = "flashinfer",
+        baseline_author: str = "baseline",
         op_type: Optional[str] = None,
         definition_name: Optional[str] = None,
     ) -> List[Tuple[str, SpeedupMetrics]]:
@@ -609,7 +609,7 @@ class TraceSet:
         Parameters
         ----------
         baseline_author : str
-            Author name to use as baseline (default: 'flashinfer').
+            Author name to use as baseline (default: 'baseline').
         op_type : Optional[str]
             Operation type to rank within.
         definition_name : Optional[str]
@@ -702,7 +702,14 @@ class TraceSet:
 
             # Add to disk bucket
             definition = self.definitions[trace.definition]
-            path = self.traces_path / definition.op_type / f"{definition.name}.jsonl"
+            if trace.solution is None:
+                raise ValueError("Cannot add workload-only trace with add_traces")
+            solution = self._solution_by_name.get(trace.solution)
+            if solution is None:
+                raise ValueError(f"Unknown solution: {trace.solution}")
+            path = (
+                self.traces_path / solution.author / definition.op_type / f"{definition.name}.jsonl"
+            )
             buckets[path].append(trace)
 
         # Write to disk

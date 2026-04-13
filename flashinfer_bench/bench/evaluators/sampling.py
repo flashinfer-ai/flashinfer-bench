@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from typing_extensions import override
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.config import ResolvedEvalConfig
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
 from flashinfer_bench.bench.timing import time_runnable
 from flashinfer_bench.bench.utils import (
@@ -42,6 +42,8 @@ def _get_inputs_by_names(
 
 
 class SamplingEvaluator(DefaultEvaluator):
+    VALIDATION_TRIALS_DEFAULT = 100
+    TVD_THRESHOLD_DEFAULT = 0.2
 
     @override
     @classmethod
@@ -54,7 +56,7 @@ class SamplingEvaluator(DefaultEvaluator):
         cls,
         definition: Definition,
         workload: Workload,
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         device: str,
         trace_set_root: Optional[Path] = None,
     ) -> DeviceBaseline:
@@ -112,7 +114,7 @@ class SamplingEvaluator(DefaultEvaluator):
         sol_runnable: Runnable,
         inputs: List[List[Any]],
         ref_outputs: List[List[torch.Tensor]],
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
@@ -130,7 +132,10 @@ class SamplingEvaluator(DefaultEvaluator):
         valid_mask = _compute_valid_sampling_mask(probs, thresholding_method, params)
 
         # Validate correct sampling token set
-        for _ in range(cfg.sampling_validation_trials):
+        validation_trials = cfg.extra.get(
+            "sampling_validation_trials", cls.VALIDATION_TRIALS_DEFAULT
+        )
+        for _ in range(validation_trials):
             try:
                 if is_dps:
                     out = allocate_outputs(definition, inp, device)
@@ -220,7 +225,8 @@ class SamplingEvaluator(DefaultEvaluator):
         max_abs = max(max_abs_errors)
         max_rel = max(max_rel_errors)
 
-        numerical_incorrect = max_tvd > cfg.sampling_tvd_threshold
+        tvd_threshold = cfg.extra.get("sampling_tvd_threshold", cls.TVD_THRESHOLD_DEFAULT)
+        numerical_incorrect = max_tvd > tvd_threshold
         correctness = Correctness(
             max_relative_error=max_rel,
             max_absolute_error=max_abs,

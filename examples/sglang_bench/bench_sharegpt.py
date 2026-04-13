@@ -3,19 +3,27 @@ Benchmark SGLang serving throughput using the ShareGPT dataset.
 
 Launches an SGLang server, sends batched requests from ShareGPT, and reports
 throughput and latency statistics across a sweep of batch sizes. Model server
-flags are loaded from model_configs.json.
+flags are loaded from model_configs.json, keyed by GPU type and model name.
 
 Usage:
-    python3 bench_sharegpt.py --model llama-3.1-8b   --model-path /path/to/Llama-3.1-8B-Instruct    --disable-cuda-graph
-    python3 bench_sharegpt.py --model deepseek-v3    --model-path /path/to/DeepSeek-V3              --disable-cuda-graph
-    python3 bench_sharegpt.py --model deepseek-v3.2  --model-path /path/to/DeepSeek-V3.2            --disable-cuda-graph
-    python3 bench_sharegpt.py --model qwen3-30b      --model-path /path/to/Qwen3-30B-A3B            --disable-cuda-graph
+    # Auto-detect GPU type from nvidia-smi
+    python3 bench_sharegpt.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
+    python3 bench_sharegpt.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
+    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
 
-    # Disable radix cache (e.g. for ragged prefill traces)
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct      --disable-radix-cache --disable-cuda-graph
+    # Explicitly specify GPU type (b200, h200, h100, mi300x)
+    python3 bench_sharegpt.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
+
+    # TP size is auto-detected from CUDA_VISIBLE_DEVICES (set by gpu-lock):
+    #   tools/gpu-lock --gpus 4 -- python3 bench_sharegpt.py --model qwen3-235b-a22b ...
+    #   → CUDA_VISIBLE_DEVICES=0,1,2,3 → TP=4 used automatically
+
+    # Tracing flags
+    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
+    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
 
     # Custom batch sizes and number of batches
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct --batch-sizes 32 128 --num-batches 8 --disable-cuda-graph
+    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
 
     # Per-batch-size server restart (isolates dump budgets for diverse workload collection)
     python3 bench_sharegpt.py --model llama-4-scout-ps64 --model-path /path/to/model \
@@ -26,7 +34,7 @@ Environment variables (optional, for flashinfer-bench tracing):
     FIB_DATASET_PATH=<dir>    Directory to write flashinfer trace data
 
     Example:
-        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/Llama-3.1-8B-Instruct --disable-cuda-graph
+        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model
 """
 
 import argparse
@@ -34,12 +42,16 @@ import asyncio
 import json
 import math
 import os
+import shlex
 import shutil
+import socket
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 
@@ -58,10 +70,10 @@ _NVIDIA_INCLUDES: List[str] = sorted(
 # These provide <nv/target> and other CTK-private headers required by the
 # FlashInfer TRT-LLM JIT compilation.
 _NVIDIA_INCLUDES += sorted(
-    str(p) for p in Path(sys.prefix).glob("targets/*/include")
-    if (p / "nv" / "target").exists()
+    str(p) for p in Path(sys.prefix).glob("targets/*/include") if (p / "nv" / "target").exists()
 )
 _NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
+
 
 # Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
 _GPU_NAME_MAP = [
@@ -298,18 +310,37 @@ def load_model_configs() -> dict:
     if not _CONFIG_FILE.exists():
         raise FileNotFoundError(f"Model config file not found: {_CONFIG_FILE}")
     with _CONFIG_FILE.open() as f:
-        return json.load(f)
+        data = json.load(f)
+    # Strip metadata keys
+    return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def get_model_config(model_type: str) -> dict:
-    """Return server flags for a given model type loaded from model_configs.json."""
+def get_available_models(gpu_type: str) -> List[str]:
+    """Return model keys available for a given GPU type."""
     configs = load_model_configs()
-    key = model_type.lower()
-    if key not in configs:
+    gpu_key = gpu_type.lower()
+    if gpu_key not in configs:
+        # Fall back to first GPU type defined
+        gpu_key = next(iter(configs))
+    return list(configs[gpu_key].keys())
+
+
+def get_model_config(model_type: str, gpu_type: str) -> dict:
+    """Return server flags for a given model + GPU type from model_configs.json."""
+    configs = load_model_configs()
+    gpu_key = gpu_type.lower()
+    if gpu_key not in configs:
+        available_gpus = list(configs.keys())
+        raise ValueError(f"Unknown GPU type {gpu_type!r}. Available: {available_gpus}")
+    model_key = model_type.lower()
+    gpu_configs = configs[gpu_key]
+    if model_key not in gpu_configs:
+        available_models = list(gpu_configs.keys())
         raise ValueError(
-            f"Unsupported model type: {model_type!r}. Available in {_CONFIG_FILE.name}: {list(configs.keys())}"
+            f"Model {model_type!r} not configured for GPU {gpu_type!r}. "
+            f"Available models for {gpu_type}: {available_models}"
         )
-    return configs[key]
+    return gpu_configs[model_key]
 
 
 def log(msg: str) -> None:
@@ -318,19 +349,32 @@ def log(msg: str) -> None:
 
 def load_prompts_from_sharegpt(n: int) -> List[str]:
     """Load n prompts from the ShareGPT dataset."""
-    ds = load_dataset(
-        "anon8231489123/ShareGPT_Vicuna_unfiltered",
-        data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
-        split="train",
-        streaming=True,
-    )
-    prompts = []
-    for example in ds:
-        conv = example.get("conversations", [])
-        if conv and conv[0]["from"].lower() == "human":
-            prompts.append(conv[0]["value"])
-        if len(prompts) >= n:
-            break
+    import json as _json
+    import os as _os
+
+    _local = "/tmp/sharegpt_synthetic.jsonl"
+    if _os.path.exists(_local):
+        prompts = []
+        with open(_local) as _f:
+            for _line in _f:
+                _d = _json.loads(_line)
+                prompts.append(_d.get("prompt", _d.get("conversations", [{}])[0].get("value", "")))
+                if len(prompts) >= n:
+                    break
+    else:
+        ds = load_dataset(
+            "anon8231489123/ShareGPT_Vicuna_unfiltered",
+            data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
+            split="train",
+            streaming=True,
+        )
+        prompts = []
+        for example in ds:
+            conv = example.get("conversations", [])
+            if conv and conv[0]["from"].lower() == "human":
+                prompts.append(conv[0]["value"])
+            if len(prompts) >= n:
+                break
 
     log(f"Loaded {len(prompts)} prompts from ShareGPT dataset")
     prompt_lengths = [len(p) for p in prompts]
@@ -362,7 +406,7 @@ def build_bench_args() -> SimpleNamespace:
         return_routed_experts=False,
         output_file=None,
         output_details=False,
-        warmup_requests=3,
+        warmup_requests=0,
         plot_throughput=False,
         header=None,
         num_prompts=None,
@@ -374,10 +418,20 @@ def build_bench_args() -> SimpleNamespace:
         profile_num_steps=None,
         profile_by_stage=False,
         profile_stages=None,
+        logprob_start_len=-1,
+        top_logprobs_num=0,
+        token_ids_logprob=None,
     )
 
 
-def run_benchmark(base_url: str, prompts: List[str], batch_size: int, temperature: float = 0.0, top_k: int = -1, top_p: float = 1.0) -> list:
+def run_benchmark(
+    base_url: str,
+    prompts: List[str],
+    batch_size: int,
+    temperature: float = 0.0,
+    top_k: int = -1,
+    top_p: float = 1.0,
+) -> list:
     """Run the benchmark over prompts in batches and return all results."""
     tokenizer = DummyTokenizer()
     set_global_args(build_bench_args())
@@ -415,11 +469,13 @@ def run_benchmark(base_url: str, prompts: List[str], batch_size: int, temperatur
                 lora_names=None,
                 lora_request_distribution=None,
                 lora_zipf_alpha=None,
-                extra_request_body={"sampling_params": {
-                    "temperature": temperature,
-                    **({"top_k": top_k} if top_k > 0 else {}),
-                    **({"top_p": top_p} if top_p < 1.0 else {}),
-                }},
+                extra_request_body={
+                    "sampling_params": {
+                        "temperature": temperature,
+                        **({"top_k": top_k} if top_k > 0 else {}),
+                        **({"top_p": top_p} if top_p < 1.0 else {}),
+                    }
+                },
                 profile=False,
             )
         )
@@ -434,13 +490,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    available_models = list(load_model_configs().keys())
+    parser.add_argument(
+        "--gpu",
+        type=str,
+        default=None,
+        help="GPU type (b200, h200, h100, mi300x). Auto-detected from nvidia-smi if not specified.",
+    )
     parser.add_argument(
         "--model",
         type=str,
         required=True,
-        choices=available_models,
-        help=f"Model configuration to use. Available: {available_models}",
+        help="Model key to use from model_configs.json (e.g. llama-3.1-8b, qwen3-235b-a22b).",
     )
     parser.add_argument(
         "--model-path", type=str, required=True, help="Path to the model weights directory"
@@ -448,7 +508,12 @@ def main():
     parser.add_argument(
         "--disable-radix-cache",
         action="store_true",
-        help="Enable ragged prefill collection (adds --disable-radix-cache to server args)",
+        help="Add --disable-radix-cache to server args (for ragged prefill collection)",
+    )
+    parser.add_argument(
+        "--enable-deterministic-inference",
+        action="store_true",
+        help="Add --enable-deterministic-inference to server args (for paged prefill collection)",
     )
     parser.add_argument(
         "--base-url",
@@ -536,7 +601,11 @@ def main():
     )
     args = parser.parse_args()
 
-    model_config = get_model_config(args.model)
+    # Resolve GPU type
+    gpu_type = args.gpu if args.gpu else detect_gpu_type()
+    log(f"GPU type:       {gpu_type}" + (" (auto-detected)" if not args.gpu else ""))
+
+    model_config = get_model_config(args.model, gpu_type)
     num_prompts = args.batch_sizes[-1] * args.num_batches + 1
 
     log(f"Model type:     {args.model}")
@@ -555,8 +624,43 @@ def main():
         server_args.append("--disable-radix-cache")
         log("Added --disable-radix-cache for ragged prefill collection")
 
+    if args.enable_deterministic_inference:
+        server_args.append("--enable-deterministic-inference")
+        log("Added --enable-deterministic-inference for paged prefill collection")
+
     server_args.extend(model_config["server_flags"])
-    log(f"Server arguments: {server_args}")
+
+    # Auto-detect TP size from CUDA_VISIBLE_DEVICES (set by gpu-lock) and override if needed
+    detected_tp = detect_tp_size()
+    if detected_tp is not None:
+        # Extract TP size from current server_args
+        config_tp = None
+        for i, arg in enumerate(server_args):
+            if arg in ("--tp-size", "--tp") and i + 1 < len(server_args):
+                try:
+                    config_tp = int(server_args[i + 1])
+                except ValueError:
+                    pass
+                break
+        if config_tp != detected_tp:
+            # Remove existing --tp-size / --tp flags and replace
+            filtered = []
+            skip_next = False
+            for arg in server_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg in ("--tp-size", "--tp"):
+                    skip_next = True
+                    continue
+                filtered.append(arg)
+            server_args = filtered + ["--tp-size", str(detected_tp)]
+            log(
+                f"TP size: {detected_tp} (auto-detected from CUDA_VISIBLE_DEVICES, overrides config TP={config_tp})"
+            )
+        else:
+            log(f"TP size: {detected_tp} (matches config)")
+    log(f"Server args:    {server_args}")
 
     def _run_server_session(batch_sizes: List[int]) -> None:
         """Launch server, benchmark the given batch sizes, then shut down."""
@@ -565,12 +669,23 @@ def main():
             args.base_url,
             timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
             other_args=server_args,
-            env={"SGLANG_RECORD_STEP_TIME": "1", "SGLANG_TEST_REQUEST_TIME_STATS": "1", **os.environ},
+            env={
+                "SGLANG_RECORD_STEP_TIME": "1",
+                "SGLANG_TEST_REQUEST_TIME_STATS": "1",
+                **os.environ,
+            },
         )
         try:
             for batch_size in batch_sizes:
                 log(f"Running benchmark with batch size {batch_size}")
-                run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size, temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
+                run_benchmark(
+                    args.base_url,
+                    prompts[: batch_size * args.num_batches],
+                    batch_size,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
+                )
         except Exception as e:
             log(f"Benchmark failed: {e}")
             raise
