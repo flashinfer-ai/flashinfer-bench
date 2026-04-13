@@ -144,8 +144,21 @@ reason against the external dataset
 
 ### Agent and skill workflows
 
-Start with `.claude/skills/`. Each subdirectory contains a `SKILL.md` describing a specific
-automated workflow (model onboarding, kernel extraction, workload collection, etc.).
+Start with `.claude/skills/`. Each subdirectory contains a `SKILL.md` with full instructions.
+
+- **onboard-model**: End-to-end pipeline for discovering new LLMs and onboarding them
+  (repo updates, model discovery, definition generation, workload collection, PR submission)
+- **extract-kernel-definitions**: Extract kernel schemas from SGLang model implementations
+  with deduplication, generate Definition JSON files
+- **collect-workloads**: Collect real workloads from SGLang inference runs using FlashInfer
+  logging API, sanitize and submit to flashinfer-trace
+- **collect-workloads-bench**: Collect workloads using `bench_sharegpt.py` with model-specific
+  server configs from `model_configs.json`
+- **add-reference-tests**: Add pytest tests to validate reference implementations against
+  FlashInfer or SGLang ground truth
+- **track-models**: Track open-source LLMs and update `docs/model_coverage.mdx` with kernel
+  support status
+- **clone-repos**: Clone SGLang, FlashInfer, sgl-cookbook, and flashinfer-trace to `tmp/`
 
 ## Common Misunderstandings
 
