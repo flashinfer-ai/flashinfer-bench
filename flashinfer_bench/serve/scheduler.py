@@ -1,6 +1,5 @@
 """GPU worker scheduling for the benchmark server."""
 
-import dataclasses
 import logging
 import queue
 import threading
@@ -62,7 +61,7 @@ class Scheduler:
         """Submit a solution for evaluation. Returns task_id."""
         config_override = None
         if profile:
-            config_override = dataclasses.replace(self._config, profile=True)
+            config_override = self._config.model_copy(update={"profile": True})
         task_id = self._task_store.create_task(solution, workload_uuids, config_override)
         self._queue.put(task_id)
         return task_id
