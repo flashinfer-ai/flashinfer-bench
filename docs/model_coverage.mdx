@@ -214,11 +214,11 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 |-----------|---------|:------:|
 | `rmsnorm_h3072` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h3072` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h24_kv8_d128_ps1` | gqa_paged | ❌ |
-| `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ❌ |
+| `gqa_paged_prefill_causal_h24_kv8_d128_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h24_kv8_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_decode_h24_kv8_d128_ps1` | gqa_paged | ✅ |
 | `gqa_paged_decode_h24_kv8_d128_ps64` | gqa_paged | ✅ |
-| `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ❌ |
+| `gqa_ragged_prefill_causal_h24_kv8_d128` | gqa_ragged | ✅ |
 | `gemm_n5120_k3072` | gemm | 🟡 |
 | `gemm_n3072_k3072` | gemm | 🟡 |
 | `gemm_n16384_k3072` | gemm | 🟡 |
@@ -227,7 +227,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
-**Coverage**: 7 / 14 definitions present. Missing: all GQA definitions for hidden=3072.
+**Coverage**: 6 / 14 definitions present. GQA ragged prefill kernel added. Missing: rmsnorm h3072, paged GQA variants, and GEMM kernels for hidden=3072.
 
 ---
 
@@ -488,11 +488,12 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng?_kg?_e96_h7168_i2048` | moe EP=4 | ❌ |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e48_h7168_i2048` | moe EP=8 | 🟡 |
 | `top_k_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_k_top_p_sampling_from_probs_v160000` | sampling | ❌ |
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
-**Coverage**: 5 / 14 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 definition added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+**Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
 
 ---
 
@@ -557,7 +558,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
@@ -575,28 +576,26 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 
 ## Llama 4 Maverick 17B-128E
 
-**Architecture**: Same base architecture as Llama 4 Scout but with 128 total experts (vs 16). Standard serving configuration: **TP=8** (from sgl-cookbook).
-
-> **Note**: Exact config.json values are pending verification from HuggingFace.
+**Architecture**: Same base architecture as Llama 4 Scout but with 128 total experts (vs 16). Standard serving configuration: **TP=8** (from sgl-cookbook). hidden_size=5120, 40 q-heads, 8 kv-heads, head_dim=128, intermediate_size=8192.
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
 | `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
 | `trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | 🟡 |
-| `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
-| `top_p_sampling_from_probs_v202048` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v202048` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v202048` | sampling | 🟡 |
 
-**Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 128 experts, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: all GQA defs (h=5 per device), sampling v202048.
+**Coverage**: 10 / 10 definitions present. Same base dimensions as Llama 4 Scout; all GQA and sampling definitions shared. MoE expert count differs (128 vs 16). Workload collection pending.
 
 ---
 

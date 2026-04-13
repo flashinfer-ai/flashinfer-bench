@@ -1010,6 +1010,7 @@ const models: Model[] = [
         type: "layer",
         definitions: [
           "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps64",
           "gqa_paged_decode_h5_kv1_d128_ps1",
           "gqa_ragged_prefill_causal_h5_kv1_d128",
         ],
@@ -1077,6 +1078,7 @@ const models: Model[] = [
         type: "layer",
         definitions: [
           "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps64",
           "gqa_paged_decode_h5_kv1_d128_ps1",
           "gqa_ragged_prefill_causal_h5_kv1_d128",
         ],
@@ -1129,6 +1131,176 @@ const models: Model[] = [
       lm_head: {
         count: 1,
         parent: "Llama4ScoutForCausalLM",
+        type: "layer",
+        definitions: [],
+      },
+    },
+  },
+  {
+    id: "llama-4-maverick-17b-128e",
+    name: "Llama 4 Maverick 17B-128E",
+    description:
+      "Meta Llama 4 Maverick 17B-128E. Same architecture as Scout but with 128 experts (vs 16). 48 decoder layers with interleaved local (RoPE chunked, ×40) and global (NoPE, ×8) attention, MoE FFN (128 experts, top-1). TP=8: 40/8=5 q-heads, 8/8=1 kv-head.",
+    modules: {
+      Llama4MaverickForCausalLM: {
+        count: 1,
+        type: "block",
+        definitions: [],
+      },
+      Llama4MaverickTextModel: {
+        count: 1,
+        parent: "Llama4MaverickForCausalLM",
+        type: "block",
+        definitions: [],
+      },
+      // --- Local attention layers (RoPE chunked): 5 of every 6 layers = 40 total ---
+      Llama4MaverickDecoderLayer_Local: {
+        count: 40,
+        parent: "Llama4MaverickTextModel",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_local_mav: {
+        count: 40,
+        parent: "Llama4MaverickDecoderLayer_Local",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      self_attn_local_mav: {
+        count: 40,
+        parent: "Llama4MaverickDecoderLayer_Local",
+        type: "block",
+        definitions: [],
+      },
+      attn_local_mav: {
+        count: 40,
+        parent: "self_attn_local_mav",
+        type: "layer",
+        definitions: [
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps64",
+          "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps64",
+          "gqa_ragged_prefill_causal_h5_kv1_d128",
+        ],
+      },
+      post_attention_layernorm_local_mav: {
+        count: 40,
+        parent: "Llama4MaverickDecoderLayer_Local",
+        type: "layer",
+        definitions: ["fused_add_rmsnorm_h5120"],
+      },
+      feed_forward_local_mav: {
+        count: 40,
+        parent: "Llama4MaverickDecoderLayer_Local",
+        type: "block",
+        definitions: [],
+      },
+      moe_local_mav: {
+        count: 40,
+        parent: "feed_forward_local_mav",
+        type: "block",
+        definitions: [],
+      },
+      moe_gate_local_mav: {
+        count: 40,
+        parent: "moe_local_mav",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192",
+        ],
+      },
+      moe_experts_local_mav: {
+        count: 40,
+        parent: "moe_local_mav",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192",
+        ],
+      },
+      // --- Global attention layers (NoPE / full context): 1 of every 6 layers = 8 total ---
+      Llama4MaverickDecoderLayer_Global: {
+        count: 8,
+        parent: "Llama4MaverickTextModel",
+        type: "block",
+        definitions: [],
+      },
+      input_layernorm_global_mav: {
+        count: 8,
+        parent: "Llama4MaverickDecoderLayer_Global",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      self_attn_global_mav: {
+        count: 8,
+        parent: "Llama4MaverickDecoderLayer_Global",
+        type: "block",
+        definitions: [],
+      },
+      attn_global_mav: {
+        count: 8,
+        parent: "self_attn_global_mav",
+        type: "layer",
+        definitions: [
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
+          "gqa_paged_prefill_causal_h5_kv1_d128_ps64",
+          "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps64",
+          "gqa_ragged_prefill_causal_h5_kv1_d128",
+        ],
+      },
+      post_attention_layernorm_global_mav: {
+        count: 8,
+        parent: "Llama4MaverickDecoderLayer_Global",
+        type: "layer",
+        definitions: ["fused_add_rmsnorm_h5120"],
+      },
+      feed_forward_global_mav: {
+        count: 8,
+        parent: "Llama4MaverickDecoderLayer_Global",
+        type: "block",
+        definitions: [],
+      },
+      moe_global_mav: {
+        count: 8,
+        parent: "feed_forward_global_mav",
+        type: "block",
+        definitions: [],
+      },
+      moe_gate_global_mav: {
+        count: 8,
+        parent: "moe_global_mav",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192",
+        ],
+      },
+      moe_experts_global_mav: {
+        count: 8,
+        parent: "moe_global_mav",
+        type: "layer",
+        definitions: [
+          "trtllm_fp4_block_scale_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192",
+          "trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192",
+        ],
+      },
+      // --- Final norm + head ---
+      norm_mav: {
+        count: 1,
+        parent: "Llama4MaverickTextModel",
+        type: "layer",
+        definitions: ["rmsnorm_h5120", "fused_add_rmsnorm_h5120"],
+      },
+      lm_head_mav: {
+        count: 1,
+        parent: "Llama4MaverickForCausalLM",
         type: "layer",
         definitions: [],
       },

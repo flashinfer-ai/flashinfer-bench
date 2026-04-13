@@ -109,6 +109,20 @@ Key conventions:
 
 Refer to `flashinfer_trace/definition.md` for the complete schema documentation.
 
+## Documentation Structure (`docs/`)
+
+```
+docs/
+├── Getting Started        # index, installation, quickstart
+├── Tutorials              # run-benchmark, cli, server-api, bring-your-own-kernel
+├── FlashInfer Trace       # definition, workload, solution, trace schemas
+├── Dataset                # model_coverage
+└── Op Type Reference      # per-op-type specs (gemm, gqa, mla, moe, sampling, ...)
+```
+
+Navigation is defined in `docs/docs.json`. Page files live under `docs/start/`,
+`docs/tutorials/`, `docs/flashinfer-trace/`, and `docs/op-types/`.
+
 ## Where To Look By Task
 
 ### Understanding data structures
