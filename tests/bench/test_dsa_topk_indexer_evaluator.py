@@ -5,12 +5,10 @@ import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import (
-    DefaultEvaluator,
     DsaSparseAttentionEvaluator,
     DsaTopkIndexerEvaluator,
     resolve_evaluator,
 )
-from flashinfer_bench.bench.utils import gen_inputs
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import (
     AxisConst,

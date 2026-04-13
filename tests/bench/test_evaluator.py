@@ -40,11 +40,11 @@ def _sampling_def() -> Definition:
     )
 
 
-def _lowbit_def() -> Definition:
+def _lowbit_def(n: int = 4) -> Definition:
     return Definition(
         name="moe_fp8_block_scale",
         op_type="moe",
-        axes={"N": AxisConst(value=4)},
+        axes={"N": AxisConst(value=n)},
         inputs={"A": TensorSpec(shape=["N"], dtype="float32")},
         outputs={"B": TensorSpec(shape=["N"], dtype="float32")},
         reference="import torch\n\ndef run(A):\n    return A\n",
@@ -407,6 +407,41 @@ class TestLowBitEvaluatorDPS:
         assert evaluation.correctness is not None
         assert evaluation.correctness.extra is not None
         assert evaluation.correctness.extra["matched_ratio"] == pytest.approx(3.0 / 4.0)
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_lowbit_uses_default_required_matched_ratio_dps(self, tmp_path: Path):
+        definition = _lowbit_def(n=20)
+        cfg = BenchmarkConfig(
+            num_trials=1,
+            warmup_runs=0,
+            iterations=1,
+            atol=1e-6,
+            rtol=1e-6,
+            required_matched_ratio=None,
+        )
+        device = "cuda:0"
+        dev = torch.device(device)
+        inp = [torch.arange(20, dtype=torch.float32, device=dev)]
+        ref_tensor = torch.arange(20, dtype=torch.float32, device=dev)
+        wrong_result = ref_tensor.clone()
+        wrong_result[-1] += 1.0
+        runnable = _make_dps_mock(wrong_result)
+
+        evaluation = LowBitEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.PASSED
+        assert evaluation.correctness is not None
+        assert evaluation.correctness.extra is not None
+        assert evaluation.correctness.extra["matched_ratio"] == pytest.approx(19.0 / 20.0)
 
 
 class TestLowBitEvaluatorVR:
