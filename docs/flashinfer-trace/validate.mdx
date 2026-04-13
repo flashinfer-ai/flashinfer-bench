@@ -71,6 +71,7 @@ Validates definition schema and content quality.
 - Definition description is non-empty (warning if missing)
 - All axes have non-empty `description` (warning if missing)
 - All inputs and outputs have non-empty `description` (warning if missing)
+- (GPU only) Build reference implementation via `BuilderRegistry` (error if build fails)
 
 ### workload
 
@@ -109,6 +110,7 @@ Validates trace structure and workload coverage for all authors.
 Checks baseline solution and trace existence and status.
 
 - Baseline solution exists under `solutions/baseline/` (warning if missing)
+- (GPU only) Build each baseline solution via `BuilderRegistry` (error if build fails)
 - Baseline trace exists under `traces/baseline/` (warning if missing)
 - Baseline trace `solution` fields map to `solutions/baseline/` (error if not)
 - All baseline trace entries have `PASSED` evaluation status (warning if not)

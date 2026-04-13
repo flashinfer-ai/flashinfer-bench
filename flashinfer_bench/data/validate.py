@@ -22,6 +22,7 @@ Checks performed (controlled by `checks` parameter):
   - definition description is non-empty (warn if missing)
   - all axes have non-empty description (warn if missing)
   - all inputs and outputs have non-empty description (warn if missing)
+  - (GPU only) build reference implementation via BuilderRegistry
 
 [workload]
   - Each JSONL line conforms to Trace pydantic schema
@@ -48,6 +49,7 @@ Checks performed (controlled by `checks` parameter):
 
 [baseline]
   - Baseline solution exists under solutions/baseline/ (warn if missing)
+  - (GPU only) build each baseline solution via BuilderRegistry
   - Baseline trace exists under traces/baseline/ (warn if missing)
   - Baseline trace solution fields map to solutions/baseline/ (error if not)
   - All baseline trace entries have PASSED evaluation status (warn if not)
@@ -70,6 +72,8 @@ from safetensors import safe_open
 
 from flashinfer_bench.bench.benchmark import Benchmark
 from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.compile.builder import BuildError
+from flashinfer_bench.compile.registry import BuilderRegistry
 from flashinfer_bench.data.definition import Definition
 from flashinfer_bench.data.solution import BuildSpec, Solution, SourceFile, SupportedLanguages
 from flashinfer_bench.data.trace import EvaluationStatus, Trace
@@ -466,9 +470,9 @@ def check_layout(
 
 
 def check_definition_content(
-    definition_name: str, definition_entry: ScannedDefinition
+    definition_name: str, definition_entry: ScannedDefinition, disable_gpu: bool = False
 ) -> CheckResult:
-    """Validate definition schema, reference code, and descriptions.
+    """Validate definition schema, reference code, descriptions, and build.
 
     Parameters
     ----------
@@ -476,11 +480,13 @@ def check_definition_content(
         Name of the definition being checked.
     definition_entry : ScannedDefinition
         Scanned definition data (with parsed Definition or parse error).
+    disable_gpu : bool
+        When False, also build the reference implementation to verify it compiles.
 
     Returns
     -------
     CheckResult
-        Result with parse errors or missing-description warnings.
+        Result with parse errors, missing-description warnings, or build errors.
     """
     messages: list[CheckMessage] = []
 
@@ -512,6 +518,14 @@ def check_definition_content(
             messages.append(
                 CheckMessage(level="warning", message=f"missing description: outputs.{output_name}")
             )
+
+    if not disable_gpu:
+        try:
+            registry = BuilderRegistry.get_instance()
+            registry.build_reference(definition)
+            messages.append(CheckMessage(level="info", message="reference build: ok"))
+        except (BuildError, Exception) as exc:
+            messages.append(CheckMessage(level="error", message=f"reference build failed: {exc}"))
 
     return make_result(messages)
 
@@ -870,8 +884,10 @@ def check_baseline_content(
     solution_entries: list[ScannedSolution],
     trace_entries: list[ScannedTrace],
     workload_uuids: set[str],
+    definition: Optional[Definition] = None,
+    disable_gpu: bool = False,
 ) -> CheckResult:
-    """Validate baseline solution existence and baseline trace coverage/status.
+    """Validate baseline solution existence, build, and trace coverage/status.
 
     Parameters
     ----------
@@ -883,12 +899,16 @@ def check_baseline_content(
         All trace files (filtered to author="baseline" internally).
     workload_uuids : set[str]
         UUIDs of all known workloads for coverage comparison.
+    definition : Optional[Definition]
+        Parsed definition (needed for build checks).
+    disable_gpu : bool
+        When False, also build each baseline solution to verify it compiles.
 
     Returns
     -------
     CheckResult
         Result with warnings for missing baseline solution/trace, non-passing
-        entries, or incomplete workload coverage.
+        entries, incomplete workload coverage, or build errors.
     """
     messages: list[CheckMessage] = []
 
@@ -900,6 +920,23 @@ def check_baseline_content(
     else:
         names = [e.solution_name for e in baseline_solutions]
         messages.append(CheckMessage(level="info", message=f"solution: {', '.join(names)}"))
+
+        if not disable_gpu and definition is not None:
+            registry = BuilderRegistry.get_instance()
+            for entry in baseline_solutions:
+                if entry.error is not None or entry.solution is None:
+                    continue
+                try:
+                    registry.build(definition, entry.solution)
+                    messages.append(
+                        CheckMessage(level="info", message=f"build {entry.solution_name}: ok")
+                    )
+                except (BuildError, Exception) as exc:
+                    messages.append(
+                        CheckMessage(
+                            level="error", message=f"build {entry.solution_name} failed: {exc}"
+                        )
+                    )
 
     if baseline_trace is None:
         if baseline_solutions:
@@ -1182,7 +1219,9 @@ def validate_dataset(
             )
 
         if "definition" in checks:
-            report.definition = check_definition_content(definition_name, definition_entry)
+            report.definition = check_definition_content(
+                definition_name, definition_entry, disable_gpu=disable_gpu
+            )
 
         if "workload" in checks:
             report.workload = check_workload_content(
@@ -1199,7 +1238,12 @@ def validate_dataset(
 
         if "baseline" in checks:
             report.baseline = check_baseline_content(
-                definition_name, solution_entries, trace_entries, workload_uuids
+                definition_name,
+                solution_entries,
+                trace_entries,
+                workload_uuids,
+                definition=definition,
+                disable_gpu=disable_gpu,
             )
 
         if "benchmark" in checks:
