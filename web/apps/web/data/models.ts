@@ -1011,6 +1011,7 @@ const models: Model[] = [
         definitions: [
           "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
           "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps64",
           "gqa_ragged_prefill_causal_h5_kv1_d128",
         ],
       },
@@ -1078,6 +1079,7 @@ const models: Model[] = [
         definitions: [
           "gqa_paged_prefill_causal_h5_kv1_d128_ps1",
           "gqa_paged_decode_h5_kv1_d128_ps1",
+          "gqa_paged_decode_h5_kv1_d128_ps64",
           "gqa_ragged_prefill_causal_h5_kv1_d128",
         ],
       },
