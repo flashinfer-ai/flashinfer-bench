@@ -38,6 +38,234 @@ from typing import Any, Dict, List, Optional
 
 _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 
+# Compute nvidia CUDA header paths once at startup.
+# pip-installed nvidia packages (nvidia-cuda-nvrtc-cu13 etc.) place nvrtc.h,
+# cuda_runtime.h etc. under site-packages/nvidia/cuXX/include.  These are not
+# on the default include path of the system compiler, but JIT kernels such as
+# flashinfer's TRT-LLM FMHA module need them.  Exporting CPATH makes them
+# visible to every subprocess (SGLang server, SSH peer worker) without patching
+# individual compile commands.
+_NVIDIA_INCLUDES: List[str] = sorted(
+    str(p) for p in Path(sys.prefix).glob("lib/python*/site-packages/nvidia/cu*/include")
+)
+# Also include CUDA CTK headers from conda env's targets/ directory (e.g.
+# targets/sbsa-linux/include on ARM, targets/x86_64-linux/include on x86).
+# These provide <nv/target> and other CTK-private headers required by the
+# FlashInfer TRT-LLM JIT compilation.
+_NVIDIA_INCLUDES += sorted(
+    str(p) for p in Path(sys.prefix).glob("targets/*/include")
+    if (p / "nv" / "target").exists()
+)
+_NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
+
+# Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
+_GPU_NAME_MAP = [
+    ("B200", "b200"),
+    ("H200", "h200"),
+    ("H100", "h100"),
+    ("A100", "a100"),
+    ("MI355", "mi355x"),
+    ("MI325", "mi325x"),
+    ("MI300", "mi300x"),
+]
+
+
+def detect_gpu_type() -> str:
+    """Auto-detect GPU type from nvidia-smi or rocm-smi, returning a sgl-cookbook hardware ID."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip().splitlines()[0].upper()
+            for substr, gpu_id in _GPU_NAME_MAP:
+                if substr in name:
+                    return gpu_id
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["rocm-smi", "--showproductname"], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            name = result.stdout.upper()
+            for substr, gpu_id in _GPU_NAME_MAP:
+                if substr in name:
+                    return gpu_id
+    except Exception:
+        pass
+    return "b200"  # default fallback
+
+
+def detect_tp_size() -> Optional[int]:
+    """Detect available GPU count from CUDA_VISIBLE_DEVICES (set by gpu-lock) to use as TP size."""
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    if cvd and cvd != "-1":
+        return len(cvd.split(","))
+    # Fall back to total GPU count from nvidia-smi
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            count = len(result.stdout.strip().splitlines())
+            return count if count > 0 else None
+    except Exception:
+        pass
+    return None
+
+
+def get_slurm_peer_nodes() -> List[Tuple[str, str]]:
+    """
+    Return [(hostname, ip), ...] for peer nodes in the current SLURM job allocation,
+    excluding this node. Returns an empty list when not in a multi-node SLURM job.
+    """
+    job_id = os.environ.get("SLURM_JOB_ID", "")
+    if not job_id:
+        return []
+    try:
+        result = subprocess.run(
+            ["scontrol", "show", "job", job_id], capture_output=True, text=True, timeout=10
+        )
+        node_list = None
+        for line in result.stdout.splitlines():
+            for field in line.split():
+                if field.startswith("NodeList=") and "(null)" not in field:
+                    node_list = field.split("=", 1)[1]
+                    break
+        if not node_list:
+            return []
+
+        result = subprocess.run(
+            ["scontrol", "show", "hostnames", node_list], capture_output=True, text=True, timeout=10
+        )
+        all_nodes = [n for n in result.stdout.strip().splitlines() if n]
+        current_host = socket.gethostname().split(".")[0]
+
+        peers = []
+        for node in all_nodes:
+            if node.split(".")[0] == current_host:
+                continue
+            try:
+                ip = socket.getaddrinfo(node, None)[0][4][0]
+            except Exception:
+                ip = node
+            peers.append((node, ip))
+        return peers
+    except Exception:
+        return []
+
+
+def get_head_node_ip_for_peer(peer_ip: str) -> str:
+    """Return the local IP address that routes to peer_ip (used as --dist-init-addr host)."""
+    try:
+        result = subprocess.run(
+            ["ip", "route", "get", peer_ip], capture_output=True, text=True, timeout=5
+        )
+        tokens = result.stdout.split()
+        for i, tok in enumerate(tokens):
+            if tok == "src" and i + 1 < len(tokens):
+                return tokens[i + 1]
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
+        ips = result.stdout.strip().split()
+        if ips:
+            return ips[0]
+    except Exception:
+        pass
+    return socket.gethostname()
+
+
+def launch_peer_worker(
+    peer_host: str,
+    model_path: str,
+    server_args: List[str],
+    head_ip: str,
+    dist_port: int,
+    total_nodes: int,
+    node_rank: int,
+    conda_env: Optional[str],
+) -> subprocess.Popen:
+    """
+    SSH to peer_host and start sglang.launch_server as a TP worker.
+
+    FLASHINFER_* dump env vars are intentionally NOT forwarded — tensor dumps
+    are only collected from rank 0 (the head node).
+    """
+    worker_args = [
+        "--model-path",
+        model_path,
+        "--nnodes",
+        str(total_nodes),
+        "--node-rank",
+        str(node_rank),
+        "--dist-init-addr",
+        f"{head_ip}:{dist_port}",
+    ] + server_args
+
+    # Use sys.executable so the remote worker runs in the same Python environment
+    # as the head node.  This works because /home is NFS-shared across nodes.
+    # Fall back to "conda run -n <env>" only when sys.executable is unavailable
+    # (e.g. dry-run testing or a non-NFS cluster).
+    python_bin = sys.executable
+    python_cmd = [python_bin, "-m", "sglang.launch_server"] + worker_args
+    cmd_str = " ".join(shlex.quote(c) for c in python_cmd)
+
+    if conda_env and not os.path.isabs(python_bin):
+        # Fallback: use conda run when sys.executable is a relative path
+        conda_bin = shutil.which("conda") or "conda"
+        remote_cmd = f"{conda_bin} run --no-capture-output -n {shlex.quote(conda_env)} {cmd_str}"
+    else:
+        # SSH sessions don't inherit the conda env's CUDA_HOME or PATH.
+        # Use `env` to set both so the command works in any remote shell
+        # (csh/tcsh don't support the `KEY=value cmd` inline-assignment syntax;
+        # `env` is an external binary that works universally).
+        # CUDA_HOME: deep_gemm checks it first; conda prefix contains nvcc/include/lib.
+        # PATH: conda env's bin is prepended so JIT tools (ninja, nvcc) are found.
+        # CPATH: pip-installed nvidia packages put nvrtc.h etc. under
+        #   site-packages/nvidia/cuXX/include; add them so TRT-LLM JIT can find them.
+        #   We use the module-level _NVIDIA_CPATH constant (computed from sys.prefix on
+        #   the head node; the path is identical on the peer node via NFS).
+        # FLASHINFER_WORKSPACE_BASE: point peer node JIT cache to local /tmp so the
+        #   peer doesn't share the NFS lock files with the head node, which causes
+        #   OSError: [Errno 116] Stale file handle during FileLock acquisition.
+        conda_bin_dir = os.path.dirname(python_bin)  # .../envs/XXX/bin
+        conda_prefix = os.path.dirname(conda_bin_dir)  # .../envs/XXX
+        base_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        env_vars = (
+            f"CUDA_HOME={shlex.quote(conda_prefix)}"
+            f" PATH={shlex.quote(conda_bin_dir)}:{base_path}"
+            f" FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer"
+            f" FLASHINFER_CUBIN_DIR=/tmp/flashinfer_cubins"
+            f" SGLANG_ENABLE_JIT_DEEPGEMM=0"
+            f" TRITON_CACHE_DIR=/tmp/triton_cache_peer"
+        )
+        if _NVIDIA_CPATH:
+            env_vars += f" CPATH={shlex.quote(_NVIDIA_CPATH)}"
+        remote_cmd = f"env {env_vars} {cmd_str}"
+
+    log_file = open(f"/tmp/sglang_worker_rank{node_rank}_{peer_host}.log", "w")
+    ssh_cmd = [
+        "ssh",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "BatchMode=yes",
+        peer_host,
+        remote_cmd,
+    ]
+    log(f"Launching peer worker (rank {node_rank}) on {peer_host} (log: {log_file.name})")
+    return subprocess.Popen(ssh_cmd, stdout=log_file, stderr=log_file)
+
+
 from datasets import load_dataset
 from sglang.bench_serving import benchmark, set_global_args
 from sglang.test.test_utils import (
@@ -144,7 +372,7 @@ def build_bench_args() -> SimpleNamespace:
     )
 
 
-def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
+def run_benchmark(base_url: str, prompts: List[str], batch_size: int, temperature: float = 0.0, top_k: int = -1, top_p: float = 1.0) -> list:
     """Run the benchmark over prompts in batches and return all results."""
     tokenizer = DummyTokenizer()
     set_global_args(build_bench_args())
@@ -182,7 +410,11 @@ def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
                 lora_names=None,
                 lora_request_distribution=None,
                 lora_zipf_alpha=None,
-                extra_request_body={"sampling_params": {"temperature": 0}},
+                extra_request_body={"sampling_params": {
+                    "temperature": temperature,
+                    **({"top_k": top_k} if top_k > 0 else {}),
+                    **({"top_p": top_p} if top_p < 1.0 else {}),
+                }},
                 profile=False,
             )
         )
@@ -237,6 +469,57 @@ def main():
         action="store_true",
         help="Pass --disable-cuda-graph to the SGLang server",
     )
+    parser.add_argument(
+        "--peer-node-addr",
+        type=str,
+        nargs="+",
+        default=None,
+        metavar="HOST",
+        help=(
+            "Peer node hostname(s)/IP(s) for multi-node TP. "
+            "Auto-detected from SLURM_JOB_ID when not specified."
+        ),
+    )
+    parser.add_argument(
+        "--dist-init-port",
+        type=int,
+        default=20010,
+        help="Port for PyTorch distributed rendezvous (--dist-init-addr). "
+        "Must differ from --port. Default: 20010.",
+    )
+    parser.add_argument(
+        "--no-multinode",
+        action="store_true",
+        help="Disable automatic multi-node mode even when config TP > local GPU count.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature for inference requests (default: 0.0 = greedy). "
+        "Set to e.g. 0.7 to enable top-k/top-p sampling for workload collection.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=-1,
+        help="Top-k value for sampling (default: -1 = no filtering). "
+        "Set to e.g. 1000 to force top-k sampling path in SGLang.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Top-p (nucleus) value for sampling (default: 1.0 = no filtering). "
+        "Set to e.g. 0.9 to force top-p sampling path in SGLang.",
+    )
+    parser.add_argument(
+        "--conda-env",
+        type=str,
+        default=os.environ.get("CONDA_DEFAULT_ENV", "flashinfer_bench"),
+        help="Conda environment to activate on peer nodes via SSH. "
+        "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
+    )
     args = parser.parse_args()
 
     model_config = get_model_config(args.model)
@@ -272,7 +555,7 @@ def main():
     try:
         for batch_size in args.batch_sizes:
             log(f"Running benchmark with batch size {batch_size}")
-            run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size)
+            run_benchmark(args.base_url, prompts[: batch_size * args.num_batches], batch_size, temperature=args.temperature, top_k=args.top_k, top_p=args.top_p)
     except Exception as e:
         log(f"Benchmark failed: {e}")
         raise

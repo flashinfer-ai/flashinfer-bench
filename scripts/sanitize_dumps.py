@@ -579,10 +579,21 @@ def sanitize_dumps(
                 api_path = tag[len("fi_api:") :]
                 last = api_path.split(".")[-1]
                 if last[0].isupper():
-                    # Qualified name (e.g. "BatchPrefillWithPagedKVCacheWrapper.run")
-                    func_name_to_defs[f"{last}.run"].append(def_name)
-                    # Unqualified fallback (e.g. "run") — in case FlashInfer logs just the method name
-                    func_name_to_defs["run"].append(def_name)
+                    if "Ragged" in last:
+                        # RaggedKVCacheWrapper: in recent FlashInfer, @flashinfer_api is on
+                        # run(), so logs show ".run". forward()/forward_return_lse() are
+                        # deprecated wrappers that call run() — kept for old builds.
+                        func_name_to_defs[f"{last}.run"].append(def_name)
+                        func_name_to_defs[f"{last}.forward"].append(def_name)
+                        func_name_to_defs[f"{last}.forward_return_lse"].append(def_name)
+                        func_name_to_defs["run"].append(def_name)
+                        func_name_to_defs["forward"].append(def_name)
+                        func_name_to_defs["forward_return_lse"].append(def_name)
+                    else:
+                        # Qualified name (e.g. "BatchPrefillWithPagedKVCacheWrapper.run")
+                        func_name_to_defs[f"{last}.run"].append(def_name)
+                        # Unqualified fallback (e.g. "run") — in case FlashInfer logs just the method name
+                        func_name_to_defs["run"].append(def_name)
                 else:
                     func_name_to_defs[last].append(def_name)
 
