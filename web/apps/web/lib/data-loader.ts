@@ -140,35 +140,38 @@ export async function getTracesForDefinition(definitionName: string): Promise<Tr
 
     const traces: Trace[] = []
 
-    // Read all subdirectories (gemm, gqa, mla, etc.)
-    const types = await fs.readdir(tracesDir)
+    // Read all author directories, then op_type subdirectories under each.
+    const authors = await fs.readdir(tracesDir)
 
-    for (const type of types) {
-      if (type === "workload") {
-        continue
-      }
-      const typePath = path.join(tracesDir, type)
-      const stat = await fs.stat(typePath).catch(() => null)
+    for (const author of authors) {
+      const authorPath = path.join(tracesDir, author)
+      const authorStat = await fs.stat(authorPath).catch(() => null)
+      if (!authorStat || !authorStat.isDirectory()) continue
 
-      if (stat && stat.isDirectory()) {
-        // Look for JSONL files in this directory
-        const files = await fs.readdir(typePath)
+      const types = await fs.readdir(authorPath)
 
-        for (const file of files) {
-          // Check if this file matches our definition name
-          if (file === `${definitionName}.jsonl`) {
-            const content = await fs.readFile(path.join(typePath, file), "utf-8")
-            const lines = content.trim().split("\n")
+      for (const type of types) {
+        const typePath = path.join(authorPath, type)
+        const stat = await fs.stat(typePath).catch(() => null)
 
-            for (const line of lines) {
-              if (line) {
-                try {
-                  const trace = JSON.parse(line) as Trace
-                  if (trace.definition === definitionName) {
-                    traces.push(trace)
+        if (stat && stat.isDirectory()) {
+          const files = await fs.readdir(typePath)
+
+          for (const file of files) {
+            if (file === `${definitionName}.jsonl`) {
+              const content = await fs.readFile(path.join(typePath, file), "utf-8")
+              const lines = content.trim().split("\n")
+
+              for (const line of lines) {
+                if (line) {
+                  try {
+                    const trace = JSON.parse(line) as Trace
+                    if (trace.definition === definitionName) {
+                      traces.push(trace)
+                    }
+                  } catch (e) {
+                    console.error(`Failed to parse trace line in ${file}:`, e)
                   }
-                } catch (e) {
-                  console.error(`Failed to parse trace line in ${file}:`, e)
                 }
               }
             }
