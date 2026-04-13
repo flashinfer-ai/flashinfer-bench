@@ -82,6 +82,9 @@ For each layer component AND each serving configuration (TP/EP setting), extract
   - **TP Impact**: `num_qo_heads` = original_heads / TP, `num_kv_heads` = original_kv_heads / TP
 - **MLA**: `mla_paged_decode`, `mla_paged_prefill`
   - **TP Impact**: `num_qo_heads` = original_heads / TP
+- **DSA**: `dsa_sparse_decode`, `dsa_sparse_prefill` (sparse MLA with block-sparse attention)
+  - **TP Impact**: same as MLA — `num_qo_heads` = original_heads / TP
+  - **Naming**: includes `topk` parameter for sparse block selection, e.g. `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1`
 - **GDN**: `gdn_decode`, `gdn_prefill`
   - **TP Impact**: `num_q_heads` = original_q_heads / TP, `num_v_heads` = original_v_heads / TP
   - **Example**: Qwen3-Next with TP=2 → `gdn_decode_qk8_v16_d128_k_last`
@@ -117,6 +120,18 @@ For each layer component AND each serving configuration (TP/EP setting), extract
   - GPT-J style: `rope_with_cos_sin_cache_gptj_style_d{head_dim}_rd{rotary_dim}`
 - **Parameters**: head_dim, rotary_dim, cos_sin_cache, positions
 - **Note**: Rotation style (NeoX vs GPT-J) is encoded in the definition name, not as an input parameter. RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
+
+#### Mamba2 SSU Kernels (Affected by TP)
+- `mamba_ssu_decode` (selective state update, decode step)
+  - **TP Impact**: `nheads` = original_nheads / TP, `ngroups` = original_ngroups / TP (ratio stays constant)
+  - `head_dim` and `dstate` are NOT split by TP
+- **Naming**: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
+- **Parameters**: nheads, head_dim (d_ssm / nheads), dstate, ngroups
+- **FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
+  - Supported `head_dim` (d): 64, 128, 256
+  - Supported `dstate` (s): 64, 128, 256
+  - Supported `nheads/ngroups` ratio: 1, 8, 16
+  - Example: NemotronH-8B: `nheads=128, head_dim=64, dstate=128, ngroups=8` → ratio=16 ✓
 
 #### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
 - `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.
@@ -169,9 +184,15 @@ Follow the pattern: `{op_type}_{variant}_{key_params}`
 - `v` = vocab_size
 
 **Examples by op_type:**
-- Attention: `gqa_paged_decode_h32_kv8_d128_ps1`, `mla_paged_prefill_h16_ckv512_kpe64_ps1`
+- GQA: `gqa_paged_decode_h32_kv8_d128_ps1`, `gqa_ragged_prefill_causal_h32_kv8_d128`
+- MLA: `mla_paged_decode_h16_ckv512_kpe64_ps1`
+- DSA: `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1`
+- GDN: `gdn_decode_qk4_v8_d128_k_last`
+- Mamba2 SSU: `mamba_ssu_decode_h128_d64_s128_ng8`
 - MoE: `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048`
 - Normalization: `rmsnorm_h4096`, `fused_add_rmsnorm_h7168`
+- GEMM: `gemm_n6144_k4096`
+- RoPE: `rope_with_cos_sin_cache_neox_style_d128_rd64`
 - Sampling: `top_k_sampling_from_probs_v129280`
 
 ### Tag Patterns
@@ -205,6 +226,7 @@ Tags follow the pattern `{category}:{value}`:
 | `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
 | `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
 | `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
+| `mamba_ssu` | `flashinfer.mamba.selective_state_update` | Mamba2 selective state update (decode) |
 | `rope` | `flashinfer.apply_rope_with_cos_sin_cache_inplace` | Uses pre-computed cos/sin cache, matching SGLang runtime dispatch |
 | `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
 | `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
@@ -611,6 +633,105 @@ from sglang.srt.layers.layernorm import RMSNorm
 self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
 ```
 
+## Common Model Architecture Patterns
+
+These trees show how model layers map to kernel op_types. Use them to identify which
+kernels to extract from a given model architecture.
+
+### Standard Transformer (e.g., Llama)
+
+```
+Model
+├── embed_tokens
+├── layers (n x DecoderLayer)
+│   ├── input_layernorm → rmsnorm
+│   ├── self_attn
+│   │   ├── qkv_proj → gemm
+│   │   ├── rotary_emb → rope
+│   │   ├── attn → gqa_paged decode/prefill
+│   │   └── o_proj → gemm
+│   ├── post_attention_layernorm → rmsnorm
+│   └── mlp
+│       ├── gate_up_proj → gemm
+│       ├── act_fn
+│       └── down_proj → gemm
+├── norm → rmsnorm
+└── lm_head
+```
+
+### MoE Architecture (e.g., DeepSeek, Qwen)
+
+MLP layer replaced with:
+```
+mlp
+├── moe_gate → moe (routing)
+├── moe_topk → moe (selection)
+└── moe_experts → moe (execution)
+```
+
+### MLA Architecture (e.g., DeepSeek V3)
+
+Attention replaced with:
+```
+self_attn
+├── fused_qkv_a_proj_with_mqa
+├── q_a_layernorm → rmsnorm
+├── q_b_proj → gemm
+├── kv_a_layernorm → rmsnorm
+├── kv_b_proj → gemm
+├── rotary_emb → rope
+├── attn_mla → mla_paged decode/prefill
+└── o_proj → gemm
+```
+
+### GDN Architecture (e.g., Qwen3 Next)
+
+Linear attention layers using Gated Delta Net:
+```
+self_attn
+├── q_proj → gemm
+├── k_proj → gemm
+├── v_proj → gemm
+├── gating_proj → gemm (produces a, b for gating)
+├── attn_gdn → gdn prefill/decode
+└── o_proj → gemm
+```
+
+GDN maintains a recurrent state [B, H, K, V] and uses:
+- `A_log`: learnable log decay parameter
+- `a`: input-dependent decay (combined with dt_bias)
+- `b`: update gate input (transformed via sigmoid)
+
+### Mamba2 SSM Architecture (e.g., NemotronH-8B)
+
+Hybrid models interleave Mamba2 SSM layers with standard attention and MLP-only layers:
+```
+Model (e.g., 52 layers: 24 Mamba, 4 Attention, 24 MLP-only)
+├── MambaDecoderLayer (×N)
+│   ├── input_layernorm → rmsnorm
+│   └── mamba_mixer → mamba_ssu decode
+├── AttentionDecoderLayer (×N)
+│   ├── input_layernorm → rmsnorm
+│   ├── self_attn → gqa_paged decode/prefill
+│   ├── post_attention_layernorm → rmsnorm
+│   └── mlp → gemm
+└── MLPDecoderLayer (×N)
+    ├── input_layernorm → rmsnorm
+    └── mlp → gemm
+```
+
+Mamba2 SSU decode step (per layer, per decode token):
+- `in_proj → gemm` (x, dt, B, C from hidden states)
+- `conv1d` (causal convolution on x, B, C)
+- `mamba_ssu_decode → mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
+- `out_proj → gemm` (SSM output to hidden states)
+
+Key Mamba2 SSU parameters:
+- `nheads`: SSM heads (split by TP)
+- `head_dim`: head dimension (d_ssm / nheads, NOT split by TP)
+- `dstate`: SSM state size (NOT split by TP)
+- `ngroups`: B/C groups (split by TP alongside nheads)
+
 ## Ground Truth Hierarchy
 
 When extracting kernel definitions, use different sources for different purposes:
@@ -675,6 +796,9 @@ The `reference` field in Definition JSON contains a `run()` function. **Always p
   | GQA decode | `test_batch_decode.py` | `ref_attention()` or inline reference |
   | GQA prefill | `test_batch_prefill.py` | `ref_attention()` or inline reference |
   | MLA | `test_mla.py` | `ref_mla()` or inline reference |
+  | DSA | `test_sparse.py` | Inline reference or `ref_sparse_attention()` |
+  | GDN | `test_gdn_decode.py`, `test_gdn_prefill.py` | Inline reference |
+  | Mamba2 SSU | `test_mamba.py` | `ref_selective_state_update()` or inline reference |
   | RMSNorm | `test_norm.py` | `ref_rmsnorm()` or `ref_fused_add_rmsnorm()` |
   | RoPE | `test_rope.py` | `apply_rotary_emb()` from `test_helpers/rope_reference.py` |
   | Sampling | `test_sampling.py` | Reference sampling implementations |
@@ -727,12 +851,14 @@ def run(q, k, v, ...):
 
 ## Kernel Type to Model Mapping
 
-| Model | Attention | MLP | Normalization |
-|-------|-----------|-----|---------------|
-| DeepSeek V3/R1 | MLA | MoE | RMSNorm |
-| Llama 3.x | GQA | Dense | RMSNorm |
-| Qwen2 MoE | GQA | MoE | RMSNorm |
-| Mixtral | GQA | MoE | RMSNorm |
+| Model | Attention | MLP | Normalization | SSM |
+|-------|-----------|-----|---------------|-----|
+| DeepSeek V3/R1 | MLA + DSA | MoE | RMSNorm | — |
+| Llama 3.x | GQA | Dense | RMSNorm | — |
+| Qwen2 MoE | GQA | MoE | RMSNorm | — |
+| Qwen3 Next | GDN | Dense | RMSNorm | — |
+| Mixtral | GQA | MoE | RMSNorm | — |
+| NemotronH | GQA (hybrid) | Dense + MLP-only | RMSNorm | Mamba2 SSU |
 
 ## Error Handling
 
@@ -784,6 +910,9 @@ FlashInfer kernel to be available.
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
 
+# Update model coverage documentation
+/track-models --refresh-status
+
 # Or use the full end-to-end pipeline (recommended for new models)
 /onboard-model --model-name qwen3-235b-a22b
 ```
@@ -802,5 +931,7 @@ Update this file when adding new op_types, changing Definition JSON schema, or m
 
 ## See Also
 
+- [onboard-model](../onboard-model/SKILL.md)
 - [clone-repos](../clone-repos/SKILL.md)
 - [add-reference-tests](../add-reference-tests/SKILL.md)
+- [track-models](../track-models/SKILL.md)

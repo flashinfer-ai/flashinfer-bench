@@ -1107,14 +1107,12 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
     """Run the baseline (reference) solution against collected workloads.
 
     Uses ``flashinfer-bench run`` to evaluate the baseline solution for each
-    definition and saves a per-definition trace JSONL to
-    ``{trace_dir}/traces/<def_name>_baseline.jsonl``.
+    definition and appends the resulting traces to
+    ``{trace_dir}/traces/baseline/<op_type>/<def_name>.jsonl``.
 
     Exits with a non-zero status if any workload evaluation returns a status
     other than PASSED.
     """
-    import datetime
-
     traces_dir = trace_dir / "traces"
     traces_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1128,7 +1126,8 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
             continue
 
         print(f"\nPhase 5: Baseline evaluation — {def_name}")
-        out_trace = traces_dir / f"{def_name}_baseline.jsonl"
+        op_type = def_file.parent.name
+        out_trace = traces_dir / "baseline" / op_type / f"{def_name}.jsonl"
 
         cmd = [
             sys.executable,
@@ -1151,17 +1150,13 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
         result = subprocess.run(cmd, capture_output=True, text=True)
         stdout = result.stdout + result.stderr
 
-        # Collect trace lines from the standard trace output location
-        # flashinfer-bench writes traces to {trace_dir}/traces/<def_name>_workloads.jsonl
-        auto_trace = traces_dir / f"{def_name}_workloads.jsonl"
-
         failed = []
         passed = 0
 
-        if auto_trace.exists():
+        if out_trace.exists():
             import json as _json
 
-            lines = [l.strip() for l in auto_trace.read_text().splitlines() if l.strip()]
+            lines = [l.strip() for l in out_trace.read_text().splitlines() if l.strip()]
             for line in lines:
                 try:
                     rec = _json.loads(line)
@@ -1175,10 +1170,6 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
                 except Exception:
                     pass
 
-            # Copy to per-def baseline trace name
-            import shutil
-
-            shutil.copy(auto_trace, out_trace)
             print(f"  Results: {passed} PASSED, {len(failed)} FAILED")
             if failed:
                 print(f"  FAILED workloads:")
@@ -1189,7 +1180,7 @@ def run_baseline_eval(def_files: list[Path], trace_dir: Path) -> None:
                 print(f"  All {passed} workloads PASSED ✓")
                 print(f"  Trace written to: {out_trace}")
         else:
-            print(f"  WARNING: No trace output found at {auto_trace}")
+            print(f"  WARNING: No trace output found at {out_trace}")
             print(f"  flashinfer-bench stdout:\n{stdout[:2000]}")
             if result.returncode != 0:
                 all_passed = False
@@ -1330,7 +1321,7 @@ def main():
         help=(
             "After collecting workloads, run the baseline solution against them using "
             "'flashinfer-bench run' and write per-workload trace JSONL to "
-            "{trace_dir}/traces/<def_name>_baseline.jsonl. All workloads must PASS. "
+            "{trace_dir}/traces/baseline/<op_type>/<def_name>.jsonl. All workloads must PASS. "
             "Enabled by default; use --no-eval-baseline to skip."
         ),
     )

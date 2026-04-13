@@ -13,16 +13,60 @@ Collect real-world workloads by running SGLang inference with FlashInfer Level 1
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/collect_workloads.py` | Primary entry point: runs SGLang inference + sanitizes dumps |
-| `scripts/sanitize_dumps.py` | Converts FlashInfer Level 10 dump dirs → JSONL + safetensors; called automatically by `collect_workloads.py`, or run manually to re-sanitize |
+| `scripts/collect_stream.py` | **Preferred** end-to-end streaming script: per-batch-size inference → sanitize → incremental HF push → eval → trace upload |
+| `scripts/collect_workloads.py` | Older entry point: runs SGLang inference + sanitizes dumps (collects all batch sizes then pushes once) |
+| `scripts/sanitize_dumps.py` | Converts FlashInfer Level 10 dump dirs → JSONL + safetensors; supports `--max-new-workloads N` for streaming mode |
+
+### Streaming collection (preferred)
 
 ```bash
-python scripts/collect_workloads.py sglang \
-  --model-path /path/to/model \
-  --definitions gqa_paged_decode_h32_kv8_d128_ps1 \
-  --flashinfer-trace-dir tmp/flashinfer-trace \
-  --replace
+# Must run under gpu-lock so CUDA_VISIBLE_DEVICES is set
+tools/gpu-lock --gpus 8 --exec-timeout 10800 -- \
+  python3 scripts/collect_stream.py \
+    --def-name  gqa_paged_decode_h5_kv1_d128_ps64 \
+    --model-key llama-4-scout-ps64 \
+    --model-path /path/to/model \
+    --batch-sizes 64 128 \
+    --pr-num 263 \
+    [--peer-node-addr nvl72089-T16] \
+    [--trace-dir tmp/flashinfer-trace]
+
+# Ragged prefill — add disable-radix-cache + disable-piecewise-cuda-graph
+tools/gpu-lock --gpus 8 --exec-timeout 10800 -- \
+  python3 scripts/collect_stream.py \
+    --def-name  gqa_ragged_prefill_causal_h5_kv1_d128 \
+    --model-key llama-4-scout \
+    --model-path /path/to/model \
+    --batch-sizes 64 128 \
+    --pr-num 265 \
+    --extra-server-flag --disable-radix-cache --disable-piecewise-cuda-graph
+
+# Paged prefill — add enable-deterministic-inference
+tools/gpu-lock --gpus 8 --exec-timeout 10800 -- \
+  python3 scripts/collect_stream.py \
+    --def-name  gqa_paged_prefill_causal_h5_kv1_d128_ps64 \
+    --model-key llama-4-scout-ps64 \
+    --model-path /path/to/model \
+    --batch-sizes 64 128 \
+    --pr-num 264 \
+    --extra-server-flag --disable-cuda-graph --enable-deterministic-inference
 ```
+
+**Streaming workflow per batch size:**
+1. `bench_sharegpt.py` with `DUMP_MAX_COUNT=500` (exhausted in round 1 of 2)
+2. `sanitize_dumps.py --max-new-workloads 4` — appends 4 diverse workloads
+3. Incremental HF push: updated JSONL + new blobs (no deletes)
+4. `rm -rf` dump dir
+
+After all batch sizes: `flashinfer-bench run` eval → push trace → PR2 done.
+
+**Key flags:**
+- `--dump-count 500` (default) — budget per server session
+- `--workloads-per-batch 4` (default) — workloads added per batch size
+- `--num-batches 2` (default) — inference rounds; budget typically hit in round 1
+- `--no-eval` — skip eval+trace push (useful when flashinfer-bench is unavailable)
+- `--no-push` — dry run: collect and sanitize without uploading
+- `--replace-first` — replace instead of append on first batch size
 
 **Auto-detection from definition tags:**
 - `tp:N` → sets `--tp N` (use `CUDA_VISIBLE_DEVICES=0,0` to simulate TP=2 on 1 GPU)
@@ -58,15 +102,34 @@ FLASHINFER_DUMP_DIR=./workload_dumps_<timestamp>
 FLASHINFER_DUMP_SAFETENSORS=1
 FLASHINFER_DUMP_INCLUDE=<fi_api patterns>   # only log matching API calls
 FLASHINFER_DUMP_EXCLUDE=*.__init__
-FLASHINFER_DUMP_MAX_COUNT=50000
+FLASHINFER_DUMP_MAX_COUNT=500              # ~4 batches × 16 layers × 8 TP ranks per session
 FLASHINFER_DUMP_MAX_SIZE_GB=30
 ```
+
+**DUMP_MAX_COUNT sizing**: with `--restart-per-batch-size`, each server session independently counts toward DUMP_MAX_COUNT.  500 covers ~4 full forward passes for TP=8, 16-layer models (4 × 16 × 8 = 512 run() calls). Use 500 as the standard value when collecting per-batch-size.
 
 ### Phase 3: SGLang Inference
 
 **Inference source**: real ShareGPT prompts (from `--dataset` path or downloaded from HuggingFace `anon8231489123/ShareGPT_Vicuna_unfiltered`). Falls back to synthetic prompts only if ShareGPT is unavailable.
 
 **Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run 4 rounds each with fresh ShareGPT slices for natural KV-length diversity.
+
+**Per-batch-size isolation** (`--restart-per-batch-size`): pass this flag to `bench_sharegpt.py` when using `FLASHINFER_DUMP_MAX_COUNT`.  Without it, the first batch size exhausts the dump budget (DUMP_MAX_COUNT is a global counter per server process) and later batch sizes capture nothing.  With it, each batch size gets its own server session and therefore its own fresh counter.
+
+Standard collection invocation with isolation:
+```bash
+FLASHINFER_DUMP_MAX_COUNT=500 \
+FLASHINFER_DUMP_INCLUDE="BatchDecodeWithPagedKVCacheWrapper*" \
+FLASHINFER_DUMP_EXCLUDE="*.__init__" \
+... \
+python3 examples/sglang_bench/bench_sharegpt.py \
+  --model <model-key> \
+  --model-path /path/to/model \
+  --batch-sizes 64 128 \
+  --num-batches 4 \
+  --restart-per-batch-size \
+  --disable-cuda-graph
+```
 
 **Three execution modes** (chosen automatically based on definition type):
 

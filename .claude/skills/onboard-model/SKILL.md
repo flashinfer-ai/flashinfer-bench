@@ -171,6 +171,7 @@ kernel (even if no definition JSON exists yet).
 | `moe` | `flashinfer/fused_moe/` — check for specific variant |
 | `gemm` | Always available via PyTorch |
 | `sampling` | `flashinfer/sampling.py` |
+| `mamba_ssu` | `flashinfer/mamba.py` — grep for `selective_state_update` |
 | `rope` | `flashinfer/rope.py` — grep for `apply_rope_with_cos_sin_cache` |
 
 Additionally check `tmp/flashinfer/tests/` for a corresponding test file — its presence is a
@@ -337,6 +338,7 @@ The fi_api → SGLang integration mapping for common op_types:
 | `flashinfer.norm.rmsnorm` | `layers/layernorm.py` | `flashinfer.norm` |
 | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | `layers/moe/fused_moe.py` | `trtllm_fp8_block_scale_moe` |
 | `flashinfer.gdn.gated_delta_rule_decode` | `layers/attention/gdn_backend.py` | `gated_delta_rule_decode` |
+| `flashinfer.mamba.selective_state_update` | `layers/mamba/mamba_mixer.py` | `selective_state_update` |
 
 Classify each definition's SGLang integration status:
 
