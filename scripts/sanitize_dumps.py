@@ -554,7 +554,11 @@ def _cleanup_orphaned_blobs(jsonl_path: Path, trace_dir: Path, def_name: str, op
 
 
 def sanitize_dumps(
-    dump_dir: Path, definition_files: list[Path], flashinfer_trace_dir: Path, replace: bool = False
+    dump_dir: Path,
+    definition_files: list[Path],
+    flashinfer_trace_dir: Path,
+    replace: bool = False,
+    max_new_workloads: int = 20,
 ) -> dict[str, list[dict]]:
     """
     Process all call dumps in dump_dir for matching definitions.
@@ -582,9 +586,8 @@ def sanitize_dumps(
                 last = api_path.split(".")[-1]
                 if last[0].isupper():
                     if "Ragged" in last:
-                        # RaggedKVCacheWrapper: in recent FlashInfer, @flashinfer_api is on
-                        # run(), so logs show ".run". forward()/forward_return_lse() are
-                        # deprecated wrappers that call run() — kept for old builds.
+                        # RaggedKVCacheWrapper: recent FlashInfer logs .run; older builds
+                        # use .forward / .forward_return_lse. Register all three.
                         func_name_to_defs[f"{last}.run"].append(def_name)
                         func_name_to_defs[f"{last}.forward"].append(def_name)
                         func_name_to_defs[f"{last}.forward_return_lse"].append(def_name)
@@ -641,7 +644,7 @@ def sanitize_dumps(
     MAX_DUPS_PER_AXES = 2
     # Collect up to 50x the target so diversity selection has enough candidates
     # across all batch sizes (e.g., 18 rounds × 8 steps × 2 TP = 288 dumps).
-    MAX_ENTRIES_PER_DEF = 20
+    MAX_ENTRIES_PER_DEF = max_new_workloads
     MAX_CANDIDATES_PER_DEF = MAX_ENTRIES_PER_DEF * 50
 
     for call_dir in call_dirs:
@@ -845,6 +848,16 @@ def main():
             "(indptrs, indices) are identical across TP configurations."
         ),
     )
+    parser.add_argument(
+        "--max-new-workloads",
+        type=int,
+        default=20,
+        help=(
+            "Maximum number of new workloads to select per definition (default: 20). "
+            "Use 4 when calling once per batch size in streaming collection so each "
+            "batch size contributes exactly 4 diverse entries."
+        ),
+    )
     args = parser.parse_args()
 
     global _SKIP_CONST_AXIS_CHECK
@@ -891,7 +904,13 @@ def main():
     print(f"Target definitions: {[f.stem for f in def_files]}")
     print(f"Output to: {trace_dir}\n")
 
-    results = sanitize_dumps(dump_dir, def_files, trace_dir, replace=args.replace)
+    results = sanitize_dumps(
+        dump_dir,
+        def_files,
+        trace_dir,
+        replace=args.replace,
+        max_new_workloads=args.max_new_workloads,
+    )
 
     total = sum(len(v) for v in results.values())
     print(f"\n{'='*60}")
