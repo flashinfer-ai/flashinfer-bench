@@ -4,6 +4,7 @@ Dataset correctness and completeness validator.
 Checks performed (controlled by `checks` parameter):
 
 [layout]
+  - Duplicate definition names across op_types (error if two definitions share a stem)
   - definitions/<op_type>/<definition>.json: name and op_type fields match path
   - workloads/<op_type>/<definition>.jsonl: op_type matches path, definition field
     inside each trace entry matches path
@@ -67,7 +68,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import ValidationError
 from safetensors import safe_open
 
 from flashinfer_bench.bench.benchmark import Benchmark
@@ -177,13 +177,14 @@ def _load_json(model_class, path: Path):
     """Load a pydantic model from a JSON file. Returns (instance, None) or (None, error_str)."""
     try:
         return model_class.model_validate_json(path.read_text()), None
-    except (ValidationError, Exception) as exc:
+    except Exception as exc:
         return None, str(exc)
 
 
 def _load_jsonl(model_class, path: Path):
     """Load a list of pydantic models from JSONL. Returns (list, None) or (None, error_str)."""
     items = []
+    line_number = 0
     try:
         for line_number, line in enumerate(path.read_text().splitlines(), 1):
             line = line.strip()
@@ -191,8 +192,9 @@ def _load_jsonl(model_class, path: Path):
                 continue
             items.append(model_class.model_validate_json(line))
         return items, None
-    except (ValidationError, Exception) as exc:
-        return None, f"line {line_number}: {exc}"
+    except Exception as exc:
+        suffix = f" (line {line_number})" if line_number else ""
+        return None, f"{exc}{suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +226,9 @@ def scan_dataset(dataset_root: Path) -> DatasetIndex:
             op_type = relative.parts[0]
             definition_name = relative.stem
             definition, error = _load_json(Definition, path)
+            if definition_name in index.definitions:
+                existing = index.definitions[definition_name]
+                error = f"duplicate definition name: {existing.path} and {path}"
             index.definitions[definition_name] = ScannedDefinition(
                 op_type=op_type, path=path, definition=definition, error=error
             )
@@ -359,6 +364,10 @@ def check_layout(
     """
     messages: list[CheckMessage] = []
     definition = definition_entry.definition
+
+    if definition_entry.error and definition_entry.error.startswith("duplicate definition name"):
+        messages.append(CheckMessage(level="error", message=definition_entry.error))
+        return make_result(messages)
 
     if definition is not None:
         if definition.name != definition_name:
@@ -1065,8 +1074,10 @@ def check_benchmark_content(
 
     try:
         benchmark = Benchmark(trace_set, config)
-        result_trace_set = benchmark.run_all(dump_traces=False)
-        benchmark.close()
+        try:
+            result_trace_set = benchmark.run_all(dump_traces=False)
+        finally:
+            benchmark.close()
     except Exception as exc:
         messages.append(CheckMessage(level="error", message=f"benchmark failed: {exc}"))
         return make_result(messages)
@@ -1277,13 +1288,12 @@ def validate_dataset(
         json_path.write_text(dataset_report.model_dump_json(indent=2))
         logger.info(f"Report JSON written to {json_path}")
 
-    text_output = render_text_report(dataset_report)
-
-    if "text" in outputs:
-        text_path.write_text(text_output)
-        logger.info(f"Report text written to {text_path}")
-
-    if "stdout" in outputs:
-        print(text_output)
+    if "text" in outputs or "stdout" in outputs:
+        text_output = render_text_report(dataset_report)
+        if "text" in outputs:
+            text_path.write_text(text_output)
+            logger.info(f"Report text written to {text_path}")
+        if "stdout" in outputs:
+            print(text_output)
 
     return dataset_report

@@ -53,6 +53,7 @@ The validator covers 7 categories, each independently selectable via `--checks`:
 
 Verifies directory structure and path-field consistency.
 
+- Duplicate definition names across op_types (error if two definitions share a stem)
 - `definitions/<op_type>/<definition>.json` — `name` and `op_type` fields match path
 - `workloads/<op_type>/<definition>.jsonl` — `op_type` matches path; `definition` field inside each trace entry matches path
 - `solutions/<author>/<op_type>/<definition>/<solution>.json` — `author`, `op_type`, `definition`, and `name` fields all match path components

@@ -63,7 +63,7 @@ Run structural, schema, and coverage checks on a FlashInfer Trace dataset. Produ
 
 | Category | What it checks |
 |----------|---------------|
-| `layout` | Directory structure, path-field consistency, blob file existence |
+| `layout` | Duplicate definition names, directory structure, path-field consistency, blob file existence |
 | `definition` | Pydantic schema, reference Python syntax, axis references, descriptions, build reference (GPU) |
 | `workload` | Schema, axes > 0, shape inference, safetensors blobs, no solution/evaluation |
 | `solution` | Pydantic schema, entry_point format, sources, path-field consistency |
