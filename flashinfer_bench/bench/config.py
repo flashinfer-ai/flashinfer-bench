@@ -70,6 +70,13 @@ class BenchmarkConfig(BaseModel):
     log_dir: Optional[str] = None
     """Deprecated. Logs are embedded in trace evaluations."""
 
+    profile: bool = False
+    """Whether to use ncu profiler."""
+    ncu_path: str = "ncu"
+    """Path to the ncu executable."""
+    ncu_timeout: int = Field(default=300, gt=0)
+    """Timeout for the ncu profiling."""
+
     # Per-definition defaults
     warmup_runs: int = Field(default=10, ge=0)
     """Default warmup iterations before timing for all definitions."""
