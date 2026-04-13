@@ -24,6 +24,22 @@ def test_benchmark_config_validation(field, value):
         BenchmarkConfig(**{field: value})
 
 
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("warmup_runs", -1),
+        ("iterations", 0),
+        ("num_trials", 0),
+        ("rtol", 0.0),
+        ("atol", 0.0),
+        ("required_matched_ratio", 1.1),
+    ],
+)
+def test_eval_config_validation(field, value):
+    with pytest.raises(ValueError):
+        EvalConfig(**{field: value})
+
+
 def test_from_yaml(tmp_path):
     data = {
         "timeout_seconds": 600,
