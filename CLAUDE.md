@@ -116,8 +116,8 @@ docs/
 ├── Getting Started        # index, installation, quickstart
 ├── Tutorials              # run-benchmark, cli, server-api, bring-your-own-kernel
 ├── FlashInfer Trace       # definition, workload, solution, trace schemas
-├── Op Types               # per-op-type specs (gemm, gqa, mla, moe, sampling, ...)
-└── References             # model_coverage
+├── Dataset                # model_coverage
+└── Op Type Reference      # per-op-type specs (gemm, gqa, mla, moe, sampling, ...)
 ```
 
 Navigation is defined in `docs/docs.json`. Page files live under `docs/start/`,

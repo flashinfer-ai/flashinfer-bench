@@ -74,7 +74,7 @@ config = BenchmarkConfig.default(
     atol=1e-3,
 )
 
-# Or load from a custom YAML with per-op-type / per-definition overrides
+# Or load from a custom YAML config
 config = BenchmarkConfig.from_yaml("my_config.yaml", iterations=200)
 
 # Run benchmark

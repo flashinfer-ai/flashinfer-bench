@@ -36,7 +36,9 @@ result_trace_set = benchmark.run_all(save_results=True)
 
 ### Loading Configuration
 
-You can provide configuration via the CLI:
+The FlashInfer-Bench package bundles a default `eval_config.yaml` that sets sensible baselines for known op types.
+
+You can provide a custom configuration via the CLI (which replaces the bundled defaults):
 
 ```bash
 flashinfer-bench run --local /path/to/flashinfer-trace --config my_config.yaml
@@ -49,7 +51,7 @@ Or via the Python API:
 # 1. Load the bundled eval_config.yaml + overrides (Default)
 config = BenchmarkConfig.default(timeout_seconds=600)
 
-# 2. Load a custom YAML file + overrides
+# 2. Load a custom YAML file + overrides (replaces bundled defaults)
 config = BenchmarkConfig.from_yaml("my_config.yaml", iterations=200)
 
 # 3. Direct construction without loading any YAML

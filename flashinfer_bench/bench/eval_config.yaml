@@ -4,6 +4,8 @@
 op_type_config:
   moe:
     required_matched_ratio: 0.95
+  lowbit:
+    required_matched_ratio: 0.95
   sampling:
     extra:
       sampling_validation_trials: 100

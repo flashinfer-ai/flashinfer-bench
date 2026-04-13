@@ -6,7 +6,8 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+import yaml
+from pydantic import BaseModel, model_validator
 
 
 class EvalConfig(BaseModel):
@@ -112,8 +113,6 @@ class BenchmarkConfig(BaseModel):
     @classmethod
     def from_yaml(cls, path: str, **overrides: Any) -> BenchmarkConfig:
         """Load config from a YAML file, with optional field overrides."""
-        import yaml
-
         with open(path) as f:
             data = yaml.safe_load(f) or {}
         data.update(overrides)

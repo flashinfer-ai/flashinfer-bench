@@ -44,7 +44,13 @@
             ]
           },
           {
-            "group": "Op Types",
+            "group": "Dataset",
+            "pages": [
+              "model_coverage"
+            ]
+          },
+          {
+            "group": "Op Type Reference",
             "pages": [
               "op-types/gemm",
               "op-types/gqa-paged",
@@ -56,12 +62,6 @@
               "op-types/rope",
               "op-types/sampling",
               "op-types/moe"
-            ]
-          },
-          {
-            "group": "References",
-            "pages": [
-              "model_coverage"
             ]
           }
         ]
