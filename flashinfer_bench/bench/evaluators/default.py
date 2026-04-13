@@ -8,7 +8,7 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.config import ResolvedEvalConfig
 from flashinfer_bench.bench.evaluators.evaluator import Evaluator
 from flashinfer_bench.bench.runner.runner import BaselineHandle, DeviceBaseline
 from flashinfer_bench.bench.timing import time_runnable
@@ -41,7 +41,7 @@ class DefaultEvaluator(Evaluator):
         cls,
         definition: Definition,
         workload: Workload,
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         device: str,
         trace_set_root: Optional[Path] = None,
     ) -> DeviceBaseline:
@@ -93,7 +93,7 @@ class DefaultEvaluator(Evaluator):
         sol_runnable: Runnable,
         inputs: List[List[Any]],
         ref_outputs: List[List[torch.Tensor]],
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
@@ -183,7 +183,7 @@ class DefaultEvaluator(Evaluator):
         sol_runnable: Runnable,
         inputs: List[List[Any]],
         ref_mean_latency_ms: float,
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Performance, Optional[Evaluation]]:

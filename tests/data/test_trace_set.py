@@ -21,7 +21,6 @@ from flashinfer_bench.data import (
     Trace,
     TraceSet,
     Workload,
-    load_jsonl_file,
     save_json_file,
     save_jsonl_file,
 )

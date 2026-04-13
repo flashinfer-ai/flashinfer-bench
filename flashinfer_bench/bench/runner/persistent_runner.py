@@ -250,10 +250,11 @@ class PersistentSubprocessWorker:
         trace_set_root: Optional[Path] = None,
     ) -> BaselineHandle:
         evaluator_cls = resolve_evaluator(definition)
+        eval_cfg = cfg.resolve_eval_config(definition)
         baseline = evaluator_cls.build_baseline(
             definition=definition,
             workload=workload,
-            cfg=cfg,
+            cfg=eval_cfg,
             device=self._device,
             trace_set_root=trace_set_root,
         )
@@ -681,13 +682,14 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
                         ]
 
                         evaluator_cls = resolve_evaluator(definition)
+                        eval_cfg = cfg.resolve_eval_config(definition)
                         evaluation = evaluator_cls.evaluate(
                             definition=definition,
                             sol_runnable=runnable_sol,
                             inputs=inputs,
                             ref_outputs=ref_outputs_bl,
                             ref_mean_latency_ms=ref_mean_latency_ms,
-                            cfg=cfg,
+                            cfg=eval_cfg,
                             log_path=log_path,
                             device=device,
                         )

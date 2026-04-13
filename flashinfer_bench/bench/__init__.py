@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 from .benchmark import Benchmark
-from .config import BenchmarkConfig
+from .config import BenchmarkConfig, EvalConfig, ResolvedEvalConfig
 
-__all__ = ["Benchmark", "BenchmarkConfig"]
+__all__ = ["Benchmark", "BenchmarkConfig", "EvalConfig", "ResolvedEvalConfig"]

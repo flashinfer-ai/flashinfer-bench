@@ -17,19 +17,19 @@
         "tab": "Guides",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
               "index",
               "start/installation",
-              "start/quickstart",
-              "start/cli",
-              "start/server-api",
-              "model_coverage"
+              "start/quickstart"
             ]
           },
           {
             "group": "Tutorials",
             "pages": [
+              "tutorials/run-benchmark",
+              "tutorials/cli",
+              "tutorials/server-api",
               "tutorials/bring-your-own-kernel"
             ]
           },
@@ -44,7 +44,13 @@
             ]
           },
           {
-            "group": "Op Types",
+            "group": "Dataset",
+            "pages": [
+              "model_coverage"
+            ]
+          },
+          {
+            "group": "Op Type Reference",
             "pages": [
               "op-types/gemm",
               "op-types/gqa-paged",
@@ -88,12 +94,12 @@
   "navbar": {},
   "contextual": {
     "options": [
-     "copy",
-     "chatgpt",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "chatgpt",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
