@@ -40,7 +40,7 @@ class Benchmark:
         """
         # Dataset and configuration
         self._trace_set = trace_set
-        self._config = config if config is not None else BenchmarkConfig()
+        self._config = config if config is not None else BenchmarkConfig.default()
 
         # Setup registry
         self._registry = BuilderRegistry.get_instance()

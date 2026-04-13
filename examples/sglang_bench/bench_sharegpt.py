@@ -24,6 +24,7 @@ Usage:
     #   Manual override: --peer-node-addr nvl72155-T14
     #   Disable auto multi-node: --no-multinode
 
+
     # Tracing flags
     python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
     python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
@@ -73,7 +74,15 @@ _CONFIG_FILE = Path(__file__).parent / "model_configs.json"
 _NVIDIA_INCLUDES: List[str] = sorted(
     str(p) for p in Path(sys.prefix).glob("lib/python*/site-packages/nvidia/cu*/include")
 )
+# Also include CUDA CTK headers from conda env's targets/ directory (e.g.
+# targets/sbsa-linux/include on ARM, targets/x86_64-linux/include on x86).
+# These provide <nv/target> and other CTK-private headers required by the
+# FlashInfer TRT-LLM JIT compilation.
+_NVIDIA_INCLUDES += sorted(
+    str(p) for p in Path(sys.prefix).glob("targets/*/include") if (p / "nv" / "target").exists()
+)
 _NVIDIA_CPATH: str = ":".join(_NVIDIA_INCLUDES)
+
 
 # Map nvidia-smi GPU name substrings → sgl-cookbook hardware IDs
 _GPU_NAME_MAP = [
@@ -261,6 +270,9 @@ def launch_peer_worker(
             f"CUDA_HOME={shlex.quote(conda_prefix)}"
             f" PATH={shlex.quote(conda_bin_dir)}:{base_path}"
             f" FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer_jit_peer"
+            f" FLASHINFER_CUBIN_DIR=/tmp/flashinfer_cubins"
+            f" SGLANG_ENABLE_JIT_DEEPGEMM=0"
+            f" TRITON_CACHE_DIR=/tmp/triton_cache_peer"
         )
         if _NVIDIA_CPATH:
             env_vars += f" CPATH={shlex.quote(_NVIDIA_CPATH)}"
@@ -419,7 +431,14 @@ def build_bench_args() -> SimpleNamespace:
     )
 
 
-def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
+def run_benchmark(
+    base_url: str,
+    prompts: List[str],
+    batch_size: int,
+    temperature: float = 0.0,
+    top_k: int = -1,
+    top_p: float = 1.0,
+) -> list:
     """Run the benchmark over prompts in batches and return all results."""
     tokenizer = DummyTokenizer()
     set_global_args(build_bench_args())
@@ -457,7 +476,13 @@ def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
                 lora_names=None,
                 lora_request_distribution=None,
                 lora_zipf_alpha=None,
-                extra_request_body={"sampling_params": {"temperature": 0}},
+                extra_request_body={
+                    "sampling_params": {
+                        "temperature": temperature,
+                        **({"top_k": top_k} if top_k > 0 else {}),
+                        **({"top_p": top_p} if top_p < 1.0 else {}),
+                    }
+                },
                 profile=False,
             )
         )
@@ -466,10 +491,7 @@ def run_benchmark(base_url: str, prompts: List[str], batch_size: int) -> list:
     return all_results
 
 
-def _shutdown_server(
-    process: subprocess.Popen,
-    peer_processes: List[subprocess.Popen],
-) -> None:
+def _shutdown_server(process: subprocess.Popen, peer_processes: List[subprocess.Popen]) -> None:
     """Kill the SGLang head server and all peer workers."""
     kill_process_tree(process.pid)
     for p in peer_processes:
@@ -543,11 +565,7 @@ def _launch_server_session(
         ] + launch_args
 
     process = popen_launch_server(
-        model_path,
-        base_url,
-        timeout=timeout,
-        other_args=launch_args,
-        env=server_env,
+        model_path, base_url, timeout=timeout, other_args=launch_args, env=server_env
     )
     return process, peer_processes
 
@@ -629,6 +647,27 @@ def main():
         "--no-multinode",
         action="store_true",
         help="Disable automatic multi-node mode even when config TP > local GPU count.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature for inference requests (default: 0.0 = greedy). "
+        "Set to e.g. 0.7 to enable top-k/top-p sampling for workload collection.",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=-1,
+        help="Top-k value for sampling (default: -1 = no filtering). "
+        "Set to e.g. 1000 to force top-k sampling path in SGLang.",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Top-p (nucleus) value for sampling (default: 1.0 = no filtering). "
+        "Set to e.g. 0.9 to force top-p sampling path in SGLang.",
     )
     parser.add_argument(
         "--conda-env",
@@ -779,7 +818,12 @@ def main():
             try:
                 log(f"Running benchmark with batch size {batch_size}")
                 run_benchmark(
-                    args.base_url, prompts[: batch_size * args.num_batches], batch_size
+                    args.base_url,
+                    prompts[: batch_size * args.num_batches],
+                    batch_size,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
                 )
             except Exception as e:
                 log(f"Benchmark failed: {e}")
@@ -807,7 +851,12 @@ def main():
             for batch_size in args.batch_sizes:
                 log(f"Running benchmark with batch size {batch_size}")
                 run_benchmark(
-                    args.base_url, prompts[: batch_size * args.num_batches], batch_size
+                    args.base_url,
+                    prompts[: batch_size * args.num_batches],
+                    batch_size,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    top_p=args.top_p,
                 )
         except Exception as e:
             log(f"Benchmark failed: {e}")

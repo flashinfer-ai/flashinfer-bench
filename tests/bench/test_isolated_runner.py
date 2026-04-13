@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import safetensors.torch as st
 import torch
 
 from flashinfer_bench.bench import BenchmarkConfig
@@ -124,7 +125,6 @@ def test_gen_inputs_random_and_scalar_cpu():
     __import__("safetensors", fromlist=["torch"]) is None, reason="safetensors not available"
 )
 def test_load_safetensors_and_gen_inputs_cpu(tmp_path: Path):
-    import safetensors.torch as st
 
     definition = _def2d()
     data = {"X": torch.zeros((2, 3), dtype=torch.float32)}
