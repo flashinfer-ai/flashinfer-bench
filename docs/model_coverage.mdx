@@ -566,7 +566,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `trtllm_fp4_block_scale_routed_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
-| `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v202048` | sampling | 🟡 |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
 **Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 16 experts, Llama4 routing). Missing: all GQA defs (h=5 per device), sampling v202048.
@@ -593,7 +593,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `trtllm_fp4_block_scale_routed_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP4 routed, Llama4 routing) | 🟡 |
 | `trtllm_fp8_per_tensor_scale_moe_topk1_e128_h5120_i8192` | moe (TRT-LLM FP8) | 🟡 |
 | `top_k_sampling_from_probs_v202048` | sampling | ❌ |
-| `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v202048` | sampling | 🟡 |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
 **Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 128 experts, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. Missing: all GQA defs (h=5 per device), sampling v202048.
