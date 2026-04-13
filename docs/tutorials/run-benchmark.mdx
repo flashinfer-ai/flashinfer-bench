@@ -1,0 +1,184 @@
+---
+title: "Run Benchmark"
+description: "Configure and run benchmarks with per-op-type and per-definition eval parameters."
+---
+
+## Overview
+
+A benchmark run evaluates every **definition × solution × workload** combination.
+For each combination it validates correctness against the reference implementation and measures kernel performance, producing a **Trace** with the results.
+
+## Quick Start
+
+### CLI
+
+```bash
+flashinfer-bench run --local /path/to/flashinfer-trace
+```
+
+### Python API
+
+```python
+from flashinfer_bench.bench import Benchmark, BenchmarkConfig
+from flashinfer_bench.data import TraceSet
+
+trace_set = TraceSet.from_path("/path/to/flashinfer-trace")
+config = BenchmarkConfig.default()
+benchmark = Benchmark(trace_set, config)
+result_trace_set = benchmark.run_all(save_results=True)
+```
+
+`run_all` returns a new `TraceSet` that contrains all the definitions, solutions, and workloads from the input, plus the newly generated traces from this run.
+
+## Benchmark Config
+
+`BenchmarkConfig` is a Pydantic model that controls every aspect of a benchmark run. You can configure it directly in Python or load it from a YAML file.
+
+### Loading Configuration
+
+You can provide configuration via the CLI:
+
+```bash
+flashinfer-bench run --local /path/to/flashinfer-trace --config my_config.yaml
+```
+*(CLI flags like `--rtol` or `--iterations` are applied as overrides on top of the YAML)*
+
+Or via the Python API:
+
+```python
+# 1. Load the bundled eval_config.yaml + overrides (Default)
+config = BenchmarkConfig.default(timeout_seconds=600)
+
+# 2. Load a custom YAML file + overrides
+config = BenchmarkConfig.from_yaml("my_config.yaml", iterations=200)
+
+# 3. Direct construction without loading any YAML
+config = BenchmarkConfig(warmup_runs=5)
+```
+
+### Configuration Structure
+
+The configuration is divided into **system-level fields** (which apply to the runner) and **eval config fields** (which are resolved per-definition and passed to evaluators).
+
+Here is how the structure looks in Python and YAML:
+
+```python
+BenchmarkConfig(
+    # System-level fields
+    use_isolated_runner=False,
+    timeout_seconds=300,
+
+    # Global default eval config fields
+    warmup_runs=10,
+    iterations=50,
+
+    # Per-op-type overrides
+    op_type_config={
+        "moe": EvalConfig(required_matched_ratio=0.95),
+        "sampling": EvalConfig(extra={"sampling_tvd_threshold": 0.2})
+    },
+
+    # Per-definition overrides (highest priority)
+    definition_config={
+        "rmsnorm_h4096": EvalConfig(rtol=0.001)
+    }
+)
+```
+
+```yaml
+# Top-level: system fields and global eval config defaults
+use_isolated_runner: false
+timeout_seconds: 300
+warmup_runs: 10
+iterations: 50
+
+# Per-op-type overrides
+op_type_config:
+  moe:
+    required_matched_ratio: 0.95
+  sampling:
+    extra:
+      sampling_tvd_threshold: 0.2
+
+# Per-definition overrides
+definition_config:
+  rmsnorm_h4096:
+    rtol: 0.001
+```
+
+### System Fields
+
+These fields control the benchmarking engine and runner behavior.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `use_isolated_runner` | `bool` | `False` | Use isolated (subprocess) runner instead of persistent runner |
+| `definitions` | `list[str]` | `None` | Filter to specific definition names |
+| `solutions` | `list[str]` | `None` | Filter to specific solution names |
+| `timeout_seconds` | `int` | `300` | Per-workload timeout in seconds |
+| `profile_baseline` | `bool` | `True` | Profile the reference implementation |
+
+### Eval Config Fields
+
+These fields control correctness validation and performance measurement. You can set them at the top level (as global defaults), inside `op_type_config`, or inside `definition_config`.
+
+| Field | Type | Global Default | Description |
+|---|---|---|---|
+| `warmup_runs` | `int` | `10` | Warmup iterations before timing |
+| `iterations` | `int` | `50` | Timed iterations per trial |
+| `num_trials` | `int` | `3` | Number of independent trials |
+| `rtol` | `float` | `1e-2` | Relative tolerance for correctness |
+| `atol` | `float` | `1e-2` | Absolute tolerance for correctness |
+| `required_matched_ratio` | `float` | `None` | Minimum ratio of element-wise matches (used by MoE, lowbit) |
+| `extra` | `dict` | `{}` | Open-ended dictionary for evaluator-specific parameters |
+
+The `extra` dictionary is used to pass specialized parameters to specific evaluators. See the Sampling Evaluator below for an example.
+
+### Resolution Order
+
+The final evaluation configuration for a definition is resolved from highest to lowest priority as follows. For the `extra` dict, layers are merged via `dict.update()` instead of direct replacement.
+
+1. **Per-definition config**
+2. **Per-op-type config**
+3. **Top-level global defaults**
+
+## Runners
+
+| Runner | Flag | Description |
+|---|---|---|
+| Persistent | (default) | Keeps a long-lived worker process per GPU. Lower overhead for many workloads. |
+| Isolated | `--use-isolated-runner` | Spawns a new subprocess per workload. Better fault isolation. |
+
+## Evaluators
+
+Different op types use specialized evaluators:
+
+| Evaluator | Op Types | Notes |
+|---|---|---|
+| Default | gemm, rmsnorm, rope, gqa, mla, gdn | Element-wise tolerance check (`rtol`/`atol`) |
+| Sampling | sampling | Statistical validation via TVD over multiple trials |
+| Lowbit | lowbit | Element-wise with `required_matched_ratio` |
+| DSA | dsa-paged | Specialized sparse attention validation |
+
+Evaluators receive a resolved evaluation configuration with all fields fully resolved from the merge chain above.
+
+The `SamplingEvaluator` uses statistical validation via Total Variation Distance (TVD) over multiple trials. It reads its parameters directly from the `extra` dictionary in the configuration:
+
+| Key | Default | Description |
+|---|---|---|
+| `sampling_validation_trials` | `100` | Number of sampling rounds for TVD validation |
+| `sampling_tvd_threshold` | `0.2` | Maximum total variation distance to pass |
+
+### Custom evaluators
+
+To add a custom evaluator:
+
+1. Subclass `Evaluator` (in `flashinfer_bench/bench/evaluators/evaluator.py`) and implement:
+   - `can_evaluate(definition)` — return `True` for definitions this evaluator handles
+   - `build_baseline(definition, workload, cfg, device)` — build reference outputs
+   - `check_correctness(definition, sol_runnable, inputs, ref_outputs, cfg, ...)` — validate solution correctness
+   - `eval_performance(definition, sol_runnable, inputs, ref_mean_latency_ms, cfg, ...)` — measure performance
+
+2. Register it in `flashinfer_bench/bench/evaluators/registry.py` by appending to the `_EVALUATORS` list. The first evaluator whose `can_evaluate` returns `True` is used; if none match, `DefaultEvaluator` is used.
+
+3. Use the `extra` dict in YAML config to pass evaluator-specific parameters (see [Eval Config Fields](#eval-config-fields) above). Read them in your evaluator via `cfg.extra.get("my_param", default_value)`.

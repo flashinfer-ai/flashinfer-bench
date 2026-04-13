@@ -65,14 +65,17 @@ from flashinfer_bench.data import TraceSet
 # Load trace dataset
 trace_set = TraceSet.from_path("/path/to/flashinfer-trace")
 
-# Configure benchmark
-config = BenchmarkConfig(
+# Configure benchmark (uses bundled eval_config.yaml defaults)
+config = BenchmarkConfig.default(
     warmup_runs=10,
     iterations=100,
     num_trials=5,
     rtol=1e-3,
     atol=1e-3,
 )
+
+# Or load from a custom YAML with per-op-type / per-definition overrides
+config = BenchmarkConfig.from_yaml("my_config.yaml", iterations=200)
 
 # Run benchmark
 benchmark = Benchmark(trace_set, config)

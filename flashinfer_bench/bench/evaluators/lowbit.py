@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import traceback
-from dataclasses import replace
 from typing import Any, List, Optional, Tuple
 
 import torch
 from typing_extensions import override
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.config import ResolvedEvalConfig
 from flashinfer_bench.bench.utils import compute_error_stats, make_eval
 from flashinfer_bench.compile import Runnable
 from flashinfer_bench.data import Correctness, Definition, Evaluation, EvaluationStatus
@@ -32,7 +31,7 @@ class LowBitEvaluator(DefaultEvaluator):
         sol_runnable: Runnable,
         inputs: List[List[Any]],
         ref_outputs: List[List[torch.Tensor]],
-        cfg: BenchmarkConfig,
+        cfg: ResolvedEvalConfig,
         log_path: str,
         device: str,
     ) -> Tuple[Optional[Correctness], Optional[Evaluation]]:
@@ -41,9 +40,6 @@ class LowBitEvaluator(DefaultEvaluator):
         numerical_incorrect = False
         min_matched_ratio = 1.0
         is_dps = sol_runnable.metadata.destination_passing_style
-
-        if cfg.required_matched_ratio is None:
-            cfg = replace(cfg, required_matched_ratio=0.95)
 
         for trial, inp in enumerate(inputs):
             try:

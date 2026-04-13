@@ -284,7 +284,7 @@ def run(args: argparse.Namespace):
     for path in args.local:
         trace_set = TraceSet.from_path(str(path))
 
-        config = BenchmarkConfig(
+        cli_overrides = dict(
             warmup_runs=args.warmup_runs,
             iterations=args.iterations,
             num_trials=args.num_trials,
@@ -297,6 +297,11 @@ def run(args: argparse.Namespace):
             required_matched_ratio=args.required_matched_ratio,
             profile_baseline=getattr(args, "profile_baseline", True),
         )
+        config_path = getattr(args, "config", None)
+        if config_path:
+            config = BenchmarkConfig.from_yaml(config_path, **cli_overrides)
+        else:
+            config = BenchmarkConfig.default(**cli_overrides)
         benchmark = Benchmark(trace_set, config)
         logger.info(f"Running benchmark on FlashInfer Trace Dataset: {Path(path).resolve()}")
         resume = getattr(args, "resume", False)
@@ -433,6 +438,12 @@ def cli():
         type=Path,
         action="append",
         help="Specifies one or more local paths to load traces from.",
+    )
+    run_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to benchmark config YAML file. Overrides default eval config.",
     )
     run_parser.set_defaults(func=run)
 
