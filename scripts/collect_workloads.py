@@ -169,6 +169,10 @@ def _run_sglang_offline_batched(
     dump_dir: Path,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: str | None = None,
+    mem_fraction_static: float | None = None,
 ) -> None:
     """Run SGLang offline Engine in a subprocess to collect decode workloads with controlled batch sizes.
 
@@ -231,6 +235,9 @@ if __name__ == '__main__':
     rounds      = json.loads(sys.argv[5])
     quant       = sys.argv[6] if sys.argv[6] != "none" else None
     cpu_offload = float(sys.argv[7])
+    nnodes      = int(sys.argv[8])
+    node_rank   = int(sys.argv[9])
+    dist_init_addr = sys.argv[10] if sys.argv[10] != "none" else None
 
     # ── SGLang offline engine ─────────────────────────────────────────────────
     import sglang
@@ -247,6 +254,13 @@ if __name__ == '__main__':
         engine_kwargs["quantization"] = quant
     if cpu_offload > 0:
         engine_kwargs["cpu_offload_gb"] = cpu_offload
+    if nnodes > 1:
+        engine_kwargs["nnodes"] = nnodes
+        engine_kwargs["node_rank"] = node_rank
+        engine_kwargs["dist_init_addr"] = dist_init_addr
+    mem_fraction_static = float(sys.argv[11]) if sys.argv[11] != "none" else None
+    if mem_fraction_static is not None:
+        engine_kwargs["mem_fraction_static"] = mem_fraction_static
 
     engine = sglang.Engine(**engine_kwargs)
 
@@ -331,6 +345,10 @@ if __name__ == '__main__':
         json.dumps(rounds),
         quantization or "none",
         str(cpu_offload_gb),
+        str(nnodes),
+        str(node_rank),
+        dist_init_addr or "none",
+        str(mem_fraction_static) if mem_fraction_static is not None else "none",
     ]
     subprocess.run(cmd, check=True, env=env)
 
@@ -352,6 +370,10 @@ def run_sglang_mode(
     cpu_offload_gb: float = 0.0,
     ep: int = 1,
     page_size: int = 1,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: str | None = None,
+    mem_fraction_static: float | None = None,
 ) -> None:
     """Run SGLang inference with FlashInfer logging to collect workloads."""
     include_pattern = _build_fi_include_pattern(def_files)
@@ -408,6 +430,10 @@ def run_sglang_mode(
             dump_dir,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
+            nnodes=nnodes,
+            node_rank=node_rank,
+            dist_init_addr=dist_init_addr,
+            mem_fraction_static=mem_fraction_static,
         )
     else:
         print(f"  Launching SGLang server (model={model_path}, {desc})")
@@ -856,6 +882,23 @@ def main():
     sglang_p.add_argument("--dump-dir", help="Override dump directory path")
     sglang_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
     sglang_p.add_argument(
+        "--nnodes", type=int, default=1, help="Number of nodes for multi-node TP (default: 1)"
+    )
+    sglang_p.add_argument(
+        "--node-rank", type=int, default=0, help="This node's rank (0=head, default: 0)"
+    )
+    sglang_p.add_argument(
+        "--dist-init-addr",
+        default=None,
+        help="Head node address for distributed init, e.g. nvl72026-T03:5000 (required when --nnodes > 1)",
+    )
+    sglang_p.add_argument(
+        "--mem-fraction-static",
+        type=float,
+        default=None,
+        help="Fraction of GPU memory reserved for static KV cache (default: SGLang default 0.854). Reduce if OOM during KV cache preallocation.",
+    )
+    sglang_p.add_argument(
         "--skip-install",
         action="store_true",
         help="Skip Phase 0 package install (use when env already has correct versions)",
@@ -939,6 +982,10 @@ def main():
             cpu_offload_gb=getattr(args, "cpu_offload_gb", 0.0),
             ep=ep,
             page_size=page_size,
+            nnodes=getattr(args, "nnodes", 1),
+            node_rank=getattr(args, "node_rank", 0),
+            dist_init_addr=getattr(args, "dist_init_addr", None),
+            mem_fraction_static=getattr(args, "mem_fraction_static", None),
         )
 
     print(f"\n{'='*60}")
