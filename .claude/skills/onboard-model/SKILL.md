@@ -527,7 +527,12 @@ Do the following in order:
    - Record the PR number as pr1_number
 
 2. PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests):
-   - Copy baseline solution (Python reference) into tmp/worktrees/trace-{definition_name}/solutions/{op_type}/
+   - Check whether a baseline solution already exists:
+       ls tmp/flashinfer-trace/solutions/baseline/{op_type}/{definition_name}/*.json 2>/dev/null
+   - If baseline solution ALREADY EXISTS: skip creating a new solution and skip running eval.
+     Include the existing solution directory in the PR commit as-is.
+   - If baseline solution does NOT exist: create it (see Phase 4b below) and run
+     flashinfer-bench eval — all workloads must show PASSED before opening PR2.
    - Copy workload JSONL into tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
    - Copy safetensors blobs into tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
    - Copy definition JSON (from flashinfer-bench) into tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
@@ -595,6 +600,10 @@ EOF
 ```
 
 ### 4b: PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests)
+
+**Check first** — if a baseline solution already exists in `tmp/flashinfer-trace/solutions/baseline/{op_type}/{definition_name}/`, skip creating a new one and skip running `flashinfer-bench run`. Include the existing solution files in the PR commit as-is; do not regenerate eval traces.
+
+Only create a new baseline solution and run eval when no solution exists yet.
 
 Inside `tmp/worktrees/trace-{definition_name}/`:
 
