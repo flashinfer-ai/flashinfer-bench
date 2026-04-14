@@ -60,6 +60,12 @@ Resume an interrupted run:
 flashinfer-bench run --local /path/to/flashinfer-trace --resume
 ```
 
+Use a YAML config file to set per-op-type or per-definition eval parameters:
+
+```bash
+flashinfer-bench run --local /path/to/flashinfer-trace --config my_config.yaml
+```
+
 Use the isolated runner instead of the default persistent runner:
 
 ```bash
@@ -79,7 +85,7 @@ flashinfer-bench serve \
 
 Use `--devices` to pin specific CUDA devices, or omit it to use all available CUDA devices.
 
-For endpoint details and request/response examples, see [Benchmark Server API](/docs/start/server-api).
+For endpoint details and request/response examples, see [Benchmark Server API](/docs/tutorials/server-api).
 
 ## Inspect Results
 

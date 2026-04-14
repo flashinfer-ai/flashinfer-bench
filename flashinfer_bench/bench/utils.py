@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import safetensors.torch as st
 import torch
 
-from flashinfer_bench.bench.config import BenchmarkConfig
+from flashinfer_bench.bench.config import ResolvedEvalConfig
 from flashinfer_bench.data import (
     Correctness,
     Definition,
@@ -94,7 +94,7 @@ def normalize_outputs(
 
 
 def compute_error_stats(
-    output: torch.Tensor, reference: torch.Tensor, cfg: BenchmarkConfig
+    output: torch.Tensor, reference: torch.Tensor, cfg: ResolvedEvalConfig
 ) -> Tuple[float, float, bool, float]:
     x = output.to(torch.float32)
     y = reference.to(torch.float32)

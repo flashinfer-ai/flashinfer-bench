@@ -5,7 +5,6 @@ import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import (
-    DefaultEvaluator,
     DsaSparseAttentionEvaluator,
     DsaTopkIndexerEvaluator,
     resolve_evaluator,
