@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
 """
-Collect real-world workloads by running SGLang inference (or direct FlashInfer API calls)
-with FlashInfer Level 10 logging, then sanitizing the tensor dumps.
-
-Two modes:
-  sglang  - Launch SGLang server with a real model and run ShareGPT inference
-  direct  - Call FlashInfer APIs directly with synthetic inputs (for testing)
+Collect real-world workloads by running SGLang inference with FlashInfer Level 10
+logging, then sanitizing the tensor dumps.
 
 Usage:
-    # Direct mode: collect GDN MTP workloads without a model
-    python collect_workloads.py direct \
-        --definitions gdn_mtp_qk4_v8_d128_k_last \
-        --definitions gdn_mtp_qk4_v8_d128_k_last \
-        --replace
-
     # SGLang mode: run inference to collect workloads
     python collect_workloads.py sglang \
         --model-path /path/to/model \
         --definitions mla_paged_decode_h16_ckv512_kpe64_ps1 rmsnorm_h7168 \
         --num-samples 100
-
-    # Direct mode: collect by op_type
-    python collect_workloads.py direct \
-        --op-type gdn
 """
 
 import argparse
@@ -119,244 +105,6 @@ def _build_fi_include_pattern(def_files: list[Path]) -> str:
     # Deduplicate while preserving order
     seen: set[str] = set()
     return ",".join(p for p in patterns if not (p in seen or seen.add(p)))
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Direct mode: call FlashInfer APIs with synthetic inputs
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Default var-axis value sets per op_type.  Each entry is a list of dicts
-# mapping axis name → value.  Only axes present in the definition are used;
-# extras are silently ignored.  Constraints from the definition JSON (e.g.
-# "seq_len > 1") are enforced automatically before calling the API.
-OP_TYPE_VAR_CONFIGS: dict[str, list[dict]] = {
-    "gdn": [
-        {"batch_size": 1, "seq_len": 1, "pool_size": 1},
-        {"batch_size": 1, "seq_len": 2, "pool_size": 1},
-        {"batch_size": 1, "seq_len": 4, "pool_size": 1},
-        {"batch_size": 4, "seq_len": 1, "pool_size": 4},
-        {"batch_size": 4, "seq_len": 2, "pool_size": 4},
-        {"batch_size": 8, "seq_len": 1, "pool_size": 8},
-        {"batch_size": 8, "seq_len": 2, "pool_size": 8},
-        {"batch_size": 8, "seq_len": 4, "pool_size": 8},
-        {"batch_size": 16, "seq_len": 1, "pool_size": 16},
-        {"batch_size": 16, "seq_len": 2, "pool_size": 16},
-        {"batch_size": 32, "seq_len": 1, "pool_size": 32},
-        {"batch_size": 32, "seq_len": 2, "pool_size": 32},
-        {"batch_size": 64, "seq_len": 1, "pool_size": 64},
-        {"batch_size": 64, "seq_len": 2, "pool_size": 64},
-        {"batch_size": 1, "seq_len": 4, "pool_size": 49},
-        {"batch_size": 4, "seq_len": 4, "pool_size": 49},
-        {"batch_size": 8, "seq_len": 4, "pool_size": 49},
-        {"batch_size": 16, "seq_len": 4, "pool_size": 49},
-        {"batch_size": 32, "seq_len": 4, "pool_size": 49},
-        {"batch_size": 2, "seq_len": 16, "pool_size": 4},
-        {"batch_size": 4, "seq_len": 8, "pool_size": 8},
-    ],
-    "gqa_paged": [
-        {"batch_size": 1, "num_pages": 16},
-        {"batch_size": 4, "num_pages": 64},
-        {"batch_size": 8, "num_pages": 128},
-        {"batch_size": 16, "num_pages": 256},
-        {"batch_size": 32, "num_pages": 512},
-    ],
-    "gqa_ragged": [
-        {"batch_size": 1, "seq_len": 16},
-        {"batch_size": 4, "seq_len": 128},
-        {"batch_size": 8, "seq_len": 512},
-        {"batch_size": 16, "seq_len": 64},
-    ],
-    "mla_paged": [
-        {"batch_size": 1, "num_pages": 16},
-        {"batch_size": 4, "num_pages": 64},
-        {"batch_size": 8, "num_pages": 128},
-        {"batch_size": 16, "num_pages": 256},
-    ],
-    "rmsnorm": [
-        {"batch_size": 1, "seq_len": 1},
-        {"batch_size": 4, "seq_len": 32},
-        {"batch_size": 16, "seq_len": 128},
-        {"batch_size": 64, "seq_len": 512},
-    ],
-    "gemm": [{"batch_size": 1}, {"batch_size": 8}, {"batch_size": 32}, {"batch_size": 128}],
-    "sampling": [{"batch_size": 1}, {"batch_size": 8}, {"batch_size": 32}, {"batch_size": 128}],
-    # fallback for unknown op_types
-    "_default": [{"batch_size": 1}, {"batch_size": 4}, {"batch_size": 16}],
-}
-
-_DTYPE_MAP = {
-    "bfloat16": "torch.bfloat16",
-    "float32": "torch.float32",
-    "float16": "torch.float16",
-    "int32": "torch.int32",
-    "int64": "torch.int64",
-    "bool": "torch.bool",
-}
-
-
-def _check_constraint(constraint: str, axes: dict) -> bool:
-    """Evaluate a simple axis constraint expression (e.g. 'seq_len > 1')."""
-    try:
-        return bool(eval(constraint, {}, axes))  # noqa: S307
-    except Exception:
-        return True  # unknown constraint → don't filter
-
-
-def _build_generator_code(
-    defn: dict, var_configs: list[dict], dump_dir: Path, include_pattern: str
-) -> str:
-    """
-    Build a self-contained Python script that sets FlashInfer env vars before
-    any import, generates synthetic inputs for each var-axis combo, and calls
-    the API.  Must be executed in a subprocess so env vars are read at import.
-    """
-    fi_api = next(
-        (t[len("fi_api:") :] for t in defn.get("tags", []) if t.startswith("fi_api:")), None
-    )
-    if not fi_api:
-        return ""
-
-    module_path, func_name = fi_api.rsplit(".", 1)
-
-    # Resolve const axes
-    const_axes = {
-        name: spec["value"]
-        for name, spec in defn.get("axes", {}).items()
-        if spec.get("type") == "const"
-    }
-    var_axis_names = [
-        name for name, spec in defn.get("axes", {}).items() if spec.get("type") != "const"
-    ]
-    constraints = defn.get("constraints", [])
-
-    # Build list of concrete axis-value dicts, honouring constraints
-    concrete_combos = []
-    for combo in var_configs:
-        axes = {**const_axes, **{k: combo.get(k, 1) for k in var_axis_names}}
-        if all(_check_constraint(c, axes) for c in constraints):
-            concrete_combos.append(axes)
-
-    if not concrete_combos:
-        return ""
-
-    # Build input-generation code for each input tensor
-    input_lines = []
-    for inp_name, inp_spec in defn.get("inputs", {}).items():
-        if inp_spec.get("optional"):
-            continue
-        shape = inp_spec.get("shape")
-        dtype_str = inp_spec.get("dtype", "float32")
-        torch_dtype = _DTYPE_MAP.get(dtype_str, "torch.float32")
-
-        if shape is None:
-            # Scalar — use 0.0 (scale=0 triggers 1/sqrt(head_size) default)
-            input_lines.append(
-                f"    {inp_name} = torch.tensor(0.0, dtype={torch_dtype}, device=device)"
-            )
-        else:
-            shape_expr = (
-                "["
-                + ", ".join(f'axes["{d}"]' if isinstance(d, str) else str(d) for d in shape)
-                + "]"
-            )
-            is_int = torch_dtype in ("torch.int32", "torch.int64")
-            if is_int:
-                # Index tensors: fill with arange % pool_size (or zeros if no pool)
-                input_lines.append(
-                    f"    _shape = {shape_expr}\n"
-                    f"    {inp_name} = (torch.arange(_shape[0], dtype={torch_dtype}, device=device)"
-                    f' % axes.get("pool_size", 1)).reshape(_shape) if len(_shape) == 1 '
-                    f"else torch.zeros(_shape, dtype={torch_dtype}, device=device)"
-                )
-            else:
-                input_lines.append(
-                    f"    {inp_name} = torch.randn({shape_expr}, dtype={torch_dtype}, device=device)"
-                )
-
-    input_block = "\n".join(input_lines)
-    kwarg_names = [n for n in defn.get("inputs", {}) if not defn["inputs"][n].get("optional")]
-    kwargs_str = ", ".join(f"{n}={n}" for n in kwarg_names)
-
-    combos_repr = repr(concrete_combos)
-
-    return f"""\
-import os, sys
-os.environ["FLASHINFER_LOGLEVEL"] = "10"
-os.environ["FLASHINFER_DUMP_DIR"] = {str(dump_dir)!r}
-os.environ["FLASHINFER_DUMP_SAFETENSORS"] = "1"
-os.environ["FLASHINFER_DUMP_INCLUDE"] = {include_pattern!r}
-os.environ["FLASHINFER_DUMP_EXCLUDE"] = "*.__init__"
-os.environ["FLASHINFER_DUMP_MAX_COUNT"] = "10000"
-import torch
-from {module_path} import {func_name}
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-combos = {combos_repr}
-print(f"Generating {{len(combos)}} calls for {defn['name']}")
-for axes in combos:
-{input_block}
-    try:
-        result = {func_name}({kwargs_str})
-        print(f"  OK  axes={{dict((k,v) for k,v in axes.items() if isinstance(v,int) and k not in {set(const_axes)})}}")
-    except Exception as exc:
-        print(f"  ERR {{exc}}")
-"""
-
-
-def run_direct_mode(def_files: list[Path], trace_dir: Path, dump_dir: Path, replace: bool) -> None:
-    """Run direct API call mode: spawn a subprocess per definition with FlashInfer logging env."""
-    include_pattern = _build_fi_include_pattern(def_files)
-    if not include_pattern:
-        print("WARNING: No fi_api tags found in any definition; capturing all calls")
-        include_pattern = "*"
-
-    print(f"\nPhase 2: FlashInfer Logging Configuration")
-    print(f"  FLASHINFER_LOGLEVEL=10")
-    print(f"  FLASHINFER_DUMP_DIR={dump_dir}")
-    print(f"  FLASHINFER_DUMP_SAFETENSORS=1")
-    print(f"  FLASHINFER_DUMP_INCLUDE={include_pattern}")
-
-    print(f"\nPhase 3: Direct API Call Generation")
-    for df in def_files:
-        with open(df) as fh:
-            defn = json.load(fh)
-
-        op_type = defn.get("op_type", "_default")
-        var_configs = OP_TYPE_VAR_CONFIGS.get(op_type, OP_TYPE_VAR_CONFIGS["_default"])
-
-        code = _build_generator_code(defn, var_configs, dump_dir, include_pattern)
-        if not code:
-            print(f"  SKIP {defn['name']}: no fi_api tag")
-            continue
-
-        print(f"  Generating workloads for {defn['name']} ({op_type})")
-        result = subprocess.run([sys.executable, "-c", code], capture_output=False)
-        if result.returncode != 0:
-            print(f"  ERROR: generator subprocess failed (rc={result.returncode})")
-            sys.exit(1)
-
-    print(f"\nPhase 4: Sanitizing Tensor Dumps")
-
-    # Run sanitization
-    sanitize_script = Path(__file__).parent / "sanitize_dumps.py"
-    def_names = [f.stem for f in def_files]
-    cmd = [
-        sys.executable,
-        str(sanitize_script),
-        "--dump-dir",
-        str(dump_dir),
-        "--definitions",
-        *def_names,
-        "--flashinfer-trace-dir",
-        str(trace_dir),
-    ]
-    if replace:
-        cmd.append("--replace")
-
-    result = subprocess.run(cmd, capture_output=False)
-    if result.returncode != 0:
-        print(f"ERROR: sanitization failed", file=sys.stderr)
-        sys.exit(1)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -604,7 +352,6 @@ def run_sglang_mode(
     cpu_offload_gb: float = 0.0,
     ep: int = 1,
     page_size: int = 1,
-    skip_const_axis_check: bool = False,
 ) -> None:
     """Run SGLang inference with FlashInfer logging to collect workloads."""
     include_pattern = _build_fi_include_pattern(def_files)
@@ -745,8 +492,6 @@ def run_sglang_mode(
     ]
     if replace:
         cmd.append("--replace")
-    if skip_const_axis_check:
-        cmd.append("--skip-const-axis-check")
     subprocess.run(cmd, check=True)
 
 
@@ -1079,16 +824,6 @@ def main():
     parser = argparse.ArgumentParser(description="Collect FlashInfer workloads")
     sub = parser.add_subparsers(dest="mode", required=True)
 
-    # Direct mode
-    direct_p = sub.add_parser("direct", help="Call FlashInfer APIs directly (no model needed)")
-    direct_p.add_argument("--definitions", nargs="+", help="Definition names")
-    direct_p.add_argument("--op-type", help="Op type to collect all definitions for")
-    direct_p.add_argument(
-        "--flashinfer-trace-dir", required=True, help="Path to flashinfer_trace directory"
-    )
-    direct_p.add_argument("--dump-dir", help="Override dump directory path")
-    direct_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
-
     # SGLang mode
     sglang_p = sub.add_parser("sglang", help="Run SGLang inference to collect workloads")
     sglang_p.add_argument("--model-path", required=True, help="Model path or HuggingFace repo ID")
@@ -1121,19 +856,6 @@ def main():
     sglang_p.add_argument("--dump-dir", help="Override dump directory path")
     sglang_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
     sglang_p.add_argument(
-        "--skip-const-axis-check",
-        action="store_true",
-        help=(
-            "Pass --skip-const-axis-check to sanitize_dumps.py. Use when collecting "
-            "from TP=1 SGLang for a TP=2 definition (e.g. h20 from Qwen3-14B TP=1)."
-        ),
-    )
-    sglang_p.add_argument(
-        "--skip-install",
-        action="store_true",
-        help="Skip Phase 0 package install (use when env already has correct versions)",
-    )
-    direct_p.add_argument(
         "--skip-install",
         action="store_true",
         help="Skip Phase 0 package install (use when env already has correct versions)",
@@ -1188,9 +910,7 @@ def main():
     print(f"Mode: {args.mode}")
     print(f"Dump dir: {dump_dir}")
 
-    if args.mode == "direct":
-        run_direct_mode(def_files, trace_dir, dump_dir, args.replace)
-    elif args.mode == "sglang":
+    if args.mode == "sglang":
         tp = getattr(args, "tp", None)
         ep = 1
         if tp is None:
@@ -1219,7 +939,6 @@ def main():
             cpu_offload_gb=getattr(args, "cpu_offload_gb", 0.0),
             ep=ep,
             page_size=page_size,
-            skip_const_axis_check=getattr(args, "skip_const_axis_check", False),
         )
 
     print(f"\n{'='*60}")
