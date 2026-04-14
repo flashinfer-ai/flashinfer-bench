@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -286,6 +288,10 @@ class PersistentSubprocessWorker:
                 extra_msg=f"Solution skipped after {failure_record.failure_count} failures. Last error: {failure_record.last_error}",
             )
 
+        # Pre-allocate a log file path so the parent can read subprocess
+        # output even if the worker crashes before sending a response.
+        _, worker_log_path = tempfile.mkstemp(suffix=".log", prefix="fib_")
+
         eval_msg = {
             "cmd": WorkerCommand.RUN_SOLUTION.value,
             "definition": bl.definition,
@@ -297,10 +303,15 @@ class PersistentSubprocessWorker:
             "solution_name": solution.name,
             "workload": workload,
             "trace_set_root": trace_set_root,
+            "log_path": worker_log_path,
         }
 
         if self._parent_conn is None or self._parent_conn.closed:
             error_msg = "Connection is closed or invalid"
+            try:
+                os.unlink(worker_log_path)
+            except OSError:
+                pass
             return make_eval(
                 status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
             )
@@ -324,6 +335,12 @@ class PersistentSubprocessWorker:
                         ):
                             error_text = (evaluation.log or "").strip() or "Evaluation failed"
                             self._record_failure(solution.name, error_text, evaluation.status)
+                        # Worker already consumed the log file via make_eval;
+                        # clean up defensively in case it still exists.
+                        try:
+                            os.unlink(worker_log_path)
+                        except OSError:
+                            pass
                         return evaluation
                     elif response.get("cmd") == WorkerResponse.ERROR.value:
                         error_msg = response.get("error", "Unknown evaluation error")
@@ -333,6 +350,7 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
+                            log_path=worker_log_path,
                             extra_msg=error_msg,
                         )
                     else:
@@ -343,14 +361,16 @@ class PersistentSubprocessWorker:
                         return make_eval(
                             status=EvaluationStatus.RUNTIME_ERROR,
                             device=self._device,
+                            log_path=worker_log_path,
                             extra_msg=error_msg,
                         )
 
                 except (EOFError, ConnectionResetError, OSError) as e:
-                    error_msg = f"Connection error during evaluation: {e}"
+                    error_msg = f"Runtime error during evaluation ({type(e).__name__}): {e!r}"
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
+                        log_path=worker_log_path,
                         extra_msg=error_msg,
                     )
                 except Exception as e:
@@ -366,24 +386,34 @@ class PersistentSubprocessWorker:
                     return make_eval(
                         status=EvaluationStatus.RUNTIME_ERROR,
                         device=self._device,
+                        log_path=worker_log_path,
                         extra_msg=error_msg,
                     )
             else:
                 error_msg = f"Evaluation timeout after {cfg.timeout_seconds} seconds for solution {solution.name}"
                 self._record_failure(solution.name, error_msg, EvaluationStatus.TIMEOUT)
                 return make_eval(
-                    status=EvaluationStatus.TIMEOUT, device=self._device, extra_msg=error_msg
+                    status=EvaluationStatus.TIMEOUT,
+                    device=self._device,
+                    log_path=worker_log_path,
+                    extra_msg=error_msg,
                 )
 
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
-            error_msg = f"Connection broken during evaluation: {e}"
+            error_msg = f"Runtime error during evaluation ({type(e).__name__}): {e!r}"
             return make_eval(
-                status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_path=worker_log_path,
+                extra_msg=error_msg,
             )
         except Exception as e:
             error_msg = f"Failed to communicate with worker: {e}"
             return make_eval(
-                status=EvaluationStatus.RUNTIME_ERROR, device=self._device, extra_msg=error_msg
+                status=EvaluationStatus.RUNTIME_ERROR,
+                device=self._device,
+                log_path=worker_log_path,
+                extra_msg=error_msg,
             )
 
     def release(self, baseline: BaselineHandle) -> None:
@@ -677,7 +707,9 @@ def _persistent_worker_main(conn: mp.connection.Connection, device: str) -> None
                     ref_mean_latency_ms = msg["ref_mean_latency_ms"]
                     cfg = msg["config"]
 
-                    log_path = redirect_stdio_to_tempfile()
+                    # Use parent-provided log path so the parent can read
+                    # captured output even if this process crashes.
+                    log_path = redirect_stdio_to_tempfile(msg.get("log_path"))
 
                     try:
                         # Use registry to build/get cached solution

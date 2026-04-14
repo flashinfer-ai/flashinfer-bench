@@ -166,15 +166,25 @@ def hardware_from_device(device: str) -> str:
     return d.type
 
 
-def redirect_stdio_to_tempfile() -> str:
+def redirect_stdio_to_tempfile(path: str | None = None) -> str:
     """Redirect stdout/stderr to a temporary file.
+
+    Parameters
+    ----------
+    path : str or None
+        If provided, use this path for the log file instead of creating a new
+        temporary file. This allows a parent process to pre-allocate the path
+        so it can read the log even if the child process crashes.
 
     Returns the path to the temporary file.
     """
 
     sys.stdout.flush()
     sys.stderr.flush()
-    fd, path = tempfile.mkstemp(suffix=".log", prefix="fib_")
+    if path is not None:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    else:
+        fd, path = tempfile.mkstemp(suffix=".log", prefix="fib_")
     os.dup2(fd, 1)  # stdout -> fd
     os.dup2(fd, 2)  # stderr -> fd
     os.close(fd)
