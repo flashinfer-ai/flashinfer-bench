@@ -557,10 +557,10 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ✅ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
+| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ✅ |
+| `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
 | MoE experts (top-1, 16 experts, standard routing) | moe | — |
 | `trtllm_fp4_block_scale_moe_topk1_e16_h5120_i8192` | moe (TRT-LLM FP4, Llama4 routing) | 🟡 |
@@ -570,7 +570,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | ❌ |
 | `top_p_sampling_from_probs_v202048` | sampling | ❌ |
 
-**Coverage**: 4 / 10 referenced definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 16 experts, Llama4 routing). Missing: all GQA defs (h=5 per device), sampling v202048.
+**Coverage**: 8 / 13 definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 16 experts, Llama4 routing). Missing: ps64 GQA variants (no definition files), sampling v202048.
 
 ---
 
@@ -582,9 +582,9 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 |-----------|---------|:------:|
 | `rmsnorm_h5120` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h5120` | rmsnorm | 🟡 |
-| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
+| `gqa_paged_prefill_causal_h5_kv1_d128_ps1` | gqa_paged TP=8 | ✅ |
 | `gqa_paged_prefill_causal_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
-| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | 🟡 |
+| `gqa_paged_decode_h5_kv1_d128_ps1` | gqa_paged TP=8 | ✅ |
 | `gqa_paged_decode_h5_kv1_d128_ps64` | gqa_paged TP=8 | 🟡 |
 | `gqa_ragged_prefill_causal_h5_kv1_d128` | gqa_ragged TP=8 | 🟡 |
 | MoE experts (top-1, 128 experts, standard routing) | moe | — |
@@ -595,7 +595,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_k_top_p_sampling_from_probs_v202048` | sampling | 🟡 |
 | `top_p_sampling_from_probs_v202048` | sampling | 🟡 |
 
-**Coverage**: 10 / 10 definitions present. Same base dimensions as Llama 4 Scout; all GQA and sampling definitions shared. MoE expert count differs (128 vs 16). Workload collection pending.
+**Coverage**: 10 / 13 definitions present. rmsnorm h5120 shared with Qwen3 14B. TRT-LLM FP4 + FP8 MoE kernels added (top-1, 128 experts, Llama4 routing). Same base dimensions as Llama 4 Scout; MoE expert count differs. ps1 GQA workloads collected; ps64 definitions present but workloads pending.
 
 ---
 
