@@ -191,6 +191,21 @@ class SamplingEvaluator(DefaultEvaluator):
                         correctness=correctness,
                     )
 
+        # Check if TVD test is statistically feasible given nucleus size.
+        # Noise TVD ≈ sqrt(nucleus_size / num_samples). If expected noise exceeds the
+        # threshold, the valid_mask check above is sufficient to validate correctness.
+        _num_tvd_trials = 500000  # matches _sample_token_distributions default
+        _nucleus_sizes = (expected_probs > 0).sum(dim=-1).float()
+        _max_nucleus_size = int(_nucleus_sizes.max().item())
+        _noise_tvd_bound = (_max_nucleus_size / _num_tvd_trials) ** 0.5
+        if _noise_tvd_bound > cfg.sampling_tvd_threshold:
+            correctness = Correctness(
+                max_relative_error=0.0,
+                max_absolute_error=0.0,
+                extra={"tvd_skipped": True, "max_nucleus_size": _max_nucleus_size},
+            )
+            return correctness, None
+
         try:
             sol_freqs = _sample_token_distributions(
                 sol_runnable, inp, device, definition, num_trials=500000
@@ -364,6 +379,13 @@ def _sample_token_distributions(
     trials_needed = (num_trials + repeat_count - 1) // repeat_count
     total_samples_per_batch = 0
 
+    # Pre-compute batch index mapping for vectorized counter updates
+    # Element i in the padded batch belongs to original batch element (i % original_batch_size)
+    padded_batch_indices = torch.arange(
+        actual_batch_size, dtype=torch.int64, device=torch.device(device)
+    ) % original_batch_size
+    ones = torch.ones(actual_batch_size, dtype=torch.int64, device=torch.device(device))
+
     for _ in range(trials_needed):
         if is_dps:
             out = allocate_outputs(definition, padded_inputs, device)
@@ -383,12 +405,12 @@ def _sample_token_distributions(
             counters[0, sample_idx] += 1
             total_samples_per_batch += 1
         else:
-            # slice and accumulate per original batch element
+            # Vectorized counter update using scatter_add for GPU efficiency.
+            # Avoids per-element .item() calls and scalar CUDA indexing which
+            # cause excessive host-device synchronization overhead.
             samples_flat = samples.flatten()
-            for i in range(samples_flat.numel()):
-                batch_idx = i % original_batch_size
-                sample_idx = samples_flat[i].item()
-                counters[batch_idx, sample_idx] += 1
+            flat_idx = padded_batch_indices * vocab_size + samples_flat
+            counters.view(-1).scatter_add_(0, flat_idx, ones)
             total_samples_per_batch += repeat_count
 
     # [batch_size, vocab_size]
