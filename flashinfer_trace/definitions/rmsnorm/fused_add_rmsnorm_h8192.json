@@ -5,6 +5,7 @@
   "tags": [
     "status:unverified",
     "model:llama-3.1-70b",
+    "model:qwen2.5-72b",
     "fused",
     "fi_api:flashinfer.norm.fused_add_rmsnorm"
   ],
