@@ -355,15 +355,15 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | `gqa_paged_decode_h28_kv4_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_decode_h28_kv4_d128_ps64` | gqa_paged | ❌ |
 | `gqa_ragged_prefill_causal_h28_kv4_d128` | gqa_ragged | ❌ |
-| `gemm_n4608_k3584` | gemm | ❌ |
-| `gemm_n3584_k3584` | gemm | ❌ |
-| `gemm_n37888_k3584` | gemm | ❌ |
-| `gemm_n3584_k18944` | gemm | ❌ |
+| `gemm_n4608_k3584` | gemm | 🟡 |
+| `gemm_n3584_k3584` | gemm | 🟡 |
+| `gemm_n37888_k3584` | gemm | 🟡 |
+| `gemm_n3584_k18944` | gemm | 🟡 |
 | `top_k_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_k_top_p_sampling_from_probs_v151936` | sampling | ✅ |
 | `top_p_sampling_from_probs_v151936` | sampling | ✅ |
 
-**Coverage**: 3 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3584.
+**Coverage**: 9 / 14 definitions present. Missing: all rmsnorm, GQA, and GEMM definitions for hidden=3584.
 
 ---
 
