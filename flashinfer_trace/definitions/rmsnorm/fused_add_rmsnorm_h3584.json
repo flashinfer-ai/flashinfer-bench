@@ -3,18 +3,20 @@
   "op_type": "rmsnorm",
   "description": "Fused Add + RMSNorm with hidden_size=3584 for Qwen2.5-7B. Epsilon is fixed at 1e-6.",
   "tags": [
-    "status:verified",
+    "status:unverified",
     "model:qwen2.5-7b",
     "fused",
     "fi_api:flashinfer.norm.fused_add_rmsnorm"
   ],
   "axes": {
     "batch_size": {
-      "type": "var"
+      "type": "var",
+      "description": "Total number of tokens."
     },
     "hidden_size": {
       "type": "const",
-      "value": 3584
+      "value": 3584,
+      "description": "Hidden dimension size."
     }
   },
   "inputs": {
@@ -23,20 +25,23 @@
         "batch_size",
         "hidden_size"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Input hidden states tensor."
     },
     "residual": {
       "shape": [
         "batch_size",
         "hidden_size"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Residual tensor to be added before normalization."
     },
     "weight": {
       "shape": [
         "hidden_size"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "RMSNorm weight parameter."
     }
   },
   "outputs": {
@@ -45,8 +50,17 @@
         "batch_size",
         "hidden_size"
       ],
-      "dtype": "bfloat16"
+      "dtype": "bfloat16",
+      "description": "Normalized result of (hidden_states + residual)."
+    },
+    "updated_residual": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Updated residual, equal to hidden_states + residual before normalization."
     }
   },
-  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, residual, weight):\n    _, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 3584\n\n    EPS = 1e-6\n\n    x = hidden_states.to(torch.float32) + residual.to(torch.float32)\n    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    y = (x * inv_rms) * weight.to(torch.float32)\n    return y.to(hidden_states.dtype)"
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, residual, weight):\n    _, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 3584\n\n    EPS = 1e-6\n\n    # Step 1: updated_residual = hidden_states + residual\n    updated_residual = hidden_states.to(torch.float32) + residual.to(torch.float32)\n    # Step 2: output = RMSNorm(updated_residual) * weight\n    inv_rms = torch.rsqrt(updated_residual.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    output = (updated_residual * inv_rms) * weight.to(torch.float32)\n    return output.to(hidden_states.dtype), updated_residual.to(residual.dtype)"
 }
