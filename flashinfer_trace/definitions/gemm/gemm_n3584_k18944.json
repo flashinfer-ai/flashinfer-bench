@@ -8,15 +8,18 @@
   ],
   "axes": {
     "M": {
-      "type": "var"
+      "type": "var",
+      "description": "Number of output rows (total number of tokens)."
     },
     "N": {
       "type": "const",
-      "value": 3584
+      "value": 3584,
+      "description": "Number of output columns."
     },
     "K": {
       "type": "const",
-      "value": 18944
+      "value": 18944,
+      "description": "Reduction dimension."
     }
   },
   "inputs": {
@@ -25,14 +28,16 @@
         "M",
         "K"
       ],
-      "dtype": "float16"
+      "dtype": "float16",
+      "description": "Left matrix operand."
     },
     "B": {
       "shape": [
         "N",
         "K"
       ],
-      "dtype": "float16"
+      "dtype": "float16",
+      "description": "Right matrix operand (transposed in the matmul)."
     }
   },
   "outputs": {
@@ -41,7 +46,8 @@
         "M",
         "N"
       ],
-      "dtype": "float16"
+      "dtype": "float16",
+      "description": "Output matrix C = A @ B.T."
     }
   },
   "reference": "import torch\n\ndef run(A, B):\n    C = torch.matmul(A, B.T)\n    return C"
