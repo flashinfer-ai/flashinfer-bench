@@ -54,7 +54,7 @@
       "dtype": "bfloat16",
       "description": "Normalized result of (hidden_states + residual)."
     },
-    "residual": {
+    "updated_residual": {
       "shape": [
         "batch_size",
         "hidden_size"
@@ -63,5 +63,5 @@
       "description": "Updated residual, equal to hidden_states + residual before normalization."
     }
   },
-  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, residual, weight):\n    _, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 8192\n\n    EPS = 1e-5\n\n    # Step 1: residual = hidden_states + residual\n    residual_dtype = residual.dtype\n    residual = hidden_states.to(torch.float32) + residual.to(torch.float32)\n    # Step 2: output = RMSNorm(residual) * weight\n    inv_rms = torch.rsqrt(residual.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    output = (residual * inv_rms) * weight.to(torch.float32)\n    return output.to(hidden_states.dtype), residual.to(residual_dtype)"
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, residual, weight):\n    _, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 8192\n\n    EPS = 1e-5\n\n    # Step 1: updated_residual = hidden_states + residual\n    updated_residual = hidden_states.to(torch.float32) + residual.to(torch.float32)\n    # Step 2: output = RMSNorm(updated_residual) * weight\n    inv_rms = torch.rsqrt(updated_residual.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    output = (updated_residual * inv_rms) * weight.to(torch.float32)\n    return output.to(hidden_states.dtype), updated_residual.to(residual.dtype)"
 }
