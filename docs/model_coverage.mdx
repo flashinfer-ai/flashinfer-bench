@@ -311,7 +311,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h6144` | rmsnorm | ❌ |
+| `rmsnorm_h6144` | rmsnorm | ✅ |
 | `fused_add_rmsnorm_h6144` | rmsnorm | ❌ |
 | `gqa_paged_prefill_causal_h24_kv4_d128_ps64` | gqa_paged | ✅ |
 | `gqa_paged_prefill_causal_h48_kv8_d128_ps1` | gqa_paged | ❌ |
@@ -326,7 +326,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_k_top_p_sampling_from_probs_v32768` | sampling | ❌ |
 | `top_p_sampling_from_probs_v32768` | sampling | ❌ |
 
-**Coverage**: 3 / 13 referenced definitions present. TP=2 prefill + decode definitions added. Missing: rmsnorm, remaining GQA variants, GEMM, and sampling definitions.
+**Coverage**: 4 / 13 referenced definitions present. TP=2 prefill + decode definitions added. Missing: fused RMSNorm, remaining GQA variants, GEMM, and sampling definitions.
 
 ### Mixtral 8x22B at TP=2
 
