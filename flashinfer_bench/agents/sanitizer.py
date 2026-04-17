@@ -25,8 +25,11 @@ def _build_sanitizer_command(
     device: str,
     trace_set_path: Optional[Path],
     sanitizer_path: str,
+    print_limit: Optional[int] = None,
 ) -> List[str]:
     cmd = [sanitizer_path, "--tool", sanitizer_type]
+    if print_limit is not None:
+        cmd.extend(["--print-limit", str(print_limit)])
 
     runner_cmd = [
         sys.executable,
@@ -71,6 +74,7 @@ def flashinfer_bench_run_sanitizer(
     timeout: int = 300,
     tmpdir: Optional[str] = None,
     max_lines: Optional[int] = None,
+    print_limit: Optional[int] = None,
 ) -> str:
     """Run compute-sanitizer checks on a solution with a specific workload:
     memcheck, racecheck, initcheck, synccheck.
@@ -170,6 +174,7 @@ def flashinfer_bench_run_sanitizer(
                 device,
                 Path(trace_set_path) if trace_set_path else None,
                 sanitizer_path,
+                print_limit=print_limit,
             )
 
             logger.info("FlashInfer Bench Run Sanitizer: Running Command: %s", " ".join(cmd))

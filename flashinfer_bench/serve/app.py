@@ -33,6 +33,14 @@ class EvaluateRequest(BaseModel):
     workload_uuids: Optional[List[str]] = None
 
 
+class SanitizeRequest(BaseModel):
+    solution: Solution
+    workload_uuids: Optional[List[str]] = None
+    sanitizer_types: Optional[List[str]] = None
+    print_limit: Optional[int] = None
+    max_lines: Optional[int] = None
+
+
 class EvaluateResponse(BaseModel):
     task_id: str
     normalized_solution_name: str
@@ -124,6 +132,11 @@ async def root():
                 "description": "Submit a solution for evaluation with CUPTI profiling",
             },
             {
+                "method": "POST",
+                "path": "/sanitize",
+                "description": "Run compute-sanitizer on a solution and return detailed log",
+            },
+            {
                 "method": "GET",
                 "path": "/tasks/{task_id}",
                 "description": "Get task status and results",
@@ -187,6 +200,23 @@ async def profile(req: EvaluateRequest):
         raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
     renamed = req.solution.with_unique_name()
     task_id = sched.submit(renamed, req.workload_uuids, profile=True)
+    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
+
+
+@app.post("/sanitize", response_model=EvaluateResponse)
+async def sanitize(req: SanitizeRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+    renamed = req.solution.with_unique_name()
+    task_id = sched.submit(
+        renamed,
+        req.workload_uuids,
+        sanitize=True,
+        sanitizer_types=req.sanitizer_types,
+        sanitizer_print_limit=req.print_limit,
+        sanitizer_max_lines=req.max_lines,
+    )
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 

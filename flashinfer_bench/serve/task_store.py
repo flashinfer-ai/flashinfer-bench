@@ -33,6 +33,10 @@ class Task:
     created_at: float = field(default_factory=time.time)
     completed_at: Optional[float] = None
     config_override: Optional[BenchmarkConfig] = None
+    sanitize: bool = False
+    sanitizer_types: Optional[List[str]] = None
+    sanitizer_print_limit: Optional[int] = None
+    sanitizer_max_lines: Optional[int] = None
 
 
 class TaskStore:
@@ -49,6 +53,10 @@ class TaskStore:
         solution: Solution,
         workload_uuids: Optional[List[str]] = None,
         config_override: Optional[BenchmarkConfig] = None,
+        sanitize: bool = False,
+        sanitizer_types: Optional[List[str]] = None,
+        sanitizer_print_limit: Optional[int] = None,
+        sanitizer_max_lines: Optional[int] = None,
     ) -> str:
         """Create a single evaluation task. Returns task_id."""
         task_id = uuid.uuid4().hex
@@ -58,6 +66,10 @@ class TaskStore:
             definition_name=solution.definition,
             workload_uuids=workload_uuids,
             config_override=config_override,
+            sanitize=sanitize,
+            sanitizer_types=sanitizer_types,
+            sanitizer_print_limit=sanitizer_print_limit,
+            sanitizer_max_lines=sanitizer_max_lines,
         )
         with self._lock:
             self._tasks[task_id] = task
