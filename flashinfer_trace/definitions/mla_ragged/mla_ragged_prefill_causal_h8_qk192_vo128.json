@@ -1,11 +1,12 @@
 {
   "name": "mla_ragged_prefill_causal_h8_qk192_vo128",
-  "description": "Batched Multi-head Latent Attention prefill with ragged (variable-length) inputs. Uses the absorbed MLA formulation with combined QK dimension (qk_nope=128 + qk_rope=64 = 192) and value output dimension 128. Causal mask is applied. Captured from Kimi K2 during total prefill (no prefix cache) with tensor parallel size 8 (64/8=8 query heads).",
+  "description": "Batched Multi-head Latent Attention prefill with ragged (variable-length) inputs. Uses the absorbed MLA formulation with combined QK dimension (qk_nope=128 + qk_rope=64 = 192) and value output dimension 128. Causal mask is applied. Captured from Kimi K2 / Kimi K2.5 during total prefill (no prefix cache) with tensor parallel size 8 (64/8=8 query heads). Kimi K2.5 shares this shape via its DeepseekV3ForCausalLM text backbone.",
   "op_type": "mla_ragged",
   "tags": [
     "stage:prefill",
     "status:unverified",
     "model:kimi-k2",
+    "model:kimi-k2.5",
     "fi_api:flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper",
     "tp:8"
   ],
