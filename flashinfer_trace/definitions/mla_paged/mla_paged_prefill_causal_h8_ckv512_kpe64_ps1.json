@@ -1,11 +1,12 @@
 {
   "name": "mla_paged_prefill_causal_h8_ckv512_kpe64_ps1",
-  "description": "Batched Multi-head Latent Attention prefill with a paged KV cache. Causal mask is applied. Captured from Kimi K2 during incremental prefill with tensor parallel size 8 (64/8=8 query heads).",
+  "description": "Batched Multi-head Latent Attention prefill with a paged KV cache. Causal mask is applied. Captured from Kimi K2 / Kimi K2.5 during incremental prefill with tensor parallel size 8 (64/8=8 query heads). Kimi K2.5 shares this shape via its DeepseekV3ForCausalLM text backbone.",
   "op_type": "mla_paged",
   "tags": [
     "stage:prefill",
     "status:verified",
     "model:kimi-k2",
+    "model:kimi-k2.5",
     "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
     "tp:8"
   ],
