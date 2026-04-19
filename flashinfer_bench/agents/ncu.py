@@ -96,6 +96,16 @@ def _build_ncu_command(
         "--nvtx",
         "--nvtx-include",
         "flashinfer_bench_ncu_profile]",
+        # Use application replay instead of the default kernel replay. Kernel replay
+        # snapshots device memory between metric-collection passes and runs an injected
+        # memcmp kernel to validate the snapshot; inside the serve process that memcmp
+        # kernel fails with CUDA error 700 ("Failed to optimize backing store") and
+        # every metric comes back nan. Application replay re-runs _solution_runner
+        # once per pass -- the compiled .so is cached on disk after the first pass, so
+        # subsequent passes only pay the launch cost. This matches the pre-e1dc58f
+        # timing.py invocation that was removed by 4f55ef2.
+        "--replay-mode",
+        "application",
     ]
 
     # Add extra sections
@@ -284,9 +294,21 @@ def flashinfer_bench_run_ncu(
             env["TMPDIR"] = tmpdir
 
         # Run NCU
+        # start_new_session=True isolates NCU into its own process group/session. Without
+        # it, the replay mechanism deterministically fails with CUDA error 700
+        # ("Failed to optimize backing store") when NCU is launched as a child of the
+        # serve FastAPI process -- presumably because NCU's CUPTI attaches inspect the
+        # parent process group's state and get confused by sibling CUDA subprocesses.
         logger.info("FlashInfer Bench Run NCU: Running Command: %s", " ".join(cmd))
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=timeout,
+                start_new_session=True,
+            )
         except subprocess.TimeoutExpired:
             return f"ERROR: NCU profiling timed out after {timeout} seconds."
 
