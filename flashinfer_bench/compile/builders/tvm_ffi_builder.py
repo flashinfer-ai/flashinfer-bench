@@ -291,9 +291,6 @@ class TVMFFIBuilder(Builder):
                         cuda_lib_path = self._find_cuda_lib_path()
                         if cuda_lib_path:
                             extra_ldflags.insert(0, f"-L{cuda_lib_path}")
-                    # Emit source-line info so compute-sanitizer / NCU can map
-                    # PC offsets back to kernel.cu:<line>.
-                    extra_cuda_cflags = ["-lineinfo"]
                     try:
                         # Compile sources to shared library
                         output_lib_path = tvm_ffi.cpp.build(
@@ -301,7 +298,6 @@ class TVMFFIBuilder(Builder):
                             cpp_files=cpp_files,
                             cuda_files=cuda_files,
                             extra_include_paths=extra_include_paths,
-                            extra_cuda_cflags=extra_cuda_cflags,
                             extra_ldflags=extra_ldflags,
                             build_directory=build_path,
                         )

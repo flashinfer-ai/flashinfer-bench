@@ -9,15 +9,7 @@ from .json_utils import (
     save_jsonl_file,
 )
 from .solution import BuildSpec, Solution, SourceFile, SupportedBindings, SupportedLanguages
-from .trace import (
-    Correctness,
-    Environment,
-    Evaluation,
-    EvaluationStatus,
-    KernelProfile,
-    Performance,
-    Trace,
-)
+from .trace import Correctness, Environment, Evaluation, EvaluationStatus, Performance, Trace
 from .trace_set import SpeedupMetrics, TraceSet, TraceSetSummary
 from .workload import InputSpec, RandomInput, SafetensorsInput, ScalarInput, Workload
 
@@ -42,7 +34,6 @@ __all__ = [
     "Workload",
     # Trace types
     "Correctness",
-    "KernelProfile",
     "Performance",
     "Environment",
     "Evaluation",

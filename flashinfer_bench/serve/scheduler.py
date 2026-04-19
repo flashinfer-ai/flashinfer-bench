@@ -1,26 +1,15 @@
 """GPU worker scheduling for the benchmark server."""
 
-import datetime
 import logging
 import queue
 import threading
 from typing import Dict, List, Optional
 
-from flashinfer_bench.agents.sanitizer import flashinfer_bench_run_sanitizer
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.runner.persistent_runner import PersistentSubprocessWorker
 from flashinfer_bench.bench.runner.runner import BaselineHandle
-from flashinfer_bench.data import (
-    Definition,
-    Evaluation,
-    EvaluationStatus,
-    Solution,
-    Trace,
-    TraceSet,
-    Workload,
-)
+from flashinfer_bench.data import Definition, EvaluationStatus, Solution, Trace, TraceSet, Workload
 from flashinfer_bench.serve.task_store import Task, TaskStore
-from flashinfer_bench.utils import env_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -66,29 +55,9 @@ class Scheduler:
     def workers(self) -> List["_GPUWorkerThread"]:
         return self._workers
 
-    def submit(
-        self,
-        solution: Solution,
-        workload_uuids: Optional[List[str]] = None,
-        profile: bool = False,
-        sanitize: bool = False,
-        sanitizer_types: Optional[List[str]] = None,
-        sanitizer_print_limit: Optional[int] = None,
-        sanitizer_max_lines: Optional[int] = None,
-    ) -> str:
+    def submit(self, solution: Solution, workload_uuids: Optional[List[str]] = None) -> str:
         """Submit a solution for evaluation. Returns task_id."""
-        config_override = None
-        if profile:
-            config_override = self._config.model_copy(update={"profile": True})
-        task_id = self._task_store.create_task(
-            solution,
-            workload_uuids,
-            config_override,
-            sanitize=sanitize,
-            sanitizer_types=sanitizer_types,
-            sanitizer_print_limit=sanitizer_print_limit,
-            sanitizer_max_lines=sanitizer_max_lines,
-        )
+        task_id = self._task_store.create_task(solution, workload_uuids)
         self._queue.put(task_id)
         return task_id
 
@@ -155,10 +124,7 @@ class _GPUWorkerThread(threading.Thread):
 
             self._store.mark_running(task_id)
             try:
-                if task.sanitize:
-                    traces = self._sanitize_task(task)
-                else:
-                    traces = self._evaluate_task(task)
+                traces = self._evaluate_task(task)
                 self._store.complete_task(task_id, traces)
             except Exception as e:
                 logger.error(f"Task {task_id} failed on {self._device}: {e}")
@@ -184,19 +150,11 @@ class _GPUWorkerThread(threading.Thread):
         if not workload_traces:
             raise ValueError(f"No workloads found for definition: {task.definition_name}")
 
-        cfg = task.config_override or self._config
-
         traces = []
         for wl_trace in workload_traces:
             workload = wl_trace.workload
             ref_handle = self._get_or_build_ref(definition, workload)
-            evaluation = self._gpu_worker.run_solution(
-                task.solution,
-                ref_handle,
-                cfg,
-                workload=workload,
-                trace_set_root=self._trace_set.root,
-            )
+            evaluation = self._gpu_worker.run_solution(task.solution, ref_handle, self._config)
             trace = Trace(
                 definition=task.definition_name,
                 workload=workload,
@@ -216,59 +174,6 @@ class _GPUWorkerThread(threading.Thread):
                     else:
                         logger.error(f"Failed to restart worker on {self._device}")
                         raise RuntimeError(f"Worker on {self._device} failed to restart")
-
-        return traces
-
-    def _sanitize_task(self, task: Task) -> List[Trace]:
-        """Run compute-sanitizer for each workload and return traces with sanitizer log."""
-        definition = self._trace_set.definitions.get(task.definition_name)
-        if definition is None:
-            raise ValueError(f"Definition not found: {task.definition_name}")
-
-        workload_traces = self._trace_set.workloads.get(task.definition_name, [])
-        if task.workload_uuids:
-            uuid_set = set(task.workload_uuids)
-            workload_traces = [t for t in workload_traces if t.workload.uuid in uuid_set]
-
-        if not workload_traces:
-            raise ValueError(f"No workloads found for definition: {task.definition_name}")
-
-        traces: List[Trace] = []
-        env = env_snapshot(self._device)
-        for wl_trace in workload_traces:
-            workload = wl_trace.workload
-            log = flashinfer_bench_run_sanitizer(
-                task.solution,
-                workload,
-                device=self._device,
-                trace_set_path=str(self._trace_set.root) if self._trace_set.root else None,
-                sanitizer_types=task.sanitizer_types,  # type: ignore[arg-type]
-                print_limit=task.sanitizer_print_limit,
-                max_lines=task.sanitizer_max_lines,
-            )
-            evaluation = Evaluation(
-                status=EvaluationStatus.RUNTIME_ERROR,
-                environment=env,
-                timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                log=log,
-            )
-            traces.append(
-                Trace(
-                    definition=task.definition_name,
-                    workload=workload,
-                    solution=task.solution.name,
-                    evaluation=evaluation,
-                )
-            )
-
-            # Sanitizer runs kernels that may have crashed; check worker health.
-            if not self._gpu_worker.is_healthy():
-                logger.warning(f"Worker on {self._device} unhealthy after sanitize, restarting")
-                if self._gpu_worker.restart():
-                    self._ref_cache.clear()
-                else:
-                    logger.error(f"Failed to restart worker on {self._device}")
-                    raise RuntimeError(f"Worker on {self._device} failed to restart")
 
         return traces
 

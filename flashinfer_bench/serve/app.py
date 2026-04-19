@@ -10,7 +10,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from flashinfer_bench import __commit__, __upstream__, __version__
+from flashinfer_bench import __version__
+from flashinfer_bench.agents.ncu import flashinfer_bench_run_ncu
+from flashinfer_bench.agents.sanitizer import flashinfer_bench_run_sanitizer
 from flashinfer_bench.data import Solution
 from flashinfer_bench.serve.scheduler import Scheduler
 
@@ -31,14 +33,6 @@ def _get_scheduler() -> Scheduler:
 class EvaluateRequest(BaseModel):
     solution: Solution
     workload_uuids: Optional[List[str]] = None
-
-
-class SanitizeRequest(BaseModel):
-    solution: Solution
-    workload_uuids: Optional[List[str]] = None
-    sanitizer_types: Optional[List[str]] = None
-    print_limit: Optional[int] = None
-    max_lines: Optional[int] = None
 
 
 class EvaluateResponse(BaseModel):
@@ -76,6 +70,37 @@ class HealthResponse(BaseModel):
     queue_size: int
 
 
+class ProfileRequest(BaseModel):
+    solution: Solution
+    workload_uuids: Optional[List[str]] = None
+    # NCU configuration (mirrors flashinfer_bench_run_ncu)
+    set: str = "detailed"
+    sections: Optional[List[str]] = None
+    kernel_name: Optional[str] = None
+    page: str = "details"
+    ncu_path: str = "ncu"
+    timeout: int = 60
+    max_lines: Optional[int] = None
+
+
+class SanitizeRequest(BaseModel):
+    solution: Solution
+    workload_uuids: Optional[List[str]] = None
+    # Sanitizer configuration (mirrors flashinfer_bench_run_sanitizer)
+    sanitizer_types: Optional[List[str]] = None
+    sanitizer_path: str = "compute-sanitizer"
+    timeout: int = 300
+    max_lines: Optional[int] = None
+    print_limit: Optional[int] = None
+
+
+class RunResult(BaseModel):
+    definition: str
+    workload: Dict[str, Any]
+    solution: str
+    log: str
+
+
 # ── App & routes ──
 
 
@@ -102,8 +127,6 @@ async def root():
     return {
         "name": "FlashInfer-Bench Server",
         "version": __version__,
-        "commit": __commit__,
-        "upstream": __upstream__,
         "docs": "/docs",
         "endpoints": [
             {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
@@ -129,12 +152,12 @@ async def root():
             {
                 "method": "POST",
                 "path": "/profile",
-                "description": "Submit a solution for evaluation with CUPTI profiling",
+                "description": "Run NCU profiling on a solution (synchronous; returns per-workload logs)",
             },
             {
                 "method": "POST",
                 "path": "/sanitize",
-                "description": "Run compute-sanitizer on a solution and return detailed log",
+                "description": "Run compute-sanitizer on a solution (synchronous; returns per-workload logs)",
             },
             {
                 "method": "GET",
@@ -193,33 +216,6 @@ async def evaluate(req: EvaluateRequest):
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 
-@app.post("/profile", response_model=EvaluateResponse)
-async def profile(req: EvaluateRequest):
-    sched = _get_scheduler()
-    if req.solution.definition not in sched.trace_set.definitions:
-        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
-    renamed = req.solution.with_unique_name()
-    task_id = sched.submit(renamed, req.workload_uuids, profile=True)
-    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
-
-
-@app.post("/sanitize", response_model=EvaluateResponse)
-async def sanitize(req: SanitizeRequest):
-    sched = _get_scheduler()
-    if req.solution.definition not in sched.trace_set.definitions:
-        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
-    renamed = req.solution.with_unique_name()
-    task_id = sched.submit(
-        renamed,
-        req.workload_uuids,
-        sanitize=True,
-        sanitizer_types=req.sanitizer_types,
-        sanitizer_print_limit=req.print_limit,
-        sanitizer_max_lines=req.max_lines,
-    )
-    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
-
-
 @app.post("/tasks/batch", response_model=List[TaskResponse])
 async def batch_get_tasks(req: BatchRequest):
     sched = _get_scheduler()
@@ -228,14 +224,12 @@ async def batch_get_tasks(req: BatchRequest):
             raise HTTPException(404, detail=f"Task not found: {task_id}")
 
     if req.timeout > 0:
-        await sched.task_store.async_wait_for_all(req.task_ids, req.timeout)
+        await asyncio.to_thread(sched.task_store.wait_for_all, req.task_ids, req.timeout)
 
     results = []
     for tid in req.task_ids:
         task = sched.task_store.get_task(tid)
-        traces_data = (
-            [t.model_dump(mode="json", by_alias=True) for t in task.traces] if task.traces else None
-        )
+        traces_data = [t.model_dump(mode="json") for t in task.traces] if task.traces else None
         results.append(
             TaskResponse(
                 task_id=task.id,
@@ -253,6 +247,103 @@ async def batch_get_tasks(req: BatchRequest):
 async def get_task(task_id: str, timeout: float = Query(default=0, ge=0, le=3600)):
     results = await batch_get_tasks(BatchRequest(task_ids=[task_id], timeout=timeout))
     return results[0]
+
+
+def _resolve_workloads(sched: Scheduler, definition: str, workload_uuids: Optional[List[str]]):
+    """Return the list of Workload objects for a (definition, uuid-filter) pair."""
+    traces = sched.trace_set.workloads.get(definition, [])
+    if workload_uuids:
+        uuid_set = set(workload_uuids)
+        traces = [t for t in traces if t.workload.uuid in uuid_set]
+    return [t.workload for t in traces]
+
+
+def _pick_device(sched: Scheduler) -> str:
+    if not sched.workers:
+        raise HTTPException(503, detail="No workers available")
+    return sched.workers[0].device
+
+
+@app.post("/profile", response_model=List[RunResult])
+async def profile(req: ProfileRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+
+    workloads = _resolve_workloads(sched, req.solution.definition, req.workload_uuids)
+    if not workloads:
+        raise HTTPException(
+            400, detail=f"No workloads found for definition: {req.solution.definition}"
+        )
+
+    device = _pick_device(sched)
+    trace_set_path = str(sched.trace_set.root) if sched.trace_set.root else None
+
+    results: List[RunResult] = []
+    for wl in workloads:
+        log = await asyncio.to_thread(
+            flashinfer_bench_run_ncu,
+            req.solution,
+            wl,
+            device=device,
+            trace_set_path=trace_set_path,
+            set=req.set,
+            sections=req.sections,
+            kernel_name=req.kernel_name,
+            page=req.page,
+            ncu_path=req.ncu_path,
+            timeout=req.timeout,
+            max_lines=req.max_lines,
+        )
+        results.append(
+            RunResult(
+                definition=req.solution.definition,
+                workload=wl.model_dump(mode="json"),
+                solution=req.solution.name,
+                log=log,
+            )
+        )
+    return results
+
+
+@app.post("/sanitize", response_model=List[RunResult])
+async def sanitize(req: SanitizeRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+
+    workloads = _resolve_workloads(sched, req.solution.definition, req.workload_uuids)
+    if not workloads:
+        raise HTTPException(
+            400, detail=f"No workloads found for definition: {req.solution.definition}"
+        )
+
+    device = _pick_device(sched)
+    trace_set_path = str(sched.trace_set.root) if sched.trace_set.root else None
+
+    results: List[RunResult] = []
+    for wl in workloads:
+        log = await asyncio.to_thread(
+            flashinfer_bench_run_sanitizer,
+            req.solution,
+            wl,
+            device=device,
+            trace_set_path=trace_set_path,
+            sanitizer_types=req.sanitizer_types,  # type: ignore[arg-type]
+            sanitizer_path=req.sanitizer_path,
+            timeout=req.timeout,
+            max_lines=req.max_lines,
+            print_limit=req.print_limit,
+        )
+        results.append(
+            RunResult(
+                definition=req.solution.definition,
+                workload=wl.model_dump(mode="json"),
+                solution=req.solution.name,
+                log=log,
+            )
+        )
+    return results
 
 
 @app.get("/health", response_model=HealthResponse)

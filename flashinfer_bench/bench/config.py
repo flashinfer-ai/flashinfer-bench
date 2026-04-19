@@ -46,12 +46,6 @@ class ResolvedEvalConfig(BaseModel):
     """Minimum fraction of elements that must be within tolerance."""
     profile_baseline: bool = True
     """Whether to profile the reference implementation for baseline latency."""
-    profile: bool = False
-    """Whether to use ncu profiler."""
-    ncu_path: str = "ncu"
-    """Path to the ncu executable."""
-    ncu_timeout: int = Field(default=300, gt=0)
-    """Timeout for the ncu profiling."""
     extra: Dict[str, Any] = Field(default_factory=dict)
     """Evaluator-specific parameters after all config layers have been merged."""
 
@@ -75,13 +69,6 @@ class BenchmarkConfig(BaseModel):
     """Whether to profile the reference implementation for baseline latency."""
     log_dir: Optional[str] = None
     """Deprecated. Logs are embedded in trace evaluations."""
-
-    profile: bool = False
-    """Whether to use ncu profiler."""
-    ncu_path: str = "ncu"
-    """Path to the ncu executable."""
-    ncu_timeout: int = Field(default=300, gt=0)
-    """Timeout for the ncu profiling."""
 
     # Per-definition defaults
     warmup_runs: int = Field(default=10, ge=0)
@@ -144,9 +131,6 @@ class BenchmarkConfig(BaseModel):
             "atol": self.atol,
             "required_matched_ratio": self.required_matched_ratio,
             "profile_baseline": self.profile_baseline,
-            "profile": self.profile,
-            "ncu_path": self.ncu_path,
-            "ncu_timeout": self.ncu_timeout,
             "extra": {
                 "sampling_validation_trials": self.sampling_validation_trials,
                 "sampling_tvd_threshold": self.sampling_tvd_threshold,

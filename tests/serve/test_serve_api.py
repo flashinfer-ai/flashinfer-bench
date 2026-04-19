@@ -194,42 +194,6 @@ async def test_mixed_success_failure(client):
     assert "COMPILE_ERROR" in statuses
 
 
-# ── 3.5 Profiling ──
-
-
-async def test_profile_pass(client):
-    """3.5.1 POST /profile returns PASSED with profile data."""
-    sol = solution_correct(DEFINITION)
-    resp = await client.post("/profile", json={"solution": sol.model_dump(mode="json")})
-    assert resp.status_code == 200, resp.text
-    task_id = resp.json()["task_id"]
-
-    resp = await client.get(f"/tasks/{task_id}", params={"timeout": 60})
-    assert resp.status_code == 200, resp.text
-    result = resp.json()
-
-    assert result["status"] == "completed"
-    assert len(result["traces"]) > 0
-    evaluation = result["traces"][0]["evaluation"]
-    assert evaluation["status"] == "PASSED"
-
-    performance = evaluation["performance"]
-    assert performance["profile"] is not None
-    assert len(performance["profile"]) > 0
-
-    kernel = performance["profile"][0]
-    assert "name" in kernel
-    assert "duration_ns" in kernel
-    assert "grid" in kernel and len(kernel["grid"]) == 3
-    assert "block" in kernel and len(kernel["block"]) == 3
-    assert "registers_per_thread" in kernel
-    assert "static_shared_memory" in kernel
-    assert "dynamic_shared_memory" in kernel
-    assert "shared_memory_executed" in kernel
-    assert "local_memory_per_thread" in kernel
-    assert "local_memory_total" in kernel
-
-
 # ── 4. HTTP-Level Errors ──
 
 
