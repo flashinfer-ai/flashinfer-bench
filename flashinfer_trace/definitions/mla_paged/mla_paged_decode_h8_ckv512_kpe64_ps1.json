@@ -1,11 +1,12 @@
 {
   "name": "mla_paged_decode_h8_ckv512_kpe64_ps1",
-  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from Kimi K2 with tensor parallel size 8 (64/8=8 query heads).",
+  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from Kimi K2 / Kimi K2.5 with tensor parallel size 8 (64/8=8 query heads). The Kimi K2.5 text backbone (text_config.model_type=kimi_k2, DeepseekV3ForCausalLM) shares the same MLA shape as Kimi K2: kv_lora_rank=512, qk_rope_head_dim=64, qk_nope_head_dim=128, v_head_dim=128, num_attention_heads=64 → h=8 at TP=8.",
   "op_type": "mla_paged",
   "tags": [
     "stage:decode",
     "status:verified",
     "model:kimi-k2",
+    "model:kimi-k2.5",
     "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
     "tp:8"
   ],
