@@ -19,6 +19,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | DeepSeek V3.2 | DSA + Dense/MoE | ✅ Fully covered |
 | Llama 3.1 8B | GQA + Dense | ✅ Fully covered |
 | Llama 3.1/3.3 70B | GQA + Dense | 🟡 Partial |
+| Llama 3.2 1B | GQA + Dense (head_dim=64) | ✅ Fully covered |
 | Llama 3.2 3B | GQA + Dense | 🟡 Partial |
 | Mistral 7B v0.3 | GQA + Dense | 🟡 Partial |
 | Mistral Nemo 12B | GQA + Dense | 🟡 Partial |
@@ -203,6 +204,31 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 | `top_p_sampling_from_probs_v128256` | sampling | ✅ |
 
 **Coverage**: 8 / 14 definitions present. GQA kernels shared with Qwen3-32B (same h=16, kv=2, d=128 at TP=4). Missing: rmsnorm h8192, all GEMM definitions for hidden=8192.
+
+---
+
+## Llama 3.2 1B
+
+**Architecture**: 16 decoder layers, GQA attention (head_dim=64), dense MLP
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h2048` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h2048` | rmsnorm | ✅ |
+| `gqa_paged_prefill_causal_h32_kv8_d64_ps1` | gqa_paged | ✅ |
+| `gqa_paged_prefill_causal_h32_kv8_d64_ps64` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d64_ps1` | gqa_paged | ✅ |
+| `gqa_paged_decode_h32_kv8_d64_ps64` | gqa_paged | ✅ |
+| `gqa_ragged_prefill_causal_h32_kv8_d64` | gqa_ragged | ✅ |
+| `gemm_n3072_k2048` | gemm | ✅ |
+| `gemm_n2048_k2048` | gemm | ✅ |
+| `gemm_n16384_k2048` | gemm | ✅ |
+| `gemm_n2048_k8192` | gemm | ✅ |
+| `top_k_sampling_from_probs_v128256` | sampling | ✅ |
+| `top_k_top_p_sampling_from_probs_v128256` | sampling | ✅ |
+| `top_p_sampling_from_probs_v128256` | sampling | ✅ |
+
+**Coverage**: 14 / 14 definitions present. Fully covered.
 
 ---
 
