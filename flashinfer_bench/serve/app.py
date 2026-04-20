@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from flashinfer_bench import __version__
+from flashinfer_bench import __commit__, __upstream__, __version__
 from flashinfer_bench.data import Solution
 from flashinfer_bench.serve.scheduler import Scheduler
 
@@ -127,6 +127,8 @@ async def root():
     return {
         "name": "FlashInfer-Bench Server",
         "version": __version__,
+        "commit": __commit__,
+        "upstream": __upstream__,
         "docs": "/docs",
         "endpoints": [
             {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
