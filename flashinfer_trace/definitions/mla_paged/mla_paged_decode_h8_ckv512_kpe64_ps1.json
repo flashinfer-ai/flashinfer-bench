@@ -1,11 +1,12 @@
 {
   "name": "mla_paged_decode_h8_ckv512_kpe64_ps1",
-  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from Kimi K2 with tensor parallel size 8 (64/8=8 query heads).",
+  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from Kimi K2 / Kimi K2.6 with tensor parallel size 8 (64/8=8 query heads).",
   "op_type": "mla_paged",
   "tags": [
     "stage:decode",
     "status:verified",
     "model:kimi-k2",
+    "model:kimi-k2.6",
     "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
     "tp:8"
   ],
