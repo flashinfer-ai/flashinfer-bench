@@ -1,10 +1,12 @@
 {
   "name": "gemm_n3072_k8192",
-  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.2 3B mlp.down_proj (intermediate=8192 → hidden=3072).",
+  "description": "General matrix multiply (GEMM) C = A @ B.T. Captured from Llama 3.2 3B mlp.down_proj (intermediate=8192 -> hidden=3072) at TP=1.",
   "op_type": "gemm",
   "tags": [
-    "status:unverified",
-    "model:llama-3.2-3b"
+    "status:reference",
+    "fi_api:gemm",
+    "model:llama-3.2-3b",
+    "tp:1"
   ],
   "axes": {
     "M": {
