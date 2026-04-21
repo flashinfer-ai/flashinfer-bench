@@ -32,6 +32,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
+| Kimi K2.6 | MLA + MoE | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
 | Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
@@ -494,6 +495,25 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
 **Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+
+---
+
+## Kimi K2.6
+
+**Architecture**: Same DeepSeek V3-style MLA architecture as Kimi K2 (61 decoder layers, MLA with kv_lora_rank=512, qk_rope_head_dim=64, 64 attention heads; sparse MoE with 384 experts, top-8 routing). Standard serving configuration: **TP=8, EP=1** with fp8 quantization (from HuggingFace `moonshotai/Kimi-K2.6`).
+
+Kimi K2.6 shares the same per-TP MLA head shape as Kimi K2 (64/8 = 8 query heads, head_dim_ckv=512, head_dim_kpe=64), so the `h8_ckv512_kpe64` MLA definitions apply unchanged. Workloads are captured separately to reflect traffic from this model variant.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ❌ |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | ❌ |
+| `rmsnorm_h7168` | rmsnorm | ❌ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ❌ |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | ❌ |
+
+**Coverage**: 1 / 6 definitions present. Decode MLA kernel shared with Kimi K2 is being verified for this variant; other MLA/rmsnorm/MoE definitions already exist but have no Kimi K2.6 workloads yet.
 
 ---
 
