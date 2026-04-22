@@ -70,19 +70,21 @@ class BenchmarkConfig(BaseModel):
     log_dir: Optional[str] = None
     """Deprecated. Logs are embedded in trace evaluations."""
 
-    # Per-definition defaults
-    warmup_runs: int = Field(default=10, ge=0)
-    """Default warmup iterations before timing for all definitions."""
-    iterations: int = Field(default=50, gt=0)
-    """Default timed iterations per trial for all definitions."""
-    num_trials: int = Field(default=3, gt=0)
-    """Default number of benchmark trials for all definitions."""
-    rtol: float = Field(default=1e-2, gt=0)
-    """Default relative tolerance for numerical checks."""
-    atol: float = Field(default=1e-2, gt=0)
-    """Default absolute tolerance for numerical checks."""
+    # Top-level / CLI overrides. None means "not set at this layer" — falls through
+    # to YAML layers and the hardcoded defaults in ResolvedEvalConfig. When non-None,
+    # these win over op_type_config and definition_config (CLI has highest priority).
+    warmup_runs: Optional[int] = Field(default=None, ge=0)
+    """CLI override for warmup iterations. None means inherit from YAML / defaults."""
+    iterations: Optional[int] = Field(default=None, gt=0)
+    """CLI override for timed iterations per trial. None means inherit from YAML / defaults."""
+    num_trials: Optional[int] = Field(default=None, gt=0)
+    """CLI override for number of benchmark trials. None means inherit from YAML / defaults."""
+    rtol: Optional[float] = Field(default=None, gt=0)
+    """CLI override for relative tolerance. None means inherit from YAML / defaults."""
+    atol: Optional[float] = Field(default=None, gt=0)
+    """CLI override for absolute tolerance. None means inherit from YAML / defaults."""
     required_matched_ratio: Optional[float] = Field(default=None, gt=0, le=1)
-    """Default minimum fraction of elements that must be within tolerance."""
+    """CLI override for required matched ratio. None means inherit from YAML / defaults."""
     # Deprecated: use op_type_config/definition_config extra instead
     sampling_validation_trials: int = Field(default=100, gt=0)
     """Deprecated default for Sampling evaluator validation rounds."""
@@ -122,14 +124,14 @@ class BenchmarkConfig(BaseModel):
         return cls(**overrides)
 
     def resolve_eval_config(self, definition: Any) -> ResolvedEvalConfig:
-        """Merge: per-def defaults -> op_type_config -> definition_config."""
-        merged = {
-            "warmup_runs": self.warmup_runs,
-            "iterations": self.iterations,
-            "num_trials": self.num_trials,
-            "rtol": self.rtol,
-            "atol": self.atol,
-            "required_matched_ratio": self.required_matched_ratio,
+        """Merge priority (lowest -> highest): ResolvedEvalConfig defaults ->
+        op_type_config -> definition_config -> top-level / CLI overrides.
+
+        Top-level fields win when non-None, so a CLI flag such as
+        ``--required-matched-ratio 0.9`` is never silently shadowed by a value
+        coming from the packaged ``eval_config.yaml``.
+        """
+        merged: Dict[str, Any] = {
             "profile_baseline": self.profile_baseline,
             "extra": {
                 "sampling_validation_trials": self.sampling_validation_trials,
@@ -141,7 +143,6 @@ class BenchmarkConfig(BaseModel):
             self.op_type_config.get(definition.op_type),
             self.definition_config.get(definition.name),
         ]
-
         for layer in layers:
             if layer is None:
                 continue
@@ -151,5 +152,15 @@ class BenchmarkConfig(BaseModel):
             merged.update(updates)
             if layer.extra:
                 merged["extra"].update(layer.extra)
+
+        top_level = {
+            "warmup_runs": self.warmup_runs,
+            "iterations": self.iterations,
+            "num_trials": self.num_trials,
+            "rtol": self.rtol,
+            "atol": self.atol,
+            "required_matched_ratio": self.required_matched_ratio,
+        }
+        merged.update({k: v for k, v in top_level.items() if v is not None})
 
         return ResolvedEvalConfig(**merged)
