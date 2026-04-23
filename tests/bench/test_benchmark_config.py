@@ -105,9 +105,7 @@ def test_cli_override_beats_yaml_op_type():
 
 def test_yaml_op_type_applies_without_cli_override():
     """When CLI doesn't supply the field, YAML op_type_config still takes effect."""
-    cfg = BenchmarkConfig(
-        op_type_config={"moe": EvalConfig(required_matched_ratio=0.95)},
-    )
+    cfg = BenchmarkConfig(op_type_config={"moe": EvalConfig(required_matched_ratio=0.95)})
     definition = SimpleNamespace(op_type="moe", name="some_moe_def")
     resolved = cfg.resolve_eval_config(definition)
     assert resolved.required_matched_ratio == 0.95
