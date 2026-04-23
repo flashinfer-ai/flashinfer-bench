@@ -64,6 +64,7 @@ HF_BATCH_SIZE = 500  # max operations per HF commit
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def log(msg: str) -> None:
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[collect_stream {ts}] {msg}", flush=True)
@@ -72,9 +73,7 @@ def log(msg: str) -> None:
 def get_definition(trace_dir: Path, def_name: str) -> dict:
     matches = list((trace_dir / "definitions").glob(f"**/{def_name}.json"))
     if not matches:
-        raise FileNotFoundError(
-            f"Definition '{def_name}' not found under {trace_dir}/definitions/"
-        )
+        raise FileNotFoundError(f"Definition '{def_name}' not found under {trace_dir}/definitions/")
     with open(matches[0]) as f:
         return json.load(f)
 
@@ -85,8 +84,19 @@ def get_op_type(defn: dict) -> str:
         return op
     # Fallback: first component of name (e.g. "gqa_paged_decode_..." → "gqa_paged")
     name = defn["name"]
-    for known in ("gqa_paged", "gqa_ragged", "mla_paged", "dsa_paged", "gdn", "moe",
-                  "rope", "rmsnorm", "gemm", "sampling", "mamba_ssu"):
+    for known in (
+        "gqa_paged",
+        "gqa_ragged",
+        "mla_paged",
+        "dsa_paged",
+        "gdn",
+        "moe",
+        "rope",
+        "rmsnorm",
+        "gemm",
+        "sampling",
+        "mamba_ssu",
+    ):
         if name.startswith(known):
             return known
     return name.split("_")[0]
@@ -96,7 +106,7 @@ def get_include_pattern(defn: dict) -> str:
     """Derive FLASHINFER_DUMP_INCLUDE glob from the fi_api tag."""
     for tag in defn.get("tags", []):
         if tag.startswith("fi_api:"):
-            api = tag[len("fi_api:"):]
+            api = tag[len("fi_api:") :]
             parts = api.split(".")
             # Use the class name with a wildcard (matches .run, .plan, etc.)
             cls = next((p for p in parts if p[0].isupper()), None)
@@ -119,6 +129,7 @@ def snapshot_blobs(blob_dir: Path) -> set:
 # ---------------------------------------------------------------------------
 # Step 1: run inference
 # ---------------------------------------------------------------------------
+
 
 def run_inference(
     def_name: str,
@@ -158,12 +169,18 @@ def run_inference(
     }
 
     cmd = [
-        sys.executable, str(_BENCH_SCRIPT),
-        "--model", model_key,
-        "--model-path", model_path,
-        "--batch-sizes", str(batch_size),
-        "--num-batches", str(num_batches),
-        "--base-url", base_url,
+        sys.executable,
+        str(_BENCH_SCRIPT),
+        "--model",
+        model_key,
+        "--model-path",
+        model_path,
+        "--batch-sizes",
+        str(batch_size),
+        "--num-batches",
+        str(num_batches),
+        "--base-url",
+        base_url,
     ] + extra_server_flags
 
     if peer_node_addr:
@@ -191,19 +208,21 @@ def run_inference(
 # Step 2: sanitize
 # ---------------------------------------------------------------------------
 
+
 def run_sanitize(
-    dump_dir: Path,
-    def_name: str,
-    trace_dir: Path,
-    max_new_workloads: int,
-    replace: bool = False,
+    dump_dir: Path, def_name: str, trace_dir: Path, max_new_workloads: int, replace: bool = False
 ) -> None:
     cmd = [
-        sys.executable, str(_SANITIZE_SCRIPT),
-        "--dump-dir", str(dump_dir),
-        "--definitions", def_name,
-        "--flashinfer-trace-dir", str(trace_dir),
-        "--max-new-workloads", str(max_new_workloads),
+        sys.executable,
+        str(_SANITIZE_SCRIPT),
+        "--dump-dir",
+        str(dump_dir),
+        "--definitions",
+        def_name,
+        "--flashinfer-trace-dir",
+        str(trace_dir),
+        "--max-new-workloads",
+        str(max_new_workloads),
     ]
     if replace:
         cmd.append("--replace")
@@ -218,6 +237,7 @@ def run_sanitize(
 # Step 3: push to HF PR (append-only)
 # ---------------------------------------------------------------------------
 
+
 def push_to_pr(
     pr_num: int,
     def_name: str,
@@ -228,7 +248,7 @@ def push_to_pr(
     batch_size: int,
 ) -> None:
     """Upload updated JSONL + new blobs to the HF PR.  Never deletes existing files."""
-    from huggingface_hub import HfApi, CommitOperationAdd
+    from huggingface_hub import CommitOperationAdd, HfApi
 
     api = HfApi()
 
@@ -246,15 +266,12 @@ def push_to_pr(
     # Always re-upload the full JSONL (it's small) so the HF copy stays current.
     ops = [
         CommitOperationAdd(
-            path_in_repo=f"workloads/{op_type}/{def_name}.jsonl",
-            path_or_fileobj=str(jsonl_path),
+            path_in_repo=f"workloads/{op_type}/{def_name}.jsonl", path_or_fileobj=str(jsonl_path)
         )
     ]
     for blob_abs in sorted(new_blobs):
         blob_rel = Path(blob_abs).relative_to(trace_dir)
-        ops.append(
-            CommitOperationAdd(path_in_repo=str(blob_rel), path_or_fileobj=blob_abs)
-        )
+        ops.append(CommitOperationAdd(path_in_repo=str(blob_rel), path_or_fileobj=blob_abs))
 
     for i in range(0, len(ops), HF_BATCH_SIZE):
         batch = ops[i : i + HF_BATCH_SIZE]
@@ -263,8 +280,7 @@ def push_to_pr(
             repo_type=HF_REPO_TYPE,
             operations=batch,
             commit_message=(
-                f"Add {def_name} workloads (bs={batch_size}, "
-                f"part {i // HF_BATCH_SIZE + 1})"
+                f"Add {def_name} workloads (bs={batch_size}, " f"part {i // HF_BATCH_SIZE + 1})"
             ),
             revision=f"refs/pr/{pr_num}",
             num_threads=8,
@@ -276,14 +292,19 @@ def push_to_pr(
 # Step 5: eval
 # ---------------------------------------------------------------------------
 
+
 def run_eval(def_name: str, trace_dir: Path) -> bool:
     """Run flashinfer-bench baseline evaluation. Returns True if all PASSED."""
     log("Running flashinfer-bench baseline eval ...")
     cmd = [
-        "flashinfer-bench", "run",
-        "--local", str(trace_dir),
-        "--definitions", def_name,
-        "--solutions", "baseline",
+        "flashinfer-bench",
+        "run",
+        "--local",
+        str(trace_dir),
+        "--definitions",
+        def_name,
+        "--solutions",
+        "baseline",
     ]
     result = subprocess.run(cmd)
     if result.returncode != 0:
@@ -296,9 +317,10 @@ def run_eval(def_name: str, trace_dir: Path) -> bool:
 # Step 6: push trace
 # ---------------------------------------------------------------------------
 
+
 def push_trace(pr_num: int, def_name: str, op_type: str, trace_dir: Path) -> None:
     """Push the baseline trace JSONL to the HF PR."""
-    from huggingface_hub import HfApi, CommitOperationAdd
+    from huggingface_hub import CommitOperationAdd, HfApi
 
     api = HfApi()
 
@@ -316,8 +338,7 @@ def push_trace(pr_num: int, def_name: str, op_type: str, trace_dir: Path) -> Non
         repo_type=HF_REPO_TYPE,
         operations=[
             CommitOperationAdd(
-                path_in_repo=f"traces/{op_type}/{def_name}.jsonl",
-                path_or_fileobj=str(trace_path),
+                path_in_repo=f"traces/{op_type}/{def_name}.jsonl", path_or_fileobj=str(trace_path)
             )
         ],
         commit_message=f"Add {def_name} baseline traces",
@@ -331,49 +352,56 @@ def push_trace(pr_num: int, def_name: str, op_type: str, trace_dir: Path) -> Non
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "--def-name", required=True,
-        help="Definition name (e.g. gqa_paged_decode_h5_kv1_d128_ps64)",
+        "--def-name", required=True, help="Definition name (e.g. gqa_paged_decode_h5_kv1_d128_ps64)"
     )
     parser.add_argument(
-        "--model-key", required=True,
+        "--model-key",
+        required=True,
         help="Model key for bench_sharegpt.py (e.g. llama-4-scout-ps64)",
     )
+    parser.add_argument("--model-path", required=True, help="Path to model weights directory")
     parser.add_argument(
-        "--model-path", required=True,
-        help="Path to model weights directory",
-    )
-    parser.add_argument(
-        "--batch-sizes", type=int, nargs="+", required=True,
+        "--batch-sizes",
+        type=int,
+        nargs="+",
+        required=True,
         help="Batch sizes to collect (e.g. 64 128)",
     )
     parser.add_argument(
-        "--pr-num", type=int, required=True,
-        help="HuggingFace PR number to push workloads to",
+        "--pr-num", type=int, required=True, help="HuggingFace PR number to push workloads to"
     )
     parser.add_argument(
-        "--trace-dir", default="tmp/flashinfer-trace",
+        "--trace-dir",
+        default="tmp/flashinfer-trace",
         help="flashinfer-trace repo clone dir (default: tmp/flashinfer-trace)",
     )
     parser.add_argument(
-        "--dump-base-dir", default="/tmp/fi_stream_dump",
+        "--dump-base-dir",
+        default="/tmp/fi_stream_dump",
         help="Base dir for per-batch-size dump dirs (default: /tmp/fi_stream_dump)",
     )
     parser.add_argument(
-        "--dump-count", type=int, default=500,
+        "--dump-count",
+        type=int,
+        default=500,
         help="FLASHINFER_DUMP_MAX_COUNT per server session (default: 500)",
     )
     parser.add_argument(
-        "--workloads-per-batch", type=int, default=4,
+        "--workloads-per-batch",
+        type=int,
+        default=4,
         help="Max new workloads to select per batch size (default: 4)",
     )
     parser.add_argument(
-        "--num-batches", type=int, default=2,
+        "--num-batches",
+        type=int,
+        default=2,
         help=(
             "Inference rounds per batch size (default: 2). "
             "The dump budget is typically hit in round 1; "
@@ -381,31 +409,39 @@ def main():
         ),
     )
     parser.add_argument(
-        "--base-url", default="http://127.0.0.1:20000",
+        "--base-url",
+        default="http://127.0.0.1:20000",
         help="SGLang server base URL (default: http://127.0.0.1:20000)",
     )
     parser.add_argument(
-        "--peer-node-addr", nargs="+", default=None, metavar="HOST",
+        "--peer-node-addr",
+        nargs="+",
+        default=None,
+        metavar="HOST",
         help="Peer node hostname(s) for multi-node TP",
     )
     parser.add_argument(
-        "--dist-init-port", type=int, default=20010,
+        "--dist-init-port",
+        type=int,
+        default=20010,
         help="PyTorch distributed rendezvous port (default: 20010)",
     )
     parser.add_argument(
-        "--conda-env", default=None,
-        help="Conda environment name for peer-node SSH workers",
+        "--conda-env", default=None, help="Conda environment name for peer-node SSH workers"
     )
     parser.add_argument(
-        "--include-pattern", default=None,
+        "--include-pattern",
+        default=None,
         help=(
-            "Override FLASHINFER_DUMP_INCLUDE pattern. "
-            "Auto-derived from fi_api tag if omitted."
+            "Override FLASHINFER_DUMP_INCLUDE pattern. " "Auto-derived from fi_api tag if omitted."
         ),
     )
     parser.add_argument(
-        "--extra-server-flag", nargs="*", default=None,
-        dest="extra_server_flags", metavar="FLAG",
+        "--extra-server-flag",
+        nargs="*",
+        default=None,
+        dest="extra_server_flags",
+        metavar="FLAG",
         help=(
             "Extra flags forwarded verbatim to bench_sharegpt.py. "
             "Default: --disable-cuda-graph. "
@@ -413,22 +449,25 @@ def main():
         ),
     )
     parser.add_argument(
-        "--replace-first", action="store_true",
+        "--replace-first",
+        action="store_true",
         help="Replace (not append) existing workloads when processing the first batch size",
     )
     parser.add_argument(
-        "--no-eval", action="store_true",
+        "--no-eval",
+        action="store_true",
         help="Skip flashinfer-bench eval and trace upload (steps 5-6)",
     )
     parser.add_argument(
-        "--no-push", action="store_true",
-        help="Dry-run: collect and sanitize but do not push to HF",
+        "--no-push", action="store_true", help="Dry-run: collect and sanitize but do not push to HF"
     )
     args = parser.parse_args()
 
     trace_dir = Path(args.trace_dir).expanduser().resolve()
     dump_base_dir = Path(args.dump_base_dir)
-    extra_server_flags = args.extra_server_flags if args.extra_server_flags is not None else ["--disable-cuda-graph"]
+    extra_server_flags = (
+        args.extra_server_flags if args.extra_server_flags is not None else ["--disable-cuda-graph"]
+    )
 
     # Load definition to derive op_type and include pattern
     defn = get_definition(trace_dir, args.def_name)
@@ -498,7 +537,9 @@ def main():
         # --- Step 3: push ---
         if not args.no_push:
             log("Step 3: push to HF PR")
-            push_to_pr(args.pr_num, args.def_name, op_type, trace_dir, blob_dir, old_blobs, batch_size)
+            push_to_pr(
+                args.pr_num, args.def_name, op_type, trace_dir, blob_dir, old_blobs, batch_size
+            )
         else:
             log("Step 3: skipped (--no-push)")
 
