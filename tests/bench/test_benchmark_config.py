@@ -122,5 +122,37 @@ def test_definition_config_beats_op_type_config():
     assert resolved.rtol == 0.1
 
 
+def test_sampling_extra_cli_override_beats_yaml():
+    """Top-level sampling_* fields (deprecated CLI overrides) win over YAML layer.extra,
+    matching the precedence of the other eval fields."""
+    cfg = BenchmarkConfig(
+        sampling_validation_trials=1,
+        op_type_config={"sampling": EvalConfig(extra={"sampling_validation_trials": 100})},
+    )
+    definition = SimpleNamespace(op_type="sampling", name="sampling_def")
+    resolved = cfg.resolve_eval_config(definition)
+    assert resolved.extra["sampling_validation_trials"] == 1
+
+
+def test_sampling_extra_yaml_applies_without_cli_override():
+    """YAML layer.extra still applies when no top-level override is supplied."""
+    cfg = BenchmarkConfig(
+        op_type_config={"sampling": EvalConfig(extra={"sampling_validation_trials": 50})}
+    )
+    definition = SimpleNamespace(op_type="sampling", name="sampling_def")
+    resolved = cfg.resolve_eval_config(definition)
+    assert resolved.extra["sampling_validation_trials"] == 50
+
+
+def test_sampling_extra_empty_when_nothing_set():
+    """When neither CLI nor YAML sets sampling_*, resolved.extra is empty so the
+    evaluator falls back to its own class-level defaults (100 / 0.2)."""
+    cfg = BenchmarkConfig()
+    definition = SimpleNamespace(op_type="sampling", name="sampling_def")
+    resolved = cfg.resolve_eval_config(definition)
+    assert "sampling_validation_trials" not in resolved.extra
+    assert "sampling_tvd_threshold" not in resolved.extra
+
+
 if __name__ == "__main__":
     pytest.main(sys.argv)
