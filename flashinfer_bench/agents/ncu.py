@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from flashinfer_bench.data import Solution, TraceSet, Workload
+from flashinfer_bench.utils import run_managed_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,16 @@ def _build_ncu_command(
         "--nvtx",
         "--nvtx-include",
         "flashinfer_bench_ncu_profile]",
+        # Use application replay instead of the default kernel replay. Kernel replay
+        # snapshots device memory between metric-collection passes and runs an injected
+        # memcmp kernel to validate the snapshot; inside the serve process that memcmp
+        # kernel fails with CUDA error 700 ("Failed to optimize backing store") and
+        # every metric comes back nan. Application replay re-runs _solution_runner
+        # once per pass -- the compiled .so is cached on disk after the first pass, so
+        # subsequent passes only pay the launch cost. This matches the pre-e1dc58f
+        # timing.py invocation that was removed by 4f55ef2.
+        "--replay-mode",
+        "application",
     ]
 
     # Add extra sections
@@ -283,10 +294,17 @@ def flashinfer_bench_run_ncu(
         if tmpdir:
             env["TMPDIR"] = tmpdir
 
-        # Run NCU
+        # Run NCU via run_managed_subprocess:
+        #  * start_new_session is required (done inside the helper): without it,
+        #    NCU's replay mechanism fails with CUDA error 700 ("Failed to
+        #    optimize backing store") when launched as a child of the serve
+        #    FastAPI process -- NCU's CUPTI attaches get confused by sibling
+        #    CUDA subprocesses in the same group.
+        #  * the helper also kills the whole process group on timeout/shutdown,
+        #    so the _solution_runner grandchild cannot leak as an orphan.
         logger.info("FlashInfer Bench Run NCU: Running Command: %s", " ".join(cmd))
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+            result = run_managed_subprocess(cmd, timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
             return f"ERROR: NCU profiling timed out after {timeout} seconds."
 

@@ -16,9 +16,15 @@ from flashinfer_bench.bench.evaluators.utils import allocate_outputs
 from flashinfer_bench.bench.utils import gen_inputs, load_safetensors
 from flashinfer_bench.compile import BuilderRegistry
 from flashinfer_bench.data import Definition, Solution, Workload
+from flashinfer_bench.utils import set_parent_death_signal
 
 
 def main():
+    # Reap this runner if compute-sanitizer / ncu (our direct parent) dies.
+    # Without this, a timed-out compute-sanitizer leaves this process as an
+    # orphan still holding the GPU.
+    set_parent_death_signal()
+
     parser = argparse.ArgumentParser(description="Run solution for profiling")
     parser.add_argument("--data-dir", required=True, help="Path to data directory")
     parser.add_argument("--device", default="cuda:0", help="CUDA device to run on")

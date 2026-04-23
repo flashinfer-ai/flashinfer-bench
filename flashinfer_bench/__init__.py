@@ -40,6 +40,33 @@ except Exception:
     __version__ = "0.0.0.dev0"
     __version_tuple__ = (0, 0, 0, "dev0")
 
+
+def _get_git_info() -> tuple:
+    """Return (commit_hash, remote_url) from git."""
+    import subprocess
+
+    def _run(*args):
+        return (
+            subprocess.check_output(args, stderr=subprocess.DEVNULL, cwd=__path__[0])
+            .decode()
+            .strip()
+        )
+
+    commit = _run("git", "rev-parse", "HEAD")
+    try:
+        tracking = _run("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+        remote_name = tracking.split("/")[0]
+    except Exception:
+        remote_name = "origin"
+    upstream = _run("git", "remote", "get-url", remote_name)
+    return commit, upstream
+
+
+try:
+    __commit__, __upstream__ = _get_git_info()
+except Exception:
+    __commit__, __upstream__ = None, None
+
 __all__ = [
     # Benchmark
     "Benchmark",
@@ -80,4 +107,7 @@ __all__ = [
     # FFI Prompts
     "FFI_PROMPT_SIMPLE",
     "FFI_PROMPT",
+    # Build info
+    "__commit__",
+    "__upstream__",
 ]

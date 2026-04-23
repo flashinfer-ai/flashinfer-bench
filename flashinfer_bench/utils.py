@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import ctypes
+import logging
 import os
 import platform
+import signal
+import subprocess
 import sys
 import tempfile
+import threading
+import weakref
 from functools import cache
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     import torch
 
     from flashinfer_bench.data import Environment
+
+_logger = logging.getLogger(__name__)
 
 
 @cache
@@ -166,15 +174,146 @@ def hardware_from_device(device: str) -> str:
     return d.type
 
 
-def redirect_stdio_to_tempfile() -> str:
+# ── Subprocess lifecycle helpers ──
+#
+# These helpers ensure that external subprocesses (compute-sanitizer, ncu, ...)
+# and their descendants (_solution_runner) don't leak GPU memory when the
+# outer process is killed or when the subprocess times out. subprocess.run's
+# default timeout behaviour only SIGKILLs the immediate child; for tools that
+# re-exec a Python runner, that leaves the runner as an orphan holding the
+# GPU. We wrap every such call in a new session so the whole process group
+# can be reaped with killpg, and track active Popens so graceful server
+# shutdown can interrupt worker threads blocked in communicate().
+
+
+_active_procs: "weakref.WeakSet[subprocess.Popen]" = weakref.WeakSet()
+_active_procs_lock = threading.Lock()
+
+
+def set_parent_death_signal(sig: int = signal.SIGKILL) -> None:
+    """Install PR_SET_PDEATHSIG so the calling process receives ``sig`` when its
+    immediate parent dies. Linux-only; no-op on other platforms or if prctl is
+    unavailable.
+
+    Call this from long-running worker scripts launched as grandchildren of a
+    managed parent (e.g. ``_solution_runner`` under compute-sanitizer/ncu) so
+    they are reaped automatically if the parent is SIGKILLed.
+    """
+    if sys.platform != "linux":
+        return
+    PR_SET_PDEATHSIG = 1
+    try:
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        if libc.prctl(PR_SET_PDEATHSIG, sig, 0, 0, 0) != 0:
+            _logger.warning("prctl(PR_SET_PDEATHSIG) failed: errno=%d", ctypes.get_errno())
+    except OSError as e:
+        _logger.warning("Failed to set parent death signal: %s", e)
+
+
+def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
+    """Best-effort SIGKILL of the subprocess's whole process group."""
+    if proc.poll() is not None:
+        return
+    try:
+        pgid = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        return
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError) as e:
+        _logger.debug("killpg(%d, %d) failed: %s", pgid, sig, e)
+
+
+def kill_all_tracked_subprocesses() -> int:
+    """Kill the process group of every subprocess currently tracked by
+    :func:`run_managed_subprocess`.
+
+    Returns the number of groups signaled. Safe to call multiple times; safe
+    to call from a signal handler or during interpreter shutdown.
+    """
+    with _active_procs_lock:
+        procs = list(_active_procs)
+    for proc in procs:
+        _kill_process_group(proc)
+    return len(procs)
+
+
+def run_managed_subprocess(
+    cmd: List[str], *, timeout: float, env: Optional[Dict[str, str]] = None
+) -> subprocess.CompletedProcess:
+    """Run a subprocess that owns a fresh session/process group, guaranteeing
+    that descendants (e.g. ``_solution_runner`` under compute-sanitizer) are
+    reaped on timeout, exception, or server shutdown.
+
+    Semantics mirror ``subprocess.run(cmd, capture_output=True, text=True,
+    env=env, timeout=timeout, start_new_session=True)`` with these additions:
+
+      * on ``TimeoutExpired``, the whole process group is SIGKILLed before
+        raising, so grandchildren don't leak
+      * the child installs ``PR_SET_PDEATHSIG(SIGKILL)`` via ``preexec_fn`` so
+        the direct child (compute-sanitizer / ncu) is reaped automatically if
+        the current process is killed before graceful shutdown runs
+      * while running, the Popen is registered in a module-level weakset so
+        :func:`kill_all_tracked_subprocesses` (called from the server's
+        graceful shutdown path) can reach it
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+        preexec_fn=set_parent_death_signal if sys.platform == "linux" else None,
+    )
+    with _active_procs_lock:
+        _active_procs.add(proc)
+    try:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _kill_process_group(proc)
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = "", ""
+            # typeshed types TimeoutExpired.std{out,err} as bytes; in text mode
+            # CPython stores the captured str exactly like CompletedProcess.
+            exc.stdout = stdout  # type: ignore[assignment]
+            exc.stderr = stderr  # type: ignore[assignment]
+            raise
+        except BaseException:
+            _kill_process_group(proc)
+            raise
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=proc.returncode, stdout=stdout, stderr=stderr
+        )
+    finally:
+        with _active_procs_lock:
+            _active_procs.discard(proc)
+        if proc.poll() is None:
+            _kill_process_group(proc)
+
+
+def redirect_stdio_to_tempfile(path: str | None = None) -> str:
     """Redirect stdout/stderr to a temporary file.
+
+    Parameters
+    ----------
+    path : str or None
+        If provided, use this path for the log file instead of creating a new
+        temporary file. This allows a parent process to pre-allocate the path
+        so it can read the log even if the child process crashes.
 
     Returns the path to the temporary file.
     """
 
     sys.stdout.flush()
     sys.stderr.flush()
-    fd, path = tempfile.mkstemp(suffix=".log", prefix="fib_")
+    if path is not None:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    else:
+        fd, path = tempfile.mkstemp(suffix=".log", prefix="fib_")
     os.dup2(fd, 1)  # stdout -> fd
     os.dup2(fd, 2)  # stderr -> fd
     os.close(fd)

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
-from flashinfer_bench import __version__
+from flashinfer_bench import __commit__, __upstream__, __version__
 from flashinfer_bench.data import Solution
 from flashinfer_bench.serve.scheduler import Scheduler
 
@@ -38,12 +38,21 @@ class EvaluateResponse(BaseModel):
     normalized_solution_name: str
 
 
+class RunResult(BaseModel):
+    definition: str
+    workload: Dict[str, Any]
+    solution: str
+    log: str
+
+
 class TaskResponse(BaseModel):
     task_id: str
+    kind: str
     status: str
     definition: str
     solution: str
     traces: Optional[List[Dict[str, Any]]] = None
+    logs: Optional[List[RunResult]] = None
     error: Optional[str] = None
 
 
@@ -66,6 +75,30 @@ class HealthResponse(BaseModel):
     status: str
     workers: List[WorkerInfo]
     queue_size: int
+
+
+class ProfileRequest(BaseModel):
+    solution: Solution
+    workload_uuids: Optional[List[str]] = None
+    # NCU configuration (mirrors flashinfer_bench_run_ncu)
+    set: str = "detailed"
+    sections: Optional[List[str]] = None
+    kernel_name: Optional[str] = None
+    page: str = "details"
+    ncu_path: str = "ncu"
+    timeout: int = 60
+    max_lines: Optional[int] = None
+
+
+class SanitizeRequest(BaseModel):
+    solution: Solution
+    workload_uuids: Optional[List[str]] = None
+    # Sanitizer configuration (mirrors flashinfer_bench_run_sanitizer)
+    sanitizer_types: Optional[List[str]] = None
+    sanitizer_path: str = "compute-sanitizer"
+    timeout: int = 120
+    max_lines: Optional[int] = None
+    print_limit: Optional[int] = None
 
 
 # ── App & routes ──
@@ -94,6 +127,8 @@ async def root():
     return {
         "name": "FlashInfer-Bench Server",
         "version": __version__,
+        "commit": __commit__,
+        "upstream": __upstream__,
         "docs": "/docs",
         "endpoints": [
             {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
@@ -114,7 +149,17 @@ async def root():
             {
                 "method": "POST",
                 "path": "/evaluate",
-                "description": "Submit a solution for evaluation",
+                "description": "Submit a solution for evaluation (returns task_id; poll /tasks/{task_id})",
+            },
+            {
+                "method": "POST",
+                "path": "/profile",
+                "description": "Submit a solution for NCU profiling (returns task_id; poll /tasks/{task_id})",
+            },
+            {
+                "method": "POST",
+                "path": "/sanitize",
+                "description": "Submit a solution for compute-sanitizer checks (returns task_id; poll /tasks/{task_id})",
             },
             {
                 "method": "GET",
@@ -169,7 +214,45 @@ async def evaluate(req: EvaluateRequest):
     if req.solution.definition not in sched.trace_set.definitions:
         raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
     renamed = req.solution.with_unique_name()
-    task_id = sched.submit(renamed, req.workload_uuids)
+    task_id = sched.submit_evaluate(renamed, req.workload_uuids)
+    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
+
+
+@app.post("/profile", response_model=EvaluateResponse)
+async def profile(req: ProfileRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+    renamed = req.solution.with_unique_name()
+    task_id = sched.submit_profile(
+        renamed,
+        req.workload_uuids,
+        ncu_set=req.set,
+        ncu_sections=req.sections,
+        ncu_kernel_name=req.kernel_name,
+        ncu_page=req.page,
+        ncu_path=req.ncu_path,
+        ncu_timeout=req.timeout,
+        ncu_max_lines=req.max_lines,
+    )
+    return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
+
+
+@app.post("/sanitize", response_model=EvaluateResponse)
+async def sanitize(req: SanitizeRequest):
+    sched = _get_scheduler()
+    if req.solution.definition not in sched.trace_set.definitions:
+        raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
+    renamed = req.solution.with_unique_name()
+    task_id = sched.submit_sanitize(
+        renamed,
+        req.workload_uuids,
+        sanitizer_types=req.sanitizer_types,
+        sanitizer_path=req.sanitizer_path,
+        sanitizer_timeout=req.timeout,
+        sanitizer_max_lines=req.max_lines,
+        sanitizer_print_limit=req.print_limit,
+    )
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 
@@ -187,13 +270,25 @@ async def batch_get_tasks(req: BatchRequest):
     for tid in req.task_ids:
         task = sched.task_store.get_task(tid)
         traces_data = [t.model_dump(mode="json") for t in task.traces] if task.traces else None
+        logs_data = (
+            [
+                RunResult(
+                    definition=lg.definition, workload=lg.workload, solution=lg.solution, log=lg.log
+                )
+                for lg in task.logs
+            ]
+            if task.logs
+            else None
+        )
         results.append(
             TaskResponse(
                 task_id=task.id,
+                kind=task.kind.value,
                 status=task.status,
                 definition=task.definition_name,
                 solution=task.solution.name,
                 traces=traces_data,
+                logs=logs_data,
                 error=task.error,
             )
         )

@@ -3,6 +3,8 @@
 All tests run on real GPU with a real Scheduler and PersistentSubprocessWorker.
 """
 
+import shutil
+
 import pytest
 import torch
 
@@ -68,6 +70,8 @@ async def test_compile_error(client):
     result = await submit_and_wait(client, sol)
 
     assert result["status"] == "completed"
+    assert result["kind"] == "evaluate"
+    assert result.get("logs") is None
     assert len(result["traces"]) > 0
     assert result["traces"][0]["evaluation"]["status"] == "COMPILE_ERROR"
 
@@ -389,3 +393,66 @@ async def test_workload_not_found(client):
     """8.5b GET /workloads/nonexistent -> 404."""
     resp = await client.get("/workloads/nonexistent")
     assert resp.status_code == 404
+
+
+# ── 9. Profile / Sanitize Task APIs ──
+
+
+@pytest.mark.skipif(shutil.which("ncu") is None, reason="ncu not available")
+async def test_profile_task_lifecycle(client):
+    """9.1 POST /profile returns task_id; /tasks/{id} returns kind=profile + logs."""
+    sol = solution_correct(DEFINITION)
+    resp = await client.post("/profile", json={"solution": sol.model_dump(mode="json")})
+    assert resp.status_code == 200, resp.text
+    task_id = resp.json()["task_id"]
+
+    resp = await client.get(f"/tasks/{task_id}", params={"timeout": 120})
+    assert resp.status_code == 200
+    result = resp.json()
+
+    assert result["status"] == "completed"
+    assert result["kind"] == "profile"
+    assert result.get("traces") is None or result["traces"] == []
+    assert result["logs"] is not None and len(result["logs"]) > 0
+    entry = result["logs"][0]
+    assert entry["definition"] == DEFINITION
+    assert "log" in entry
+
+
+@pytest.mark.skipif(
+    shutil.which("compute-sanitizer") is None, reason="compute-sanitizer not available"
+)
+async def test_sanitize_task_lifecycle(client):
+    """9.2 POST /sanitize returns task_id; /tasks/{id} returns kind=sanitize + logs."""
+    sol = solution_correct(DEFINITION)
+    resp = await client.post("/sanitize", json={"solution": sol.model_dump(mode="json")})
+    assert resp.status_code == 200, resp.text
+    task_id = resp.json()["task_id"]
+
+    resp = await client.get(f"/tasks/{task_id}", params={"timeout": 300})
+    assert resp.status_code == 200
+    result = resp.json()
+
+    assert result["status"] == "completed"
+    assert result["kind"] == "sanitize"
+    assert result.get("traces") is None or result["traces"] == []
+    assert result["logs"] is not None and len(result["logs"]) > 0
+    entry = result["logs"][0]
+    assert entry["definition"] == DEFINITION
+    assert "log" in entry
+
+
+async def test_profile_invalid_definition(client):
+    """9.3 /profile with unknown definition -> 400."""
+    sol = solution_correct("nonexistent_definition")
+    resp = await client.post("/profile", json={"solution": sol.model_dump(mode="json")})
+    assert resp.status_code == 400
+    assert "Definition not found" in resp.json()["detail"]
+
+
+async def test_sanitize_invalid_definition(client):
+    """9.4 /sanitize with unknown definition -> 400."""
+    sol = solution_correct("nonexistent_definition")
+    resp = await client.post("/sanitize", json={"solution": sol.model_dump(mode="json")})
+    assert resp.status_code == 400
+    assert "Definition not found" in resp.json()["detail"]
