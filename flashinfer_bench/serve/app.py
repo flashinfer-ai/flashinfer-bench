@@ -96,7 +96,7 @@ class SanitizeRequest(BaseModel):
     # Sanitizer configuration (mirrors flashinfer_bench_run_sanitizer)
     sanitizer_types: Optional[List[str]] = None
     sanitizer_path: str = "compute-sanitizer"
-    timeout: int = 300
+    timeout: int = 120
     max_lines: Optional[int] = None
     print_limit: Optional[int] = None
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Literal, Optional, Union
 
 from flashinfer_bench.data import Solution, TraceSet, Workload
+from flashinfer_bench.utils import run_managed_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ def flashinfer_bench_run_sanitizer(
     sanitizer_types: Optional[List[SanitizerType]] = None,
     sanitizer_path: str = "compute-sanitizer",
     # Execution control
-    timeout: int = 300,
+    timeout: int = 120,
     tmpdir: Optional[str] = None,
     max_lines: Optional[int] = None,
     print_limit: Optional[int] = None,
@@ -96,7 +97,7 @@ def flashinfer_bench_run_sanitizer(
     sanitizer_path : str, optional
         Path to the compute-sanitizer executable. Default is "compute-sanitizer".
     timeout : int, optional
-        Timeout in seconds for each sanitizer check. Default is 300.
+        Timeout in seconds for each sanitizer check. Default is 120.
     tmpdir : str, optional
         Temporary directory. If not provided, uses system default.
     max_lines : int, optional
@@ -180,9 +181,11 @@ def flashinfer_bench_run_sanitizer(
             logger.info("FlashInfer Bench Run Sanitizer: Running Command: %s", " ".join(cmd))
 
             try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, env=env, timeout=timeout
-                )
+                # run_managed_subprocess: runs in a fresh session so the
+                # grandchild _solution_runner can be reaped via killpg on
+                # timeout or serve shutdown -- subprocess.run would only
+                # SIGKILL compute-sanitizer, leaving the runner holding the GPU.
+                result = run_managed_subprocess(cmd, timeout=timeout, env=env)
 
                 output += f"STDOUT:\n{result.stdout}\n\n"
 

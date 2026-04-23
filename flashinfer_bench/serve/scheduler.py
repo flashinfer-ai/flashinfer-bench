@@ -12,6 +12,7 @@ from flashinfer_bench.bench.runner.persistent_runner import PersistentSubprocess
 from flashinfer_bench.bench.runner.runner import BaselineHandle
 from flashinfer_bench.data import Definition, EvaluationStatus, Solution, Trace, TraceSet, Workload
 from flashinfer_bench.serve.task_store import RunLog, Task, TaskKind, TaskStore
+from flashinfer_bench.utils import kill_all_tracked_subprocesses
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class Scheduler:
         *,
         sanitizer_types: Optional[List[str]] = None,
         sanitizer_path: str = "compute-sanitizer",
-        sanitizer_timeout: int = 300,
+        sanitizer_timeout: int = 120,
         sanitizer_max_lines: Optional[int] = None,
         sanitizer_print_limit: Optional[int] = None,
     ) -> str:
@@ -121,6 +122,15 @@ class Scheduler:
 
     def shutdown(self) -> None:
         self._shutdown.set()
+        # Worker threads may be blocked in subprocess.run for compute-sanitizer
+        # or ncu; killing the tracked process groups unblocks communicate() so
+        # the threads can observe _shutdown and exit promptly. Without this,
+        # each such thread would sit in the join timeout and the subprocess
+        # (plus its _solution_runner grandchild) would keep running on the GPU
+        # after the serve process exits.
+        killed = kill_all_tracked_subprocesses()
+        if killed:
+            logger.info("Terminated %d in-flight managed subprocess group(s) on shutdown", killed)
         for worker in self._workers:
             worker.join(timeout=10)
         for worker in self._workers:

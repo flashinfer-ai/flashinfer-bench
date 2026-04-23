@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from flashinfer_bench.data import Solution, TraceSet, Workload
+from flashinfer_bench.utils import run_managed_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -293,22 +294,17 @@ def flashinfer_bench_run_ncu(
         if tmpdir:
             env["TMPDIR"] = tmpdir
 
-        # Run NCU
-        # start_new_session=True isolates NCU into its own process group/session. Without
-        # it, the replay mechanism deterministically fails with CUDA error 700
-        # ("Failed to optimize backing store") when NCU is launched as a child of the
-        # serve FastAPI process -- presumably because NCU's CUPTI attaches inspect the
-        # parent process group's state and get confused by sibling CUDA subprocesses.
+        # Run NCU via run_managed_subprocess:
+        #  * start_new_session is required (done inside the helper): without it,
+        #    NCU's replay mechanism fails with CUDA error 700 ("Failed to
+        #    optimize backing store") when launched as a child of the serve
+        #    FastAPI process -- NCU's CUPTI attaches get confused by sibling
+        #    CUDA subprocesses in the same group.
+        #  * the helper also kills the whole process group on timeout/shutdown,
+        #    so the _solution_runner grandchild cannot leak as an orphan.
         logger.info("FlashInfer Bench Run NCU: Running Command: %s", " ".join(cmd))
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=timeout,
-                start_new_session=True,
-            )
+            result = run_managed_subprocess(cmd, timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
             return f"ERROR: NCU profiling timed out after {timeout} seconds."
 

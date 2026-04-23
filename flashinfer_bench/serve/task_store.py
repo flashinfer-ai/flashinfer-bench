@@ -61,7 +61,7 @@ class Task:
     # Sanitizer configuration
     sanitizer_types: Optional[List[str]] = None
     sanitizer_path: str = "compute-sanitizer"
-    sanitizer_timeout: int = 300
+    sanitizer_timeout: int = 120
     sanitizer_max_lines: Optional[int] = None
     sanitizer_print_limit: Optional[int] = None
 
