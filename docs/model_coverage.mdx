@@ -32,6 +32,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
+| Kimi K2.6 | MLA + MoE | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
 | Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
@@ -494,6 +495,30 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
 **Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+
+---
+
+## Kimi K2.6
+
+**Architecture**: 61 decoder layers, MLA attention (DeepSeek V3 style), sparse MoE FFN (384 total experts, top-8 routing, n_group=1). Multimodal variant of Kimi K2 with an added vision processor on the same text backbone (hidden=7168, 64 attention heads, vocab=163840). Standard serving configuration: **TP=8** (64/8=8 query heads per device).
+
+Kimi K2.6 reuses all Kimi K2 text-backbone kernels — the MLA, MoE, and RMSNorm dimensions are identical. Only the vocabulary size differs (163840 vs 160000), so sampling definitions are distinct.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h7168` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
+| `rmsnorm_h1536` | rmsnorm | ✅ |
+| `rmsnorm_h512` | rmsnorm | ✅ |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | — |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | — |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | — |
+| `top_k_sampling_from_probs_v163840` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v163840` | sampling | ❌ |
+| `top_p_sampling_from_probs_v163840` | sampling | ❌ |
+
+**Coverage**: 1 / 11 text-backbone definitions tagged for Kimi K2.6 so far. This PR onboards `mla_paged_decode_h8_ckv512_kpe64_ps1` (decode MLA with page_size=1, h=8 at TP=8), reusing the existing Kimi K2 definition and adding the `model:kimi-k2.6` tag. Remaining Kimi K2 kernels (listed with — status) are identical and will be re-tagged in follow-up PRs. Sampling kernels with vocab=163840 are new and will require fresh definitions.
 
 ---
 
