@@ -32,6 +32,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
+| Kimi K2.6 | MLA + MoE | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
 | Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
@@ -483,7 +484,7 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `rmsnorm_h512` | rmsnorm | ✅ |
 | `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
 | `mla_paged_prefill_causal_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
-| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ✅ |
 | `mla_paged_decode_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
 | `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
 | `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
@@ -757,5 +758,29 @@ Note: `hidden_size=5376` is non-standard; head_dim is explicitly 128 (not 5376/3
 | Sampling | sampling | ❌ |
 
 **Coverage**: 0 / ? definitions present. The primary blocker is the Mamba2 SSM op type — a selective state-space operation not yet defined in FlashInfer-Bench. This is analogous to MiniMax-Text-01's Lightning Attention blocker. To add support, a new `mamba_ssu` op type schema would first need to be defined. Once that exists, the GQA attention layers could reuse existing definitions if dimensions match.
+
+---
+
+## Kimi K2.6
+
+**Architecture**: 61 decoder layers, MLA attention, hybrid Dense+MoE FFN. Uses DeepSeek V3-style MLA with `kv_lora_rank=512`, `qk_rope_head_dim=64`, and 64 attention heads (same per-layer structure as Kimi K2). Vocabulary is 163840 (vs 160000 in Kimi K2). Weights are distributed as compressed-tensors INT4 (W4A16) in the reference snapshot; the MLA kernels still operate on bfloat16 Q/KV. Standard serving configuration: **TP=8** (from the `moonshotai/Kimi-K2.6` model card).
+
+Because the MLA per-layer dimensions are identical to Kimi K2, the same `mla_paged_*_h8_ckv512_kpe64_ps1` definitions apply. MLA ragged prefill and MoE definitions are also shared with Kimi K2.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h7168` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
+| `rmsnorm_h1536` | rmsnorm | ✅ |
+| `rmsnorm_h512` | rmsnorm | ✅ |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | ✅ |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
+| `top_k_sampling_from_probs_v163840` | sampling | ❌ |
+| `top_k_top_p_sampling_from_probs_v163840` | sampling | ❌ |
+| `top_p_sampling_from_probs_v163840` | sampling | ❌ |
+
+**Coverage**: 7 / 10 definitions present. The MLA decode h=8 ps=1 definition was verified end-to-end against `moonshotai/Kimi-K2.6` at TP=8 (compressed-tensors quantization) — workloads and baseline eval PASSED on B200. Remaining gaps: vocab-163840 sampling definitions are new to K2.6 (K2 uses v=160000) and need to be authored separately.
 
 ---
