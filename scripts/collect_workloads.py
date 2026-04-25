@@ -656,6 +656,14 @@ def run_sglang_mode(
     # Keep a generous cap so high-concurrency runs do not truncate dumps.
     env["FLASHINFER_DUMP_MAX_COUNT"] = "50000"
     env["FLASHINFER_DUMP_MAX_SIZE_GB"] = "30"
+    # NOTE: we deliberately do NOT default FLASHINFER_DUMP_PER_SHAPE_LIMIT
+    # here. That cap's per-shape counter lives in each TP worker process,
+    # so the disk purge that runs after server-ready (warmup→inference
+    # boundary) doesn't reset it. If warmup happened to exercise a shape
+    # that real inference also exercises, the counter would already be
+    # saturated and real inference dumps would be silently dropped. Users
+    # who want per-shape capping in long real-workload-only runs (no
+    # warmup interference) can set the env var themselves before invoking.
     # Use pre-compiled CUDA norm kernels — CuTe DSL norm requires CUDA toolkit 13.1+
     env["FLASHINFER_USE_CUDA_NORM"] = "1"
     env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
@@ -748,7 +756,12 @@ def run_sglang_mode(
             str(tp),
             "--attention-backend",
             "flashinfer",
-            "--disable-cuda-graph",
+            # NOTE: cuda graphs are intentionally enabled. Level-10 dumps
+            # work under graph capture/replay because flashinfer auto-
+            # patches torch.cuda.CUDAGraph.replay (in every process that
+            # imports flashinfer with FLASHINFER_LOGLEVEL>=10) to call
+            # flush_graph_dumps() after each replay. Without graphs,
+            # collection takes 20-50× longer in eager mode.
             "--log-level",
             "info",
             "--page-size",
@@ -817,6 +830,36 @@ def run_sglang_mode(
                 # the child target the right endpoint without re-parsing args.
                 client_env = env.copy()
                 client_env["SGLANG_PORT"] = str(_server_port)
+
+                # Wipe everything that was dumped during sglang startup before
+                # handing off to the external driver. /health=200 is reached
+                # only after DeepGEMM warmup + memory profile + autotuner
+                # passes have all run; those passes issue forward passes at
+                # max-running-requests bucket sizes that aren't representative
+                # of the external workload. Without this purge, warmup dumps
+                # consume the full FLASHINFER_DUMP_MAX_COUNT budget and crowd
+                # out the (small) real-inference dumps the external driver
+                # would produce.
+                import shutil as _shutil
+
+                _purged = 0
+                _kept = 0
+                for child in list(dump_dir.iterdir()):
+                    name = child.name
+                    if name == "sglang_server.log":
+                        _kept += 1
+                        continue
+                    if child.is_dir():
+                        _shutil.rmtree(child, ignore_errors=True)
+                        _purged += 1
+                    else:
+                        try:
+                            child.unlink()
+                            _purged += 1
+                        except OSError:
+                            pass
+                print(f"  Purged {_purged} pre-driver (warmup) dump entries.")
+
                 print(
                     f"  External driver: {external_driver_cmd!r} "
                     f"(timeout={external_driver_timeout}s, port={_server_port})"
