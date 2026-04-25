@@ -616,8 +616,18 @@ def run_sglang_mode(
     skip_const_axis_check: bool = False,
     mem_fraction_static: float | None = None,
     extra_sglang_args: list[str] | None = None,
+    external_driver_cmd: str | None = None,
+    external_driver_timeout: int = 7200,
 ) -> None:
-    """Run SGLang inference with FlashInfer logging to collect workloads."""
+    """Run SGLang inference with FlashInfer logging to collect workloads.
+
+    When ``external_driver_cmd`` is set, the function launches the SGLang HTTP
+    server (paged-decode-only collections still use the offline path), waits
+    for /health, then runs the user-provided command instead of the internal
+    ShareGPT-style driver. Use this to source workload shapes from a real
+    external benchmark client (e.g. InferenceX's benchmark_serving.py).
+    The server port is exported to the child via ``SGLANG_PORT``.
+    """
     include_pattern = _build_fi_include_pattern(def_files)
     if not include_pattern:
         include_pattern = "*"
@@ -679,6 +689,17 @@ def run_sglang_mode(
     # from responding.
     use_offline = not force_prefill_server and not force_ragged_prefill
     use_offline_paged_prefill = force_paged_prefill and cpu_offload_gb > 0
+    # An external driver always speaks HTTP (it can't drive the offline Engine
+    # programmatically), so force the HTTP server path even for decode-only
+    # collections that would otherwise prefer the offline Engine.
+    if external_driver_cmd:
+        if use_offline or use_offline_paged_prefill:
+            print(
+                "  --external-driver-cmd set: forcing HTTP server path "
+                "(decode-only offline Engine cannot service external requests)."
+            )
+        use_offline = False
+        use_offline_paged_prefill = False
     if use_offline:
         print(
             f"  Using SGLang offline Engine (decode-only, batch-controlled) — model={model_path}, {desc}"
@@ -788,12 +809,33 @@ def run_sglang_mode(
             raise RuntimeError("SGLang server did not become ready within 30 minutes")
 
         try:
-            _run_sglang_inference(
-                num_samples,
-                dataset_path,
-                paged_prefill=force_paged_prefill,
-                max_tokens_override=1 if force_ragged_prefill else None,
-            )
+            if external_driver_cmd:
+                # Run the user-provided driver (e.g. InferenceX benchmark_serving.py)
+                # against the live server instead of the internal ShareGPT loop.
+                # The driver is responsible for issuing requests in whatever
+                # shape distribution the user wants captured. SGLANG_PORT lets
+                # the child target the right endpoint without re-parsing args.
+                client_env = env.copy()
+                client_env["SGLANG_PORT"] = str(_server_port)
+                print(
+                    f"  External driver: {external_driver_cmd!r} "
+                    f"(timeout={external_driver_timeout}s, port={_server_port})"
+                )
+                rc = subprocess.run(
+                    external_driver_cmd, shell=True, env=client_env, timeout=external_driver_timeout
+                ).returncode
+                if rc != 0:
+                    print(
+                        f"  External driver exited with rc={rc}; proceeding to "
+                        "sanitize whatever dumps were already written."
+                    )
+            else:
+                _run_sglang_inference(
+                    num_samples,
+                    dataset_path,
+                    paged_prefill=force_paged_prefill,
+                    max_tokens_override=1 if force_ragged_prefill else None,
+                )
         finally:
             server_proc.terminate()
             server_proc.wait()
@@ -1338,6 +1380,25 @@ def main():
         help="Port for the SGLang server (default: 30000 or SGLANG_PORT env var). "
         "Set different ports for jobs running simultaneously on the same host.",
     )
+    sglang_p.add_argument(
+        "--external-driver-cmd",
+        default=None,
+        help=(
+            "Run this shell command as the workload driver instead of the "
+            "built-in ShareGPT loop. The SGLang server is launched, /health "
+            "is polled, then this command is exec'd with SGLANG_PORT in env "
+            "so the client can target the right endpoint. Use this to source "
+            "real-workload shapes from an external benchmark client (e.g. "
+            "InferenceX's benchmark_serving.py). When set, --num-samples is "
+            "ignored — the external driver controls request volume."
+        ),
+    )
+    sglang_p.add_argument(
+        "--external-driver-timeout",
+        type=int,
+        default=7200,
+        help="Hard timeout (seconds) for --external-driver-cmd. Default 7200 (2h).",
+    )
 
     args = parser.parse_args()
 
@@ -1423,6 +1484,8 @@ def main():
             skip_const_axis_check=getattr(args, "skip_const_axis_check", False),
             mem_fraction_static=getattr(args, "mem_fraction_static", None),
             extra_sglang_args=getattr(args, "extra_sglang_args", []) or [],
+            external_driver_cmd=getattr(args, "external_driver_cmd", None),
+            external_driver_timeout=getattr(args, "external_driver_timeout", 7200),
         )
 
     print(f"\n{'='*60}")
