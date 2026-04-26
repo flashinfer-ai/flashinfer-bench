@@ -831,23 +831,26 @@ def run_sglang_mode(
                 client_env = env.copy()
                 client_env["SGLANG_PORT"] = str(_server_port)
 
-                # Wipe everything that was dumped during sglang startup before
-                # handing off to the external driver. /health=200 is reached
-                # only after DeepGEMM warmup + memory profile + autotuner
-                # passes have all run; those passes issue forward passes at
-                # max-running-requests bucket sizes that aren't representative
-                # of the external workload. Without this purge, warmup dumps
-                # consume the full FLASHINFER_DUMP_MAX_COUNT budget and crowd
-                # out the (small) real-inference dumps the external driver
-                # would produce.
+                # Wipe the dump dir between warmup and the external
+                # driver. /health=200 is reached only after DeepGEMM
+                # warmup + memory profile + autotuner passes have all
+                # run; those passes write hundreds of eager-mode dump
+                # dirs at max-running-requests bucket sizes that aren't
+                # representative of the external workload.
+                #
+                # Cuda-graph-deferred dumps (level-10 under graph capture)
+                # are NOT lost by this wipe. flashinfer's
+                # _PENDING_GRAPH_DUMPS registry lives in the TP worker
+                # processes and points at the on-disk paths registered
+                # at capture time; flush_graph_dumps mkdir(exist_ok=True)
+                # before each save_file call, so the wiped dirs are
+                # recreated at flush time (atexit / SIGTERM) with the
+                # latest replay-refreshed values from real inference.
                 import shutil as _shutil
 
                 _purged = 0
-                _kept = 0
                 for child in list(dump_dir.iterdir()):
-                    name = child.name
-                    if name == "sglang_server.log":
-                        _kept += 1
+                    if child.name == "sglang_server.log":
                         continue
                     if child.is_dir():
                         _shutil.rmtree(child, ignore_errors=True)
