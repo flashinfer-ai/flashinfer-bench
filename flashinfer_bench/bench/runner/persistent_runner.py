@@ -538,8 +538,20 @@ class PersistentRunner(Runner):
             raise RuntimeError("No healthy persistent workers available after baseline setup")
 
         def run_solution_with_health_check(
-            worker: PersistentSubprocessWorker, solution: Solution, baseline_handle: BaselineHandle
+            worker: PersistentSubprocessWorker, solution: Solution
         ) -> Evaluation:
+            # NOTE: baseline_handle is no longer a parameter. It used to be
+            # captured at submit time, which made every queued task hold a
+            # stale handle if a peer task triggered a worker restart and the
+            # restart rebuilt the baseline with a new handle. Now we read
+            # fresh from the shared `baselines` dict immediately before each
+            # `run_solution` call, and update the dict when restarting so
+            # subsequent tasks see the new handle.
+            #
+            # Single-GPU evaluations serialize through one pool thread
+            # (max_workers == len(selected) == 1), so no extra locking is
+            # needed. A multi-GPU multi-thread restart still races the dict
+            # update — out of scope for this fix.
             try:
                 if not worker.is_healthy():
                     logger.warning(
@@ -548,8 +560,13 @@ class PersistentRunner(Runner):
                     if worker.restart():
                         try:
                             new_baseline = worker.run_ref(definition, workload, config, root)
-                            worker.release(baseline_handle)
-                            baseline_handle = new_baseline
+                            old_handle = baselines.get(worker)
+                            if old_handle is not None:
+                                try:
+                                    worker.release(old_handle)
+                                except Exception:
+                                    pass  # release may fail if worker already discarded the old handle on restart
+                            baselines[worker] = new_baseline
                             logger.info(f"Rebuilt baseline for worker on device {worker._device}")
                         except Exception as e:
                             logger.error(
@@ -567,6 +584,10 @@ class PersistentRunner(Runner):
                             device=worker._device,
                             extra_msg="Worker restart failed",
                         )
+
+                # Read the current baseline handle fresh — picks up any
+                # restart update from a peer task on the same worker.
+                baseline_handle = baselines[worker]
 
                 # Run the solution
                 eval_start_time = time.perf_counter()
@@ -592,10 +613,8 @@ class PersistentRunner(Runner):
 
                 for i, solution in enumerate(solutions):
                     worker = selected[i % len(selected)]
-                    baseline_handle = baselines[worker]
-
                     sol_futs[solution.name] = pool.submit(
-                        run_solution_with_health_check, worker, solution, baseline_handle
+                        run_solution_with_health_check, worker, solution
                     )
 
                 results: Dict[str, Evaluation] = {
