@@ -240,9 +240,11 @@ def load_safetensors(
         if input_spec.tensor_key not in tensors:
             raise ValueError(f"Missing key '{input_spec.tensor_key}' in '{path}'")
         t = tensors[input_spec.tensor_key]
-        # shape check
-        if list(t.shape) != expected[name]:
-            raise ValueError(f"'{name}' expected {expected[name]}, got {list(t.shape)}")
+        # shape check (expected[name] is None for scalars → normalize to [])
+        expected_shape = expected[name] if expected[name] is not None else []
+        actual_shape = list(t.shape)
+        if actual_shape != expected_shape:
+            raise ValueError(f"'{name}' expected {expected_shape}, got {list(t.shape)}")
         # dtype check
         expect_dtype = dtype_str_to_torch_dtype(definition.inputs[name].dtype)
         if t.dtype != expect_dtype:
