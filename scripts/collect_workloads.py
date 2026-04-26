@@ -616,8 +616,18 @@ def run_sglang_mode(
     skip_const_axis_check: bool = False,
     mem_fraction_static: float | None = None,
     extra_sglang_args: list[str] | None = None,
+    external_driver_cmd: str | None = None,
+    external_driver_timeout: int = 7200,
 ) -> None:
-    """Run SGLang inference with FlashInfer logging to collect workloads."""
+    """Run SGLang inference with FlashInfer logging to collect workloads.
+
+    When ``external_driver_cmd`` is set, the function launches the SGLang HTTP
+    server (paged-decode-only collections still use the offline path), waits
+    for /health, then runs the user-provided command instead of the internal
+    ShareGPT-style driver. Use this to source workload shapes from a real
+    external benchmark client (e.g. InferenceX's benchmark_serving.py).
+    The server port is exported to the child via ``SGLANG_PORT``.
+    """
     include_pattern = _build_fi_include_pattern(def_files)
     if not include_pattern:
         include_pattern = "*"
@@ -646,6 +656,14 @@ def run_sglang_mode(
     # Keep a generous cap so high-concurrency runs do not truncate dumps.
     env["FLASHINFER_DUMP_MAX_COUNT"] = "50000"
     env["FLASHINFER_DUMP_MAX_SIZE_GB"] = "30"
+    # NOTE: we deliberately do NOT default FLASHINFER_DUMP_PER_SHAPE_LIMIT
+    # here. That cap's per-shape counter lives in each TP worker process,
+    # so the disk purge that runs after server-ready (warmup→inference
+    # boundary) doesn't reset it. If warmup happened to exercise a shape
+    # that real inference also exercises, the counter would already be
+    # saturated and real inference dumps would be silently dropped. Users
+    # who want per-shape capping in long real-workload-only runs (no
+    # warmup interference) can set the env var themselves before invoking.
     # Use pre-compiled CUDA norm kernels — CuTe DSL norm requires CUDA toolkit 13.1+
     env["FLASHINFER_USE_CUDA_NORM"] = "1"
     env["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
@@ -679,6 +697,17 @@ def run_sglang_mode(
     # from responding.
     use_offline = not force_prefill_server and not force_ragged_prefill
     use_offline_paged_prefill = force_paged_prefill and cpu_offload_gb > 0
+    # An external driver always speaks HTTP (it can't drive the offline Engine
+    # programmatically), so force the HTTP server path even for decode-only
+    # collections that would otherwise prefer the offline Engine.
+    if external_driver_cmd:
+        if use_offline or use_offline_paged_prefill:
+            print(
+                "  --external-driver-cmd set: forcing HTTP server path "
+                "(decode-only offline Engine cannot service external requests)."
+            )
+        use_offline = False
+        use_offline_paged_prefill = False
     if use_offline:
         print(
             f"  Using SGLang offline Engine (decode-only, batch-controlled) — model={model_path}, {desc}"
@@ -727,7 +756,12 @@ def run_sglang_mode(
             str(tp),
             "--attention-backend",
             "flashinfer",
-            "--disable-cuda-graph",
+            # NOTE: cuda graphs are intentionally enabled. Level-10 dumps
+            # work under graph capture/replay because flashinfer auto-
+            # patches torch.cuda.CUDAGraph.replay (in every process that
+            # imports flashinfer with FLASHINFER_LOGLEVEL>=10) to call
+            # flush_graph_dumps() after each replay. Without graphs,
+            # collection takes 20-50× longer in eager mode.
             "--log-level",
             "info",
             "--page-size",
@@ -788,12 +822,66 @@ def run_sglang_mode(
             raise RuntimeError("SGLang server did not become ready within 30 minutes")
 
         try:
-            _run_sglang_inference(
-                num_samples,
-                dataset_path,
-                paged_prefill=force_paged_prefill,
-                max_tokens_override=1 if force_ragged_prefill else None,
-            )
+            if external_driver_cmd:
+                # Run the user-provided driver (e.g. InferenceX benchmark_serving.py)
+                # against the live server instead of the internal ShareGPT loop.
+                # The driver is responsible for issuing requests in whatever
+                # shape distribution the user wants captured. SGLANG_PORT lets
+                # the child target the right endpoint without re-parsing args.
+                client_env = env.copy()
+                client_env["SGLANG_PORT"] = str(_server_port)
+
+                # Wipe the dump dir between warmup and the external
+                # driver. /health=200 is reached only after DeepGEMM
+                # warmup + memory profile + autotuner passes have all
+                # run; those passes write hundreds of eager-mode dump
+                # dirs at max-running-requests bucket sizes that aren't
+                # representative of the external workload.
+                #
+                # Cuda-graph-deferred dumps (level-10 under graph capture)
+                # are NOT lost by this wipe. flashinfer's
+                # _PENDING_GRAPH_DUMPS registry lives in the TP worker
+                # processes and points at the on-disk paths registered
+                # at capture time; flush_graph_dumps mkdir(exist_ok=True)
+                # before each save_file call, so the wiped dirs are
+                # recreated at flush time (atexit / SIGTERM) with the
+                # latest replay-refreshed values from real inference.
+                import shutil as _shutil
+
+                _purged = 0
+                for child in list(dump_dir.iterdir()):
+                    if child.name == "sglang_server.log":
+                        continue
+                    if child.is_dir():
+                        _shutil.rmtree(child, ignore_errors=True)
+                        _purged += 1
+                    else:
+                        try:
+                            child.unlink()
+                            _purged += 1
+                        except OSError:
+                            pass
+                print(f"  Purged {_purged} pre-driver (warmup) dump entries.")
+
+                print(
+                    f"  External driver: {external_driver_cmd!r} "
+                    f"(timeout={external_driver_timeout}s, port={_server_port})"
+                )
+                rc = subprocess.run(
+                    external_driver_cmd, shell=True, env=client_env, timeout=external_driver_timeout
+                ).returncode
+                if rc != 0:
+                    print(
+                        f"  External driver exited with rc={rc}; proceeding to "
+                        "sanitize whatever dumps were already written."
+                    )
+            else:
+                _run_sglang_inference(
+                    num_samples,
+                    dataset_path,
+                    paged_prefill=force_paged_prefill,
+                    max_tokens_override=1 if force_ragged_prefill else None,
+                )
         finally:
             server_proc.terminate()
             server_proc.wait()
@@ -1338,6 +1426,25 @@ def main():
         help="Port for the SGLang server (default: 30000 or SGLANG_PORT env var). "
         "Set different ports for jobs running simultaneously on the same host.",
     )
+    sglang_p.add_argument(
+        "--external-driver-cmd",
+        default=None,
+        help=(
+            "Run this shell command as the workload driver instead of the "
+            "built-in ShareGPT loop. The SGLang server is launched, /health "
+            "is polled, then this command is exec'd with SGLANG_PORT in env "
+            "so the client can target the right endpoint. Use this to source "
+            "real-workload shapes from an external benchmark client (e.g. "
+            "InferenceX's benchmark_serving.py). When set, --num-samples is "
+            "ignored — the external driver controls request volume."
+        ),
+    )
+    sglang_p.add_argument(
+        "--external-driver-timeout",
+        type=int,
+        default=7200,
+        help="Hard timeout (seconds) for --external-driver-cmd. Default 7200 (2h).",
+    )
 
     args = parser.parse_args()
 
@@ -1423,6 +1530,8 @@ def main():
             skip_const_axis_check=getattr(args, "skip_const_axis_check", False),
             mem_fraction_static=getattr(args, "mem_fraction_static", None),
             extra_sglang_args=getattr(args, "extra_sglang_args", []) or [],
+            external_driver_cmd=getattr(args, "external_driver_cmd", None),
+            external_driver_timeout=getattr(args, "external_driver_timeout", 7200),
         )
 
     print(f"\n{'='*60}")
