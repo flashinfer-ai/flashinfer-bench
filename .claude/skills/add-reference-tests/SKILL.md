@@ -1,15 +1,15 @@
 ---
 name: add-reference-tests
-description: Add pytest tests to validate reference implementations in flashinfer_trace against FlashInfer or SGLang ground truth. Use when validating kernel definitions, adding tests for new op_types, or verifying reference implementations are correct.
+description: Add pytest tests to validate reference implementations in the flashinfer-trace HuggingFace dataset against FlashInfer or SGLang ground truth. Use when validating kernel definitions, adding tests for new op_types, or verifying reference implementations are correct.
 ---
 
 # Add Reference Tests
 
-Add tests to validate reference implementations in `./flashinfer_trace/`. Ground truth is sourced from FlashInfer repository or SGLang when FlashInfer doesn't have the implementation.
+Add tests to validate reference implementations in the HuggingFace dataset clone at `tmp/flashinfer-trace/`. Ground truth is sourced from FlashInfer repository or SGLang when FlashInfer doesn't have the implementation.
 
 ## Description
 
-This skill creates test cases under `./flashinfer_trace/tests/references/` to validate that reference implementations in Definition JSON files produce correct outputs. The ground truth comes from:
+This skill creates test cases under `tmp/flashinfer-trace/tests/references/` (the HF dataset clone — the in-repo `flashinfer_trace/` directory was removed in the trace-dataset refactor) to validate that reference implementations in Definition JSON files produce correct outputs. The ground truth comes from:
 
 1. **FlashInfer repository** (preferred): Official optimized GPU kernels in `tmp/flashinfer/`
 2. **SGLang repository** (fallback): When FlashInfer doesn't have the kernel, use `tmp/sglang/`
@@ -43,7 +43,7 @@ This skill creates test cases under `./flashinfer_trace/tests/references/` to va
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInfer (the `flashinfer_trace/` directory is already part of this repository).
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, and the HuggingFace trace dataset clone at `tmp/flashinfer-trace/` — that clone is the only home for definitions and reference tests.
 
 ## What This Skill Does
 
@@ -51,11 +51,11 @@ Run `/clone-repos` first to set up the `tmp/` directory with SGLang and FlashInf
 
 1. **Load Target Definitions**:
    - If `definition_name` specified: load single definition
-   - If `op_type` specified: load all definitions matching op_type from `flashinfer_trace/definitions/{op_type}/`
+   - If `op_type` specified: load all definitions matching op_type from `tmp/flashinfer-trace/definitions/{op_type}/`
    - If `all`: scan all definitions
 
 2. **Check Existing Tests**:
-   - Scan `flashinfer_trace/tests/references/` for existing test files
+   - Scan `tmp/flashinfer-trace/tests/references/` for existing test files
    - Skip definitions that already have tests (unless force=true)
 
 3. **Parse Definition Schema**:
@@ -449,12 +449,12 @@ MEDIUM_SIZES = {
 
 ### Phase 5: Write Test Files
 
-Output to `flashinfer_trace/tests/references/`
+Output to `tmp/flashinfer-trace/tests/references/` (the HF dataset clone — committed and PR'd against `flashinfer-ai/flashinfer-trace`).
 
 ## Output Structure
 
 ```
-flashinfer_trace/tests/references/
+tmp/flashinfer-trace/tests/references/
 ├── conftest.py                    # Shared fixtures and utilities
 ├── test_rmsnorm.py                # RMSNorm tests
 ├── test_gqa_paged.py              # GQA paged tests
@@ -751,12 +751,12 @@ When executing this skill:
 
 1. **Identify definitions to test**:
    ```bash
-   ls flashinfer_trace/definitions/{op_type}/
+   ls tmp/flashinfer-trace/definitions/{op_type}/
    ```
 
 2. **Check for existing tests**:
    ```bash
-   ls flashinfer_trace/tests/references/
+   ls tmp/flashinfer-trace/tests/references/
    ```
 
 3. **For each definition**:
@@ -768,7 +768,7 @@ When executing this skill:
 4. **Create test file**:
    ```bash
    # Create tests directory if needed
-   mkdir -p flashinfer_trace/tests/references/
+   mkdir -p tmp/flashinfer-trace/tests/references/
    ```
 
 5. **Write test file**:
@@ -779,20 +779,20 @@ When executing this skill:
 
 ## Running Tests
 
-After generating tests, run from the project root:
+After generating tests, run from the HF dataset clone:
 
 ```bash
 # Run all reference tests
-pytest flashinfer_trace/tests/references/ -v
+pytest tmp/flashinfer-trace/tests/references/ -v
 
 # Run specific test file
-pytest flashinfer_trace/tests/references/test_mla_paged.py -v
+pytest tmp/flashinfer-trace/tests/references/test_mla_paged.py -v
 
 # Run with GPU
-pytest flashinfer_trace/tests/references/ -v --device cuda
+pytest tmp/flashinfer-trace/tests/references/ -v --device cuda
 
 # Run with verbose output
-pytest flashinfer_trace/tests/references/ -v -s
+pytest tmp/flashinfer-trace/tests/references/ -v -s
 ```
 
 ## Error Handling
@@ -830,8 +830,8 @@ pytest flashinfer_trace/tests/references/ -v -s
 /add-reference-tests --op-type mla_paged
 /add-reference-tests --op-type moe
 
-# Run tests from project root
-pytest flashinfer_trace/tests/references/ -v
+# Run tests from the HF dataset clone
+pytest tmp/flashinfer-trace/tests/references/ -v
 ```
 
 ## Notes

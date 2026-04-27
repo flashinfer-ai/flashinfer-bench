@@ -138,17 +138,6 @@ When executing this skill:
 
 ```
 flashinfer-bench/
-├── flashinfer_trace/                 # Local working area (definitions, tests)
-│   ├── definitions/                  # Kernel definitions (write here first)
-│   │   ├── rmsnorm/
-│   │   ├── gemm/
-│   │   ├── gqa_paged/
-│   │   ├── mla_paged/
-│   │   ├── gdn/
-│   │   ├── moe/
-│   │   └── ...
-│   └── tests/
-│       └── references/               # Reference tests
 └── tmp/                              # Cloned repositories (auto-updated)
     ├── sglang/                       # SGLang repository (installed in current env)
     │   └── python/sglang/srt/
@@ -171,24 +160,15 @@ flashinfer-bench/
     │   ├── csrc/                     # CUDA source files
     │   └── include/                  # C++ headers with kernel implementations
     ├── sgl-cookbook/                 # Serving configuration repository (NOT installed)
-    └── flashinfer-trace/             # HuggingFace dataset clone — workloads and blobs go here for PR submission
-        ├── docs/                     # Model deployment documentation (markdown)
-        │   └── autoregressive/
-        │       ├── DeepSeek/
-        │       │   ├── DeepSeek-V3.md
-        │       │   └── DeepSeek-R1.md
-        │       ├── Qwen/
-        │       │   ├── Qwen3-Next.md
-        │       │   └── Qwen3.md
-        │       └── ...
-        ├── data/
-        │   ├── models/               # Model configurations (YAML)
-        │   │   └── generated/v0.5.6/
-        │   │       ├── qwen3next.yaml
-        │   │       ├── deepseek.yaml
-        │   │       └── ...
-        │   └── optimal-configs/      # Optimal serving configurations
-        └── README.md
+    └── flashinfer-trace/             # HuggingFace dataset clone — single source of truth
+        │                             # for definitions, ref tests, baselines, workloads,
+        │                             # blobs, and eval traces. All trace edits commit here.
+        ├── definitions/{op_type}/    # Kernel definition JSONs
+        ├── tests/references/         # Reference tests (pytest)
+        ├── solutions/baseline/       # FlashInfer-wrapper baseline solutions
+        ├── workloads/{op_type}/      # Sanitized workload JSONLs
+        ├── blob/workloads/{op_type}/ # Safetensors blobs referenced by JSONLs
+        └── traces/{op_type}/         # Eval traces (one entry per workload)
 ```
 
 ## Requirements
@@ -211,8 +191,8 @@ flashinfer-bench/
 
 This skill provides the foundation for:
 
-1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, sgl-cookbook to find serving configurations (TP/EP flags), outputs to `./flashinfer_trace/definitions/` (local working area)
-2. **add-reference-tests**: Uses FlashInfer for ground truth, outputs tests to `./flashinfer_trace/tests/references/`
+1. **extract-kernel-definitions**: Uses SGLang model files to extract kernels, sgl-cookbook to find serving configurations (TP/EP flags), outputs to `tmp/flashinfer-trace/definitions/` (the HuggingFace dataset clone)
+2. **add-reference-tests**: Uses FlashInfer for ground truth, outputs tests to `tmp/flashinfer-trace/tests/references/`
 3. **collect-workloads**: Uses `tmp/flashinfer-trace` (HuggingFace dataset clone) as the target for workload JSONL + safetensors blobs, then submits a PR
 4. **onboard-model**: End-to-end pipeline that calls this skill first (Phase 0) to ensure all repos are current before model discovery, definition generation, and workload collection.
 

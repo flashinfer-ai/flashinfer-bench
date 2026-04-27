@@ -34,8 +34,10 @@ Discover popular or newly released open-source LLMs, determine their kernel cove
 ## Prerequisites
 
 - `docs/model_coverage.mdx` must exist (it does — managed by this skill)
-- `flashinfer_trace/definitions/` must exist with current definition JSON files
-- Run `/clone-repos` first if you need SGLang or sgl-cookbook configs for a model that isn't in the existing patterns
+- `tmp/flashinfer-trace/definitions/` must exist with current definition JSON files
+  (this is the HuggingFace dataset clone — populated by `/clone-repos`; the in-repo
+  `flashinfer_trace/` directory was removed in the trace-dataset refactor)
+- Run `/clone-repos` first if you need SGLang or sgl-cookbook configs for a model that isn't in the existing patterns, or to ensure the trace dataset clone is current
 
 ---
 
@@ -203,7 +205,7 @@ If no sgl-cookbook config exists, use TP=1 (single GPU baseline).
 
 ### Phase 3: Map Kernels to Definitions
 
-For each model, compute the full list of expected definition names, then check which ones exist in `flashinfer_trace/definitions/`.
+For each model, compute the full list of expected definition names, then check which ones exist in `tmp/flashinfer-trace/definitions/` (the HF dataset clone — the only location where definition JSONs live).
 
 #### 3a: Compute expected definitions
 
@@ -265,11 +267,11 @@ Where `ckv_dim = kv_lora_rank + qk_rope_head_dim` and `kpe_dim = qk_rope_head_di
 
 For each expected definition name, check:
 ```bash
-find flashinfer_trace/definitions/ -name "{definition_name}.json"
+find tmp/flashinfer-trace/definitions/ -name "{definition_name}.json"
 ```
 
 Assign status:
-- **✅** — JSON file exists in `flashinfer_trace/definitions/`
+- **✅** — JSON file exists in `tmp/flashinfer-trace/definitions/`
 - **❌** — Name computed from model config, but no JSON file found (missing, needs to be created)
 - **—** — Module exists in the model architecture but definition is not computed/mapped (unmapped)
 
@@ -472,7 +474,7 @@ This skill is also called by `onboard-model` (Phase 1 and Phase 4b) to update
 
 ### Definition file naming ambiguity
 - **Cause**: Computed name doesn't match any definition (off-by-one in dims, different naming convention)
-- **Handling**: Mark as ❌ and list the computed name in the detailed section. Cross-check with actual files in `flashinfer_trace/definitions/` before marking as missing.
+- **Handling**: Mark as ❌ and list the computed name in the detailed section. Cross-check with actual files in `tmp/flashinfer-trace/definitions/` before marking as missing.
 
 ### Model not in SGLang
 - **Cause**: Model isn't implemented in SGLang yet

@@ -24,8 +24,8 @@ Phase 3: Workload collection (only when FlashInfer has the kernel)
           └─ kernel NOT integrated into SGLang → draft + submit SGLang PR,
                                                   then collect-workloads (sglang mode)
 Phase 4: Submit PRs (per definition, not batched)
-          ├─ PR 1 → flashinfer-bench (GitHub): definition JSON + reference tests + model_coverage.mdx
-          └─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): baseline solution + workloads + traces + def JSON + reference tests
+          ├─ PR 1 → flashinfer-bench (GitHub): docs/model_coverage.mdx update only
+          └─ PR 2 → flashinfer-ai/flashinfer-trace (HuggingFace): definition JSON + reference tests + baseline solution + workloads + traces
 ```
 
 ## Usage
@@ -89,8 +89,8 @@ Report the SHAs in the Phase 0 summary so the user can reproduce the run.
 ## Phase 1: Model Discovery and Kernel Inventory
 
 **Goal**: Identify the target model(s), extract their required kernel set, and classify each
-kernel as *known* (definition already exists in `flashinfer_trace/definitions/`) or *new*
-(no definition file found).
+kernel as *known* (definition already exists in the HuggingFace dataset clone at
+`tmp/flashinfer-trace/definitions/`) or *new* (no definition file found there).
 
 ### 1a: Discover candidate models (when `--discover` is set)
 
@@ -142,10 +142,11 @@ complete per-op-type formulas.
 
 ### 1d: Classify each kernel
 
-For each expected definition name:
+For each expected definition name (search the HuggingFace dataset clone — definitions no
+longer live in this repo):
 
 ```bash
-find flashinfer_trace/definitions/ -name "{definition_name}.json"
+find tmp/flashinfer-trace/definitions/ -name "{definition_name}.json"
 ```
 
 | Result | Classification |
@@ -239,8 +240,9 @@ gh issue create \
 ### Motivation
 
 This kernel is required for serving **{model_display_name}** with FlashInfer.
-A FlashInfer-Bench definition has been generated at:
-`flashinfer_trace/definitions/{op_type}/{definition_name}.json`
+A FlashInfer-Bench definition has been staged at:
+`tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json`
+(landing in the HuggingFace dataset PR for `flashinfer-ai/flashinfer-trace`)
 
 ### Kernel Parameters
 
@@ -286,10 +288,11 @@ Delegate to `extract-kernel-definitions` for each new definition. This skill han
 /extract-kernel-definitions --model-name {sglang_model_name}
 ```
 
-After generation, verify each expected definition now exists:
+After generation, verify each expected definition now exists in the HuggingFace dataset
+clone (the only home for definitions after the refactor):
 
 ```bash
-find flashinfer_trace/definitions/ -name "{definition_name}.json"
+find tmp/flashinfer-trace/definitions/ -name "{definition_name}.json"
 ```
 
 ---
@@ -452,29 +455,37 @@ with all definitions processed in parallel using git worktrees.
 
 | # | Target repo | Content | Trigger |
 |---|-------------|---------|---------|
-| 1 | `flashinfer-ai/flashinfer-bench` (GitHub) | definition JSON + reference tests + `docs/model_coverage.mdx` | after Phase 2 |
-| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | baseline solution + workload JSONL + safetensors traces + def JSON + reference tests | after PR 1 is open |
+| 1 | `flashinfer-ai/flashinfer-bench` (GitHub) | `docs/model_coverage.mdx` update only | after PR 2 is open |
+| 2 | `flashinfer-ai/flashinfer-trace` (HuggingFace) | definition JSON + reference test + baseline solution + workload JSONL + safetensors blobs + eval traces | after Phase 3 |
+
+After the trace-dataset refactor the local `flashinfer_trace/` directory no longer exists in
+`flashinfer-bench`. Definitions, reference tests, workloads, blobs, baseline solutions, and
+eval traces now live **only** in the HuggingFace dataset (`flashinfer-ai/flashinfer-trace`),
+so PR 2 is the canonical destination for all of those artifacts. PR 1 in `flashinfer-bench`
+contains nothing but the coverage-doc update and a back-link to PR 2.
 
 Do **not** batch multiple definitions into a single PR. Each definition must be independently
 reviewable and mergeable.
 
 ### 4-setup: Create worktrees before spawning agents
 
-For each new definition, create two worktrees: one in the main repo (for PRs 1) and one
-in the `tmp/flashinfer-trace` clone (for PR 2). All worktrees can be created up front, then
-agents run in parallel. Run `pre-commit` for PR1.
+For each new definition, create two worktrees: one in the main repo (for PR 1 — coverage doc
+only) and one in the `tmp/flashinfer-trace` clone (for PR 2 — all dataset content). All
+worktrees can be created up front, then agents run in parallel. Run `pre-commit` in the bench
+worktree before pushing PR 1.
 
 ```bash
 DATE=$(date +%Y%m%d)
 
 # For each {definition_name} in the new definitions list:
 
-# Worktree 1: flashinfer-bench (this repo) — for definition JSON + coverage update
+# Worktree 1: flashinfer-bench (this repo) — for docs/model_coverage.mdx update
 git worktree add \
   tmp/worktrees/bench-{definition_name} \
   -b feat/def-{definition_name}
 
-# Worktree 2: flashinfer-trace (HuggingFace dataset clone) — for workload files
+# Worktree 2: flashinfer-trace (HuggingFace dataset clone) — for definition JSON,
+# reference test, baseline solution, workloads, blobs, eval traces
 git -C tmp/flashinfer-trace worktree add \
   ../worktrees/trace-{definition_name} \
   -b workloads-${DATE}-{definition_name}
@@ -486,10 +497,10 @@ flashinfer-bench/
 └── tmp/
     ├── flashinfer-trace/          # main clone (do not commit here directly)
     └── worktrees/
-        ├── bench-{def1}/          # isolated branch for def1 definition JSON + coverage
-        ├── bench-{def2}/          # isolated branch for def2
-        ├── trace-{def1}/          # isolated branch for def1 workloads (HF repo)
-        └── trace-{def2}/          # isolated branch for def2 workloads (HF repo)
+        ├── bench-{def1}/          # isolated branch for def1 model_coverage.mdx update
+        ├── bench-{def2}/          # isolated branch for def2 model_coverage.mdx update
+        ├── trace-{def1}/          # isolated branch for def1 dataset content (HF repo)
+        └── trace-{def2}/          # isolated branch for def2 dataset content (HF repo)
 ```
 
 ### 4-spawn: Run one agent per definition in parallel
@@ -508,99 +519,55 @@ Your worktrees:
 - flashinfer-trace worktree: tmp/worktrees/trace-{definition_name}/
   (branch: workloads-{date}-{definition_name})
 
-Definition file already written at:
-  flashinfer_trace/definitions/{op_type}/{definition_name}.json
+Definition file already written at (staging path inside the local clone):
+  tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json
 
 Workload files already collected at:
   tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl
   tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/
 
+NOTE: The local `flashinfer_trace/` directory in flashinfer-bench was removed in the
+trace-dataset refactor. All definitions, reference tests, workloads, blobs, baseline
+solutions, and eval traces live ONLY in the HuggingFace dataset (PR 2). PR 1 in
+flashinfer-bench contains nothing but the model_coverage.mdx update.
+
 Do the following in order:
 
-1. PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage):
-   - Copy flashinfer_trace/definitions/{op_type}/{definition_name}.json
-     into tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
-   - Add or update reference test in tests/ for this definition
-   - Update docs/model_coverage.mdx to reflect definition status
-   - Run `pre-commit` to format the changes
-   - Commit all three changes together and push
-   - Open PR to flashinfer-ai/flashinfer-bench
-   - Record the PR number as pr1_number
-
-2. PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests):
+1. PR 2 — HuggingFace flashinfer-trace (definition JSON + reference test + baseline
+   solution + workloads + blobs + eval traces). Open this FIRST so PR 1 can link to it.
    - Check whether a baseline solution already exists:
        ls tmp/flashinfer-trace/solutions/baseline/{op_type}/{definition_name}/*.json 2>/dev/null
    - If baseline solution ALREADY EXISTS: skip creating a new solution and skip running eval.
      Include the existing solution directory in the PR commit as-is.
-   - If baseline solution does NOT exist: create it (see Phase 4b below) and run
-     flashinfer-bench eval — all workloads must show PASSED before opening PR2.
+   - If baseline solution does NOT exist: create it (see Phase 4a below) and run
+     flashinfer-bench eval — all workloads must show PASSED before opening PR 2.
+   - Copy definition JSON into tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
+   - Write a reference test under tmp/worktrees/trace-{definition_name}/tests/references/test_{definition_name}.py
+     (use the add-reference-tests skill — pytest validating the definition's `reference` field
+     against FlashInfer/SGLang ground truth)
    - Copy workload JSONL into tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
    - Copy safetensors blobs into tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
-   - Copy definition JSON (from flashinfer-bench) into tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
-   - Copy reference test (from flashinfer-bench) into tmp/worktrees/trace-{definition_name}/tests/{op_type}/
+   - Copy baseline eval traces into tmp/worktrees/trace-{definition_name}/traces/{op_type}/{definition_name}.jsonl
    - Commit all together and push
    - Open HuggingFace PR via huggingface_hub.HfApi().create_pull_request()
-   - Record the PR number as pr2_number
+   - Record the PR number/URL as pr2_url
+
+2. PR 1 — GitHub flashinfer-bench (docs/model_coverage.mdx ONLY):
+   - In tmp/worktrees/bench-{definition_name}/, edit docs/model_coverage.mdx to mark
+     {definition_name} as ✅ for this model (update the relevant kernel row + summary table).
+   - Do NOT add definition JSON, reference test, workloads, blobs, or solutions to this PR —
+     those live exclusively in flashinfer-trace (PR 2).
+   - Run `pre-commit run --all-files` to format the change.
+   - Commit and push.
+   - Open PR to flashinfer-ai/flashinfer-bench. PR description MUST link to pr2_url.
+   - Record the PR number as pr1_number.
 
 Report the two PR URLs when done.
 ```
 
-### 4a: PR 1 — GitHub flashinfer-bench (definition JSON + reference tests + coverage)
+### 4a: PR 2 — HuggingFace flashinfer-trace (definition JSON + reference test + baseline solution + workloads + blobs + eval traces)
 
-Inside `tmp/worktrees/bench-{definition_name}/`:
-
-```bash
-# 1. Copy definition JSON
-cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-   tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
-
-# 2. Add or update reference test
-# Write tests/test_{op_type}_{definition_name}.py with pytest test calling
-# the reference implementation from the definition JSON
-
-# 3. Update model coverage doc
-# Edit docs/model_coverage.mdx: mark {definition_name} row as "definition added"
-
-cd tmp/worktrees/bench-{definition_name}
-git add flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-        tests/test_{op_type}_{definition_name}.py \
-        docs/model_coverage.mdx
-git commit -m "feat: add {definition_name}
-
-- Definition JSON for {op_type} ({model_display_name})
-- Reference test validating the implementation
-- Model coverage doc updated
-{If fi_missing: FlashInfer issue: flashinfer-ai/flashinfer#{issue_number}}
-"
-# Run reference test and capture output for PR description
-pytest tests/test_{op_type}_{definition_name}.py -v 2>&1 | tee /tmp/test_{definition_name}.txt
-
-pre-commit run --all-files
-git push origin feat/def-{definition_name}
-gh pr create \
-  --repo flashinfer-ai/flashinfer-bench \
-  --title "feat: add {definition_name}" \
-  --body "$(cat <<'EOF'
-## Summary
-- Adds kernel definition for `{definition_name}` ({op_type})
-- Model: {model_display_name}
-- Reference implementation sourced from: {source}
-{If fi_missing: - ⚠️ FlashInfer kernel missing — tracking issue: flashinfer-ai/flashinfer#{issue_number}}
-
-## Reference Test Results
-\`\`\`
-$(cat /tmp/test_{definition_name}.txt)
-\`\`\`
-
-## Files changed
-- `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
-- `tests/test_{op_type}_{definition_name}.py`
-- `docs/model_coverage.mdx`
-EOF
-)"
-```
-
-### 4b: PR 2 — HuggingFace flashinfer-trace (baseline solution + workloads + traces + def + tests)
+PR 2 is opened **first** so PR 1 can link to it.
 
 **Check first** — if a baseline solution already exists in `tmp/flashinfer-trace/solutions/baseline/{op_type}/{definition_name}/`, skip creating a new one and skip running `flashinfer-bench run`. Include the existing solution files in the PR commit as-is; do not regenerate eval traces.
 
@@ -609,49 +576,97 @@ Only create a new baseline solution and run eval when no solution exists yet.
 Inside `tmp/worktrees/trace-{definition_name}/`:
 
 ```bash
-# 1. Copy baseline solution (extract reference_impl field from definition JSON as standalone script)
-cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-   tmp/worktrees/trace-{definition_name}/solutions/{op_type}/{definition_name}.py
-# (extract the reference_impl field from the definition JSON as a standalone script)
+# 1. Copy kernel definition JSON (canonical home — only lives in flashinfer-trace now)
+cp tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json \
+   tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
 
-# 2. Copy workload JSONL and safetensors blobs
+# 2. Write the reference test (use the add-reference-tests skill)
+# Output: tmp/worktrees/trace-{definition_name}/tests/references/test_{definition_name}.py
+# It must validate the definition's `reference` field against FlashInfer/SGLang ground truth.
+
+# 3. Baseline solution
+# If solutions/baseline/{op_type}/{definition_name}/*.json already exists in the HF clone,
+# copy it through unchanged. Otherwise create a FlashInfer-API-wrapper baseline (NOT a
+# copy of `reference`) and run `flashinfer-bench run` to generate eval traces.
+
+# 4. Copy workload JSONL and safetensors blobs
 cp -r tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl \
       tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
 cp -r tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/ \
       tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
 
-# 3. Copy kernel definition JSON and reference test from flashinfer-bench (this repo)
-cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-   tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
-cp tests/test_{op_type}_{definition_name}.py \
-   tmp/worktrees/trace-{definition_name}/tests/{op_type}/
+# 5. Copy eval traces (must show all entries PASSED)
+cp tmp/flashinfer-trace/traces/{op_type}/{definition_name}.jsonl \
+   tmp/worktrees/trace-{definition_name}/traces/{op_type}/
 
 cd tmp/worktrees/trace-{definition_name}
-git add solutions/{op_type}/{definition_name}.py \
+git add definitions/{op_type}/{definition_name}.json \
+        tests/references/test_{definition_name}.py \
+        solutions/baseline/{op_type}/{definition_name}/ \
         workloads/{op_type}/{definition_name}.jsonl \
         blob/workloads/{op_type}/{definition_name}/ \
-        definitions/{op_type}/{definition_name}.json \
-        tests/{op_type}/test_{op_type}_{definition_name}.py
-git commit -m "Add {definition_name}: baseline solution + workloads + traces + def + tests
+        traces/{op_type}/{definition_name}.jsonl
+git commit -m "Add {definition_name}: definition + reference test + baseline solution + workloads + traces
 
 Model: {hf_repo_id}
 SGLang: {sglang_commit_sha}
 FlashInfer: {flashinfer_commit_sha}
 Workload entries: {num_workload_entries}
-GitHub PR: flashinfer-ai/flashinfer-bench#{pr1_number}
 "
-pre-commit run --all-files
 git push origin workloads-{date}-{definition_name}
 python -c "
 from huggingface_hub import HfApi
 HfApi().create_pull_request(
     repo_id='flashinfer-ai/flashinfer-trace',
     repo_type='dataset',
-    title='Add {definition_name}: baseline solution + workloads + traces + def + tests',
+    title='Add {definition_name}: definition + reference test + baseline solution + workloads + traces',
     description='...',
     head='workloads-{date}-{definition_name}',
 )
 "
+# Record the resulting PR URL as pr2_url
+```
+
+### 4b: PR 1 — GitHub flashinfer-bench (docs/model_coverage.mdx only)
+
+After PR 2 is open and you have its URL, open PR 1 in `flashinfer-bench`. The local
+`flashinfer_trace/` directory was removed in the trace-dataset refactor, so PR 1 contains
+**only** the model-coverage doc update plus a back-link to PR 2.
+
+Inside `tmp/worktrees/bench-{definition_name}/`:
+
+```bash
+# Edit docs/model_coverage.mdx: mark {definition_name} row as ✅ for this model
+# (and update the per-model summary table).
+
+cd tmp/worktrees/bench-{definition_name}
+pre-commit run --all-files
+git add docs/model_coverage.mdx
+git commit -m "docs: mark {definition_name} as covered for {model_display_name}
+
+Tracks the dataset addition at:
+{pr2_url}
+{If fi_missing: FlashInfer issue: flashinfer-ai/flashinfer#{issue_number}}
+"
+git push origin feat/def-{definition_name}
+gh pr create \
+  --repo flashinfer-ai/flashinfer-bench \
+  --title "docs: mark {definition_name} as covered for {model_display_name}" \
+  --body "$(cat <<EOF
+## Summary
+- Marks \`{definition_name}\` ({op_type}) as covered for **{model_display_name}** in
+  \`docs/model_coverage.mdx\`.
+- Definition JSON, reference test, baseline solution, workloads, blobs, and eval traces
+  all live in the HuggingFace dataset — see ${pr2_url}.
+${If fi_missing: - ⚠️ FlashInfer kernel missing — tracking issue: flashinfer-ai/flashinfer#{issue_number}}
+
+## Files changed
+- \`docs/model_coverage.mdx\`
+
+## Linked PRs
+- HuggingFace dataset PR: ${pr2_url}
+EOF
+)"
 ```
 
 ### 4-cleanup: Remove worktrees after PRs are open
@@ -672,32 +687,45 @@ Run this checklist after both PRs are open for a definition. **Both PRs must pas
 before the definition is considered complete.** If any item fails, fix and re-push before
 requesting merge.
 
-### PR 1 — GitHub flashinfer-bench
+After the trace-dataset refactor the local `flashinfer_trace/` directory no longer exists in
+`flashinfer-bench`. The HuggingFace dataset (`flashinfer-ai/flashinfer-trace`) is the only
+home for definition JSONs, reference tests, baseline solutions, workloads, blobs, and eval
+traces — so PR 2 owns all of that. PR 1 only updates `docs/model_coverage.mdx`.
 
-1. **Definition JSON**: `flashinfer_trace/definitions/{op_type}/{name}.json` exists in the PR
-2. **Reference test**: `flashinfer_trace/tests/references/test_{name}.py` exists in the PR
-3. **Coverage**: `docs/model_coverage.mdx` updated — row for this definition shows ✅
-4. **Test results**: PR description includes the full stdout of running the reference test
-5. **PR2 link**: PR description includes a link to the HuggingFace PR 2 (workload addition)
-6. **Tags**: definition JSON has `status:verified` (or `status:unverified` if FlashInfer kernel
-   is missing), `fi_api:*`, and `ep:*`/`tp:*` if applicable
+### PR 1 — GitHub flashinfer-bench (coverage doc only)
 
-### PR 2 — HuggingFace flashinfer-trace
+1. **Coverage**: `docs/model_coverage.mdx` updated — row for `{name}` shows ✅ for
+   `{model_display_name}`, and the per-model summary table reflects the new count.
+2. **Single-file change**: the diff touches **only** `docs/model_coverage.mdx`. No
+   `flashinfer_trace/...` paths, no `tests/references/...`, no workload files, no blobs.
+   (If anything else appears in the diff it belongs in PR 2 instead.)
+3. **PR 2 link**: PR description links to the HuggingFace PR 2 by full URL.
+4. **fi_missing note (if applicable)**: if the kernel is `fi_missing`, PR description links
+   the FlashInfer kernel-request issue (`flashinfer-ai/flashinfer#{issue_number}`).
+5. **pre-commit clean**: `pre-commit run --all-files` passes locally before push.
 
-1. **Workloads**: `workloads/{op_type}/{name}.jsonl` exists and is non-empty
-2. **Blobs**: `blob/workloads/{op_type}/{name}/*.safetensors` files exist
-3. **Baseline solution**: `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json`
+### PR 2 — HuggingFace flashinfer-trace (canonical dataset)
+
+1. **Definition JSON**: `definitions/{op_type}/{name}.json` exists in the PR.
+2. **Definition tags**: definition JSON has `status:verified` (or `status:unverified` when
+   the FlashInfer kernel is missing), plus `fi_api:*` and `ep:*`/`tp:*` where applicable.
+3. **Reference test**: `tests/references/test_{name}.py` exists in the PR and pytest runs
+   green against the definition's `reference` field. PR description includes the full
+   pytest stdout.
+4. **Workloads**: `workloads/{op_type}/{name}.jsonl` exists and is non-empty.
+5. **Blobs**: `blob/workloads/{op_type}/{name}/*.safetensors` files exist.
+6. **Baseline solution**: `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json`
    exists — this must be a FlashInfer API wrapper (calls `BatchDecodeWithPagedKVCacheWrapper`
-   or `BatchPrefillWithPagedKVCacheWrapper`), **not** a copy of `reference_impl`
-4. **Eval trace**: `traces/{op_type}/{name}.jsonl` exists and every entry has
-   `evaluation.status == "PASSED"` — no failures allowed
-5. **Definition JSON**: `definitions/{op_type}/{name}.json` copied from PR 1
-6. **Reference test**: `tests/references/test_{name}.py` copied from PR 1
-7. **SGLang log**: PR description contains a `## SGLang Collection Log` section with the
+   or `BatchPrefillWithPagedKVCacheWrapper`), **not** a copy of the definition's `reference`.
+7. **Eval traces**: `traces/{op_type}/{name}.jsonl` exists and every entry has
+   `evaluation.status == "PASSED"` — no failures allowed.
+8. **SGLang log**: PR description contains a `## SGLang Collection Log` section with the
    full stdout from the `collect_workloads.py sglang` run (model loading, workload counts,
    dump dir info). Workloads must be SGLang-collected (not synthetic) — real workloads have
    diverse `(batch_size, kv_length)` pairs drawn from actual inference. A uniform sweep like
    `batch_size=4096` with 1-page contexts is a red flag for synthetic data.
+9. **Provenance**: commit/PR body records `Model`, `SGLang` and `FlashInfer` commit SHAs,
+   and the workload-entry count.
 
 ---
 
@@ -708,25 +736,33 @@ Every TASK.md for definition onboarding must include:
 
 ```markdown
 ## Objective
-Submit 2 PRs for definition {name}:
-- PR 1 (GitHub flashinfer-bench): Definition JSON + reference tests + docs/model_coverage.mdx (✅) + paste reference test stdout in PR description
-- PR 2 (HuggingFace flashinfer-trace): Baseline solution + workloads + blobs + def JSON + ref test + baseline eval trace (all entries PASSED)
+Submit 2 PRs for definition {name}. After the trace-dataset refactor, all dataset content
+lives only at HuggingFace; flashinfer-bench keeps just the coverage doc.
+- PR 2 (HuggingFace flashinfer-trace, OPEN FIRST): definition JSON + reference test +
+  baseline solution + workloads + blobs + eval traces (all entries PASSED) + SGLang
+  collection log in PR body.
+- PR 1 (GitHub flashinfer-bench, OPEN SECOND): docs/model_coverage.mdx updated to ✅
+  for this definition + back-link to PR 2 in PR body.
 
-## PR 1 Contents
-- `flashinfer_trace/definitions/{op_type}/{name}.json`
-- `flashinfer_trace/tests/references/test_{name}.py`
-- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition
-- PR description must include the full stdout of running the reference test
-- PR description must include a link to the HuggingFace PR 2 (workload addition)
-
-## PR 2 Contents
-- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper — NOT the reference_impl from def JSON; must call flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
+## PR 2 Contents (HuggingFace flashinfer-trace)
+- `definitions/{op_type}/{name}.json`
+- `tests/references/test_{name}.py`
+- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper —
+  NOT a copy of the definition `reference`; must call
+  flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
 - `workloads/{op_type}/{name}.jsonl`
-- `blob/workloads/{op_type}/*.safetensors`
+- `blob/workloads/{op_type}/{name}/*.safetensors`
 - `traces/{op_type}/{name}.jsonl` (all entries must have `evaluation.status == "PASSED"`)
-- `definitions/{op_type}/{name}.json` (copied from PR 1)
-- `tests/references/test_{name}.py` (copied from PR 1)
-- PR description must include the SGLang inference stdout (capture stdout of `collect_workloads.py sglang` and paste in PR body under `## SGLang Collection Log`)
+- PR description must include the full pytest stdout for the reference test
+- PR description must include the SGLang inference stdout under `## SGLang Collection Log`
+  (capture stdout of `collect_workloads.py sglang`)
+
+## PR 1 Contents (GitHub flashinfer-bench)
+- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition (and per-model summary
+  table refreshed)
+- The diff MUST touch only `docs/model_coverage.mdx` — no `flashinfer_trace/...`,
+  no `tests/references/...`, no workload/blob files (those all live in PR 2 now).
+- PR description must include a link to the HuggingFace PR 2 by full URL.
 
 ## Progress Reporting
 Write .agent-progress.md after every major step:
@@ -735,8 +771,8 @@ Write .agent-progress.md after every major step:
   Current: <what you're doing now>
   Next: <next step>
   Blockers: <if any>
-  - PR 1 (def JSON + ref tests + coverage → flashinfer-bench GitHub): <URL or pending>
-  - PR 2 (baseline solution + workloads + traces → flashinfer-trace HF): <URL or pending>
+  - PR 2 (def + ref test + baseline + workloads + traces → flashinfer-trace HF): <URL or pending>
+  - PR 1 (model_coverage.mdx → flashinfer-bench GitHub): <URL or pending>
 
 ## GPU Work
 Use tools/gpu-lock before any SGLang workload collection:
@@ -751,7 +787,7 @@ Where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.)
 ```
 For each required kernel definition:
 
-  Already exists in flashinfer_trace/definitions/?
+  Already exists in tmp/flashinfer-trace/definitions/ (HF dataset clone)?
   ├── YES → skip (existing)
   └── NO  → Phase 2: generate definition JSON
               FlashInfer has this kernel?
