@@ -355,15 +355,20 @@ def log(msg: str) -> None:
     print(f"[BENCHMARK] {time.strftime('%Y-%m-%d %H:%M:%S')} - {msg}")
 
 
-def load_prompts_from_sharegpt(n: int) -> List[str]:
-    """Load n prompts from the ShareGPT dataset."""
+def load_prompts_from_sharegpt(n: int) -> List[Tuple[str, int, int]]:
+    """Load n prompts from the ShareGPT dataset.
+
+    Returns ``(prompt, prompt_len=0, output_len=0)`` tuples. The zeros mean
+    "let the server choose" — caller-side prompt/output length control is only
+    exercised for the random dataset.
+    """
     ds = load_dataset(
         "anon8231489123/ShareGPT_Vicuna_unfiltered",
         data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
         split="train",
         streaming=True,
     )
-    prompts = []
+    prompts: List[str] = []
     for example in ds:
         conv = example.get("conversations", [])
         if not conv:
@@ -391,7 +396,81 @@ def load_prompts_from_sharegpt(n: int) -> List[str]:
             f"Max: {max(prompt_lengths)}, "
             f"Avg: {sum(prompt_lengths) / len(prompt_lengths):.1f}"
         )
-    return prompts
+    return [(p, 0, 0) for p in prompts]
+
+
+def sample_random_requests(
+    model_path: str,
+    num_prompts: int,
+    input_len: int,
+    output_len: int,
+    range_ratio: float,
+    seed: Optional[int] = None,
+) -> List[Tuple[str, int, int]]:
+    """Generate `num_prompts` synthetic prompts whose token length matches `input_len`.
+
+    Ported (serial path) from InferenceX's `utils/bench_serving/benchmark_serving.py`
+    `sample_random_requests`. Random token IDs are decoded then re-encoded; if the
+    re-encoded length drifts, we pad/truncate until it matches.
+
+    `range_ratio` controls per-request length jitter:
+        lower = floor(seq_len * range_ratio); upper = seq_len (inclusive).
+        range_ratio=1.0 -> all requests at exactly `input_len`/`output_len`.
+        range_ratio=0.8 -> uniform between 80% and 100% of the target length.
+
+    Returns ``(prompt, prompt_len, output_len)`` tuples.
+    """
+    import numpy as np
+    from transformers import AutoTokenizer
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    vocab_size = tokenizer.vocab_size
+
+    def sample_uniform(seq_len: int) -> List[int]:
+        lower = int(seq_len * range_ratio)
+        upper = seq_len
+        return np.random.randint(lower, upper + 1, size=num_prompts).tolist()
+
+    input_lens = sample_uniform(input_len)
+    output_lens = sample_uniform(output_len)
+    offsets = np.random.randint(0, vocab_size, size=num_prompts)
+
+    requests: List[Tuple[str, int, int]] = []
+    for i in range(num_prompts):
+        tgt_prompt_len = input_lens[i]
+        prompt_token_ids = [(int(offsets[i]) + i + j) % vocab_size for j in range(tgt_prompt_len)]
+        prompt = tokenizer.decode(prompt_token_ids)
+
+        # Decode/encode round-trip can drift; pad or truncate to the target length.
+        for _ in range(10):
+            prompt_token_ids = tokenizer.encode(prompt, add_special_tokens=False)
+            if len(prompt_token_ids) < tgt_prompt_len:
+                num_extras = tgt_prompt_len - len(prompt_token_ids)
+                prompt_token_ids.extend(
+                    np.random.randint(0, vocab_size, size=num_extras).tolist()
+                )
+            elif len(prompt_token_ids) > tgt_prompt_len:
+                prompt_token_ids = prompt_token_ids[:tgt_prompt_len]
+            else:
+                break
+            prompt = tokenizer.decode(prompt_token_ids)
+
+        actual_len = len(tokenizer.encode(prompt, add_special_tokens=False))
+        requests.append((prompt, actual_len, int(output_lens[i])))
+
+    actual_in = [r[1] for r in requests]
+    actual_out = [r[2] for r in requests]
+    log(
+        f"Generated {num_prompts} random prompts | "
+        f"input_len min/mean/max = {min(actual_in)}/"
+        f"{sum(actual_in) / len(actual_in):.1f}/{max(actual_in)} | "
+        f"output_len min/mean/max = {min(actual_out)}/"
+        f"{sum(actual_out) / len(actual_out):.1f}/{max(actual_out)}"
+    )
+    return requests
 
 
 class DummyTokenizer:
@@ -401,12 +480,18 @@ class DummyTokenizer:
         return []
 
 
-def build_bench_args() -> SimpleNamespace:
-    """Build the SimpleNamespace expected by bench_serving.benchmark."""
+def build_bench_args(disable_ignore_eos: bool = False) -> SimpleNamespace:
+    """Build the SimpleNamespace expected by bench_serving.benchmark.
+
+    `disable_ignore_eos=False` (default) → server is told to ignore EOS, so each
+    request decodes for its full output_len budget. This matches InferenceX's
+    `--ignore-eos` and is what we want for workload collection (otherwise
+    decode-heavy kernels get under-sampled).
+    """
     return SimpleNamespace(
         backend="sglang",
         dataset_name="custom",
-        disable_ignore_eos=False,
+        disable_ignore_eos=disable_ignore_eos,
         disable_stream=True,
         return_logprob=False,
         return_routed_experts=False,
@@ -432,15 +517,21 @@ def build_bench_args() -> SimpleNamespace:
 
 def run_benchmark(
     base_url: str,
-    prompts: List[str],
+    prompts: List[Tuple[str, int, int]],
     batch_size: int,
     temperature: float = 0.0,
     top_k: int = -1,
     top_p: float = 1.0,
+    disable_ignore_eos: bool = False,
 ) -> list:
-    """Run the benchmark over prompts in batches and return all results."""
+    """Run the benchmark over prompts in batches and return all results.
+
+    `prompts` is a list of ``(prompt, prompt_len, output_len)`` tuples.
+    Random-dataset entries carry real lengths; ShareGPT entries pass zeros and
+    let the server pick the output budget.
+    """
     tokenizer = DummyTokenizer()
-    set_global_args(build_bench_args())
+    set_global_args(build_bench_args(disable_ignore_eos=disable_ignore_eos))
 
     num_batches = math.ceil(len(prompts) / batch_size)
     all_results = []
@@ -451,13 +542,13 @@ def run_benchmark(
         input_requests = [
             TestRequest(
                 prompt=p,
-                prompt_len=0,
-                output_len=0,
+                prompt_len=plen,
+                output_len=olen,
                 timestamp=current_time,
-                text_prompt_len=0,
+                text_prompt_len=plen,
                 vision_prompt_len=0,
             )
-            for p in batch_prompts
+            for (p, plen, olen) in batch_prompts
         ]
 
         log(f"Running batch {i + 1}/{num_batches} with {len(input_requests)} prompts")
@@ -676,6 +767,53 @@ def main():
         "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
     )
     parser.add_argument(
+        "--dataset",
+        choices=["random", "sharegpt"],
+        default="random",
+        help=(
+            "Prompt source. 'random' (default) generates synthetic prompts of "
+            "controlled token length — gives diverse decode-heavy and "
+            "prefill-heavy kernel inputs. 'sharegpt' uses real prompts but "
+            "their length distribution is uncontrolled."
+        ),
+    )
+    parser.add_argument(
+        "--isl",
+        type=int,
+        default=1024,
+        help="Random-dataset input sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--osl",
+        type=int,
+        default=1024,
+        help="Random-dataset output sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--random-range-ratio",
+        type=float,
+        default=1.0,
+        help=(
+            "Random-dataset length jitter. lower=floor(len*ratio), upper=len. "
+            "1.0 (default) = exact lengths; 0.8 = uniform between 80%% and 100%%."
+        ),
+    )
+    parser.add_argument(
+        "--disable-ignore-eos",
+        action="store_true",
+        help=(
+            "Let the server stop at EOS instead of decoding for the full output "
+            "length. By default ignore_eos is enabled so each request decodes "
+            "for the full output_len budget (matches InferenceX --ignore-eos)."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducible random-dataset prompts.",
+    )
+    parser.add_argument(
         "--restart-per-batch-size",
         action="store_true",
         help=(
@@ -698,8 +836,24 @@ def main():
     log(f"Model path:     {args.model_path}")
     log(f"Batch sizes:    {args.batch_sizes}")
     log(f"Total prompts:  {num_prompts} ({args.num_batches} batches per sweep)")
+    log(f"Dataset:        {args.dataset}")
 
-    prompts = load_prompts_from_sharegpt(num_prompts)
+    if args.dataset == "random":
+        log(
+            f"Random dataset: isl={args.isl}, osl={args.osl}, "
+            f"range_ratio={args.random_range_ratio}, "
+            f"ignore_eos={not args.disable_ignore_eos}"
+        )
+        prompts = sample_random_requests(
+            model_path=args.model_path,
+            num_prompts=num_prompts,
+            input_len=args.isl,
+            output_len=args.osl,
+            range_ratio=args.random_range_ratio,
+            seed=args.seed,
+        )
+    else:
+        prompts = load_prompts_from_sharegpt(num_prompts)
 
     server_args = []
 
@@ -823,6 +977,7 @@ def main():
                     temperature=args.temperature,
                     top_k=args.top_k,
                     top_p=args.top_p,
+                    disable_ignore_eos=args.disable_ignore_eos,
                 )
             except Exception as e:
                 log(f"Benchmark failed: {e}")
@@ -856,6 +1011,7 @@ def main():
                     temperature=args.temperature,
                     top_k=args.top_k,
                     top_p=args.top_p,
+                    disable_ignore_eos=args.disable_ignore_eos,
                 )
         except Exception as e:
             log(f"Benchmark failed: {e}")

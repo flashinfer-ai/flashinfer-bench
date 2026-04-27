@@ -110,9 +110,14 @@ FLASHINFER_DUMP_MAX_SIZE_GB=30
 
 ### Phase 3: SGLang Inference
 
-**Inference source**: real ShareGPT prompts (from `--dataset` path or downloaded from HuggingFace `anon8231489123/ShareGPT_Vicuna_unfiltered`). Falls back to synthetic prompts only if ShareGPT is unavailable.
+**Inference source**: synthetic random prompts (default, `--dataset random`) or real ShareGPT prompts (`--dataset sharegpt`).
 
-**Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run 4 rounds each with fresh ShareGPT slices for natural KV-length diversity.
+- **`random`** (default): generates token-id prompts of a chosen length via `sample_random_requests` (ported from InferenceX `utils/bench_serving/benchmark_serving.py`). Use when you need controlled prefill length and a guaranteed decode budget. Each request decodes for exactly `--osl` tokens because `ignore_eos=True` is on by default.
+  - Recommended pairs: `--isl 1024 --osl 1024` (decode-heavy, big-batch decode shapes) and `--isl 8192 --osl 1024` (prefill-heavy).
+  - `--random-range-ratio` jitters lengths uniformly in `[ratio*len, len]`. Leave at `1.0` for exact lengths.
+- **`sharegpt`**: real prompts from `anon8231489123/ShareGPT_Vicuna_unfiltered`. Length distribution is uncontrolled; use only when prompt realism matters more than coverage.
+
+**Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run multiple rounds each for KV-length diversity.
 
 **Per-batch-size isolation** (`--restart-per-batch-size`): pass this flag to `bench_sharegpt.py` when using `FLASHINFER_DUMP_MAX_COUNT`.  Without it, the first batch size exhausts the dump budget (DUMP_MAX_COUNT is a global counter per server process) and later batch sizes capture nothing.  With it, each batch size gets its own server session and therefore its own fresh counter.
 
@@ -125,11 +130,14 @@ FLASHINFER_DUMP_EXCLUDE="*.__init__" \
 python3 examples/sglang_bench/bench_sharegpt.py \
   --model <model-key> \
   --model-path /path/to/model \
+  --dataset random --isl 1024 --osl 1024 \
   --batch-sizes 64 128 \
   --num-batches 4 \
   --restart-per-batch-size \
   --disable-cuda-graph
 ```
+
+For prefill-heavy coverage, run a second pass with `--isl 8192 --osl 1024`. For ShareGPT prompts pass `--dataset sharegpt` (no `--isl`/`--osl` needed).
 
 **Three execution modes** (chosen automatically based on definition type):
 
