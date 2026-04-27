@@ -538,7 +538,7 @@ class PersistentRunner(Runner):
             raise RuntimeError("No healthy persistent workers available after baseline setup")
 
         def run_solution_with_health_check(
-            worker: PersistentSubprocessWorker, solution: Solution, baseline_handle: BaselineHandle
+            worker: PersistentSubprocessWorker, solution: Solution
         ) -> Evaluation:
             try:
                 if not worker.is_healthy():
@@ -546,10 +546,12 @@ class PersistentRunner(Runner):
                         f"Worker on device {worker._device} is unhealthy, attempting restart"
                     )
                     if worker.restart():
+                        # Evict before rebuild so a failed rebuild doesn't
+                        # leave peer tasks reading a stale handle.
+                        baselines.pop(worker, None)
                         try:
                             new_baseline = worker.run_ref(definition, workload, config, root)
-                            worker.release(baseline_handle)
-                            baseline_handle = new_baseline
+                            baselines[worker] = new_baseline
                             logger.info(f"Rebuilt baseline for worker on device {worker._device}")
                         except Exception as e:
                             logger.error(
@@ -568,7 +570,15 @@ class PersistentRunner(Runner):
                             extra_msg="Worker restart failed",
                         )
 
-                # Run the solution
+                # Read fresh so we pick up any peer-task restart update.
+                baseline_handle = baselines.get(worker)
+                if baseline_handle is None:
+                    return make_eval(
+                        status=EvaluationStatus.RUNTIME_ERROR,
+                        device=worker._device,
+                        extra_msg="No baseline available for worker (rebuild may have failed)",
+                    )
+
                 eval_start_time = time.perf_counter()
                 result = worker.run_solution(solution, baseline_handle, config)
                 eval_time = time.perf_counter() - eval_start_time
@@ -592,10 +602,8 @@ class PersistentRunner(Runner):
 
                 for i, solution in enumerate(solutions):
                     worker = selected[i % len(selected)]
-                    baseline_handle = baselines[worker]
-
                     sol_futs[solution.name] = pool.submit(
-                        run_solution_with_health_check, worker, solution, baseline_handle
+                        run_solution_with_health_check, worker, solution
                     )
 
                 results: Dict[str, Evaluation] = {
