@@ -210,6 +210,9 @@ def _run_sglang_offline_paged_prefill(
     dump_dir: Path,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: str | None = None,
     mem_fraction_static: float | None = None,
     max_total_tokens: int | None = None,
 ) -> None:
@@ -259,8 +262,11 @@ if __name__ == '__main__':
     rounds      = json.loads(sys.argv[5])
     quant              = sys.argv[6] if sys.argv[6] != "none" else None
     cpu_offload        = float(sys.argv[7])
-    mem_frac_override  = float(sys.argv[8]) if sys.argv[8] != "none" else None
-    max_total_toks     = int(sys.argv[9]) if sys.argv[9] != "none" else None
+    nnodes             = int(sys.argv[8])
+    node_rank          = int(sys.argv[9])
+    dist_init_addr     = sys.argv[10] if sys.argv[10] != "none" else None
+    mem_frac_override  = float(sys.argv[11]) if sys.argv[11] != "none" else None
+    max_total_toks     = int(sys.argv[12]) if sys.argv[12] != "none" else None
 
     import sglang
 
@@ -281,6 +287,10 @@ if __name__ == '__main__':
         # With cpu_offload, model occupies most GPU. Use mem_fraction_static=0.95 so
         # ~5% remains as dynamic memory for FlashInfer workspace buffers.
         engine_kwargs["mem_fraction_static"] = 0.95
+    if nnodes > 1:
+        engine_kwargs["nnodes"] = nnodes
+        engine_kwargs["node_rank"] = node_rank
+        engine_kwargs["dist_init_addr"] = dist_init_addr
     if mem_frac_override is not None:
         # Explicit override wins over the cpu_offload default of 0.95
         engine_kwargs["mem_fraction_static"] = mem_frac_override
@@ -363,6 +373,9 @@ if __name__ == '__main__':
         json.dumps(rounds),
         quantization or "none",
         str(cpu_offload_gb),
+        str(nnodes),
+        str(node_rank),
+        dist_init_addr or "none",
         str(mem_fraction_static) if mem_fraction_static is not None else "none",
         str(max_total_tokens) if max_total_tokens is not None else "none",
     ]
@@ -450,6 +463,9 @@ def _run_sglang_offline_batched(
     dataset_path: str | None = None,
     quantization: str | None = None,
     cpu_offload_gb: float = 0.0,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: str | None = None,
     mem_fraction_static: float | None = None,
 ) -> None:
     """Run SGLang offline Engine in a subprocess to collect decode workloads with controlled batch sizes.
@@ -510,7 +526,10 @@ if __name__ == '__main__':
     prompts_file     = sys.argv[6]               # path to JSON file with prompts list
     quant            = sys.argv[7] if sys.argv[7] != "none" else None
     cpu_offload      = float(sys.argv[8])
-    mem_frac         = float(sys.argv[9]) if sys.argv[9] != "none" else None
+    nnodes_arg       = int(sys.argv[9])
+    node_rank_arg    = int(sys.argv[10])
+    dist_init_arg    = sys.argv[11] if sys.argv[11] != "none" else None
+    mem_frac         = float(sys.argv[12]) if sys.argv[12] != "none" else None
 
     with open(prompts_file) as _pf:
         prompts = json.load(_pf)
@@ -530,6 +549,10 @@ if __name__ == '__main__':
         engine_kwargs["quantization"] = quant
     if cpu_offload > 0:
         engine_kwargs["cpu_offload_gb"] = cpu_offload
+    if nnodes_arg > 1:
+        engine_kwargs["nnodes"] = nnodes_arg
+        engine_kwargs["node_rank"] = node_rank_arg
+        engine_kwargs["dist_init_addr"] = dist_init_arg
     if mem_frac is not None:
         engine_kwargs["mem_fraction_static"] = mem_frac
 
@@ -587,6 +610,9 @@ if __name__ == '__main__':
         prompts_file,
         quantization or "none",
         str(cpu_offload_gb),
+        str(nnodes),
+        str(node_rank),
+        dist_init_addr or "none",
         str(mem_fraction_static) if mem_fraction_static is not None else "none",
     ]
     try:
@@ -613,6 +639,9 @@ def run_sglang_mode(
     cpu_offload_gb: float = 0.0,
     ep: int = 1,
     page_size: int = 1,
+    nnodes: int = 1,
+    node_rank: int = 0,
+    dist_init_addr: str | None = None,
     skip_const_axis_check: bool = False,
     mem_fraction_static: float | None = None,
     extra_sglang_args: list[str] | None = None,
@@ -692,6 +721,9 @@ def run_sglang_mode(
             dataset_path=dataset_path,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
+            nnodes=nnodes,
+            node_rank=node_rank,
+            dist_init_addr=dist_init_addr,
             mem_fraction_static=mem_fraction_static,
         )
     elif use_offline_paged_prefill:
@@ -706,6 +738,9 @@ def run_sglang_mode(
             dump_dir,
             quantization=quantization,
             cpu_offload_gb=cpu_offload_gb,
+            nnodes=nnodes,
+            node_rank=node_rank,
+            dist_init_addr=dist_init_addr,
             mem_fraction_static=mem_fraction_static,
             max_total_tokens=_max_total_tokens_from_extra_args(extra_sglang_args or []),
         )
@@ -815,8 +850,6 @@ def run_sglang_mode(
     ]
     if replace:
         cmd.append("--replace")
-    if skip_const_axis_check:
-        cmd.append("--skip-const-axis-check")
     subprocess.run(cmd, check=True)
 
 
@@ -1290,6 +1323,17 @@ def main():
     sglang_p.add_argument("--dump-dir", help="Override dump directory path")
     sglang_p.add_argument("--replace", action="store_true", help="Replace existing workloads")
     sglang_p.add_argument(
+        "--nnodes", type=int, default=1, help="Number of nodes for multi-node TP (default: 1)"
+    )
+    sglang_p.add_argument(
+        "--node-rank", type=int, default=0, help="This node's rank (0=head, default: 0)"
+    )
+    sglang_p.add_argument(
+        "--dist-init-addr",
+        default=None,
+        help="Head node address for distributed init, e.g. nvl72026-T03:5000 (required when --nnodes > 1)",
+    )
+    sglang_p.add_argument(
         "--mem-fraction-static",
         type=float,
         default=None,
@@ -1420,6 +1464,9 @@ def main():
             cpu_offload_gb=getattr(args, "cpu_offload_gb", 0.0),
             ep=ep,
             page_size=page_size,
+            nnodes=getattr(args, "nnodes", 1),
+            node_rank=getattr(args, "node_rank", 0),
+            dist_init_addr=getattr(args, "dist_init_addr", None),
             skip_const_axis_check=getattr(args, "skip_const_axis_check", False),
             mem_fraction_static=getattr(args, "mem_fraction_static", None),
             extra_sglang_args=getattr(args, "extra_sglang_args", []) or [],

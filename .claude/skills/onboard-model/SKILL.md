@@ -460,9 +460,9 @@ reviewable and mergeable.
 
 ### 4-setup: Create worktrees before spawning agents
 
-For each new definition, create two worktrees: one in the main repo (for PRs 1 and 3) and one
+For each new definition, create two worktrees: one in the main repo (for PRs 1) and one
 in the `tmp/flashinfer-trace` clone (for PR 2). All worktrees can be created up front, then
-agents run in parallel.
+agents run in parallel. Run `pre-commit` for PR1.
 
 ```bash
 DATE=$(date +%Y%m%d)
@@ -522,6 +522,7 @@ Do the following in order:
      into tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
    - Add or update reference test in tests/ for this definition
    - Update docs/model_coverage.mdx to reflect definition status
+   - Run `pre-commit` to format the changes
    - Commit all three changes together and push
    - Open PR to flashinfer-ai/flashinfer-bench
    - Record the PR number as pr1_number
