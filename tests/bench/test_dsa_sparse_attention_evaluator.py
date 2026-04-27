@@ -5,8 +5,8 @@ import torch
 
 from flashinfer_bench.bench.config import BenchmarkConfig
 from flashinfer_bench.bench.evaluators import (
-    DefaultEvaluator,
     DsaSparseAttentionEvaluator,
+    DsaTopkIndexerEvaluator,
     resolve_evaluator,
 )
 from flashinfer_bench.bench.utils import gen_inputs
@@ -157,7 +157,7 @@ def _make_trial(defn: Definition, device: str):
             _make_dsa_sparse_attention_def("dsa_sparse_attention_h16_ckv512_kpe64_topk2048_ps64"),
             DsaSparseAttentionEvaluator,
         ),
-        (_make_dsa_topk_indexer_def(), DefaultEvaluator),
+        (_make_dsa_topk_indexer_def(), DsaTopkIndexerEvaluator),
     ],
 )
 def test_resolve(definition, expected):
