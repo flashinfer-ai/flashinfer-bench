@@ -119,6 +119,8 @@ FLASHINFER_DUMP_MAX_SIZE_GB=30
 
 **Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run multiple rounds each for KV-length diversity.
 
+**Dispatch**: sustained inflight (matches InferenceX `--request-rate inf`). sglang's async semaphore caps concurrent requests at `batch_size` and backfills on each completion, so new prefills overlap with ongoing decodes — yielding mixed prefill+decode batches and varied intra-batch kv_lens.
+
 **Per-batch-size isolation** (`--restart-per-batch-size`): pass this flag to `bench_serving.py` when using `FLASHINFER_DUMP_MAX_COUNT`.  Without it, the first batch size exhausts the dump budget (DUMP_MAX_COUNT is a global counter per server process) and later batch sizes capture nothing.  With it, each batch size gets its own server session and therefore its own fresh counter.
 
 Standard collection invocation with isolation:

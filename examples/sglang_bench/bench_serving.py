@@ -449,9 +449,7 @@ def sample_random_requests(
             prompt_token_ids = tokenizer.encode(prompt, add_special_tokens=False)
             if len(prompt_token_ids) < tgt_prompt_len:
                 num_extras = tgt_prompt_len - len(prompt_token_ids)
-                prompt_token_ids.extend(
-                    np.random.randint(0, vocab_size, size=num_extras).tolist()
-                )
+                prompt_token_ids.extend(np.random.randint(0, vocab_size, size=num_extras).tolist())
             elif len(prompt_token_ids) > tgt_prompt_len:
                 prompt_token_ids = prompt_token_ids[:tgt_prompt_len]
             else:
@@ -518,61 +516,55 @@ def run_benchmark(
     top_p: float = 1.0,
     disable_ignore_eos: bool = False,
 ) -> list:
-    """Run the benchmark over prompts in batches and return all results.
+    """Run the benchmark over `prompts` and return results.
 
-    `prompts` is a list of ``(prompt, prompt_len, output_len)`` tuples.
-    Random-dataset entries carry real lengths; ShareGPT entries pass zeros and
-    let the server pick the output budget.
+    Sustained inflight: all prompts dispatched in a single benchmark() call;
+    sglang's semaphore caps concurrency at `batch_size` and refills on each
+    completion. Matches InferenceX --request-rate inf.
     """
     tokenizer = DummyTokenizer()
     set_global_args(build_bench_args(disable_ignore_eos=disable_ignore_eos))
 
-    num_batches = math.ceil(len(prompts) / batch_size)
-    all_results = []
+    if not prompts:
+        return []
 
-    for i in range(num_batches):
-        batch_prompts = prompts[i * batch_size : (i + 1) * batch_size]
-        current_time = time.time()
-        input_requests = [
-            TestRequest(
-                prompt=p,
-                prompt_len=plen,
-                output_len=olen,
-                timestamp=current_time,
-                text_prompt_len=plen,
-                vision_prompt_len=0,
-            )
-            for (p, plen, olen) in batch_prompts
-        ]
-
-        log(f"Running batch {i + 1}/{num_batches} with {len(input_requests)} prompts")
-        results = asyncio.run(
-            benchmark(
-                backend="sglang",
-                api_url=f"{base_url}/generate",
-                base_url=base_url,
-                model_id="default",
-                tokenizer=tokenizer,
-                input_requests=input_requests,
-                request_rate=float("inf"),
-                max_concurrency=batch_size,
-                disable_tqdm=False,
-                lora_names=None,
-                lora_request_distribution=None,
-                lora_zipf_alpha=None,
-                extra_request_body={
-                    "sampling_params": {
-                        "temperature": temperature,
-                        **({"top_k": top_k} if top_k > 0 else {}),
-                        **({"top_p": top_p} if top_p < 1.0 else {}),
-                    }
-                },
-                profile=False,
-            )
+    input_requests = [
+        TestRequest(
+            prompt=p,
+            prompt_len=plen,
+            output_len=olen,
+            timestamp=time.time(),
+            text_prompt_len=plen,
+            vision_prompt_len=0,
         )
-        all_results.append(results)
+        for (p, plen, olen) in prompts
+    ]
 
-    return all_results
+    log(f"Dispatching {len(input_requests)} prompts, max_concurrency={batch_size}")
+    return asyncio.run(
+        benchmark(
+            backend="sglang",
+            api_url=f"{base_url}/generate",
+            base_url=base_url,
+            model_id="default",
+            tokenizer=tokenizer,
+            input_requests=input_requests,
+            request_rate=float("inf"),
+            max_concurrency=batch_size,
+            disable_tqdm=False,
+            lora_names=None,
+            lora_request_distribution=None,
+            lora_zipf_alpha=None,
+            extra_request_body={
+                "sampling_params": {
+                    "temperature": temperature,
+                    **({"top_k": top_k} if top_k > 0 else {}),
+                    **({"top_p": top_p} if top_p < 1.0 else {}),
+                }
+            },
+            profile=False,
+        )
+    )
 
 
 def _shutdown_server(process: subprocess.Popen, peer_processes: List[subprocess.Popen]) -> None:
