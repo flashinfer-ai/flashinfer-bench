@@ -3,8 +3,7 @@ Benchmark SGLang serving throughput.
 
 Launches an SGLang server and sends batched requests from a configurable
 prompt source — synthetic random prompts (default, controlled ISL/OSL,
-ported from InferenceX) or real ShareGPT prompts. Reports throughput and
-latency statistics across a sweep of batch sizes. Model server flags are
+ported from InferenceX) or real ShareGPT prompts. Model server flags are
 loaded from model_configs.json, keyed by GPU type and model name.
 
 Usage:
@@ -362,12 +361,7 @@ def log(msg: str) -> None:
 
 
 def load_prompts_from_sharegpt(n: int) -> List[Tuple[str, int, int]]:
-    """Load n prompts from the ShareGPT dataset.
-
-    Returns ``(prompt, prompt_len=0, output_len=0)`` tuples. The zeros mean
-    "let the server choose" — caller-side prompt/output length control is only
-    exercised for the random dataset.
-    """
+    """Load n prompts from the ShareGPT dataset."""
     ds = load_dataset(
         "anon8231489123/ShareGPT_Vicuna_unfiltered",
         data_files="ShareGPT_V3_unfiltered_cleaned_split.json",
@@ -487,13 +481,7 @@ class DummyTokenizer:
 
 
 def build_bench_args(disable_ignore_eos: bool = False) -> SimpleNamespace:
-    """Build the SimpleNamespace expected by bench_serving.benchmark.
-
-    `disable_ignore_eos=False` (default) → server is told to ignore EOS, so each
-    request decodes for its full output_len budget. This matches InferenceX's
-    `--ignore-eos` and is what we want for workload collection (otherwise
-    decode-heavy kernels get under-sampled).
-    """
+    """Build the SimpleNamespace expected by bench_serving.benchmark."""
     return SimpleNamespace(
         backend="sglang",
         dataset_name="custom",
@@ -668,7 +656,7 @@ def _launch_server_session(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Benchmark SGLang serving with InferenceX (random) or ShareGPT prompts",
+        description="Benchmark SGLang serving with random (InferenceX) or ShareGPT prompts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -777,10 +765,9 @@ def main():
         choices=["random", "sharegpt"],
         default="random",
         help=(
-            "Prompt source. 'random' (default) generates synthetic prompts of "
-            "controlled token length — gives diverse decode-heavy and "
-            "prefill-heavy kernel inputs. 'sharegpt' uses real prompts but "
-            "their length distribution is uncontrolled."
+            "Prompt source. 'random' (default): synthetic prompts of "
+            "controlled token length for diverse kernel input shapes. "
+            "'sharegpt': real ShareGPT prompts."
         ),
     )
     parser.add_argument(
