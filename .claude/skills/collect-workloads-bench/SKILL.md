@@ -4,7 +4,7 @@ Collect real workloads using `examples/sglang_bench/bench_serving.py` as the ser
 launcher. This is an improved alternative to `collect_workloads.py sglang` that:
 
 - Pulls model-specific server flags (TP, EP, attention-backend, etc.) from `examples/sglang_bench/model_configs.json`
-- Uses ShareGPT prompts with batch sweeps for diverse (batch_size, kv_len) coverage
+- Drives the server with random or ShareGPT prompts (default `--dataset random`, controlled via `--isl`/`--osl`) for diverse `(batch_size, kv_len)` coverage
 - Handles server lifecycle cleanly via `popen_launch_server` / `kill_process_tree`
 - Still uses the same FlashInfer Level-10 tensor dump + `sanitize_dumps.py` pipeline
 
