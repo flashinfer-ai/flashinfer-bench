@@ -33,10 +33,6 @@ flashinfer-bench/
 │   ├── integration/            #   FlashInfer integration
 │   ├── tracing/                #   Workload tracing utilities
 │   └── agents/                 #   Agent orchestration tools
-├── flashinfer_trace/           # Internal trace dataset (see below)
-│   ├── definitions/            #   Kernel definition JSON files, by op_type
-│   ├── tests/                  #   Definition tests and reference tests
-│   └── workloads/              #   Workload JSONL files
 ├── tests/                      # Pytest test suite
 ├── scripts/                    # Standalone scripts (workload collection, sanitization)
 ├── tools/                      # Developer tools (GPU locking, etc.)
@@ -44,40 +40,48 @@ flashinfer-bench/
 ├── web/                        # Web UI for visualization
 ├── examples/                   # Example code and benchmarks
 ├── .claude/skills/             # Agent skill definitions (see below)
-└── tmp/                        # Cloned external repos (SGLang, FlashInfer, sgl-cookbook)
+└── tmp/                        # Cloned external repos, including the
+                                #   flashinfer-trace HF dataset clone
+                                #   (SGLang, FlashInfer, sgl-cookbook, flashinfer-trace)
 ```
 
 ## Trace Dataset
 
-### Internal Trace Layer (`flashinfer_trace/`)
+### Single source of truth: HuggingFace
 
-The `flashinfer_trace/` directory is the repo-managed trace layer. Definitions are organized
-by `op_type` subdirectory:
+The canonical (and only) trace dataset lives at
+[`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
+on HuggingFace. It contains definitions, reference tests, baseline solutions, workloads,
+blobs, and evaluation traces.
+
+There is **no** in-repo `flashinfer_trace/` directory in `flashinfer-bench`. The earlier
+"internal trace layer" was removed in the trace-dataset refactor (PR #418); definitions,
+reference tests, and workloads no longer live here. Skills that need to read or edit trace
+content do so through a local clone of the HF dataset at `tmp/flashinfer-trace/`:
 
 ```
-flashinfer_trace/
+tmp/flashinfer-trace/                  # local clone of the HuggingFace dataset
 ├── definitions/{op_type}/{definition_name}.json
 ├── tests/references/test_{definition_name}.py
-└── workloads/{op_type}/{definition_name}.jsonl
+├── solutions/baseline/{op_type}/{definition_name}/...
+├── workloads/{op_type}/{definition_name}.jsonl
+├── blob/workloads/{op_type}/{definition_name}/*.safetensors
+└── traces/{op_type}/{definition_name}.jsonl
 ```
 
-Browse `flashinfer_trace/definitions/` to see the current set of supported op_types.
-Each op_type subdirectory contains one JSON file per kernel definition.
-
-### External Dataset
-
-The canonical published dataset lives at
-[`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
-on HuggingFace. It contains definitions, baseline solutions, workloads, and evaluation traces.
+Browse `tmp/flashinfer-trace/definitions/` to see the current set of supported op_types
+once `/clone-repos` has been run.
 
 ### Lifecycle
 
-1. Generate or update definitions in the internal `flashinfer_trace/` directory
-2. Open a PR in this repository for review
-3. After merge, manually sync to the external HuggingFace dataset
+1. Run `/clone-repos` to ensure `tmp/flashinfer-trace/` is checked out and up to date.
+2. Generate or update content under `tmp/flashinfer-trace/` and commit on a feature branch.
+3. Open a PR against the HuggingFace dataset repo (PR 2 in the onboard-model flow).
+4. Open a companion PR against `flashinfer-bench` that updates **only** `docs/model_coverage.mdx`
+   to reflect the new coverage (PR 1 in the onboard-model flow).
 
-New definitions should always be generated into the internal trace layer first.
-The external dataset is not the primary edit surface.
+The HuggingFace dataset is the primary edit surface — flashinfer-bench owns code, docs,
+and the coverage doc, not the trace data itself.
 
 ### Definition JSON Structure
 
@@ -107,7 +111,7 @@ Key conventions:
   local expert counts). Other kernel types (normalization, GEMM, RoPE, sampling) are
   parallelism-agnostic. See the `extract-kernel-definitions` skill for the full rules.
 
-Refer to `flashinfer_trace/definition.md` for the complete schema documentation.
+Refer to `docs/flashinfer-trace/definition.mdx` for the complete schema documentation.
 
 ## Documentation Structure (`docs/`)
 
@@ -176,13 +180,6 @@ Start with `.claude/skills/`. Each subdirectory contains a `SKILL.md` with full 
 
 ## Common Misunderstandings
 
-### `flashinfer_trace/` is the complete dataset
-
-Not necessarily. `flashinfer_trace/` is the internal repo-managed trace layer. The canonical
-published dataset lives at
-[`flashinfer-ai/flashinfer-trace`](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace)
-on HuggingFace and may contain additional content (baseline solutions, evaluation traces).
-
 ### Tracing and apply are unrelated entry points
 
 They are different runtimes, but the `apply(...)` call path is a shared entry point for both
@@ -203,13 +200,14 @@ workloads.
 
 To add a new op_type beyond what currently exists:
 
-1. Create operation documentation in `docs/op_type_schema/`
-2. Create Definition JSON files under `flashinfer_trace/definitions/{new_op_type}/`
+1. Create operation documentation in `docs/op-types/`
+2. Create Definition JSON files under `tmp/flashinfer-trace/definitions/{new_op_type}/`
+   (the HuggingFace dataset clone — submit via a PR to `flashinfer-ai/flashinfer-trace`)
 3. Provide a Python reference implementation in the definition's `reference` field
 4. Create Solution implementations (Triton/CUDA optimized)
 5. Optionally create a FlashInfer adapter in `flashinfer_bench/integration/`
 
-The existing op_type directories under `flashinfer_trace/definitions/` serve as templates.
+The existing op_type directories under `tmp/flashinfer-trace/definitions/` serve as templates.
 
 ## Maintenance Notes
 
@@ -229,5 +227,5 @@ op_type-specific details belong in their respective skill files.
 - [FlashInfer Documentation](https://docs.flashinfer.ai)
 - [SGLang GitHub](https://github.com/sgl-project/sglang)
 - [HuggingFace Hub](https://huggingface.co/models)
-- [Definition Schema Documentation](flashinfer_trace/definition.md)
-- [Operation Type Schema](docs/op_type_schema/)
+- [Definition Schema Documentation](docs/flashinfer-trace/definition.mdx)
+- [Operation Type Schema](docs/op-types/)
