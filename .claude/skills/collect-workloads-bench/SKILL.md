@@ -1,6 +1,6 @@
 # collect-workloads-bench
 
-Collect real workloads using `examples/sglang_bench/bench_sharegpt.py` as the server
+Collect real workloads using `examples/sglang_bench/bench_serving.py` as the server
 launcher. This is an improved alternative to `collect_workloads.py sglang` that:
 
 - Pulls model-specific server flags (TP, EP, attention-backend, etc.) from `examples/sglang_bench/model_configs.json`
@@ -34,13 +34,13 @@ Edit `examples/sglang_bench/model_configs.json` to add/confirm entry:
 ```
 For paged prefill: always include `--disable-radix-cache` and `--enable-deterministic-inference`.
 
-### 2. Set FlashInfer Level-10 dump env vars and run bench_sharegpt.py (incremental)
+### 2. Set FlashInfer Level-10 dump env vars and run bench_serving.py (incremental)
 
 Run one batch size at a time to avoid node overload. After each run, sanitize to collect
 2–3 workloads, then delete the dump dir before the next run.
 
 **Multi-node auto-detection**: when model config TP > local GPU count (e.g. TP=8 config but
-only 4 GPUs visible via `nvidia-smi`), `bench_sharegpt.py` automatically triggers multi-node
+only 4 GPUs visible via `nvidia-smi`), `bench_serving.py` automatically triggers multi-node
 mode. Peer nodes are discovered from `SLURM_JOB_ID`; workers are launched via SSH.
 FLASHINFER dump env vars are forwarded only to the head node (rank 0) — workers don't dump.
 Passwordless SSH between allocated nodes is required (standard in SLURM environments).
@@ -48,7 +48,7 @@ Passwordless SSH between allocated nodes is required (standard in SLURM environm
 ```bash
 DUMP_DIR=/tmp/flashinfer_dumps_<name>
 TRACE_DIR=<trace_dir>
-LOG=/tmp/bench_sharegpt_<name>.log
+LOG=/tmp/bench_serving_<name>.log
 
 cd /home/averyh/flashinfer-bench
 
@@ -69,7 +69,7 @@ for BS in 1 64 128 256; do
       FLASHINFER_DISABLE_VERSION_CHECK=1 \
       SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK=1 \
       SGLANG_ENABLE_TP_MEMORY_INBALANCE_CHECK=0 \
-    python examples/sglang_bench/bench_sharegpt.py \
+    python examples/sglang_bench/bench_serving.py \
       --model <model-key> \
       --model-path <model-path> \
       --batch-sizes $BS \
@@ -78,7 +78,7 @@ for BS in 1 64 128 256; do
       2>&1 | tee -a $LOG
 
   # Kill any lingering processes (including remote workers if multi-node)
-  pkill -f bench_sharegpt.py || true
+  pkill -f bench_serving.py || true
   pkill -f sglang.launch_server || true
 
   # Sanitize (no --replace so workloads from previous batch sizes are kept)
@@ -92,7 +92,7 @@ for BS in 1 64 128 256; do
 done
 ```
 
-#### Multi-node flags (bench_sharegpt.py)
+#### Multi-node flags (bench_serving.py)
 
 | Flag | Default | Purpose |
 |------|---------|---------|
@@ -102,7 +102,7 @@ done
 | `--conda-env ENV` | `$CONDA_DEFAULT_ENV` | Fallback: conda env for peer SSH (only used when `sys.executable` is a relative path, i.e. non-NFS clusters) |
 
 **Peer worker SSH environment**: on NFS-shared clusters (e.g. SLURM where `/home` is shared),
-`bench_sharegpt.py` passes `sys.executable` (absolute path) as the Python binary on the remote
+`bench_serving.py` passes `sys.executable` (absolute path) as the Python binary on the remote
 node — no conda activation needed. It also passes:
 
 - `CUDA_HOME=<conda_prefix>`: `deep_gemm` checks this first; conda prefix contains nvcc/include/lib
@@ -151,7 +151,7 @@ CPATH="$(python -c "import sys,pathlib; print(':'.join(str(p) for p in pathlib.P
 **Manual peer override** (when not in SLURM or peer auto-detection fails):
 ```bash
 SLURM_JOB_NODELIST=head-node,peer-node \
-python examples/sglang_bench/bench_sharegpt.py \
+python examples/sglang_bench/bench_serving.py \
   --model deepseek-v3 --model-path /nfs/path/to/model \
   --peer-node-addr peer-node \
   --dist-init-port 20010 \
@@ -242,16 +242,16 @@ Then commit and force-push to HF PR2:
 ```bash
 cd <trace_dir>
 git add workloads/ blob/ traces/ solutions/
-git commit -m "workloads: SGLang-collected <def_name> via bench_sharegpt.py"
+git commit -m "workloads: SGLang-collected <def_name> via bench_serving.py"
 git push origin HEAD:refs/pr/<pr2_num> --force
 ```
 
-Post the bench_sharegpt.py log to the HF PR2 discussion under `## SGLang Collection Log`.
+Post the bench_serving.py log to the HF PR2 discussion under `## SGLang Collection Log`.
 
 ## Notes
 
 - For `--enable-deterministic-inference` (paged prefill): add it to the model's `server_flags`
-  in `model_configs.json`, or pass it via bench_sharegpt.py's `server_args` list
+  in `model_configs.json`, or pass it via bench_serving.py's `server_args` list
 - The existing `collect_workloads.py` dump-processing pipeline (sanitize_dumps.py) is unchanged
-- `bench_sharegpt.py` passes `**os.environ` to the server process, so all `FLASHINFER_*` vars
+- `bench_serving.py` passes `**os.environ` to the server process, so all `FLASHINFER_*` vars
   set in the outer shell are inherited by the SGLang server automatically

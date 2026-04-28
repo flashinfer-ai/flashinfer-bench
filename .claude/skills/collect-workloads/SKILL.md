@@ -53,7 +53,7 @@ tools/gpu-lock --gpus 8 --exec-timeout 10800 -- \
 ```
 
 **Streaming workflow per batch size:**
-1. `bench_sharegpt.py` with `DUMP_MAX_COUNT=500` (exhausted in round 1 of 2)
+1. `bench_serving.py` with `DUMP_MAX_COUNT=500` (exhausted in round 1 of 2)
 2. `sanitize_dumps.py --max-new-workloads 4` — appends 4 diverse workloads
 3. Incremental HF push: updated JSONL + new blobs (no deletes)
 4. `rm -rf` dump dir
@@ -119,7 +119,7 @@ FLASHINFER_DUMP_MAX_SIZE_GB=30
 
 **Batch sizes**: `[8, 32, 64, 128]` — powers of 2 matching SGLang CUDA graph capture points, run multiple rounds each for KV-length diversity.
 
-**Per-batch-size isolation** (`--restart-per-batch-size`): pass this flag to `bench_sharegpt.py` when using `FLASHINFER_DUMP_MAX_COUNT`.  Without it, the first batch size exhausts the dump budget (DUMP_MAX_COUNT is a global counter per server process) and later batch sizes capture nothing.  With it, each batch size gets its own server session and therefore its own fresh counter.
+**Per-batch-size isolation** (`--restart-per-batch-size`): pass this flag to `bench_serving.py` when using `FLASHINFER_DUMP_MAX_COUNT`.  Without it, the first batch size exhausts the dump budget (DUMP_MAX_COUNT is a global counter per server process) and later batch sizes capture nothing.  With it, each batch size gets its own server session and therefore its own fresh counter.
 
 Standard collection invocation with isolation:
 ```bash
@@ -127,7 +127,7 @@ FLASHINFER_DUMP_MAX_COUNT=500 \
 FLASHINFER_DUMP_INCLUDE="BatchDecodeWithPagedKVCacheWrapper*" \
 FLASHINFER_DUMP_EXCLUDE="*.__init__" \
 ... \
-python3 examples/sglang_bench/bench_sharegpt.py \
+python3 examples/sglang_bench/bench_serving.py \
   --model <model-key> \
   --model-path /path/to/model \
   --dataset random --isl 1024 --osl 1024 \

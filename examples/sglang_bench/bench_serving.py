@@ -1,21 +1,23 @@
 """
-Benchmark SGLang serving throughput using the ShareGPT dataset.
+Benchmark SGLang serving throughput.
 
-Launches an SGLang server, sends batched requests from ShareGPT, and reports
-throughput and latency statistics across a sweep of batch sizes. Model server
-flags are loaded from model_configs.json, keyed by GPU type and model name.
+Launches an SGLang server and sends batched requests from a configurable
+prompt source — synthetic random prompts (default, controlled ISL/OSL,
+ported from InferenceX) or real ShareGPT prompts. Reports throughput and
+latency statistics across a sweep of batch sizes. Model server flags are
+loaded from model_configs.json, keyed by GPU type and model name.
 
 Usage:
     # Auto-detect GPU type from nvidia-smi
-    python3 bench_sharegpt.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
-    python3 bench_sharegpt.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
-    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
+    python3 bench_serving.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
+    python3 bench_serving.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
+    python3 bench_serving.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
 
     # Explicitly specify GPU type (b200, h200, h100, mi300x)
-    python3 bench_sharegpt.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
+    python3 bench_serving.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
 
     # TP size is auto-detected from CUDA_VISIBLE_DEVICES (set by gpu-lock):
-    #   tools/gpu-lock --gpus 4 -- python3 bench_sharegpt.py --model qwen3-235b-a22b ...
+    #   tools/gpu-lock --gpus 4 -- python3 bench_serving.py --model qwen3-235b-a22b ...
     #   → CUDA_VISIBLE_DEVICES=0,1,2,3 → TP=4 used automatically
 
     # Multi-node mode (auto-detected when config TP > local GPU count):
@@ -26,16 +28,20 @@ Usage:
 
 
     # Tracing flags
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
-    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
+    python3 bench_serving.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
+
+    # Dataset selection (default: random)
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --dataset random --isl 1024 --osl 1024
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --dataset sharegpt
 
     # Custom batch sizes and number of batches
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
 
     # Workload collection: restart server per batch size so each gets its own DUMP_MAX_COUNT budget
     FLASHINFER_DUMP_MAX_COUNT=500 FLASHINFER_DUMP_INCLUDE="BatchDecodeWithPagedKVCacheWrapper*" \
     FLASHINFER_DUMP_EXCLUDE="*.__init__" \
-    python3 bench_sharegpt.py --model llama-4-scout-ps64 --model-path /path/to/model \
+    python3 bench_serving.py --model llama-4-scout-ps64 --model-path /path/to/model \
         --batch-sizes 64 128 --num-batches 4 --restart-per-batch-size --disable-cuda-graph
 
 Environment variables (optional, for flashinfer-bench tracing):
@@ -43,7 +49,7 @@ Environment variables (optional, for flashinfer-bench tracing):
     FIB_DATASET_PATH=<dir>    Directory to write flashinfer trace data
 
     Example:
-        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model
+        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model
 """
 
 import argparse
@@ -662,7 +668,7 @@ def _launch_server_session(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Benchmark ShareGPT dataset with SGLang using different models",
+        description="Benchmark SGLang serving with InferenceX (random) or ShareGPT prompts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

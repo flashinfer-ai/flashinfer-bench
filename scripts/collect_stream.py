@@ -3,7 +3,7 @@
 Streaming workload collection with incremental HuggingFace push.
 
 For each batch size:
-  1. Run bench_sharegpt.py (DUMP_MAX_COUNT=500, single batch size, 2 rounds);
+  1. Run bench_serving.py (DUMP_MAX_COUNT=500, single batch size, 2 rounds);
      dump budget is typically exhausted in round 1, so collection is fast.
   2. sanitize_dumps.py --max-new-workloads 4  →  append 4 diverse workloads.
   3. Push updated JSONL + new blob safetensors to HF PR (append-only, no deletes).
@@ -52,7 +52,7 @@ from typing import Optional
 # Paths (relative to repo root, resolved at startup)
 # ---------------------------------------------------------------------------
 _REPO_ROOT = Path(__file__).parent.parent
-_BENCH_SCRIPT = _REPO_ROOT / "examples" / "sglang_bench" / "bench_sharegpt.py"
+_BENCH_SCRIPT = _REPO_ROOT / "examples" / "sglang_bench" / "bench_serving.py"
 _SANITIZE_SCRIPT = _REPO_ROOT / "scripts" / "sanitize_dumps.py"
 
 HF_REPO_ID = "flashinfer-ai/flashinfer-trace"
@@ -152,7 +152,7 @@ def run_inference(
     disable_ignore_eos: bool,
     seed: Optional[int],
 ) -> None:
-    """Run bench_sharegpt.py for *one* batch size, collecting dumps into dump_dir."""
+    """Run bench_serving.py for *one* batch size, collecting dumps into dump_dir."""
     cubins_dir = "/tmp/flashinfer_cubins"
     env = {
         **os.environ,
@@ -219,7 +219,7 @@ def run_inference(
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
         raise RuntimeError(
-            f"bench_sharegpt.py exited {result.returncode} for batch_size={batch_size}"
+            f"bench_serving.py exited {result.returncode} for batch_size={batch_size}"
         )
 
     n_dumps = sum(1 for _ in dump_dir.iterdir()) if dump_dir.exists() else 0
@@ -385,7 +385,7 @@ def main():
     parser.add_argument(
         "--model-key",
         required=True,
-        help="Model key for bench_sharegpt.py (e.g. llama-4-scout-ps64)",
+        help="Model key for bench_serving.py (e.g. llama-4-scout-ps64)",
     )
     parser.add_argument("--model-path", required=True, help="Path to model weights directory")
     parser.add_argument(
@@ -465,7 +465,7 @@ def main():
         dest="extra_server_flags",
         metavar="FLAG",
         help=(
-            "Extra flags forwarded verbatim to bench_sharegpt.py. "
+            "Extra flags forwarded verbatim to bench_serving.py. "
             "Default: --disable-cuda-graph. "
             "Example: --extra-server-flag --disable-radix-cache --disable-piecewise-cuda-graph"
         ),
@@ -475,7 +475,7 @@ def main():
         choices=["random", "sharegpt"],
         default="random",
         help=(
-            "Prompt source forwarded to bench_sharegpt.py. 'random' (default) "
+            "Prompt source forwarded to bench_serving.py. 'random' (default) "
             "generates synthetic prompts of controlled token length for diverse "
             "kernel input shapes; 'sharegpt' uses real ShareGPT prompts."
         ),
