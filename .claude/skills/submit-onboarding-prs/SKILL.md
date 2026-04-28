@@ -93,63 +93,11 @@ flashinfer-bench/
 
 ## Phase 4-spawn: One agent per definition, in parallel
 
-Spawn all definition agents simultaneously. Each agent owns its two worktrees and submits
-both PRs end-to-end. Use this prompt template:
-
-```
-You are handling PR submission for kernel definition: {definition_name}
-
-Your worktrees:
-- flashinfer-bench worktree: tmp/worktrees/bench-{definition_name}/
-  (branch: feat/def-{definition_name})
-- flashinfer-trace worktree: tmp/worktrees/trace-{definition_name}/
-  (branch: workloads-{date}-{definition_name})
-
-Definition file already written at (staging path inside the local clone):
-  tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json
-
-Workload files already collected at:
-  tmp/flashinfer-trace/workloads/{op_type}/{definition_name}.jsonl
-  tmp/flashinfer-trace/blob/workloads/{op_type}/{definition_name}/
-
-NOTE: The local `flashinfer_trace/` directory in flashinfer-bench was removed in the
-trace-dataset refactor. All definitions, reference tests, workloads, blobs, baseline
-solutions, and eval traces live ONLY in the HuggingFace dataset (PR 2). PR 1 in
-flashinfer-bench contains nothing but the model_coverage.mdx update.
-
-Do the following in order:
-
-1. PR 2 — HuggingFace flashinfer-trace (definition JSON + reference test + baseline
-   solution + workloads + blobs + eval traces). Open this FIRST so PR 1 can link to it.
-   - Check whether a baseline solution already exists:
-       ls tmp/flashinfer-trace/solutions/baseline/{op_type}/{definition_name}/*.json 2>/dev/null
-   - If baseline solution ALREADY EXISTS: skip creating a new solution and skip running eval.
-     Include the existing solution directory in the PR commit as-is.
-   - If baseline solution does NOT exist: create it (see Phase 4a below) and run
-     flashinfer-bench eval — all workloads must show PASSED before opening PR 2.
-   - Copy definition JSON into tmp/worktrees/trace-{definition_name}/definitions/{op_type}/
-   - Write a reference test under tmp/worktrees/trace-{definition_name}/tests/references/test_{definition_name}.py
-     (use the add-reference-tests skill — pytest validating the definition's `reference` field
-     against FlashInfer/SGLang ground truth)
-   - Copy workload JSONL into tmp/worktrees/trace-{definition_name}/workloads/{op_type}/
-   - Copy safetensors blobs into tmp/worktrees/trace-{definition_name}/blob/workloads/{op_type}/
-   - Copy baseline eval traces into tmp/worktrees/trace-{definition_name}/traces/{op_type}/{definition_name}.jsonl
-   - Commit all together and push
-   - Open HuggingFace PR via huggingface_hub.HfApi().create_pull_request()
-   - Record the PR number/URL as pr2_url
-
-2. PR 1 — GitHub flashinfer-bench (docs/model_coverage.mdx ONLY):
-   - In tmp/worktrees/bench-{definition_name}/, edit docs/model_coverage.mdx to mark
-     {definition_name} as ✅ for this model (update the relevant kernel row + summary table).
-   - Do NOT add definition JSON, reference test, workloads, blobs, or solutions to this PR —
-     those live exclusively in flashinfer-trace (PR 2).
-   - Run `pre-commit run --all-files` to format the change.
-   - Commit and push.
-   - Open PR to flashinfer-ai/flashinfer-bench. PR description MUST link to pr2_url.
-   - Record the PR number as pr1_number.
-
-Report the two PR URLs when done.
-```
+Spawn all definition agents simultaneously. Each agent owns its two worktrees and runs
+**Phase 4a then Phase 4b** (below) end-to-end. Write a `.claude/TASK.md` into each agent's
+bench worktree using the [TASK.md template](#agent-taskmd-template) and include the two
+worktree paths plus the staging paths for the definition JSON, workloads, and blobs. The
+agent reports the two PR URLs when done.
 
 ## Phase 4a: PR 2 — HuggingFace flashinfer-trace
 
@@ -311,55 +259,80 @@ considered complete.** If any item fails, fix and re-push before requesting merg
 
 ---
 
-## Agent TASK.md Template
+## Fixing PR checklist failures
 
-When spawning an agent for a definition, write `.claude/TASK.md` in its bench worktree with
-the contents below.
+When a checklist item fails on an already-open PR, fix it in the same worktree and push a
+follow-up commit to the same branch — both PR 1 and PR 2 update in place. **Never close and
+re-open a PR for a fixable item**, and **never amend the head commit after the PR has been
+reviewed** (push a new commit instead).
+
+### PR 1 — flashinfer-bench (coverage doc only)
+
+| Failed item | Fix |
+|-------------|-----|
+| 1. Coverage row not ✅ | Edit `docs/model_coverage.mdx`: flip the `{name}` row to ✅ for `{model_display_name}` and bump the per-model summary count. Commit + push to `feat/def-{name}`. |
+| 2. Diff touches paths other than `docs/model_coverage.mdx` | `git restore --staged --source=origin/main -- :^docs/model_coverage.mdx` in the bench worktree; commit the cleaned diff. Anything you remove here belongs in the PR 2 worktree — re-stage it there if needed. |
+| 3. Missing PR 2 link | `gh pr edit {pr1_number} --body-file -` and re-paste the body with the full HF PR URL. |
+| 4. Missing fi_missing issue link | Same — append the `flashinfer-ai/flashinfer#{issue_number}` line to the PR body. |
+| 5. pre-commit failed | Run `pre-commit run --all-files` in the bench worktree, fix what it reports, commit + push (do **not** use `--no-verify`). |
+
+### PR 2 — flashinfer-trace (HuggingFace)
+
+| Failed item | Fix |
+|-------------|-----|
+| 1. Definition JSON missing | Copy from `tmp/flashinfer-trace/definitions/{op_type}/{name}.json` into the trace worktree at the same path. Commit + `git push origin workloads-{date}-{name}`. |
+| 2. Definition tags wrong | Edit the `tags` array in the JSON inside the worktree (`status:verified`/`status:unverified`, `fi_api:*`, `tp:*`/`ep:*`). Re-validate with `flashinfer-bench validate --dataset tmp/worktrees/trace-{name}`. Commit + push. |
+| 3. Reference test missing or red | Run `/add-reference-tests --definition-name {name}`, save output under `tests/references/test_{name}.py` in the trace worktree, then `pytest tests/references/test_{name}.py -v` until green. Paste the full pytest stdout into the PR body via `huggingface_hub.HfApi().edit_discussion(...)` (or the dataset web UI). |
+| 4. Workload JSONL missing/empty | Re-run `/collect-workloads --definition-names {name} --model-name {model}`, then copy the regenerated `workloads/{op_type}/{name}.jsonl` into the trace worktree. Commit + push. |
+| 5. Blobs missing | Same flow as item 4 — `collect-workloads` writes the safetensors to `blob/workloads/{op_type}/{name}/`; copy them into the worktree. |
+| 6. Baseline solution wrong (copies `reference` instead of wrapping FlashInfer) | Replace `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` with one that calls the actual FlashInfer wrapper (`BatchDecodeWithPagedKVCacheWrapper` etc.). Re-run `flashinfer-bench run` to regenerate the eval trace, then commit both. |
+| 7. Eval traces have non-PASSED entries | Inspect failing entries first — usually a baseline/wrapper bug or a tolerance issue. Fix the baseline (item 6) or the workload (items 4–5), re-run `flashinfer-bench run`, and commit the regenerated `traces/{op_type}/{name}.jsonl` only after every entry shows `evaluation.status == "PASSED"`. |
+| 8. SGLang collection log missing or shows synthetic data | Re-run `/collect-workloads` with the real SGLang config (correct `--model-name`, full prompt set). Capture stdout to a file and paste it into the PR body under `## SGLang Collection Log`. A red flag is uniform `(batch_size, kv_length)` pairs — that's synthetic, not real inference. |
+| 9. Provenance missing | Append `Model: {hf_repo_id}`, `SGLang: {sglang_sha}`, `FlashInfer: {flashinfer_sha}`, and `Workload entries: {count}` to the PR description (and the next commit message if you push another commit). |
+
+After any PR 2 fix, refresh the PR description so the pytest stdout / SGLang log reflect
+the latest state — old log output can mask the real status.
+
+If the failure is a structural mistake (e.g. PR 1 contains workload files, PR 2 doesn't
+contain the definition JSON), the cleanest recovery is to fix the worktrees and force-push
+**only the per-definition feature branch** (never the dataset's `main`). Coordinate with the
+reviewer before force-pushing a PR they've already reviewed.
+
+---
+
+## Agent TASK.md template
+
+Write `.claude/TASK.md` into each agent's bench worktree. Keep it short — the canonical
+content lives in [Phase 4a/4b](#phase-4a-pr-2--huggingface-flashinfer-trace) and the
+[PR Review Checklist](#pr-review-checklist).
 
 ```markdown
 ## Objective
-Submit 2 PRs for definition {name}. After the trace-dataset refactor, all dataset content
-lives only at HuggingFace; flashinfer-bench keeps just the coverage doc.
-- PR 2 (HuggingFace flashinfer-trace, OPEN FIRST): definition JSON + reference test +
-  baseline solution + workloads + blobs + eval traces (all entries PASSED) + SGLang
-  collection log in PR body.
-- PR 1 (GitHub flashinfer-bench, OPEN SECOND): docs/model_coverage.mdx updated to ✅
-  for this definition + back-link to PR 2 in PR body.
+Submit two PRs for definition `{name}` per Phase 4a then Phase 4b in
+`.claude/skills/submit-onboarding-prs/SKILL.md`. PR 2 (HF flashinfer-trace) opens first;
+PR 1 (flashinfer-bench coverage doc) opens second and links to PR 2.
 
-## PR 2 Contents (HuggingFace flashinfer-trace)
-- `definitions/{op_type}/{name}.json`
-- `tests/references/test_{name}.py`
-- `solutions/baseline/{op_type}/{name}/flashinfer_wrapper_*.json` (FlashInfer API wrapper —
-  NOT a copy of the definition `reference`; must call
-  flashinfer.BatchDecodeWithPagedKVCacheWrapper or flashinfer.BatchPrefillWithPagedKVCacheWrapper)
-- `workloads/{op_type}/{name}.jsonl`
-- `blob/workloads/{op_type}/{name}/*.safetensors`
-- `traces/{op_type}/{name}.jsonl` (all entries must have `evaluation.status == "PASSED"`)
-- PR description must include the full pytest stdout for the reference test
-- PR description must include the SGLang inference stdout under `## SGLang Collection Log`
-  (capture stdout of `collect_workloads.py sglang`)
+## Worktrees
+- bench: `tmp/worktrees/bench-{name}/`  (branch `feat/def-{name}`)
+- trace: `tmp/worktrees/trace-{name}/`  (branch `workloads-{date}-{name}`)
 
-## PR 1 Contents (GitHub flashinfer-bench)
-- `docs/model_coverage.mdx` updated: ❌/🟡 → ✅ for this definition (and per-model summary
-  table refreshed)
-- The diff MUST touch only `docs/model_coverage.mdx` — no `flashinfer_trace/...`,
-  no `tests/references/...`, no workload/blob files (those all live in PR 2 now).
-- PR description must include a link to the HuggingFace PR 2 by full URL.
+## Staging paths (already populated by earlier phases)
+- definition: `tmp/flashinfer-trace/definitions/{op_type}/{name}.json`
+- workloads:  `tmp/flashinfer-trace/workloads/{op_type}/{name}.jsonl`
+- blobs:      `tmp/flashinfer-trace/blob/workloads/{op_type}/{name}/`
 
-## Progress Reporting
-Write .agent-progress.md after every major step:
-  Status: in_progress | completed | blocked
-  Done: <what's done>
-  Current: <what you're doing now>
-  Next: <next step>
-  Blockers: <if any>
-  - PR 2 (def + ref test + baseline + workloads + traces → flashinfer-trace HF): <URL or pending>
-  - PR 1 (model_coverage.mdx → flashinfer-bench GitHub): <URL or pending>
+## Done criteria
+Every item in the PR Review Checklist (PR 1 + PR 2) passes. Use the
+[fix-up table](#fixing-pr-checklist-failures) when an item is missing after the PR is open.
 
-## GPU Work
-Use tools/gpu-lock before any SGLang workload collection:
-  tools/gpu-lock --gpus <N> --exec-timeout 1800 -- python collect_workloads.py ...
-Where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.)
+## Progress reporting
+Append to `.agent-progress.md` after each step (Status / Done / Current / Next / Blockers,
+plus the two PR URLs when each is open).
+
+## GPU work
+Use `tools/gpu-lock` before any SGLang workload collection:
+`tools/gpu-lock --gpus <N> --exec-timeout 1800 -- python collect_workloads.py ...`
+where N matches the TP value (1 GPU for TP=1, 4 GPUs for TP=4, etc.).
 ```
 
 ---

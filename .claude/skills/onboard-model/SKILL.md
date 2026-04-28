@@ -340,29 +340,6 @@ skips any kernel/phase already marked `done` — phases resume from the first in
 
 ---
 
-## Decision tree
-
-```
-For each required kernel definition:
-
-  Already exists in tmp/flashinfer-trace/definitions/ (HF dataset clone)?
-  ├── YES → skip (existing)
-  └── NO  → Phase 2: generate definition JSON
-              FlashInfer has this kernel?
-              ├── YES → /extract-kernel-definitions (status:verified)
-              │          SGLang integrates this FlashInfer API?
-              │          ├── YES → /collect-workloads
-              │          └── NO  → submit SGLang PR, wait for merge, then /collect-workloads
-              └── NO  → /extract-kernel-definitions (SGLang-sourced, status:unverified)
-                         file GitHub issue in flashinfer-ai/flashinfer
-                         ⛔ skip workload collection (no FlashInfer kernel yet)
-
-Then for each kernel that reached "ready":
-  /submit-onboarding-prs → PR 2 (HF) + PR 1 (bench coverage doc)
-```
-
----
-
 ## Error handling
 
 ### HuggingFace config unavailable
@@ -396,43 +373,19 @@ Then for each kernel that reached "ready":
 
 ---
 
-## Running sub-phases in isolation
-
-Each phase has a standalone skill, so you can run any phase by itself once the manifest
-exists:
-
-```bash
-# Just discover models (Phase 1 only)
-/discover-models --discover --manifest tmp/onboard_{model_slug}_{date}.json
-
-# Just generate definitions for a known model (Phase 2 only)
-/extract-kernel-definitions --model-name {sglang_model_name}
-
-# Just collect workloads for already-generated definitions (Phase 3 only)
-/collect-workloads --model-name {model_name} --definition-names {names}
-
-# Just submit PRs for already-collected workloads (Phase 4 only)
-/submit-onboarding-prs --manifest tmp/onboard_{model_slug}_{date}.json
-```
-
-`/onboard-model --phases N` is the same thing routed through the orchestrator (and keeps the
-manifest in sync).
-
----
-
 ## Maintaining this skill
 
 This file is a thin orchestrator. Update it only when:
 - The set of phases changes (a new phase is added or removed).
 - The run-manifest contract changes (new top-level field, new per-kernel field).
-- Phase 2a's issue template changes, or Phase 3b's SGLang PR template changes.
+- Phase 2a's issue template or Phase 3b's SGLang PR template changes.
 
-Phase-specific procedures live in the phase skills:
+All phase-specific procedures live in the phase skills linked from the overview table at
+the top — keep procedural detail there, not here.
 
-- Phase 1 → [`discover-models`](../discover-models/SKILL.md)
-- Phase 2 → [`extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md)
-- Phase 3 → [`collect-workloads`](../collect-workloads/SKILL.md)
-- Phase 4 → [`submit-onboarding-prs`](../submit-onboarding-prs/SKILL.md)
+To run a single phase by itself, invoke its skill directly (each is documented in its own
+`SKILL.md`); `/onboard-model --phases N` is the same thing routed through the orchestrator
+so the manifest stays in sync.
 
 ## See Also
 
