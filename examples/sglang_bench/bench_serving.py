@@ -296,6 +296,7 @@ def launch_peer_worker(
     return subprocess.Popen(ssh_cmd, stdout=log_file, stderr=log_file)
 
 
+import numpy as np
 from datasets import load_dataset
 from sglang.bench_serving import benchmark, set_global_args
 from sglang.test.test_utils import (
@@ -303,6 +304,7 @@ from sglang.test.test_utils import (
     kill_process_tree,
     popen_launch_server,
 )
+from transformers import AutoTokenizer
 
 
 @dataclass
@@ -420,11 +422,7 @@ def sample_random_requests(
 
     Returns ``(prompt, prompt_len, output_len)`` tuples.
     """
-    import numpy as np
-    from transformers import AutoTokenizer
-
-    if seed is not None:
-        np.random.seed(seed)
+    rng = np.random.default_rng(seed)
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     vocab_size = tokenizer.vocab_size
@@ -432,11 +430,11 @@ def sample_random_requests(
     def sample_uniform(seq_len: int) -> List[int]:
         lower = int(seq_len * range_ratio)
         upper = seq_len
-        return np.random.randint(lower, upper + 1, size=num_prompts).tolist()
+        return rng.integers(lower, upper + 1, size=num_prompts).tolist()
 
     input_lens = sample_uniform(input_len)
     output_lens = sample_uniform(output_len)
-    offsets = np.random.randint(0, vocab_size, size=num_prompts)
+    offsets = rng.integers(0, vocab_size, size=num_prompts)
 
     requests: List[Tuple[str, int, int]] = []
     for i in range(num_prompts):
@@ -449,7 +447,7 @@ def sample_random_requests(
             prompt_token_ids = tokenizer.encode(prompt, add_special_tokens=False)
             if len(prompt_token_ids) < tgt_prompt_len:
                 num_extras = tgt_prompt_len - len(prompt_token_ids)
-                prompt_token_ids.extend(np.random.randint(0, vocab_size, size=num_extras).tolist())
+                prompt_token_ids.extend(rng.integers(0, vocab_size, size=num_extras).tolist())
             elif len(prompt_token_ids) > tgt_prompt_len:
                 prompt_token_ids = prompt_token_ids[:tgt_prompt_len]
             else:
@@ -528,12 +526,13 @@ def run_benchmark(
     if not prompts:
         return []
 
+    now = time.time()
     input_requests = [
         TestRequest(
             prompt=p,
             prompt_len=plen,
             output_len=olen,
-            timestamp=time.time(),
+            timestamp=now,
             text_prompt_len=plen,
             vision_prompt_len=0,
         )
