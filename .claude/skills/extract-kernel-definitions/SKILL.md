@@ -171,15 +171,75 @@ for p in src.glob("*.json"):
 EOF
 ```
 
-Validate the staged definitions:
+### A3b. Normalize the staged JSONs for `flashinfer-bench validate`
+
+The trace dumper's output has three known mismatches with `flashinfer-bench`'s
+`Definition` schema (all originate in the trace templates shipped with
+[flashinfer-ai/flashinfer#2931](https://github.com/flashinfer-ai/flashinfer/pull/2931)):
+
+1. `reference` declares the function as `def _<name>_reference(...)`, but
+   `flashinfer-bench` requires a top-level `def run(...)`.
+2. Plan-time index tensors (`kv_indptr`, `kv_indices`, `qo_indptr`) come back
+   with `dtype: "unknown"` because the dumper inspects only `run()`'s kwargs,
+   not the wrapper state set during `plan()`. The validator only accepts
+   concrete dtypes from its enum.
+3. In-place ops (e.g. `fused_add_rmsnorm`'s residual) declare the same name
+   in both `inputs` and `outputs`. `flashinfer-bench` rejects overlapping
+   I/O names; the dumper's `reference` function only returns the non-overlap
+   outputs anyway, so it's safe to drop the duplicates from `outputs`.
+
+Run this once per staging pass to make the JSONs validate:
+
+```bash
+python - <<'EOF'
+import json, re
+from pathlib import Path
+INDEX_TENSOR_DTYPE = "int32"
+KNOWN_INDEX_TENSORS = {
+    "kv_indptr", "kv_indices", "qo_indptr",
+    "paged_kv_indptr", "paged_kv_indices", "kv_last_page_len",
+}
+REF_RE = re.compile(r"^def\s+_[A-Za-z0-9_]+_reference\b", re.MULTILINE)
+for p in Path("tmp/flashinfer-trace/definitions").rglob("*.json"):
+    d = json.loads(p.read_text()); changed = False
+    ref = d.get("reference", "")
+    if ref and "def run(" not in ref:
+        new_ref, n = REF_RE.subn("def run", ref, count=1)
+        if n == 1: d["reference"], changed = new_ref, True
+    for name, spec in d.get("inputs", {}).items():
+        if isinstance(spec, dict) and spec.get("dtype") == "unknown" and name in KNOWN_INDEX_TENSORS:
+            spec["dtype"], changed = INDEX_TENSOR_DTYPE, True
+    overlap = set(d.get("inputs", {})) & set(d.get("outputs", {}))
+    for name in overlap:
+        d["outputs"].pop(name, None)
+        changed = True
+    if changed:
+        p.write_text(json.dumps(d, indent=2) + "\n")
+        print(f"normalized: {p}")
+EOF
+```
+
+These three patches are mechanical — file a follow-up issue against
+`flashinfer-ai/flashinfer` to emit `def run(...)`, resolve plan-time dtypes,
+and drop in-place outputs (or rename them) inside the dumper itself, after
+which A3b becomes a no-op.
+
+### A3c. Validate
 
 ```bash
 flashinfer-bench validate --dataset tmp/flashinfer-trace --disable-gpu
 ```
 
-That's it for Path A — the staged JSONs already contain `axes`, `inputs`, `outputs`,
-`tags` (`fi_api:*`, `status:verified`), and a `reference` implementation, so they're
-ready for the rest of the onboarding pipeline (workloads → baseline → eval → Phase 4 PRs).
+Newly staged definitions should report `[WARNING]` (missing descriptions on
+axes/inputs/outputs are advisory) and not `[ERROR]`. Any `[ERROR]` on a
+definition you just staged means A3b didn't normalize a new failure mode —
+inspect the report (`tmp/flashinfer-trace/reports/report-*.txt`) and extend
+the snippet.
+
+That's it for Path A — once normalized, the staged JSONs carry `axes`,
+`inputs`, `outputs`, `tags` (`fi_api:*`, `status:verified`), and a
+`reference` implementation, so they're ready for the rest of the onboarding
+pipeline (workloads → baseline → eval → Phase 4 PRs).
 
 ### Trade-off vs. tag enrichment
 

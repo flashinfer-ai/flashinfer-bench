@@ -124,7 +124,11 @@ export FLASHINFER_TRACE_DUMP_DIR=tmp/dumps/fi_trace_{def_name}
 ```
 
 After the run, stage the new JSONs into the dataset with the snippet from
-[`/extract-kernel-definitions` Path A3](../extract-kernel-definitions/SKILL.md#a3-dedupe-and-stage-into-the-dataset).
+[`/extract-kernel-definitions` Path A3](../extract-kernel-definitions/SKILL.md#a3-dedupe-and-stage-into-the-dataset),
+then normalize them for the validator with the
+[A3b](../extract-kernel-definitions/SKILL.md#a3b-normalize-the-staged-jsons-for-flashinfer-bench-validate)
+fix-up snippet (the dumper's `def _xxx_reference` and `dtype: "unknown"` need
+patching).
 The trace dump is independent of the logging API and adds negligible overhead, so it's
 safe to leave on for any collection run. Skip it only when the definitions are already
 known-correct and stable.
