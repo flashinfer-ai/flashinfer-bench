@@ -3,7 +3,7 @@
 Streaming workload collection with incremental HuggingFace push.
 
 For each batch size:
-  1. Run bench_sharegpt.py (DUMP_MAX_COUNT=500, single batch size, 2 rounds);
+  1. Run bench_serving.py (DUMP_MAX_COUNT=500, single batch size, 2 rounds);
      dump budget is typically exhausted in round 1, so collection is fast.
   2. sanitize_dumps.py --max-new-workloads 4  →  append 4 diverse workloads.
   3. Push updated JSONL + new blob safetensors to HF PR (append-only, no deletes).
@@ -52,7 +52,7 @@ from typing import Optional
 # Paths (relative to repo root, resolved at startup)
 # ---------------------------------------------------------------------------
 _REPO_ROOT = Path(__file__).parent.parent
-_BENCH_SCRIPT = _REPO_ROOT / "examples" / "sglang_bench" / "bench_sharegpt.py"
+_BENCH_SCRIPT = _REPO_ROOT / "examples" / "sglang_bench" / "bench_serving.py"
 _SANITIZE_SCRIPT = _REPO_ROOT / "scripts" / "sanitize_dumps.py"
 
 HF_REPO_ID = "flashinfer-ai/flashinfer-trace"
@@ -145,8 +145,14 @@ def run_inference(
     dist_init_port: int,
     conda_env: Optional[str],
     base_url: str,
+    dataset: str,
+    isl: int,
+    osl: int,
+    random_range_ratio: float,
+    disable_ignore_eos: bool,
+    seed: Optional[int],
 ) -> None:
-    """Run bench_sharegpt.py for *one* batch size, collecting dumps into dump_dir."""
+    """Run bench_serving.py for *one* batch size, collecting dumps into dump_dir."""
     cubins_dir = "/tmp/flashinfer_cubins"
     env = {
         **os.environ,
@@ -181,7 +187,23 @@ def run_inference(
         str(num_batches),
         "--base-url",
         base_url,
+        "--dataset",
+        dataset,
     ] + extra_server_flags
+
+    if dataset == "random":
+        cmd += [
+            "--isl",
+            str(isl),
+            "--osl",
+            str(osl),
+            "--random-range-ratio",
+            str(random_range_ratio),
+        ]
+        if seed is not None:
+            cmd += ["--seed", str(seed)]
+    if disable_ignore_eos:
+        cmd.append("--disable-ignore-eos")
 
     if peer_node_addr:
         for addr in peer_node_addr:
@@ -197,7 +219,7 @@ def run_inference(
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
         raise RuntimeError(
-            f"bench_sharegpt.py exited {result.returncode} for batch_size={batch_size}"
+            f"bench_serving.py exited {result.returncode} for batch_size={batch_size}"
         )
 
     n_dumps = sum(1 for _ in dump_dir.iterdir()) if dump_dir.exists() else 0
@@ -363,7 +385,7 @@ def main():
     parser.add_argument(
         "--model-key",
         required=True,
-        help="Model key for bench_sharegpt.py (e.g. llama-4-scout-ps64)",
+        help="Model key for bench_serving.py (e.g. llama-4-scout-ps64)",
     )
     parser.add_argument("--model-path", required=True, help="Path to model weights directory")
     parser.add_argument(
@@ -443,10 +465,53 @@ def main():
         dest="extra_server_flags",
         metavar="FLAG",
         help=(
-            "Extra flags forwarded verbatim to bench_sharegpt.py. "
+            "Extra flags forwarded verbatim to bench_serving.py. "
             "Default: --disable-cuda-graph. "
             "Example: --extra-server-flag --disable-radix-cache --disable-piecewise-cuda-graph"
         ),
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=["random", "sharegpt"],
+        default="random",
+        help=(
+            "Prompt source forwarded to bench_serving.py. 'random' (default) "
+            "generates synthetic prompts of controlled token length for diverse "
+            "kernel input shapes; 'sharegpt' uses real ShareGPT prompts."
+        ),
+    )
+    parser.add_argument(
+        "--isl",
+        type=int,
+        default=1024,
+        help="Random-dataset input sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--osl",
+        type=int,
+        default=1024,
+        help="Random-dataset output sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--random-range-ratio",
+        type=float,
+        default=1.0,
+        help="Random-dataset length jitter; 1.0 means exact lengths (default: 1.0).",
+    )
+    parser.add_argument(
+        "--disable-ignore-eos",
+        action="store_true",
+        help=(
+            "Let the server stop at EOS instead of decoding for the full output "
+            "length. Default ignore_eos=True ensures every request produces "
+            "output_len decode steps (matches InferenceX --ignore-eos)."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducible random-dataset prompts.",
     )
     parser.add_argument(
         "--replace-first",
@@ -515,6 +580,12 @@ def main():
             dist_init_port=args.dist_init_port,
             conda_env=args.conda_env,
             base_url=args.base_url,
+            dataset=args.dataset,
+            isl=args.isl,
+            osl=args.osl,
+            random_range_ratio=args.random_range_ratio,
+            disable_ignore_eos=args.disable_ignore_eos,
+            seed=args.seed,
         )
 
         # --- Step 2: sanitize ---

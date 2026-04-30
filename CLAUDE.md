@@ -170,7 +170,7 @@ Start with `.claude/skills/`. Each subdirectory contains a `SKILL.md` with full 
   with deduplication, generate Definition JSON files
 - **collect-workloads**: Collect real workloads from SGLang inference runs using FlashInfer
   logging API, sanitize and submit to flashinfer-trace
-- **collect-workloads-bench**: Collect workloads using `bench_sharegpt.py` with model-specific
+- **collect-workloads-bench**: Collect workloads using `bench_serving.py` with model-specific
   server configs from `model_configs.json`
 - **add-reference-tests**: Add pytest tests to validate reference implementations against
   FlashInfer or SGLang ground truth

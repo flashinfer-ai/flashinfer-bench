@@ -1,21 +1,22 @@
 """
-Benchmark SGLang serving throughput using the ShareGPT dataset.
+Benchmark SGLang serving throughput.
 
-Launches an SGLang server, sends batched requests from ShareGPT, and reports
-throughput and latency statistics across a sweep of batch sizes. Model server
-flags are loaded from model_configs.json, keyed by GPU type and model name.
+Launches an SGLang server and sends batched requests from a configurable
+prompt source — synthetic random prompts (default, controlled ISL/OSL,
+ported from InferenceX) or real ShareGPT prompts. Model server flags are
+loaded from model_configs.json, keyed by GPU type and model name.
 
 Usage:
     # Auto-detect GPU type from nvidia-smi
-    python3 bench_sharegpt.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
-    python3 bench_sharegpt.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
-    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
+    python3 bench_serving.py --model llama-3.1-8b  --model-path /path/to/Llama-3.1-8B-Instruct
+    python3 bench_serving.py --model deepseek-v3   --model-path /path/to/DeepSeek-V3
+    python3 bench_serving.py --model qwen3-235b-a22b --model-path /path/to/Qwen3-235B-A22B
 
     # Explicitly specify GPU type (b200, h200, h100, mi300x)
-    python3 bench_sharegpt.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
+    python3 bench_serving.py --gpu h100 --model llama-3.1-70b --model-path /path/to/Llama-3.1-70B-Instruct
 
     # TP size is auto-detected from CUDA_VISIBLE_DEVICES (set by gpu-lock):
-    #   tools/gpu-lock --gpus 4 -- python3 bench_sharegpt.py --model qwen3-235b-a22b ...
+    #   tools/gpu-lock --gpus 4 -- python3 bench_serving.py --model qwen3-235b-a22b ...
     #   → CUDA_VISIBLE_DEVICES=0,1,2,3 → TP=4 used automatically
 
     # Multi-node mode (auto-detected when config TP > local GPU count):
@@ -26,16 +27,20 @@ Usage:
 
 
     # Tracing flags
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
-    python3 bench_sharegpt.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --disable-radix-cache
+    python3 bench_serving.py --model qwen3-235b-a22b --model-path /path/to/model --enable-deterministic-inference
+
+    # Dataset selection (default: random)
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --dataset random --isl 1024 --osl 1024
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --dataset sharegpt
 
     # Custom batch sizes and number of batches
-    python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
+    python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model --batch-sizes 32 128 --num-batches 8
 
     # Workload collection: restart server per batch size so each gets its own DUMP_MAX_COUNT budget
     FLASHINFER_DUMP_MAX_COUNT=500 FLASHINFER_DUMP_INCLUDE="BatchDecodeWithPagedKVCacheWrapper*" \
     FLASHINFER_DUMP_EXCLUDE="*.__init__" \
-    python3 bench_sharegpt.py --model llama-4-scout-ps64 --model-path /path/to/model \
+    python3 bench_serving.py --model llama-4-scout-ps64 --model-path /path/to/model \
         --batch-sizes 64 128 --num-batches 4 --restart-per-batch-size --disable-cuda-graph
 
 Environment variables (optional, for flashinfer-bench tracing):
@@ -43,7 +48,7 @@ Environment variables (optional, for flashinfer-bench tracing):
     FIB_DATASET_PATH=<dir>    Directory to write flashinfer trace data
 
     Example:
-        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_sharegpt.py --model llama-3.1-8b --model-path /path/to/model
+        FIB_ENABLE_APPLY=1 FIB_DATASET_PATH=/path/to/traces/ python3 bench_serving.py --model llama-3.1-8b --model-path /path/to/model
 """
 
 import argparse
@@ -291,6 +296,7 @@ def launch_peer_worker(
     return subprocess.Popen(ssh_cmd, stdout=log_file, stderr=log_file)
 
 
+import numpy as np
 from datasets import load_dataset
 from sglang.bench_serving import benchmark, set_global_args
 from sglang.test.test_utils import (
@@ -298,6 +304,7 @@ from sglang.test.test_utils import (
     kill_process_tree,
     popen_launch_server,
 )
+from transformers import AutoTokenizer
 
 
 @dataclass
@@ -355,7 +362,7 @@ def log(msg: str) -> None:
     print(f"[BENCHMARK] {time.strftime('%Y-%m-%d %H:%M:%S')} - {msg}")
 
 
-def load_prompts_from_sharegpt(n: int) -> List[str]:
+def load_prompts_from_sharegpt(n: int) -> List[Tuple[str, int, int]]:
     """Load n prompts from the ShareGPT dataset."""
     ds = load_dataset(
         "anon8231489123/ShareGPT_Vicuna_unfiltered",
@@ -363,7 +370,7 @@ def load_prompts_from_sharegpt(n: int) -> List[str]:
         split="train",
         streaming=True,
     )
-    prompts = []
+    prompts: List[str] = []
     for example in ds:
         conv = example.get("conversations", [])
         if not conv:
@@ -391,7 +398,75 @@ def load_prompts_from_sharegpt(n: int) -> List[str]:
             f"Max: {max(prompt_lengths)}, "
             f"Avg: {sum(prompt_lengths) / len(prompt_lengths):.1f}"
         )
-    return prompts
+    return [(p, 0, 0) for p in prompts]
+
+
+def sample_random_requests(
+    model_path: str,
+    num_prompts: int,
+    input_len: int,
+    output_len: int,
+    range_ratio: float,
+    seed: Optional[int] = None,
+) -> List[Tuple[str, int, int]]:
+    """Generate `num_prompts` synthetic prompts whose token length matches `input_len`.
+
+    Ported (serial path) from InferenceX's `utils/bench_serving/benchmark_serving.py`
+    `sample_random_requests`. Random token IDs are decoded then re-encoded; if the
+    re-encoded length drifts, we pad/truncate until it matches.
+
+    `range_ratio` controls per-request length jitter:
+        lower = floor(seq_len * range_ratio); upper = seq_len (inclusive).
+        range_ratio=1.0 -> all requests at exactly `input_len`/`output_len`.
+        range_ratio=0.8 -> uniform between 80% and 100% of the target length.
+
+    Returns ``(prompt, prompt_len, output_len)`` tuples.
+    """
+    rng = np.random.default_rng(seed)
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    vocab_size = tokenizer.vocab_size
+
+    def sample_uniform(seq_len: int) -> List[int]:
+        lower = int(seq_len * range_ratio)
+        upper = seq_len
+        return rng.integers(lower, upper + 1, size=num_prompts).tolist()
+
+    input_lens = sample_uniform(input_len)
+    output_lens = sample_uniform(output_len)
+    offsets = rng.integers(0, vocab_size, size=num_prompts)
+
+    requests: List[Tuple[str, int, int]] = []
+    for i in range(num_prompts):
+        tgt_prompt_len = input_lens[i]
+        prompt_token_ids = [(int(offsets[i]) + i + j) % vocab_size for j in range(tgt_prompt_len)]
+        prompt = tokenizer.decode(prompt_token_ids)
+
+        # Decode/encode round-trip can drift; pad or truncate to the target length.
+        for _ in range(10):
+            prompt_token_ids = tokenizer.encode(prompt, add_special_tokens=False)
+            if len(prompt_token_ids) < tgt_prompt_len:
+                num_extras = tgt_prompt_len - len(prompt_token_ids)
+                prompt_token_ids.extend(rng.integers(0, vocab_size, size=num_extras).tolist())
+            elif len(prompt_token_ids) > tgt_prompt_len:
+                prompt_token_ids = prompt_token_ids[:tgt_prompt_len]
+            else:
+                break
+            prompt = tokenizer.decode(prompt_token_ids)
+
+        actual_len = len(tokenizer.encode(prompt, add_special_tokens=False))
+        requests.append((prompt, actual_len, int(output_lens[i])))
+
+    actual_in = [r[1] for r in requests]
+    actual_out = [r[2] for r in requests]
+    log(
+        f"Generated {num_prompts} random prompts | "
+        f"input_len min/mean/max = {min(actual_in)}/"
+        f"{sum(actual_in) / len(actual_in):.1f}/{max(actual_in)} | "
+        f"output_len min/mean/max = {min(actual_out)}/"
+        f"{sum(actual_out) / len(actual_out):.1f}/{max(actual_out)}"
+    )
+    return requests
 
 
 class DummyTokenizer:
@@ -401,12 +476,12 @@ class DummyTokenizer:
         return []
 
 
-def build_bench_args() -> SimpleNamespace:
+def build_bench_args(disable_ignore_eos: bool = False) -> SimpleNamespace:
     """Build the SimpleNamespace expected by bench_serving.benchmark."""
     return SimpleNamespace(
         backend="sglang",
         dataset_name="custom",
-        disable_ignore_eos=False,
+        disable_ignore_eos=disable_ignore_eos,
         disable_stream=True,
         return_logprob=False,
         return_routed_experts=False,
@@ -432,62 +507,63 @@ def build_bench_args() -> SimpleNamespace:
 
 def run_benchmark(
     base_url: str,
-    prompts: List[str],
+    prompts: List[Tuple[str, int, int]],
     batch_size: int,
     temperature: float = 0.0,
     top_k: int = -1,
     top_p: float = 1.0,
+    disable_ignore_eos: bool = False,
 ) -> list:
-    """Run the benchmark over prompts in batches and return all results."""
+    """Run the benchmark over `prompts` and return results.
+
+    Sustained inflight: all prompts dispatched in a single benchmark() call;
+    sglang's semaphore caps concurrency at `batch_size` and refills on each
+    completion. Matches InferenceX --request-rate inf.
+    """
     tokenizer = DummyTokenizer()
-    set_global_args(build_bench_args())
+    set_global_args(build_bench_args(disable_ignore_eos=disable_ignore_eos))
 
-    num_batches = math.ceil(len(prompts) / batch_size)
-    all_results = []
+    if not prompts:
+        return []
 
-    for i in range(num_batches):
-        batch_prompts = prompts[i * batch_size : (i + 1) * batch_size]
-        current_time = time.time()
-        input_requests = [
-            TestRequest(
-                prompt=p,
-                prompt_len=0,
-                output_len=0,
-                timestamp=current_time,
-                text_prompt_len=0,
-                vision_prompt_len=0,
-            )
-            for p in batch_prompts
-        ]
-
-        log(f"Running batch {i + 1}/{num_batches} with {len(input_requests)} prompts")
-        results = asyncio.run(
-            benchmark(
-                backend="sglang",
-                api_url=f"{base_url}/generate",
-                base_url=base_url,
-                model_id="default",
-                tokenizer=tokenizer,
-                input_requests=input_requests,
-                request_rate=float("inf"),
-                max_concurrency=batch_size,
-                disable_tqdm=False,
-                lora_names=None,
-                lora_request_distribution=None,
-                lora_zipf_alpha=None,
-                extra_request_body={
-                    "sampling_params": {
-                        "temperature": temperature,
-                        **({"top_k": top_k} if top_k > 0 else {}),
-                        **({"top_p": top_p} if top_p < 1.0 else {}),
-                    }
-                },
-                profile=False,
-            )
+    now = time.time()
+    input_requests = [
+        TestRequest(
+            prompt=p,
+            prompt_len=plen,
+            output_len=olen,
+            timestamp=now,
+            text_prompt_len=plen,
+            vision_prompt_len=0,
         )
-        all_results.append(results)
+        for (p, plen, olen) in prompts
+    ]
 
-    return all_results
+    log(f"Dispatching {len(input_requests)} prompts, max_concurrency={batch_size}")
+    return asyncio.run(
+        benchmark(
+            backend="sglang",
+            api_url=f"{base_url}/generate",
+            base_url=base_url,
+            model_id="default",
+            tokenizer=tokenizer,
+            input_requests=input_requests,
+            request_rate=float("inf"),
+            max_concurrency=batch_size,
+            disable_tqdm=False,
+            lora_names=None,
+            lora_request_distribution=None,
+            lora_zipf_alpha=None,
+            extra_request_body={
+                "sampling_params": {
+                    "temperature": temperature,
+                    **({"top_k": top_k} if top_k > 0 else {}),
+                    **({"top_p": top_p} if top_p < 1.0 else {}),
+                }
+            },
+            profile=False,
+        )
+    )
 
 
 def _shutdown_server(process: subprocess.Popen, peer_processes: List[subprocess.Popen]) -> None:
@@ -571,7 +647,7 @@ def _launch_server_session(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Benchmark ShareGPT dataset with SGLang using different models",
+        description="Benchmark SGLang serving with random (InferenceX) or ShareGPT prompts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -676,6 +752,52 @@ def main():
         "Defaults to $CONDA_DEFAULT_ENV or 'flashinfer_bench'.",
     )
     parser.add_argument(
+        "--dataset",
+        choices=["random", "sharegpt"],
+        default="random",
+        help=(
+            "Prompt source. 'random' (default): synthetic prompts of "
+            "controlled token length for diverse kernel input shapes. "
+            "'sharegpt': real ShareGPT prompts."
+        ),
+    )
+    parser.add_argument(
+        "--isl",
+        type=int,
+        default=1024,
+        help="Random-dataset input sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--osl",
+        type=int,
+        default=1024,
+        help="Random-dataset output sequence length in tokens (default: 1024).",
+    )
+    parser.add_argument(
+        "--random-range-ratio",
+        type=float,
+        default=1.0,
+        help=(
+            "Random-dataset length jitter. lower=floor(len*ratio), upper=len. "
+            "1.0 (default) = exact lengths; 0.8 = uniform between 80%% and 100%%."
+        ),
+    )
+    parser.add_argument(
+        "--disable-ignore-eos",
+        action="store_true",
+        help=(
+            "Let the server stop at EOS instead of decoding for the full output "
+            "length. By default ignore_eos is enabled so each request decodes "
+            "for the full output_len budget (matches InferenceX --ignore-eos)."
+        ),
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducible random-dataset prompts.",
+    )
+    parser.add_argument(
         "--restart-per-batch-size",
         action="store_true",
         help=(
@@ -698,8 +820,24 @@ def main():
     log(f"Model path:     {args.model_path}")
     log(f"Batch sizes:    {args.batch_sizes}")
     log(f"Total prompts:  {num_prompts} ({args.num_batches} batches per sweep)")
+    log(f"Dataset:        {args.dataset}")
 
-    prompts = load_prompts_from_sharegpt(num_prompts)
+    if args.dataset == "random":
+        log(
+            f"Random dataset: isl={args.isl}, osl={args.osl}, "
+            f"range_ratio={args.random_range_ratio}, "
+            f"ignore_eos={not args.disable_ignore_eos}"
+        )
+        prompts = sample_random_requests(
+            model_path=args.model_path,
+            num_prompts=num_prompts,
+            input_len=args.isl,
+            output_len=args.osl,
+            range_ratio=args.random_range_ratio,
+            seed=args.seed,
+        )
+    else:
+        prompts = load_prompts_from_sharegpt(num_prompts)
 
     server_args = []
 
@@ -823,6 +961,7 @@ def main():
                     temperature=args.temperature,
                     top_k=args.top_k,
                     top_p=args.top_p,
+                    disable_ignore_eos=args.disable_ignore_eos,
                 )
             except Exception as e:
                 log(f"Benchmark failed: {e}")
@@ -856,6 +995,7 @@ def main():
                     temperature=args.temperature,
                     top_k=args.top_k,
                     top_p=args.top_p,
+                    disable_ignore_eos=args.disable_ignore_eos,
                 )
         except Exception as e:
             log(f"Benchmark failed: {e}")
