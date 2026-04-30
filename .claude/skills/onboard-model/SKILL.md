@@ -14,8 +14,8 @@ chains them together via a shared run manifest.
 | Phase | Skill | Output |
 |-------|-------|--------|
 | 0 | [`/clone-repos`](../clone-repos/SKILL.md) | `tmp/sglang/`, `tmp/flashinfer/`, `tmp/sgl-cookbook/`, `tmp/flashinfer-trace/` cloned and current |
-| 1 | [`/discover-models`](../discover-models/SKILL.md) | manifest `kernels[]` populated with `phase1_status`, `fi_status`, `sgl_status` |
-| 2 | [`/extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md) (+ inline `gh issue create` for `fi_missing`) | definition JSONs in `tmp/flashinfer-trace/definitions/`; manifest `phase2_status=done` (and `fi_issue_url` for fi_missing) |
+| 1 | [`/discover-models`](../discover-models/SKILL.md) | manifest `kernels[]` populated with `phase1_status`, `fi_status`, `fi_trace_template`, `sgl_status` |
+| 2 | [`/extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md) (+ inline `gh issue create` for `fi_missing`) | definition JSONs in `tmp/flashinfer-trace/definitions/` — auto-dumped via `FLASHINFER_TRACE_DUMP=1` for kernels with `fi_trace_template=true`, otherwise hand-written; manifest `phase2_status=done` (and `fi_issue_url` for fi_missing) |
 | 3 | [`/collect-workloads`](../collect-workloads/SKILL.md) (+ inline SGLang PR for `sgl_missing`) | workloads + blobs in `tmp/flashinfer-trace/`; manifest `phase3_status=done` |
 | 4 | [`/submit-onboarding-prs`](../submit-onboarding-prs/SKILL.md) | one HF PR + one bench PR per definition; manifest `phase4` populated |
 
@@ -96,11 +96,17 @@ Subsequent phases iterate over `kernels` and act based on the per-entry classifi
 For each kernel with `phase1_status=new`, generate a Definition JSON and write it into
 `tmp/flashinfer-trace/definitions/{op_type}/`.
 
-### 2b: fi_supported → extract from FlashInfer
+### 2b: fi_supported → trace-dump from a short SGLang pass (or manual fallback)
 
-Delegate to [`extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md). It
-handles sgl-cookbook TP/EP lookup, FlashInfer-test-derived `reference` implementation, and
-deduplication.
+Delegate to [`extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md). When
+the kernel's FlashInfer API carries an `@flashinfer_api(trace=...)` decorator (i.e.
+`fi_trace_template=true` in the manifest), one short SGLang inference pass with
+`FLASHINFER_TRACE_DUMP=1` and `attention_backend="flashinfer"` produces complete Definition
+JSONs for every shape it touches — `axes`, `inputs`, `outputs`, `tags` (`fi_api:*`,
+`status:verified`), and `reference` are filled in by the dumper. For decorated kernels
+that the model didn't exercise (e.g. an unused page-size variant) or for FlashInfer APIs
+not yet decorated, the same skill falls back to manual extraction from sgl-cookbook +
+HF config.
 
 ```bash
 /extract-kernel-definitions --model-name {sglang_model_name}
@@ -114,12 +120,12 @@ find tmp/flashinfer-trace/definitions/ -name "{definition_name}.json"
 
 Update each kernel's `phase2_status=done` in the manifest.
 
-### 2a: fi_missing → SGLang-sourced reference + file kernel-request issue
+### 2a: fi_missing → manual SGLang-sourced reference + file kernel-request issue
 
-When FlashInfer does not yet implement the kernel, generate the definition with SGLang's
-vanilla forward as the reference (`extract-kernel-definitions` supports this mode), then
-file an issue against `flashinfer-ai/flashinfer`. Mark the definition with the
-`status:unverified` tag.
+When FlashInfer does not yet implement the kernel, the trace-dump path doesn't apply (no
+decorated API to fire on). Generate the definition manually with SGLang's vanilla forward
+as the reference (`extract-kernel-definitions` Path B), then file an issue against
+`flashinfer-ai/flashinfer`. Mark the definition with the `status:unverified` tag.
 
 ```bash
 gh issue create \
@@ -310,8 +316,10 @@ The contract between skills. Stored at `tmp/onboard_{model_slug}_{date}.json`:
       "op_type": "gqa_paged",
       "phase1_status": "new",
       "fi_status": "fi_supported",
+      "fi_trace_template": true,
       "sgl_status": "sgl_integrated",
       "phase2_status": "done",
+      "phase2_method": "trace_dump",
       "phase3_status": "done",
       "workload_entries": 8
     },

@@ -125,10 +125,28 @@ kernel.
 Also check `tmp/flashinfer/tests/` for a corresponding test file — its presence is a strong
 signal the kernel is implemented and tested.
 
+A stronger signal that the kernel is **fully ready for the trace-dump path** (Path A in
+[`extract-kernel-definitions`](../extract-kernel-definitions/SKILL.md)) is whether the
+FlashInfer API carries an `@flashinfer_api(trace=...)` decorator (added by
+[flashinfer-ai/flashinfer#2931](https://github.com/flashinfer-ai/flashinfer/pull/2931)).
+Check with:
+
+```bash
+grep -rn "@flashinfer_api(trace=" tmp/flashinfer/flashinfer/ | grep -i "{module_or_api}"
+```
+
+If the API is decorated, Phase 2 can produce its Definition JSON automatically by running
+a short SGLang inference pass with `FLASHINFER_TRACE_DUMP=1`. If FlashInfer has the kernel
+but not the decorator, classification is still `fi_supported` but Phase 2 falls back to
+manual extraction. Record the decorator-presence flag on the manifest entry as
+`fi_trace_template` (`true`/`false`) so reviewers know which path to expect.
+
 Classify each new definition:
 
-- **fi_supported**: FlashInfer has the kernel → onboard-model Phase 2b (extract from FlashInfer).
-- **fi_missing**: FlashInfer does not have the kernel → onboard-model Phase 2a (extract from SGLang + file kernel-request issue).
+- **fi_supported**: FlashInfer has the kernel → onboard-model Phase 2 (trace-dump if
+  `fi_trace_template=true`, else manual extraction; see `extract-kernel-definitions`).
+- **fi_missing**: FlashInfer does not have the kernel → onboard-model Phase 2 (manual
+  extraction from SGLang + file kernel-request issue).
 
 ## Phase 1f: Check SGLang integration for fi_supported definitions
 
@@ -203,6 +221,7 @@ consumed by `/onboard-model` and `/submit-onboarding-prs`):
       "op_type": "gqa_paged",
       "phase1_status": "new",
       "fi_status": "fi_supported",
+      "fi_trace_template": true,
       "sgl_status": "sgl_integrated"
     },
     {

@@ -108,6 +108,27 @@ FLASHINFER_DUMP_MAX_SIZE_GB=30
 
 **DUMP_MAX_COUNT sizing**: with `--restart-per-batch-size`, each server session independently counts toward DUMP_MAX_COUNT.  500 covers ~4 full forward passes for TP=8, 16-layer models (4 × 16 × 8 = 512 run() calls). Use 500 as the standard value when collecting per-batch-size.
 
+### Phase 2b (optional): Piggyback definition trace dump
+
+Setting `FLASHINFER_TRACE_DUMP=1` and `FLASHINFER_TRACE_DUMP_DIR=<dir>` alongside the
+logging vars above tells FlashInfer to write a Definition JSON for every
+`@flashinfer_api(trace=...)`-decorated call (one file per unique (op, shape)). This means
+**one SGLang run can produce both workload tensors and definition JSONs**, which is the
+fastest way to pick up a shape that turned out to be missing from the dataset (typical
+case: a new page-size variant or a quant-config variant).
+
+```bash
+export FLASHINFER_TRACE_DUMP=1
+export FLASHINFER_TRACE_DUMP_DIR=tmp/dumps/fi_trace_{def_name}
+# ...your existing FLASHINFER_LOGLEVEL/FLASHINFER_DUMP_* vars stay unchanged...
+```
+
+After the run, stage the new JSONs into the dataset with the snippet from
+[`/extract-kernel-definitions` Path A3](../extract-kernel-definitions/SKILL.md#a3-dedupe-and-stage-into-the-dataset).
+The trace dump is independent of the logging API and adds negligible overhead, so it's
+safe to leave on for any collection run. Skip it only when the definitions are already
+known-correct and stable.
+
 ### Phase 3: SGLang Inference
 
 **Inference source**: real ShareGPT prompts (from `--dataset` path or downloaded from HuggingFace `anon8231489123/ShareGPT_Vicuna_unfiltered`). Falls back to synthetic prompts only if ShareGPT is unavailable.

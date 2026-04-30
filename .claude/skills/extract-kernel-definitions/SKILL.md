@@ -1,885 +1,393 @@
 ---
 name: extract-kernel-definitions
-description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for the flashinfer-trace HuggingFace dataset.
+description: Generate Definition JSON files for the flashinfer-trace HuggingFace dataset by harvesting them from a short SGLang inference pass (FlashInfer's @flashinfer_api(trace=...) dumper) — or, as a fallback, by manually transcribing the schema from SGLang sources when FlashInfer doesn't yet have a trace template. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM, GDN, RoPE, sampling), or filling gaps in the dataset.
 ---
 
 # Extract Kernel Definitions
 
-Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to the HuggingFace dataset clone at `tmp/flashinfer-trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
+Produce per-(op, shape) Definition JSONs and stage them in the HuggingFace dataset clone at
+`tmp/flashinfer-trace/definitions/{op_type}/`. PR submission is **out of scope** here — see
+[`submit-onboarding-prs`](../submit-onboarding-prs/SKILL.md) (Phase 4 of `/onboard-model`).
 
-## Description
+## Two paths
 
-This skill analyzes SGLang model implementations to extract the complete set of GPU kernels used during inference. It identifies kernel types (MLA, MOE, GQA, RMSNorm, GEMM), extracts their parameters, generates Definition JSON schemas with Python reference implementations, and handles deduplication across multiple models.
+| Path | When to use | What you do |
+|------|-------------|-------------|
+| **A. Trace-dump (primary)** | Kernel is `fi_supported` per `/discover-models` — i.e. the FlashInfer API used by SGLang carries a `@flashinfer_api(trace=...)` template (see [coverage list](#flashinfer-trace-coverage)). | Run a short SGLang inference pass with `FLASHINFER_TRACE_DUMP=1`. The dumper writes one JSON per unique (op, shape) before the kernel runs (crash-safe, deduplicated). |
+| **B. Manual extraction (fallback)** | Kernel is `fi_missing`, **or** the relevant FlashInfer API is not yet trace-instrumented. | Read the SGLang model source + sgl-cookbook serving config + HF model config; write the Definition JSON by hand using the [schema reference](#schema-reference). |
 
-**Key Feature**: Uses sgl-cookbook repository to find recommended serving configurations (tensor parallel, expert parallel flags) and generates multiple kernel definitions for different parallelism settings. For example, Qwen3-Next has TP=2 and TP=4 configs, resulting in separate GDN definitions with different head counts.
+The trace-dump path is the default — it eliminates manual axis derivation and produces
+JSONs that already carry `axes`, `inputs`, `outputs`, `tags` (`fi_api:*`,
+`status:verified`), and a `reference` implementation.
+
+> Background: the trace dumper was added in
+> [flashinfer-ai/flashinfer#2931](https://github.com/flashinfer-ai/flashinfer/pull/2931).
+> Schema and full env-var docs live at
+> [`docs/fi_trace.rst`](https://github.com/flashinfer-ai/flashinfer/blob/main/docs/fi_trace.rst)
+> in the FlashInfer repo. SGLang harness reference:
+> [`tests/trace/example_sglang.py`](https://github.com/flashinfer-ai/flashinfer/blob/main/tests/trace/example_sglang.py).
 
 ## Usage
 
 ```bash
-# Extract kernels from DeepSeek V3 model (MLA + MoE)
-/extract-kernel-definitions --model-name deepseek_v3
+# Path A — auto-dump every fi_supported definition for a model in one inference pass
+/extract-kernel-definitions --model-name llama-3.2-3b --hf-repo-id meta-llama/Llama-3.2-3B-Instruct
 
-# Extract from Llama (GQA)
-/extract-kernel-definitions --model-name llama
+# Path A — multi-config: one short run per (TP, EP) listed in sgl-cookbook
+/extract-kernel-definitions --model-name qwen3-next --tp-list 2,4
 
-# Extract from multiple models with automatic deduplication
-/extract-kernel-definitions --model-name deepseek_v3
-/extract-kernel-definitions --model-name llama
-/extract-kernel-definitions --model-name qwen2_moe
-
-# Extract only prefill or decode kernels
-/extract-kernel-definitions --model-name llama --execution-modes prefill
-/extract-kernel-definitions --model-name llama --execution-modes decode
+# Path B — manual fallback for fi_missing kernels (or names that didn't appear in the dump)
+/extract-kernel-definitions --model-name kimi-k2 --manual --op-types new_op_type
 ```
 
 ## Parameters
 
-- `model_name` (required): Model name to extract kernels from (e.g., "deepseek_v3", "llama", "qwen2_moe")
-- `execution_modes` (optional): Inference execution modes to analyze (default: ["prefill", "decode"])
-- `include_quantized` (optional): Include quantized kernel variants (default: true)
-- `deduplicate` (optional): Check for and skip existing definitions (default: true)
+- `--model-name` (required): Model slug (e.g. `llama`, `deepseek-v3`, `qwen3-next`). Used to
+  look up the SGLang model file and the sgl-cookbook YAML.
+- `--hf-repo-id` (optional): HuggingFace repo override; inferred from `--model-name` if omitted.
+- `--tp-list` (optional): Comma-separated TP values to run for; default reads
+  sgl-cookbook YAML.
+- `--ep-list` (optional): Comma-separated EP values for MoE models.
+- `--manual` (optional): Force Path B (manual extraction) even for fi_supported ops.
+- `--op-types` (optional): Comma-separated `op_type` filter when using `--manual` or for
+  `--dry-run` reporting.
+- `--dry-run` (optional): Report what would be dumped/written without running anything.
+- `--skip-existing` (optional, default `true`): Skip any definition whose name already
+  exists under `tmp/flashinfer-trace/definitions/`.
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, sgl-cookbook, and the HuggingFace trace dataset clone at `tmp/flashinfer-trace/` (which is the only home for definitions, reference tests, and workloads — the in-repo `flashinfer_trace/` directory was removed in the trace-dataset refactor).
+- `/clone-repos` has been run, so `tmp/sglang/`, `tmp/flashinfer/`, `tmp/sgl-cookbook/`,
+  and `tmp/flashinfer-trace/` are present and current. The HF dataset clone at
+  `tmp/flashinfer-trace/` is the only home for definitions — the in-repo
+  `flashinfer_trace/` directory was removed in the trace-dataset refactor.
+- For Path A: a working CUDA-enabled environment, GPU memory sufficient for the chosen
+  model + TP, and `attention_backend="flashinfer"` available in the installed SGLang.
+- For Path B: HuggingFace `config.json` access for the target model.
 
-## What This Skill Does
+---
 
-### Phase 1: Model Analysis
+## Path A: trace-dump from a short SGLang pass
 
-1. **Locate Model Implementation**:
-   - Search `tmp/sglang/python/sglang/srt/models/{model_name}.py`
-   - Identify model class (e.g., `DeepseekV3ForCausalLM`, `LlamaForCausalLM`)
-   - Parse model architecture from config
+The dumper fires inside FlashInfer when both env vars are set **before** the FlashInfer
+import. SGLang routes through `@flashinfer_api(trace=...)`-decorated APIs whenever
+`attention_backend="flashinfer"` is selected, so a single short prefill+decode pass
+exercises most ops at once.
 
-2. **Find Serving Configurations (NEW)**:
-   - Search `tmp/sgl-cookbook/data/models/generated/v0.5.6/` for model-specific YAML configs
-   - Identify all recommended TP (tensor parallel) and EP (expert parallel) settings across different hardware platforms
-   - Parse YAML files to extract `tp` and `ep` values from hardware configurations
-   - **Example**: Qwen3-Next (qwen3next.yaml) has:
-     - H100: tp=4 (requires definitions with heads split by 4)
-     - H200/B200: tp=2 (requires definitions with heads split by 2)
-   - **Example**: DeepSeek V3.2 (deepseek.yaml) has:
-     - All platforms: tp=8 (base config)
-     - high-throughput-ep: tp=8, ep=8 (affects num_local_experts)
+### A1. Pick the serving config(s)
 
-3. **Identify Layer Components**:
-   - Attention mechanism (GQA, MHA, MLA, GDN)
-   - MLP/FFN structure (Dense, MoE)
-   - Normalization layers (RMSNorm, LayerNorm)
-   - Embedding and output projections
+Open the sgl-cookbook YAML for the target model and list the unique TP/EP values — one
+trace-dump pass per unique combination is enough to cover every shape variant.
 
-4. **Extract Execution Paths**:
-   - Prefill path (batch processing, variable sequence length)
-   - Decode path (single token, paged KV cache)
-
-### Phase 2: Kernel Extraction with Parallelism Variants
-
-For each layer component AND each serving configuration (TP/EP setting), extract:
-
-#### Attention Kernels (Affected by TP)
-- **GQA**: `gqa_paged_decode`, `gqa_paged_prefill`, `gqa_ragged_prefill`
-  - **TP Impact**: `num_qo_heads` = original_heads / TP, `num_kv_heads` = original_kv_heads / TP
-- **MLA**: `mla_paged_decode`, `mla_paged_prefill`
-  - **TP Impact**: `num_qo_heads` = original_heads / TP
-- **DSA**: `dsa_sparse_decode`, `dsa_sparse_prefill` (sparse MLA with block-sparse attention)
-  - **TP Impact**: same as MLA — `num_qo_heads` = original_heads / TP
-  - **Naming**: includes `topk` parameter for sparse block selection, e.g. `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1`
-- **GDN**: `gdn_decode`, `gdn_prefill`
-  - **TP Impact**: `num_q_heads` = original_q_heads / TP, `num_v_heads` = original_v_heads / TP
-  - **Example**: Qwen3-Next with TP=2 → `gdn_decode_qk8_v16_d128_k_last`
-  - **Example**: Qwen3-Next with TP=4 → `gdn_decode_qk4_v8_d128_k_last`
-- **Parameters**: num_heads, num_kv_heads, head_dim, page_size, ckv_dim, kpe_dim
-
-#### MoE Kernels (Affected by EP)
-- Expert routing and selection
-- Expert execution (FP8 quantized, block-scaled)
-- **EP Impact**: `num_local_experts` = num_experts / EP
-- **Example**: DeepSeek V3 has 256 experts
-  - EP=1 → `num_local_experts=256`
-  - EP=2 → `num_local_experts=128`
-  - EP=4 → `num_local_experts=64`
-  - EP=8 → `num_local_experts=32`
-- **Parameters**: num_experts (global), num_local_experts (per device), topk, hidden_size, intermediate_size, group_size
-
-#### Normalization Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- `rmsnorm_h{hidden_size}`
-- `fused_add_rmsnorm_h{hidden_size}`
-- **Parameters**: hidden_size, epsilon
-- **Note**: Same definition across all TP/EP configs. Do NOT add `tp:N` or `ep:N` tags. Refer to sgl-cookbook to confirm the serving config, but the kernel definition itself is parallelism-agnostic.
-
-#### GEMM Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- QKV projection, O projection
-- Gate/Up projection, Down projection
-- **Parameters**: M (variable), N (output dim), K (input dim)
-- **Note**: Shape changes handled at runtime, definition remains constant. Do NOT add `tp:N` or `ep:N` tags.
-
-#### RoPE Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- **Naming**: `rope_with_cos_sin_cache_{style}_d{head_dim}_rd{rotary_dim}`
-  - NeoX style: `rope_with_cos_sin_cache_neox_style_d{head_dim}_rd{rotary_dim}`
-  - GPT-J style: `rope_with_cos_sin_cache_gptj_style_d{head_dim}_rd{rotary_dim}`
-- **Parameters**: head_dim, rotary_dim, cos_sin_cache, positions
-- **Note**: Rotation style (NeoX vs GPT-J) is encoded in the definition name, not as an input parameter. RoPE operates per-head on the rotary dimension, which does not change with parallelism. Do NOT add `tp:N` or `ep:N` tags. Head counts (num_qo_heads, num_kv_heads) are variable axes since the rotation is independent of head count.
-
-#### Mamba2 SSU Kernels (Affected by TP)
-- `mamba_ssu_decode` (selective state update, decode step)
-  - **TP Impact**: `nheads` = original_nheads / TP, `ngroups` = original_ngroups / TP (ratio stays constant)
-  - `head_dim` and `dstate` are NOT split by TP
-- **Naming**: `mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
-- **Parameters**: nheads, head_dim (d_ssm / nheads), dstate, ngroups
-- **FlashInfer Kernel Constraints** (`flashinfer.mamba.selective_state_update`):
-  - Supported `head_dim` (d): 64, 128, 256
-  - Supported `dstate` (s): 64, 128, 256
-  - Supported `nheads/ngroups` ratio: 1, 8, 16
-  - Example: NemotronH-8B: `nheads=128, head_dim=64, dstate=128, ngroups=8` → ratio=16 ✓
-
-#### Sampling Kernels (NOT affected by TP/EP — skip tp/ep tags)
-- `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, etc.
-- **Parameters**: vocab_size, batch_size
-- **Note**: Sampling operates on per-token logits after all-reduce; the vocab dimension is never split. Do NOT add `tp:N` or `ep:N` tags.
-
-### Phase 3: Deduplication
-
-1. **Load Existing Definitions**:
-   - Scan `tmp/flashinfer-trace/definitions/` (HF dataset clone) for existing JSONs
-   - Build index of definition names and signatures
-
-2. **Compare Extracted Kernels**:
-   - Check if kernel with same name exists
-   - Verify parameter compatibility
-   - Skip existing definitions, report what was skipped
-
-3. **Handle Shared Kernels**:
-   - Kernels like `rmsnorm_h4096` may be used by multiple models
-   - Only create once, add model tags to existing definitions
-
-### Phase 4: Definition Generation with Parallelism Tags
-
-For each new kernel AND each TP/EP configuration, generate a Definition JSON following the standards below.
-
-**IMPORTANT**: When generating multiple definitions for different TP/EP configs:
-1. Create separate JSON files with parameters reflecting the parallelism split
-2. Add `tp:N` / `ep:N` tags **only for kernels whose input sizes are affected by parallelism** (attention/GDN kernels for TP; MoE kernels for EP). **Skip these tags for parallelism-agnostic kernels** (rmsnorm, gemm, sampling) — instead, refer to sgl-cookbook to confirm the serving config.
-3. Update constant axes to reflect post-split values
-4. Include TP/EP info in the description field
-
-## Definition JSON Standards
-
-### Naming Convention
-
-Follow the pattern: `{op_type}_{variant}_{key_params}`
-
-**Parameter Abbreviations:**
-- `h` = num_heads or hidden_size (context-dependent)
-- `kv` = num_kv_heads
-- `d` = head_dim
-- `ps` = page_size
-- `ckv` = compressed_kv_dim
-- `kpe` = key_positional_encoding_dim
-- `e` = num_experts
-- `i` = intermediate_size
-- `topk` = top_k_experts
-- `ng` = n_group
-- `kg` = topk_group
-- `v` = vocab_size
-
-**Examples by op_type:**
-- GQA: `gqa_paged_decode_h32_kv8_d128_ps1`, `gqa_ragged_prefill_causal_h32_kv8_d128`
-- MLA: `mla_paged_decode_h16_ckv512_kpe64_ps1`
-- DSA: `dsa_sparse_decode_h16_ckv512_kpe64_topk256_ps1`
-- GDN: `gdn_decode_qk4_v8_d128_k_last`
-- Mamba2 SSU: `mamba_ssu_decode_h128_d64_s128_ng8`
-- MoE: `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048`
-- Normalization: `rmsnorm_h4096`, `fused_add_rmsnorm_h7168`
-- GEMM: `gemm_n6144_k4096`
-- RoPE: `rope_with_cos_sin_cache_neox_style_d128_rd64`
-- Sampling: `top_k_sampling_from_probs_v129280`
-
-### Tag Patterns
-
-Tags follow the pattern `{category}:{value}`:
-
-| Category | Values | Description |
-|----------|--------|-------------|
-| `status` | `verified`, `unverified` | Whether reference implementation is validated |
-| `stage` | `decode`, `prefill` | Inference execution mode |
-| `model` | `deepseek-v3`, `deepseek-r1`, `llama-3.1-8b`, etc. | Associated model(s) |
-| `tp` | `1`, `2`, `4`, `8`, … | Tensor parallel size this definition was captured at (affects head counts for attention/GDN kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, rope, sampling) — refer to sgl-cookbook to confirm TP but do not add this tag. |
-| `ep` | `1`, `2`, `4`, `8`, … | Expert parallel size this definition was captured at (affects `num_local_experts` for MoE kernels). **Omit for parallelism-agnostic kernels** (rmsnorm, gemm, rope, sampling). |
-| `quantization` | `float8_e4m3fn`, `nvfp4`, `int8`, `int4` | Quantization format |
-| `routing` | `pre-computed`, `on-the-fly` | For MoE routing type |
-| `fi_api` | `flashinfer.norm.rmsnorm`, `flashinfer.mla.BatchMLAPagedAttentionWrapper`, etc. | FlashInfer Python API name for this kernel (omit if no FlashInfer API exists) |
-
-**FlashInfer API Name Mapping by op_type:**
-
-| op_type | FlashInfer API | Notes |
-|---------|----------------|-------|
-| `rmsnorm` | `flashinfer.norm.rmsnorm` | |
-| `rmsnorm` (fused_add) | `flashinfer.norm.fused_add_rmsnorm` | |
-| `gqa_paged` (decode) | `flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper` | |
-| `gqa_paged` (prefill) | `flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper` | |
-| `gqa_ragged` | `flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper` | |
-| `mla_paged` | `flashinfer.mla.BatchMLAPagedAttentionWrapper` | |
-| `dsa_paged` | `flashinfer.sparse.BlockSparseAttentionWrapper` | Verify in `tmp/flashinfer/python/flashinfer/` |
-| `gdn` (prefill) | `flashinfer.gdn.chunk_gated_delta_rule` | Defined in `gdn_prefill.py` |
-| `gdn` (decode) | `flashinfer.gdn.gated_delta_rule_decode` | Defined in `gdn_decode.py` |
-| `gdn` (mtp/multi-token-predict) | `flashinfer.gdn.gated_delta_rule_mtp` | Defined in `gdn_decode.py` |
-| `moe` (fp8 block scale) | `flashinfer.fused_moe.trtllm_fp8_block_scale_moe` | Defined in `flashinfer/fused_moe/core.py` |
-| `moe` (other variants) | N/A — Not Supported here yet | FlashInfer MoE coverage varies |
-| `mamba_ssu` | `flashinfer.mamba.selective_state_update` | Mamba2 selective state update (decode) |
-| `rope` | `flashinfer.apply_rope_with_cos_sin_cache_inplace` | Uses pre-computed cos/sin cache, matching SGLang runtime dispatch |
-| `gemm` | N/A — use `torch.nn.functional.linear` | No dedicated FlashInfer API |
-| `sampling` | `flashinfer.sampling.top_k_sampling_from_probs`, etc. | Match specific sampling variant |
-
-**Example tags array:**
-```json
-"tags": [
-  "stage:decode",
-  "status:verified",
-  "model:deepseek-v3",
-  "model:deepseek-r1",
-  "quantization:float8_e4m3fn",
-  "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
-  "tp:8"
-]
+```bash
+ls tmp/sgl-cookbook/data/models/generated/v0.5.6/ | grep -i {model_name}
+cat tmp/sgl-cookbook/data/models/generated/v0.5.6/{model_yaml}
 ```
 
-### Axes Structure
+If the model has no cookbook entry, default to TP=1 (single-GPU baseline) and skip EP.
 
-```json
-"axes": {
-  "batch_size": {
-    "type": "var",
-    "description": "Batch size (number of sequences)"
-  },
-  "num_qo_heads": {
-    "type": "const",
-    "value": 16,
-    "description": "Number of query heads after tensor parallel split (128/8=16)."
-  }
-}
+### A2. Run the trace-dump pass
+
+Use `tools/gpu-lock` so `CUDA_VISIBLE_DEVICES` is set correctly. The script below mirrors
+[`tests/trace/example_sglang.py`](https://github.com/flashinfer-ai/flashinfer/blob/main/tests/trace/example_sglang.py)
+in the FlashInfer repo — adapt the `model_path`, `tp_size`, and `attention_backend`:
+
+```bash
+DUMP_DIR=tmp/dumps/fi_trace_{model_slug}_tp{TP}_ep{EP}
+
+tools/gpu-lock --gpus {TP} --exec-timeout 1800 -- python - <<EOF
+import os, shutil
+from pathlib import Path
+
+# Must be set BEFORE flashinfer / sglang import.
+os.environ["FLASHINFER_TRACE_DUMP"] = "1"
+os.environ["FLASHINFER_TRACE_DUMP_DIR"] = "$DUMP_DIR"
+os.environ.setdefault("SGLANG_SKIP_CUBIN_DOWNLOAD", "1")
+
+dump = Path("$DUMP_DIR")
+if dump.exists():
+    shutil.rmtree(dump)
+
+from sglang.srt.entrypoints.engine import Engine
+engine = Engine(
+    model_path="{hf_repo_id}",
+    attention_backend="flashinfer",
+    disable_cuda_graph=True,         # keep first call on the Python path
+    mem_fraction_static=0.5,
+    tp_size={TP},
+    disable_radix_cache=True,
+    log_level="warning",
+)
+engine.generate(
+    ["The capital of France is"],
+    {"temperature": 0.0, "max_new_tokens": 4, "top_k": 50, "top_p": 0.9},
+)
+engine.shutdown()
+EOF
 ```
 
-**Rules:**
-- Variable axes (`type: "var"`): runtime dimensions like batch_size, seq_len, num_pages
-- Constant axes (`type: "const"`): model-specific values with `value` field
-- Always include `description` for complex or model-specific axes
+A few non-obvious requirements:
 
-### Constraints Field
+- **Set the env vars before import.** `FLASHINFER_TRACE_DUMP` and
+  `FLASHINFER_TRACE_DUMP_DIR` are read at call time, but the `@flashinfer_api` decorator
+  binding happens at import — set them in the shell or at the top of the entry script
+  *before* any `import flashinfer` / `import sglang` runs.
+- **Use `attention_backend="flashinfer"`.** Other SGLang backends bypass the FlashInfer
+  APIs and produce no dumps.
+- **Disable CUDA graphs (`disable_cuda_graph=True`)** for the trace pass. Cached graphs
+  skip the Python path and therefore the dumper.
+- **Page-size variants need separate runs.** SGLang's page size is fixed per server, so
+  to capture both `_ps16` and `_ps64` shapes (for example) you must run twice with
+  different `--page-size`. Enumerate the page sizes used by the target model.
+- **MoE routing methods.** Each `routing_method_type` (Default, Renormalize, DeepSeekV3,
+  Llama4, RenormalizeNaive, TopK) emits its own template; only the routing actually
+  exercised by the model in your prompts will dump. For DeepSeek-V3 use a real DSv3 model
+  to capture the `ds_routing` variant.
+- **Quantized variants** (fp8/mxfp8/fp4 GEMM, fp8/fp4 block-scale MoE) require the model
+  to actually use that quant config — load with the matching `--quantization` flag.
 
-Add constraints for input validation:
+### A3. Dedupe and stage into the dataset
 
-```json
-"constraints": [
-  "len_indptr == batch_size + 1",
-  "num_kv_indices == kv_indptr[-1].item()"
-]
+```bash
+# 1. List what was dumped
+ls "$DUMP_DIR"
+
+# 2. For each {name}.json: sort it under the right op_type subdirectory.
+#    The op_type field inside the JSON is the source of truth for the subfolder.
+python - <<'EOF'
+import json, shutil
+from pathlib import Path
+src = Path("$DUMP_DIR")
+dst_root = Path("tmp/flashinfer-trace/definitions")
+for p in src.glob("*.json"):
+    op_type = json.loads(p.read_text())["op_type"]
+    dst = dst_root / op_type / p.name
+    if dst.exists():
+        print(f"skip (exists): {dst.relative_to(dst_root)}")
+        continue
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(p, dst)
+    print(f"added: {dst.relative_to(dst_root)}")
+EOF
 ```
 
-### Inputs/Outputs Structure
+Validate the staged definitions:
 
-```json
-"inputs": {
-  "tensor_name": {
-    "shape": ["axis1", "axis2", "axis3"],
-    "dtype": "bfloat16",
-    "description": "Description of the tensor"
-  },
-  "scalar_input": {
-    "shape": null,
-    "dtype": "float32",
-    "description": "Scalar parameter"
-  }
-}
+```bash
+flashinfer-bench validate --dataset tmp/flashinfer-trace --disable-gpu
 ```
 
-**dtype values:** `float32`, `float16`, `bfloat16`, `float8_e4m3fn`, `float8_e5m2`, `int32`, `int64`
+That's it for Path A — the staged JSONs already contain `axes`, `inputs`, `outputs`,
+`tags` (`fi_api:*`, `status:verified`), and a `reference` implementation, so they're
+ready for the rest of the onboarding pipeline (workloads → baseline → eval → Phase 4 PRs).
 
-### Reference Implementation
+### Trade-off vs. tag enrichment
 
-1. **Generate Name**: Follow naming convention `{op_type}_{variant}_{params}`
-   - Example: `mla_paged_decode_h16_ckv512_kpe64_ps1`
-   - Example: `moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048`
+The dumper does **not** auto-emit `tp:N`, `ep:N`, `model:*`, or `quantization:*` tags —
+those are workflow-level metadata, not kernel-shape metadata. After staging, append the
+appropriate tags to the JSONs you just produced:
 
-2. **Define Axes**:
-   - Constant axes: fixed at compile time (e.g., hidden_size, num_heads)
-   - Variable axes: determined at runtime (e.g., batch_size, seq_len)
-
-3. **Specify Inputs/Outputs**:
-   - Tensor shapes using axis names
-   - Data types (float16, bfloat16, float8_e4m3fn, etc.)
-
-4. **Write Reference Implementation**:
-   - **ALWAYS prioritize FlashInfer tests** (`tmp/flashinfer/tests/`) for reference implementations
-   - Look for vanilla PyTorch reference functions (e.g., `ref_attention()`, `ref_rmsnorm()`)
-   - Only use SGLang vanilla implementation when FlashInfer doesn't have the kernel
-   - Plain PyTorch implementation with step-by-step computation
-   - See "Reference Implementation Sources" section below
-
-### Phase 5: Save Definitions
-
-Output to `tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json` (the HF dataset clone — committed and PR'd against `flashinfer-ai/flashinfer-trace`).
-
-## Output Format
-
-### Definition JSON Example (MLA Decode)
-
-```json
-{
-  "name": "mla_paged_decode_h16_ckv512_kpe64_ps1",
-  "description": "Batched Multi-head Latent Attention decode with a paged KV cache. Captured from DeepSeek-V3 with tensor parallel size 8.",
-  "op_type": "mla_paged",
-  "tags": [
-    "stage:decode",
-    "status:verified",
-    "model:deepseek-v3",
-    "model:deepseek-r1",
-    "fi_api:flashinfer.mla.BatchMLAPagedAttentionWrapper",
-    "tp:8"
-  ],
-  "axes": {
-    "batch_size": { "type": "var" },
-    "num_qo_heads": {
-      "type": "const",
-      "value": 16,
-      "description": "Number of query heads after tensor parallel split (128/8=16)."
-    },
-    "head_dim_ckv": { "type": "const", "value": 512 },
-    "head_dim_kpe": { "type": "const", "value": 64 },
-    "page_size": { "type": "const", "value": 1 },
-    "num_pages": { "type": "var", "description": "Total number of allocated pages in the KV cache." },
-    "len_indptr": { "type": "var", "description": "Length of kv_indptr array." },
-    "num_kv_indices": { "type": "var", "description": "Total number of KV page indices." }
-  },
-  "constraints": [
-    "len_indptr == batch_size + 1",
-    "num_kv_indices == kv_indptr[-1].item()"
-  ],
-  "inputs": {
-    "q_nope": {
-      "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"],
-      "dtype": "bfloat16",
-      "description": "Query tensor without positional encoding component."
-    },
-    "q_pe": {
-      "shape": ["batch_size", "num_qo_heads", "head_dim_kpe"],
-      "dtype": "bfloat16",
-      "description": "Query positional encoding component."
-    },
-    "ckv_cache": {
-      "shape": ["num_pages", "page_size", "head_dim_ckv"],
-      "dtype": "bfloat16",
-      "description": "Compressed key-value cache."
-    },
-    "kpe_cache": {
-      "shape": ["num_pages", "page_size", "head_dim_kpe"],
-      "dtype": "bfloat16",
-      "description": "Key positional encoding cache."
-    },
-    "kv_indptr": {
-      "shape": ["len_indptr"],
-      "dtype": "int32",
-      "description": "KV page offsets for each sequence."
-    },
-    "kv_indices": {
-      "shape": ["num_kv_indices"],
-      "dtype": "int32",
-      "description": "Page indices for KV cache lookups."
-    },
-    "sm_scale": {
-      "shape": null,
-      "dtype": "float32",
-      "description": "Softmax scale. Default is (1/sqrt(128 + 64) = 1/sqrt(192))."
-    }
-  },
-  "outputs": {
-    "output": { "shape": ["batch_size", "num_qo_heads", "head_dim_ckv"], "dtype": "bfloat16" },
-    "lse": {
-      "shape": ["batch_size", "num_qo_heads"],
-      "dtype": "float32",
-      "description": "The 2-based log-sum-exp of attention logits."
-    }
-  },
-  "reference": "import math\nimport torch\n\n@torch.no_grad()\ndef run(q_nope, q_pe, ckv_cache, kpe_cache, kv_indptr, kv_indices, sm_scale):\n    # Check constants\n    assert num_qo_heads == 16\n    assert head_dim_ckv == 512\n    ..."
-}
+```bash
+python - <<'EOF'
+import json
+from pathlib import Path
+extra_tags = ["model:{model_slug}", "tp:{TP}"]   # add ep:{EP} for MoE
+for p in Path("tmp/flashinfer-trace/definitions").rglob("*.json"):
+    if p.stat().st_mtime < {dump_run_start_epoch}:
+        continue
+    j = json.loads(p.read_text())
+    j["tags"] = sorted(set(j.get("tags", []) + extra_tags))
+    p.write_text(json.dumps(j, indent=2) + "\n")
+EOF
 ```
 
-### Definition JSON Example (MoE)
+### FlashInfer trace coverage
 
-```json
-{
-  "name": "moe_fp8_block_scale_ds_routing_topk8_ng8_kg4_e32_h7168_i2048",
-  "description": "FP8 block scale MoE operation. Routing and two grouped-GEMM included.",
-  "op_type": "moe",
-  "tags": [
-    "status:verified",
-    "model:deepseek-v3",
-    "model:deepseek-r1",
-    "quantization:float8_e4m3fn",
-    "ep:8"
-  ],
-  "axes": {
-    "seq_len": { "type": "var", "description": "Sequence length (number of tokens)" },
-    "num_experts": {
-      "type": "const",
-      "value": 256,
-      "description": "Total number of experts."
-    },
-    "num_local_experts": {
-      "type": "const",
-      "value": 32,
-      "description": "Number of local experts with EP size 8."
-    },
-    "hidden_size": {
-      "type": "const",
-      "value": 7168,
-      "description": "Hidden dimension size."
-    },
-    "intermediate_size": {
-      "type": "const",
-      "value": 2048,
-      "description": "MoE intermediate layer size."
-    }
-  },
-  "inputs": {
-    "routing_logits": {
-      "shape": ["seq_len", "num_experts"],
-      "dtype": "float32",
-      "description": "Tensor of routing logits for expert selection"
-    },
-    "hidden_states": {
-      "shape": ["seq_len", "hidden_size"],
-      "dtype": "float8_e4m3fn",
-      "description": "Input hidden states tensor (FP8 quantized)"
-    },
-    "local_expert_offset": {
-      "shape": null,
-      "dtype": "int32",
-      "description": "Offset of local experts in global expert space."
-    },
-    "routed_scaling_factor": {
-      "shape": null,
-      "dtype": "float32",
-      "description": "Scaling factor for routing weights."
-    }
-  },
-  "outputs": {
-    "output": {
-      "shape": ["seq_len", "hidden_size"],
-      "dtype": "bfloat16",
-      "description": "Final MoE output tensor"
-    }
-  },
-  "reference": "import torch\n\n@torch.no_grad()\ndef run(routing_logits, hidden_states, ...):\n    # Check constants\n    assert H == 7168, 'hidden_size must be 7168'\n    ..."
-}
+Per
+[`docs/fi_trace.rst`](https://github.com/flashinfer-ai/flashinfer/blob/main/docs/fi_trace.rst),
+the trace registry currently covers:
+
+| FlashInfer module | API(s) | `op_type` |
+|-------------------|--------|-----------|
+| `flashinfer.norm` | `rmsnorm`, `fused_add_rmsnorm` (and gemma / quant variants) | `rmsnorm` |
+| `flashinfer.sampling` | `top_k_sampling_from_probs`, `top_p_sampling_from_probs`, `top_k_top_p_sampling_from_probs`, `min_p_sampling_from_probs`, `chain_speculative_sampling` | `sampling` |
+| `flashinfer.gemm` | `mm_bf16`, `mm_fp8`, `mm_mxfp8`, `mm_fp4` | `gemm_bf16` / `gemm_fp8` / `gemm_mxfp8` / `gemm_fp4` |
+| `flashinfer.decode` | `BatchDecodeWithPagedKVCacheWrapper.run` | `gqa_paged` |
+| `flashinfer.prefill` | `BatchPrefillWithPagedKVCacheWrapper.run`, `BatchPrefillWithRaggedKVCacheWrapper.run` | `gqa_paged` / `gqa_ragged` |
+| `flashinfer.mla` | `BatchMLAPagedAttentionWrapper.run` | `mla_paged` |
+| `flashinfer.gdn_decode` | `gated_delta_rule_decode`, `gated_delta_rule_mtp` | `gdn` |
+| `flashinfer.gdn_prefill` | `chunk_gated_delta_rule` | `gdn` |
+| `flashinfer.fused_moe` | `trtllm_fp8_block_scale_moe` × 6 routings, `trtllm_fp4_block_scale_moe` × 6 routings | `moe` |
+| `flashinfer.rope` | `apply_rope_*` family | `rope` |
+| `flashinfer.cascade` | `merge_state*` | `cascade` |
+| `flashinfer.activation` | `silu_and_mul`, `gelu_and_mul`, `gelu_tanh_and_mul` | `activation` |
+| `flashinfer.quantization` | `fp4_quantize` | `quantize` |
+| `flashinfer.page` | `append_paged_kv_cache` | `page` |
+
+Anything outside this list falls through to Path B. To check up-to-date coverage:
+
+```bash
+grep -rn "@flashinfer_api(trace=" tmp/flashinfer/flashinfer/
 ```
 
-> **Note**: The MoE FP8 block-scale variant has a FlashInfer API (`flashinfer.fused_moe.trtllm_fp8_block_scale_moe`); update the `tags` array accordingly. Other MoE variants without FlashInfer support should omit the `fi_api:` tag and use SGLang as ground truth. In general, omit `fi_api:` whenever no FlashInfer API covers the kernel.
+---
 
-## Implementation Steps
+## Path B: manual extraction (fallback)
 
-When executing this skill:
+Use this when:
+- The kernel is `fi_missing` (no FlashInfer kernel exists yet — definition JSON will carry
+  `status:unverified` plus a link to the kernel-request issue), or
+- The kernel exists in FlashInfer but the API does not yet have a `@flashinfer_api(trace=...)`
+  template (rare; check coverage list above).
 
-1. **Locate model file**:
+### B1. Read the model + serving config
+
+1. Locate the SGLang model file:
    ```bash
    ls tmp/sglang/python/sglang/srt/models/ | grep -i {model_name}
    ```
+2. Find sgl-cookbook YAML and parse unique `tp` / `ep` values.
+3. Pull `config.json` from HuggingFace (`hidden_size`, `num_attention_heads`,
+   `num_key_value_heads`, `head_dim`, `intermediate_size`, `num_experts`, `num_experts_per_tok`,
+   `vocab_size`, etc.). See `track-models` SKILL.md for the full field-to-axis mapping.
 
-2. **Find sgl-cookbook configs for the model**:
-   ```bash
-   # Find the matching YAML config file
-   find tmp/sgl-cookbook/data/models/generated/v0.5.6/ -name "*{model_name}*.yaml"
+### B2. Compute kernel parameters per (TP, EP)
 
-   # Example: for qwen3-next
-   cat tmp/sgl-cookbook/data/models/generated/v0.5.6/qwen3next.yaml
-   ```
+Apply the parallelism rules (TP/EP-affected kernels split head/expert counts; norm / GEMM
+/ RoPE / sampling are parallelism-agnostic):
 
-3. **Parse YAML to extract TP/EP configurations**:
-   - Read YAML file and parse hardware configurations
-   - Extract all unique `tp` values across all hardware platforms and configurations
-   - Extract all unique `ep` values (if model uses MoE)
-   - **Example parsing result for Qwen3-Next**:
-     ```
-     TP configs: [2, 4]
-     EP configs: [null] (no MoE)
-     ```
-   - **Example parsing result for DeepSeek-V3.2**:
-     ```
-     TP configs: [8]
-     EP configs: [null, 8]
-     ```
+| op_type | TP affects | EP affects | Naming pattern |
+|---------|-----------|-----------|---------------|
+| `gqa_paged` | `q_heads/=TP`, `kv_heads/=TP` | — | `gqa_paged_{decode,prefill}_h{q}_kv{kv}_d{d}_ps{P}` |
+| `gqa_ragged` | same as gqa_paged | — | `gqa_ragged_{prefill}_h{q}_kv{kv}_d{d}` |
+| `mla_paged` | `q_heads/=TP` | — | `mla_paged_{decode,prefill}_h{q}_ckv{ckv}_kpe{kpe}_ps{P}` |
+| `gdn` | `q_heads/=TP`, `v_heads/=TP` | — | `gdn_{decode,mtp,prefill}_qk{q}_v{v}_d{d}_k_last` |
+| `mamba_ssu` | `nheads/=TP`, `ngroups/=TP` | — | `mamba_ssu_decode_h{n}_d{d}_s{s}_ng{g}` |
+| `moe` | — | `num_experts/=EP` | `moe_{quant}_{routing}_topk{k}_e{local_e}_h{H}_i{I}` |
+| `rmsnorm` | — | — | `rmsnorm_h{H}` / `fused_add_rmsnorm_h{H}` |
+| `gemm` | — | — | `gemm_n{N}_k{K}` (or `gemm_{quant}_N{N}_K{K}`) |
+| `rope` | — | — | `rope_with_cos_sin_cache_{neox,gptj}_style_d{d}_rd{rd}` |
+| `sampling` | — | — | `{topk,topp,topk_topp}_sampling_from_probs_v{vocab}` |
 
-4. **Read model implementation**:
-   - Parse the Python file
-   - Identify forward() methods
-   - Extract kernel calls (attention, MoE, norm, GEMM)
+Where `ckv = kv_lora_rank + qk_rope_head_dim` and `kpe = qk_rope_head_dim` for MLA.
 
-5. **Extract kernel parameters from model config**:
-   - Look for config class (e.g., `DeepseekV3Config`)
-   - Extract: num_hidden_layers, hidden_size, num_attention_heads, num_key_value_heads, intermediate_size, etc.
+### B3. Write Definition JSON
 
-6. **Check existing definitions** (HF dataset clone is the only home for definitions):
-   ```bash
-   ls tmp/flashinfer-trace/definitions/*/
-   ```
+Hand-write the JSON under `tmp/flashinfer-trace/definitions/{op_type}/{name}.json`. Use
+the canonical schema below. For `fi_missing` definitions add the status tag and the
+issue back-pointer in the `description`.
 
-7. **Generate definition JSONs for each TP/EP config**:
-   - For each unique TP value, calculate split head counts
-   - For each unique EP value, calculate local expert counts
-   - Create directory if needed: `mkdir -p tmp/flashinfer-trace/definitions/{op_type}/`
-   - Write JSON file with reference implementation into the HF dataset clone
-   - **Example**: For Qwen3-Next GDN kernel with original q_heads=16, v_heads=32:
-     - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
-     - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
+For the `reference` field: write a plain-PyTorch `run(...)` implementation. Source it from
+SGLang's vanilla forward (`tmp/sglang/python/sglang/srt/layers/...`) when FlashInfer
+doesn't have it, otherwise mirror FlashInfer's own test harness. See `add-reference-tests`
+for validation flow.
 
-8. **Hand off to PR submission**:
+---
 
-   This skill stops at writing the definition JSON to the local HF dataset clone. PR
-   submission for new definitions follows the canonical two-PR flow defined in the
-   **onboard-model** skill:
-   - **PR 2** (HuggingFace `flashinfer-ai/flashinfer-trace`): definition JSON + reference
-     test + baseline solution + workloads + blobs + eval traces. Open this first.
-   - **PR 1** (GitHub `flashinfer-ai/flashinfer-bench`): `docs/model_coverage.mdx` update
-     only, with a back-link to PR 2.
+## Schema reference
 
-   See `onboard-model/SKILL.md` "Phase 4: Submit PRs" for the full flow, including the
-   per-definition worktree layout and PR Review Checklist. Do **not** add a definition
-   JSON to a `flashinfer_trace/...` path inside `flashinfer-bench` — that directory was
-   removed in the trace-dataset refactor.
+This applies to both paths — it's the format the trace dumper produces (Path A) and the
+format your hand-written JSON must match (Path B).
 
-9. **Report results**:
-   - List new definitions created (grouped by TP/EP config)
-   - List existing definitions skipped (deduplication)
-   - List kernels shared across models
-   - List PR URLs opened
-
-## SGLang Code Patterns to Look For
-
-### Attention Kernel Calls
-
-```python
-# GQA decode (paged)
-flashinfer.batch_decode_with_paged_kv_cache(...)
-
-# MLA decode
-from sglang.srt.layers.attention.mla_decode import mla_decode_attention
+```json
+{
+  "name": "rmsnorm_h7168",
+  "description": "Root Mean Square Normalization. Epsilon is fixed at 1e-6.",
+  "op_type": "rmsnorm",
+  "tags": [
+    "fi_api:flashinfer.norm.rmsnorm",
+    "status:verified",
+    "model:{model_slug}",
+    "tp:{N}"
+  ],
+  "axes": {
+    "batch_size":  {"type": "var"},
+    "hidden_size": {"type": "const", "value": 7168}
+  },
+  "constraints": ["..."],
+  "inputs": {
+    "hidden_states": {"shape": ["batch_size", "hidden_size"], "dtype": "bfloat16"},
+    "weight":        {"shape": ["hidden_size"],               "dtype": "bfloat16"}
+  },
+  "outputs": {
+    "output": {"shape": ["batch_size", "hidden_size"], "dtype": "bfloat16"}
+  },
+  "reference": "import torch\n\ndef run(...):\n    ..."
+}
 ```
 
-### MoE Kernel Calls
-
-```python
-# DeepSeek MoE
-from sglang.srt.layers.moe.fused_moe import fused_moe
-fused_moe(hidden_states, w1, w2, w3, topk_weights, topk_ids, ...)
-```
-
-### Normalization
-
-```python
-# RMSNorm
-from sglang.srt.layers.layernorm import RMSNorm
-self.input_layernorm = RMSNorm(hidden_size, eps=rms_norm_eps)
-```
-
-## Common Model Architecture Patterns
-
-These trees show how model layers map to kernel op_types. Use them to identify which
-kernels to extract from a given model architecture.
-
-### Standard Transformer (e.g., Llama)
-
-```
-Model
-├── embed_tokens
-├── layers (n x DecoderLayer)
-│   ├── input_layernorm → rmsnorm
-│   ├── self_attn
-│   │   ├── qkv_proj → gemm
-│   │   ├── rotary_emb → rope
-│   │   ├── attn → gqa_paged decode/prefill
-│   │   └── o_proj → gemm
-│   ├── post_attention_layernorm → rmsnorm
-│   └── mlp
-│       ├── gate_up_proj → gemm
-│       ├── act_fn
-│       └── down_proj → gemm
-├── norm → rmsnorm
-└── lm_head
-```
-
-### MoE Architecture (e.g., DeepSeek, Qwen)
-
-MLP layer replaced with:
-```
-mlp
-├── moe_gate → moe (routing)
-├── moe_topk → moe (selection)
-└── moe_experts → moe (execution)
-```
-
-### MLA Architecture (e.g., DeepSeek V3)
-
-Attention replaced with:
-```
-self_attn
-├── fused_qkv_a_proj_with_mqa
-├── q_a_layernorm → rmsnorm
-├── q_b_proj → gemm
-├── kv_a_layernorm → rmsnorm
-├── kv_b_proj → gemm
-├── rotary_emb → rope
-├── attn_mla → mla_paged decode/prefill
-└── o_proj → gemm
-```
-
-### GDN Architecture (e.g., Qwen3 Next)
-
-Linear attention layers using Gated Delta Net:
-```
-self_attn
-├── q_proj → gemm
-├── k_proj → gemm
-├── v_proj → gemm
-├── gating_proj → gemm (produces a, b for gating)
-├── attn_gdn → gdn prefill/decode
-└── o_proj → gemm
-```
-
-GDN maintains a recurrent state [B, H, K, V] and uses:
-- `A_log`: learnable log decay parameter
-- `a`: input-dependent decay (combined with dt_bias)
-- `b`: update gate input (transformed via sigmoid)
-
-### Mamba2 SSM Architecture (e.g., NemotronH-8B)
-
-Hybrid models interleave Mamba2 SSM layers with standard attention and MLP-only layers:
-```
-Model (e.g., 52 layers: 24 Mamba, 4 Attention, 24 MLP-only)
-├── MambaDecoderLayer (×N)
-│   ├── input_layernorm → rmsnorm
-│   └── mamba_mixer → mamba_ssu decode
-├── AttentionDecoderLayer (×N)
-│   ├── input_layernorm → rmsnorm
-│   ├── self_attn → gqa_paged decode/prefill
-│   ├── post_attention_layernorm → rmsnorm
-│   └── mlp → gemm
-└── MLPDecoderLayer (×N)
-    ├── input_layernorm → rmsnorm
-    └── mlp → gemm
-```
-
-Mamba2 SSU decode step (per layer, per decode token):
-- `in_proj → gemm` (x, dt, B, C from hidden states)
-- `conv1d` (causal convolution on x, B, C)
-- `mamba_ssu_decode → mamba_ssu_decode_h{nheads}_d{head_dim}_s{dstate}_ng{ngroups}`
-- `out_proj → gemm` (SSM output to hidden states)
-
-Key Mamba2 SSU parameters:
-- `nheads`: SSM heads (split by TP)
-- `head_dim`: head dimension (d_ssm / nheads, NOT split by TP)
-- `dstate`: SSM state size (NOT split by TP)
-- `ngroups`: B/C groups (split by TP alongside nheads)
-
-## Ground Truth Hierarchy
-
-When extracting kernel definitions, use different sources for different purposes:
-
-### For Model Constants: HuggingFace + SGLang (Required)
-
-**IMPORTANT**: Always refer to the HuggingFace model page first (`https://huggingface.co/{org}/{model-name}`) for authoritative model constants when creating definitions for new kernels. Download `config.json` from the model repo for values like `hidden_size`, `num_experts`, `topk`, etc.
-
-Use SGLang (`tmp/sglang/python/sglang/srt/models/{model_name}.py`) for runtime-specific constants like `page_size` and tensor parallel configurations (e.g. `num_attention_heads`, `num_local_experts`).
-
-### For Reference `run()` Implementation: FlashInfer Unit Tests (PRIMARY - ALWAYS CHECK FIRST)
-- **When**: FlashInfer has a kernel implementation and corresponding unit test **(CHECK THIS FIRST)**
-- **Location**: `tmp/flashinfer/tests/`
-- **Why**: FlashInfer tests contain vanilla PyTorch implementations that serve as ground truth
-- **Examples**:
-  ```
-  tests/test_batch_decode.py      # GQA decode reference
-  tests/test_batch_prefill.py     # GQA prefill reference
-  tests/test_norm.py              # RMSNorm reference
-  tests/test_mla.py               # MLA reference
-  ```
-- **Pattern**: Look for functions like `ref_attention()`, `ref_rmsnorm()`, `ref_mla()`, etc.
-- **Use for**: Writing the `reference` field in Definition JSON
-- **IMPORTANT**: Always search FlashInfer tests directory FIRST before falling back to SGLang
-
-### For Reference `run()` Implementation: SGLang Vanilla (FALLBACK ONLY)
-- **When**: FlashInfer does NOT have the kernel (e.g., some MoE variants, custom ops)
-- **Location**: `tmp/sglang/python/sglang/srt/layers/`
-- **Examples**:
-  ```
-  layers/moe/fused_moe.py         # MoE vanilla forward (when FlashInfer MoE not available)
-  layers/attention/triton_ops/    # Custom attention implementations
-  ```
-- **Important**: Only use SGLang vanilla implementation when FlashInfer doesn't have the kernel
-- **How to verify**: Check `tmp/flashinfer/tests/` first to confirm kernel is not available
-
-### For API Signature: FlashInfer Python API
-- **When**: Determining input/output tensor specifications
-- **Location**: `tmp/flashinfer/python/flashinfer/`
-- **Examples**:
-  - `flashinfer.attention.batch_decode_with_paged_kv_cache`
-  - `flashinfer.norm.rmsnorm`
-  - `flashinfer.mla.BatchMLAPagedAttentionWrapper`
-- **Use for**: Input/output shape and dtype specifications in Definition JSON
-
-## Reference Implementation Sources
-
-The `reference` field in Definition JSON contains a `run()` function. **Always prioritize FlashInfer unit tests over SGLang implementations.**
-
-### Primary Source: FlashInfer Unit Tests (REQUIRED - CHECK THIS FIRST)
-- **Location**: `tmp/flashinfer/tests/`
-- **Why**: FlashInfer tests contain ground-truth vanilla PyTorch implementations
-- **How to find**: Search for reference functions in test files
-  ```bash
-  # Search for reference implementations
-  grep -r "def ref_" tmp/flashinfer/tests/
-  grep -r "def reference" tmp/flashinfer/tests/
-  ```
-- **Kernel type to test file mapping**:
-  | Kernel Type | Test File | Reference Function |
-  |-------------|-----------|-------------------|
-  | GQA decode | `test_batch_decode.py` | `ref_attention()` or inline reference |
-  | GQA prefill | `test_batch_prefill.py` | `ref_attention()` or inline reference |
-  | MLA | `test_mla.py` | `ref_mla()` or inline reference |
-  | DSA | `test_sparse.py` | Inline reference or `ref_sparse_attention()` |
-  | GDN | `test_gdn_decode.py`, `test_gdn_prefill.py` | Inline reference |
-  | Mamba2 SSU | `test_mamba.py` | `ref_selective_state_update()` or inline reference |
-  | RMSNorm | `test_norm.py` | `ref_rmsnorm()` or `ref_fused_add_rmsnorm()` |
-  | RoPE | `test_rope.py` | `apply_rotary_emb()` from `test_helpers/rope_reference.py` |
-  | Sampling | `test_sampling.py` | Reference sampling implementations |
-
-- **Important**: The reference `run()` should match FlashInfer's test implementation exactly, with constant values updated to match SGLang model config
-
-### Fallback Source: SGLang Vanilla Implementation (ONLY when FlashInfer unavailable)
-- **When to use**: ONLY when FlashInfer does NOT have a unit test for this kernel
-- **Location**: `tmp/sglang/python/sglang/srt/layers/`
-- **Common cases requiring SGLang fallback**:
-  - Custom MoE implementations: `layers/moe/fused_moe.py`
-  - Model-specific attention variants not in FlashInfer
-  - Quantized kernels not yet supported by FlashInfer
-- **How to check if FlashInfer has the kernel**:
-  ```bash
-  # Check if FlashInfer has a test for this kernel type
-  ls tmp/flashinfer/tests/test_*.py | xargs grep -l "your_kernel_name"
-
-  # Check if FlashInfer has the API
-  grep -r "def your_kernel" tmp/flashinfer/python/flashinfer/
-  ```
-
-### Reference Implementation Guidelines
-
-1. **Pure PyTorch**: Use only `torch` operations, no external kernels
-2. **Step-by-step**: Break down computation into clear steps
-3. **Match signatures**: Input/output names must match definition schema
-4. **Include all outputs**: Return all outputs specified in definition (e.g., both `output` and `lse` for attention)
-
-Example reference implementation pattern:
-```python
-import torch
-import math
-
-def run(q, k, v, ...):
-    # Step 1: Compute attention scores
-    scores = torch.matmul(q, k.transpose(-2, -1)) * sm_scale
-
-    # Step 2: Apply softmax
-    attn_weights = torch.softmax(scores, dim=-1)
-
-    # Step 3: Compute output
-    output = torch.matmul(attn_weights, v)
-
-    # Step 4: Compute log-sum-exp (if needed)
-    lse = torch.logsumexp(scores, dim=-1)
-
-    return output, lse
-```
-
-## Kernel Type to Model Mapping
-
-| Model | Attention | MLP | Normalization | SSM |
-|-------|-----------|-----|---------------|-----|
-| DeepSeek V3/R1 | MLA + DSA | MoE | RMSNorm | — |
-| Llama 3.x | GQA | Dense | RMSNorm | — |
-| Qwen2 MoE | GQA | MoE | RMSNorm | — |
-| Qwen3 Next | GDN | Dense | RMSNorm | — |
-| Mixtral | GQA | MoE | RMSNorm | — |
-| NemotronH | GQA (hybrid) | Dense + MLP-only | RMSNorm | Mamba2 SSU |
-
-## Error Handling
-
-### Model Not Found
-- **Error**: Model file doesn't exist in SGLang
-- **Handling**: List available models, suggest closest match
-
-### Unsupported Kernel Type
-- **Error**: Unknown kernel pattern in model
-- **Handling**: Log warning, skip kernel, report for manual review
-
-### Duplicate with Conflict
-- **Error**: Definition exists with different parameters
-- **Handling**: Create new versioned definition, flag for review
-
-## When FlashInfer Does Not Have the Kernel
-
-If the required kernel does not exist in `tmp/flashinfer/` (no test file, no Python API), this
-skill still generates the definition JSON but using SGLang's vanilla implementation as the
-reference `run()`. Mark the definition with `"status:unverified"` and omit the `fi_api` tag.
-
-After writing the definition, file a GitHub issue requesting the FlashInfer implementation:
-
-```bash
-gh issue create \
-  --repo flashinfer-ai/flashinfer \
-  --title "Kernel request: {op_type} for {model_name}" \
-  --label "enhancement,kernel-request" \
-  --body "..."
-```
-
-See `onboard-model` SKILL.md Phase 2a for the full issue body template.
-
-**Do not run workload collection** for fi_missing kernels — workload collection requires the
-FlashInfer kernel to be available.
-
-## Integration with Other Skills
-
-```bash
-# Complete workflow
-/clone-repos
-
-# Extract from multiple models
-/extract-kernel-definitions --model-name deepseek_v3
-/extract-kernel-definitions --model-name llama
-/extract-kernel-definitions --model-name qwen2_moe
-
-# Add tests for new definitions
-/add-reference-tests --op-type mla_paged
-/add-reference-tests --op-type moe
-
-# Update model coverage documentation
-/track-models --refresh-status
-
-# Or use the full end-to-end pipeline (recommended for new models)
-/onboard-model --model-name qwen3-235b-a22b
-```
-
-## Notes
-
-- Each kernel may have multiple variants for different execution modes (prefill/decode)
-- Quantized kernels are treated as separate definitions
-- Reference implementations prioritize clarity over performance
-- Model tags enable tracing which models use each kernel
-- Deduplication is essential for maintaining a clean dataset
-
-## Maintaining This Document
-
-Update this file when adding new op_types, changing Definition JSON schema, or modifying extraction patterns.
-
-## See Also
-
-- [onboard-model](../onboard-model/SKILL.md)
-- [clone-repos](../clone-repos/SKILL.md)
-- [add-reference-tests](../add-reference-tests/SKILL.md)
-- [track-models](../track-models/SKILL.md)
+Field rules:
+
+- **`name`** — Path A: auto-generated by the trace dumper from `op_type` / `name_prefix` +
+  const-axis values. Path B: assemble per the [naming patterns](#b2-compute-kernel-parameters-per-tp-ep).
+- **`op_type`** — selects the subdirectory under `definitions/` (`rmsnorm`, `gqa_paged`,
+  `mla_paged`, `gdn`, `moe`, `gemm`, `gemm_fp8`, `sampling`, `rope`, …).
+- **`tags`** — always include `fi_api:<qualified.name>` (e.g. `fi_api:flashinfer.norm.rmsnorm`)
+  and `status:verified` (use `status:unverified` for fi_missing). Add `model:*`, `tp:N`,
+  `ep:N`, `quantization:*` as applicable. Path A emits the first two automatically; the
+  rest are workflow metadata you append after staging.
+- **`axes`** — `var` axes vary at runtime (batch, sequence length, num_pages); `const` axes
+  are model constants and carry a `"value"`. Const-axis values plus `name_prefix` produce
+  the file name.
+- **`constraints`** (optional) — string expressions like `"len_indptr == batch_size + 1"`,
+  evaluated against axis values when validating workloads.
+- **`inputs` / `outputs`** — each entry has `shape` (list of axis names) and `dtype`.
+  Optional inputs: `"optional": true`. Output dtype may be inherited from an input via
+  `"dtype_from": "{input_name}"` in trace templates (the dumper resolves it before
+  writing).
+- **`reference`** — pure-PyTorch `run()` for correctness checking. Required for
+  `status:verified`. Path A emits this when the trace template includes one; Path B writes
+  it by hand.
+
+Examples of fully populated definitions live in
+[`tests/trace/fi_trace_out/`](https://github.com/flashinfer-ai/flashinfer/tree/main/tests/trace/fi_trace_out)
+in the FlashInfer repo — read these as canonical templates rather than re-deriving the
+schema by hand.
+
+---
+
+## After staging
+
+1. Validate: `flashinfer-bench validate --dataset tmp/flashinfer-trace --disable-gpu`.
+2. Add reference tests for any newly staged definitions:
+   `/add-reference-tests --definition-name {name}` (or `--op-type {op_type}`).
+3. Move on to workload collection: `/collect-workloads --definition-names {names}`.
+   Tip: `/collect-workloads` can also dump definitions in the same SGLang run by setting
+   the trace env vars — useful for picking up shapes you missed in step A2.
+4. PR submission is handled separately by `/submit-onboarding-prs` (Phase 4 of
+   `/onboard-model`). Do **not** add definition JSONs to a `flashinfer_trace/...` path
+   inside `flashinfer-bench` — that directory was removed in the refactor.
+
+---
+
+## Error handling
+
+- **No JSONs appeared in the dump dir.** Either the env vars were set after the FlashInfer
+  import, the SGLang attention backend isn't `flashinfer`, CUDA graphs were enabled, or the
+  inference path didn't reach a decorated API. Re-check the env-var ordering, ensure
+  `attention_backend="flashinfer"` and `disable_cuda_graph=True`, and add
+  `print(flashinfer.norm.rmsnorm.fi_trace.__doc__)` to confirm the decorator is bound.
+- **Names collide with existing definitions.** Path A is content-deterministic — if a
+  staged file with the same name already exists and differs, the dump captured a different
+  shape under the same const-axis values. Compare the JSONs; the existing one usually wins
+  unless the new shape is the intended target (then update tags / file an issue rather
+  than overwriting silently).
+- **MoE routing variants didn't all dump.** Each `routing_method_type` is its own
+  template; only the routings the model actually invokes will fire. Run a model with the
+  required routing (e.g. real DeepSeek-V3 for `ds_routing`).
+- **GPU OOM.** Reduce `mem_fraction_static`, increase `tp_size`, or use a smaller variant
+  of the model — the trace pass needs only a couple of generated tokens.
+
+## See also
+
+- [discover-models](../discover-models/SKILL.md) — Phase 1 classifier; tells you which
+  kernels are `fi_supported` (Path A) vs `fi_missing` (Path B).
+- [add-reference-tests](../add-reference-tests/SKILL.md) — pytest validation against
+  FlashInfer / SGLang ground truth.
+- [collect-workloads](../collect-workloads/SKILL.md) — runs another SGLang pass and can
+  dump definitions in the same run.
+- [submit-onboarding-prs](../submit-onboarding-prs/SKILL.md) — Phase 4 PR flow.
+- FlashInfer trace docs:
+  [`docs/fi_trace.rst`](https://github.com/flashinfer-ai/flashinfer/blob/main/docs/fi_trace.rst).
+- Reference SGLang harness:
+  [`tests/trace/example_sglang.py`](https://github.com/flashinfer-ai/flashinfer/blob/main/tests/trace/example_sglang.py).
