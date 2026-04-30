@@ -1,11 +1,11 @@
 ---
 name: extract-kernel-definitions
-description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for flashinfer_trace.
+description: Extract kernel schemas and definitions from SGLang model implementations with deduplication. Use when adding a new model, extracting GPU kernels (MLA, MoE, GQA, RMSNorm, GEMM), or generating Definition JSON files for the flashinfer-trace HuggingFace dataset.
 ---
 
 # Extract Kernel Definitions
 
-Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to `./flashinfer_trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
+Extract kernel schemas and definitions from SGLang model implementations, with deduplication, and add them to the HuggingFace dataset clone at `tmp/flashinfer-trace/` with vanilla Python reference implementations. Uses sgl-cookbook serving configurations to generate multiple kernel definitions for different TP/EP settings.
 
 ## Description
 
@@ -41,7 +41,7 @@ This skill analyzes SGLang model implementations to extract the complete set of 
 
 ## Prerequisites
 
-Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, and sgl-cookbook (the `flashinfer_trace/` directory is already part of this repository).
+Run `/clone-repos` first to set up the `tmp/` directory with SGLang, FlashInfer, sgl-cookbook, and the HuggingFace trace dataset clone at `tmp/flashinfer-trace/` (which is the only home for definitions, reference tests, and workloads — the in-repo `flashinfer_trace/` directory was removed in the trace-dataset refactor).
 
 ## What This Skill Does
 
@@ -141,7 +141,7 @@ For each layer component AND each serving configuration (TP/EP setting), extract
 ### Phase 3: Deduplication
 
 1. **Load Existing Definitions**:
-   - Scan `flashinfer_trace/definitions/` for existing JSONs
+   - Scan `tmp/flashinfer-trace/definitions/` (HF dataset clone) for existing JSONs
    - Build index of definition names and signatures
 
 2. **Compare Extracted Kernels**:
@@ -318,7 +318,7 @@ Add constraints for input validation:
 
 ### Phase 5: Save Definitions
 
-Output to `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
+Output to `tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json` (the HF dataset clone — committed and PR'd against `flashinfer-ai/flashinfer-trace`).
 
 ## Output Format
 
@@ -518,86 +518,34 @@ When executing this skill:
    - Look for config class (e.g., `DeepseekV3Config`)
    - Extract: num_hidden_layers, hidden_size, num_attention_heads, num_key_value_heads, intermediate_size, etc.
 
-6. **Check existing definitions**:
+6. **Check existing definitions** (HF dataset clone is the only home for definitions):
    ```bash
-   ls flashinfer_trace/definitions/*/
+   ls tmp/flashinfer-trace/definitions/*/
    ```
 
 7. **Generate definition JSONs for each TP/EP config**:
    - For each unique TP value, calculate split head counts
    - For each unique EP value, calculate local expert counts
-   - Create directory if needed: `mkdir -p flashinfer_trace/definitions/{op_type}/`
-   - Write JSON file with reference implementation
+   - Create directory if needed: `mkdir -p tmp/flashinfer-trace/definitions/{op_type}/`
+   - Write JSON file with reference implementation into the HF dataset clone
    - **Example**: For Qwen3-Next GDN kernel with original q_heads=16, v_heads=32:
      - TP=2: Create `gdn_decode_qk8_v16_d128_k_last.json` (16/2=8, 32/2=16)
      - TP=4: Create `gdn_decode_qk4_v8_d128_k_last.json` (16/4=4, 32/4=8)
 
-8. **Submit one GitHub PR per definition** (PR 1 in the two-PR workflow):
+8. **Hand off to PR submission**:
 
-   Each PR bundles the definition JSON, a reference test, and the model_coverage.mdx update
-   together. Use git worktrees for parallel submission — one worktree and one agent per definition:
+   This skill stops at writing the definition JSON to the local HF dataset clone. PR
+   submission for new definitions follows the canonical two-PR flow defined in the
+   **onboard-model** skill:
+   - **PR 2** (HuggingFace `flashinfer-ai/flashinfer-trace`): definition JSON + reference
+     test + baseline solution + workloads + blobs + eval traces. Open this first.
+   - **PR 1** (GitHub `flashinfer-ai/flashinfer-bench`): `docs/model_coverage.mdx` update
+     only, with a back-link to PR 2.
 
-   ```bash
-   # Create one worktree per definition (do this up front for all definitions)
-   git worktree add \
-     tmp/worktrees/bench-{definition_name} \
-     -b feat/def-{definition_name}
-
-   # Then in each worktree (agents can run in parallel):
-   # 1. Copy definition JSON
-   cp flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-      tmp/worktrees/bench-{definition_name}/flashinfer_trace/definitions/{op_type}/
-
-   # 2. Add reference test (use /add-reference-tests skill or write manually)
-   # File: tmp/worktrees/bench-{definition_name}/tests/test_{op_type}_{definition_name}.py
-
-   # 3. Update model coverage doc
-   # Edit tmp/worktrees/bench-{definition_name}/docs/model_coverage.mdx
-
-   cd tmp/worktrees/bench-{definition_name}
-   git add flashinfer_trace/definitions/{op_type}/{definition_name}.json \
-           tests/test_{op_type}_{definition_name}.py \
-           docs/model_coverage.mdx
-   git commit -m "feat: add {definition_name}
-
-   - {op_type} kernel definition for {model_display_name}
-   - Reference test for definition validation
-   - Model coverage doc updated
-   Reference implementation sourced from {source}.
-   "
-   # Run reference test and capture output for PR description
-   pytest tests/test_{op_type}_{definition_name}.py -v 2>&1 | tee /tmp/test_{definition_name}.txt
-
-   pre-commit run --all-files
-   git push origin feat/def-{definition_name}
-   gh pr create \
-     --repo flashinfer-ai/flashinfer-bench \
-     --title "feat: add {definition_name}" \
-     --body "$(cat <<'EOF'
-## Summary
-- Adds kernel definition for `{definition_name}` ({op_type})
-- Model: {model_display_name}
-- Reference implementation sourced from: {source}
-{If fi_missing: - ⚠️ FlashInfer kernel missing — tracking issue: flashinfer-ai/flashinfer#{issue_number}}
-
-## Reference Test Results
-\`\`\`
-$(cat /tmp/test_{definition_name}.txt)
-\`\`\`
-
-## Files changed
-- `flashinfer_trace/definitions/{op_type}/{definition_name}.json`
-- `tests/test_{op_type}_{definition_name}.py`
-- `docs/model_coverage.mdx`
-EOF
-)"
-
-   # Clean up worktree after PR is open
-   git worktree remove tmp/worktrees/bench-{definition_name}
-   ```
-
-   **One PR per definition.** Do not batch multiple definitions into a single PR.
-   PR 2 (baseline solution + workloads + traces → HuggingFace) is handled by `collect-workloads`.
+   See `onboard-model/SKILL.md` "Phase 4: Submit PRs" for the full flow, including the
+   per-definition worktree layout and PR Review Checklist. Do **not** add a definition
+   JSON to a `flashinfer_trace/...` path inside `flashinfer-bench` — that directory was
+   removed in the trace-dataset refactor.
 
 9. **Report results**:
    - List new definitions created (grouped by TP/EP config)
