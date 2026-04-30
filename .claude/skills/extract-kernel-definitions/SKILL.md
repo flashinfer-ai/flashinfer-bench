@@ -282,6 +282,62 @@ SGLang's vanilla forward (`tmp/sglang/python/sglang/srt/layers/...`) when FlashI
 doesn't have it, otherwise mirror FlashInfer's own test harness. See `add-reference-tests`
 for validation flow.
 
+### B4. File a "missing trace template" issue against FlashInfer
+
+Path B is friction we want to remove. Whenever you fall through to manual extraction
+because **FlashInfer has the kernel but the API isn't decorated yet** (the
+"decorator-gap" case — `fi_status=fi_supported` and `fi_trace_template=false` in the
+manifest), file a follow-up issue in `flashinfer-ai/flashinfer` so the next onboarding
+of the same op_type can use Path A. Skip this step for `fi_missing` kernels — those
+already have a kernel-request issue from `/onboard-model` Phase 2a, and the trace
+template will be added together with the kernel implementation.
+
+```bash
+gh issue create \
+  --repo flashinfer-ai/flashinfer \
+  --title "trace: add @flashinfer_api(trace=...) for {fi_api}" \
+  --label "enhancement,flashinfer-trace" \
+  --body "$(cat <<'EOF'
+## Missing trace template
+
+`{fi_api}` already has a working FlashInfer kernel but no `@flashinfer_api(trace=...)`
+template, so flashinfer-bench cannot auto-dump its Definition JSON during a
+`FLASHINFER_TRACE_DUMP=1` run. We had to fall back to manual extraction for
+`{model_display_name}`.
+
+### What we need
+
+A `TraceTemplate` (see `flashinfer/trace/template.py` and the existing per-family
+modules under `flashinfer/trace/templates/`) attached to the existing `@flashinfer_api`
+decorator on `{fi_api}`. The template should declare the full set of axes / inputs /
+outputs so `tests/trace/test_fi_trace_template_consistency.py` passes.
+
+### Reference (manual extraction)
+
+The Definition JSON we hand-wrote for this op while waiting for the trace template:
+- `tmp/flashinfer-trace/definitions/{op_type}/{definition_name}.json` (will land in the
+  next flashinfer-trace dataset PR — link from this comment once open).
+- Used by: {model_display_name} ({hf_repo_id}).
+
+### Acceptance
+
+- [ ] `@flashinfer_api(trace=...)` attached to `{fi_api}`.
+- [ ] Running `FLASHINFER_TRACE_DUMP=1 python tests/trace/example_sglang.py` (or the
+      relevant model harness) emits a JSON for this op with the same `axes` /
+      `inputs` / `outputs` / `name` we wrote by hand.
+- [ ] `pytest tests/trace/ -v` passes.
+
+### Related
+
+- flashinfer-bench onboarding skill: `.claude/skills/extract-kernel-definitions/SKILL.md`
+  Path B → step B4 (this issue is filed by that step).
+EOF
+)"
+```
+
+Record the issue URL on the manifest entry as `fi_trace_template_request_url` so
+reviewers of the dataset PR can see the follow-up is in flight.
+
 ---
 
 ## Schema reference

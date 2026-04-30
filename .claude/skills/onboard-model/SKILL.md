@@ -324,6 +324,17 @@ The contract between skills. Stored at `tmp/onboard_{model_slug}_{date}.json`:
       "workload_entries": 8
     },
     {
+      "definition_name": "rope_with_cos_sin_cache_neox_style_d128_rd128",
+      "op_type": "rope",
+      "phase1_status": "new",
+      "fi_status": "fi_supported",
+      "fi_trace_template": false,
+      "fi_trace_template_request_url": "https://github.com/flashinfer-ai/flashinfer/issues/3001",
+      "sgl_status": "sgl_integrated",
+      "phase2_status": "done",
+      "phase2_method": "manual"
+    },
+    {
       "definition_name": "new_op_h512",
       "op_type": "new_op",
       "phase1_status": "new",
