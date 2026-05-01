@@ -214,10 +214,13 @@ class DefaultEvaluator(Evaluator):
             )
 
         sol_mean_latency_ms = sum(sol_latencies) / float(len(sol_latencies))
+        speedup_factor = (
+            ref_mean_latency_ms / sol_mean_latency_ms if sol_mean_latency_ms > 0.0 else float("inf")
+        )
         performance = Performance(
             latency_ms=sol_mean_latency_ms,
             reference_latency_ms=ref_mean_latency_ms,
-            speedup_factor=(ref_mean_latency_ms / sol_mean_latency_ms),
+            speedup_factor=speedup_factor,
         )
 
         return performance, None
