@@ -178,6 +178,41 @@
                 "--moe-runner-backend", "triton",
                 "--disable-piecewise-cuda-graph"
             ]
+        },
+        "kimi-k2.5": {
+            "_comment": "Kimi K2.5 (moonshotai/Kimi-K2.5). Multimodal DeepSeek V3-style backbone + MoonViT. INT4 compressed-tensors MoE experts are dispatched by SGLang to its Triton MoE path, not FlashInfer; attention (MLA) uses FlashInfer. Standard serving config from MoonshotAI deploy_guidance: --tp 8 --trust-remote-code.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--tool-call-parser", "kimi_k2",
+                "--reasoning-parser", "kimi_k2"
+            ]
+        },
+        "kimi-k2.5-ps64": {
+            "_comment": "Kimi K2.5 with page_size=64 variant for paged workload collection.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--tool-call-parser", "kimi_k2",
+                "--reasoning-parser", "kimi_k2",
+                "--page-size", "64"
+            ]
+        },
+        "kimi-k2.5-ragged": {
+            "_comment": "Kimi K2.5 ragged-prefill variant: disable piecewise cuda graph so total prefill traces are collectable.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--tool-call-parser", "kimi_k2",
+                "--reasoning-parser", "kimi_k2",
+                "--disable-piecewise-cuda-graph"
+            ]
         }
     },
     "h200": {
@@ -230,6 +265,17 @@
                 "--trust-remote-code",
                 "--attention-backend", "flashinfer",
                 "--tp-size", "8"
+            ]
+        },
+        "kimi-k2.5": {
+            "_comment": "Kimi K2.5 on H200 (single-node TP=8 recommended by MoonshotAI deploy_guidance).",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--tp-size", "8",
+                "--moe-runner-backend", "triton",
+                "--tool-call-parser", "kimi_k2",
+                "--reasoning-parser", "kimi_k2"
             ]
         }
     },
