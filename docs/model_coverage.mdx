@@ -32,6 +32,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
+| Kimi K2.6 | MLA + MoE | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
 | Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
@@ -494,6 +495,32 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
 **Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+
+## Kimi K2.6
+
+**Architecture**: DeepSeek V3-style MLA + sparse MoE (64 attention heads, 384 routed experts, topk=8, hidden=7168, moe_intermediate=2048, kv_lora_rank=512, qk_nope_head_dim=128, qk_rope_head_dim=64). Standard serving configuration: **TP=8, EP=1** (with FP8 block-scale quantization).
+
+Kimi K2.6 shares the MLA attention and MoE FFN kernels with Kimi K2 (same 64 heads → h=8 at TP=8, same kv_lora_rank/page_size, same routed expert count and intermediate_size). The only dimension that differs from Kimi K2 is the tokenizer vocabulary: Kimi K2.6 uses **vocab_size=163840** (vs Kimi K2's 160000), which requires new sampling definitions.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h7168` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
+| `rmsnorm_h1536` | rmsnorm | ✅ |
+| `rmsnorm_h512` | rmsnorm | ✅ |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_decode_h8_ckv512_kpe64_ps64` | mla_paged TP=8 | ❌ |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
+| `moe_fp8_block_scale_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | 🟡 |
+| `top_k_sampling_from_probs_v163840` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v163840` | sampling | ❌ |
+| `top_p_sampling_from_probs_v163840` | sampling | ❌ |
+
+**Coverage**: 6 / 13 definitions present. MLA and MoE (EP=1) definitions are shared with Kimi K2 (same h=8 at TP=8, same 384-expert MoE). The sampling definitions are unique to Kimi K2.6 due to its distinct vocab_size=163840. `top_k_sampling_from_probs_v163840` newly added (reference + first workloads captured). Missing: the two remaining v163840 sampling variants, ps=64 MLA paged variants.
+
+---
 
 ---
 
