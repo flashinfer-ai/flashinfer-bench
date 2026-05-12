@@ -301,6 +301,7 @@ def get_full_configs() -> TracingConfigRegistry:
             "mla_paged_prefill_causal_h16_ckv512_kpe64_ps1": configs["mla_paged_prefill"],
             "fused_add_rmsnorm_h2048": configs["axes_only"],
             "fused_add_rmsnorm_h4096": configs["axes_only"],
+            "fused_add_rmsnorm_h6144": configs["axes_only"],
             "fused_add_rmsnorm_h7168": configs["axes_only"],
         },
     )
