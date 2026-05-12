@@ -349,7 +349,7 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
 | `rmsnorm_h3584` | rmsnorm | ❌ |
-| `fused_add_rmsnorm_h3584` | rmsnorm | ❌ |
+| `fused_add_rmsnorm_h3584` | rmsnorm | 🟡 |
 | `gqa_paged_prefill_causal_h28_kv4_d128_ps1` | gqa_paged | ❌ |
 | `gqa_paged_prefill_causal_h28_kv4_d128_ps64` | gqa_paged | ❌ |
 | `gqa_paged_decode_h28_kv4_d128_ps1` | gqa_paged | ❌ |
