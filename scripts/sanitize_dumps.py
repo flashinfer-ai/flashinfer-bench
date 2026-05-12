@@ -460,8 +460,11 @@ def process_call_dump(
         # Determine tensor storage based on dtype (definition spec):
         #   float → "random" (activation values don't affect kernel performance)
         #   int32/int64 → save as safetensors (structural: indices, indptrs)
+        #   Exception: sampling op_type non-probs float params (e.g. top_p) → save as
+        #   safetensors because their actual values determine sampling correctness.
         input_dtype = input_spec.get("dtype", "float32")
-        if input_dtype in {"bfloat16", "float16", "float32", "float64"}:
+        is_sampling_param = op_type == "sampling" and input_name != "probs"
+        if input_dtype in {"bfloat16", "float16", "float32", "float64"} and not is_sampling_param:
             workload_inputs[input_name] = {"type": "random"}
             continue
 
