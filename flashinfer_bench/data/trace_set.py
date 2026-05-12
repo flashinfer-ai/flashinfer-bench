@@ -751,7 +751,6 @@ class TraceSet:
         file_path = (
             self.blob_workloads_path
             / op_type
-            / def_name
             / f"{def_name}_{workload_uuid}.safetensors"
         )
         file_path.parent.mkdir(parents=True, exist_ok=True)
