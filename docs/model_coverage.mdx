@@ -680,12 +680,13 @@ Note: MiniMax M2 is a separate model from MiniMax-Text-01 (which uses Lightning 
 | `gemm_n8192_k3072` | gemm (fused qkv_proj) | 🟡 |
 | `gemm_n3072_k6144` | gemm (o_proj) | 🟡 |
 | `gemm_n256_k3072` | gemm (MoE gate) | 🟡 |
+| `gemm_n3072_k8192` | gemm (MoE FC2/down) | 🟡 |
 | MoE gate / topk / experts | moe | — |
 | `top_k_sampling_from_probs_v200064` | sampling | 🟡 |
 | `top_k_top_p_sampling_from_probs_v200064` | sampling | 🟡 |
 | `top_p_sampling_from_probs_v200064` | sampling | 🟡 |
 
-**Coverage**: 14 / 15 definitions present. Workloads not yet collected.
+**Coverage**: 15 / 16 definitions present. Workloads not yet collected.
 
 ---
 
