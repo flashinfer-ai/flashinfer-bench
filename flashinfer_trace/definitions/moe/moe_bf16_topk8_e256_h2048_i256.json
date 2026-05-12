@@ -1,0 +1,108 @@
+{
+    "name": "moe_bf16_topk8_e256_h2048_i256",
+    "description": "BF16 unquantized fused MoE. top_k=8 routing, 256 experts, hidden_size=2048, intermediate_size_per_partition=256. Captured from Qwen3.5-35B-A3B at TP=2.",
+    "op_type": "moe",
+    "tags": [
+        "model:qwen3.5-35b-a3b",
+        "status:verified",
+        "fi_api:flashinfer.fused_moe.trtllm_bf16_moe",
+        "tp:2"
+    ],
+    "axes": {
+        "seq_len": {
+            "type": "var",
+            "description": "Number of tokens in the batch."
+        },
+        "num_experts": {
+            "type": "const",
+            "value": 256,
+            "description": "Total number of experts."
+        },
+        "hidden_size": {
+            "type": "const",
+            "value": 2048,
+            "description": "Hidden dimension size."
+        },
+        "intermediate_size": {
+            "type": "const",
+            "value": 256,
+            "description": "MoE intermediate size per TP partition (config moe_intermediate_size=512 / tp=2)."
+        },
+        "gemm1_out_size": {
+            "type": "const",
+            "value": 512,
+            "description": "Output size of the first GEMM (gate + up). Should be 2 * intermediate_size."
+        },
+        "top_k": {
+            "type": "const",
+            "value": 8,
+            "description": "Number of experts selected per token."
+        }
+    },
+    "constraints": [
+        "gemm1_out_size == 2 * intermediate_size"
+    ],
+    "inputs": {
+        "hidden_states": {
+            "shape": [
+                "seq_len",
+                "hidden_size"
+            ],
+            "dtype": "bfloat16",
+            "description": "Input hidden states tensor."
+        },
+        "gating_output": {
+            "shape": [
+                "seq_len",
+                "num_experts"
+            ],
+            "dtype": "float32",
+            "description": "Router logits for expert selection."
+        },
+        "w1": {
+            "shape": [
+                "num_experts",
+                "gemm1_out_size",
+                "hidden_size"
+            ],
+            "dtype": "bfloat16",
+            "description": "First GEMM weights for all experts (gate and up projections)."
+        },
+        "w2": {
+            "shape": [
+                "num_experts",
+                "hidden_size",
+                "intermediate_size"
+            ],
+            "dtype": "bfloat16",
+            "description": "Second GEMM weights for all experts (down projection)."
+        },
+        "topk_weights": {
+            "shape": [
+                "seq_len",
+                "top_k"
+            ],
+            "dtype": "float32",
+            "description": "Routing weights for selected experts."
+        },
+        "topk_ids": {
+            "shape": [
+                "seq_len",
+                "top_k"
+            ],
+            "dtype": "int32",
+            "description": "Expert indices selected by the router."
+        }
+    },
+    "outputs": {
+        "output": {
+            "shape": [
+                "seq_len",
+                "hidden_size"
+            ],
+            "dtype": "bfloat16",
+            "description": "Final MoE output tensor."
+        }
+    },
+    "reference": "import torch\nimport torch.nn.functional as F\n\n\n@torch.no_grad()\ndef run(\n    hidden_states: torch.Tensor,\n    gating_output: torch.Tensor,\n    w1: torch.Tensor,\n    w2: torch.Tensor,\n    topk_weights: torch.Tensor,\n    topk_ids: torch.Tensor,\n):\n    seq_len, hidden_size = hidden_states.shape\n    num_experts = gating_output.shape[1]\n    top_k = topk_ids.shape[1]\n    intermediate_size = w2.shape[2]\n\n    assert hidden_size == 2048\n    assert num_experts == 256\n    assert top_k == 8\n    assert intermediate_size == 256\n\n    device = hidden_states.device\n    output = torch.zeros((seq_len, hidden_size), dtype=torch.float32, device=device)\n\n    A = hidden_states.to(torch.float32)\n\n    for t in range(seq_len):\n        for k_idx in range(top_k):\n            expert_id = int(topk_ids[t, k_idx].item())\n            weight = topk_weights[t, k_idx].item()\n\n            W13 = w1[expert_id].to(torch.float32)  # [gemm1_out_size, hidden_size]\n            W2 = w2[expert_id].to(torch.float32)    # [hidden_size, intermediate_size]\n\n            # GEMM1\n            g1 = A[t] @ W13.t()  # [gemm1_out_size]\n\n            # SwiGLU\n            x1 = g1[:intermediate_size]\n            x2 = g1[intermediate_size:]\n            silu_x2 = x2 / (1.0 + torch.exp(-x2))\n            c = silu_x2 * x1  # [intermediate_size]\n\n            # GEMM2\n            o = c @ W2.t()  # [hidden_size]\n\n            output[t] += weight * o\n\n    return output.to(torch.bfloat16)"
+}
