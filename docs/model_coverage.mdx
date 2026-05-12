@@ -187,7 +187,7 @@ Llama 3.1 70B and 3.3 70B share identical architecture dimensions; only training
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h8192` | rmsnorm | ❌ |
+| `rmsnorm_h8192` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps1` | gqa_paged TP=4 | ✅ |
 | `gqa_paged_prefill_causal_h16_kv2_d128_ps64` | gqa_paged TP=4 | ✅ |
@@ -373,7 +373,7 @@ At tensor parallelism TP=2, attention head counts are halved (48→24 q-heads, 8
 
 | Definition | Op Type | Status |
 |-----------|---------|:------:|
-| `rmsnorm_h8192` | rmsnorm | ❌ |
+| `rmsnorm_h8192` | rmsnorm | 🟡 |
 | `fused_add_rmsnorm_h8192` | rmsnorm | ❌ |
 | `gqa_paged_prefill_causal_h8_kv1_d128_ps1` | gqa_paged TP=8 | ❌ |
 | `gqa_paged_prefill_causal_h8_kv1_d128_ps64` | gqa_paged TP=8 | ❌ |
