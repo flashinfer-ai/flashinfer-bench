@@ -44,11 +44,21 @@ def _device_lock(device: str) -> LockType:
         return lock
 
 
+def _randomize_float_inputs(args: List[Any]) -> None:
+    """Randomize floating-point tensor inputs in-place to prevent output caching."""
+    for arg in args:
+        if isinstance(arg, torch.Tensor) and arg.is_floating_point():
+            arg.uniform_()
+
+
 def time_runnable(fn: Runnable, args: List[Any], warmup: int, iters: int, device: str) -> float:
     """Time the execution of a value-returning style Runnable kernel.
 
     Uses CUPTI activity tracing for precise hardware-level kernel timing,
     with automatic fallback to CUDA events if CUPTI is unavailable.
+
+    Input tensors are randomized before each iteration to prevent kernels from
+    cheating by caching outputs based on fixed input pointers.
 
     Parameters
     ----------
@@ -68,11 +78,15 @@ def time_runnable(fn: Runnable, args: List[Any], warmup: int, iters: int, device
     float
         The median execution time in milliseconds.
     """
+    def _fn_with_randomized_inputs(*a):
+        _randomize_float_inputs(list(a))
+        return fn(*a)
+
     lock = _device_lock(device)
     with lock:
         with torch.cuda.device(device):
             times = bench_gpu_time_with_cupti(
-                fn=fn,
+                fn=_fn_with_randomized_inputs,
                 dry_run_iters=warmup,
                 repeat_iters=iters,
                 input_args=tuple(args),
