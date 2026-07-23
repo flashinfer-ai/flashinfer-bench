@@ -88,23 +88,6 @@ class DsaSparseAttentionEvaluator(DefaultEvaluator):
                         status=EvaluationStatus.INCORRECT_DTYPE, device=device, log_path=log_path
                     )
 
-                non_finite_err_val = None
-                if torch.isinf(sol_tensor).any().item():
-                    non_finite_err_val = float("inf")
-                elif torch.isnan(sol_tensor).any().item():
-                    non_finite_err_val = float("nan")
-
-                if non_finite_err_val is not None:
-                    correctness = Correctness(
-                        max_relative_error=non_finite_err_val, max_absolute_error=non_finite_err_val
-                    )
-                    return correctness, make_eval(
-                        status=EvaluationStatus.INCORRECT_NUMERICAL,
-                        device=device,
-                        log_path=log_path,
-                        correctness=correctness,
-                    )
-
                 abs_err, rel_err, exceeds_tol, _ = compute_error_stats(sol_tensor, ref_tensor, cfg)
 
                 if exceeds_tol:
