@@ -44,10 +44,14 @@ def minimal_trace_set(tmp_path: Path) -> TraceSet:
 @pytest.fixture(autouse=True)
 def reset_runtime_state():
     """Reset TracingRuntime class state before and after each test."""
+    original_sigterm = signal.getsignal(signal.SIGTERM)
+    original_sigint = signal.getsignal(signal.SIGINT)
     TracingRuntime._stack = []
     TracingRuntime._cleanup_registered = False
     TracingRuntime._env_initialized = False
     yield
+    signal.signal(signal.SIGTERM, original_sigterm)
+    signal.signal(signal.SIGINT, original_sigint)
     TracingRuntime._stack = []
     TracingRuntime._cleanup_registered = False
     TracingRuntime._env_initialized = False
@@ -259,6 +263,7 @@ def test_signal_cleanup(tmp_path: Path):
     assert ready_event.wait(timeout=30), "Child process did not become ready"
     os.kill(p.pid, signal.SIGTERM)
     p.join(timeout=5)
+    assert p.exitcode == -signal.SIGTERM
 
     # Verify data was flushed to disk (workloads, not traces)
     trace_set = TraceSet.from_path(tmp_path)
