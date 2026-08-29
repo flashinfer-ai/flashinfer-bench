@@ -8,11 +8,12 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from flashinfer_bench import __version__
 from flashinfer_bench.data import Solution
-from flashinfer_bench.serve.scheduler import Scheduler
+from flashinfer_bench.serve.scheduler import Scheduler, SchedulerDrainingError
+from flashinfer_bench.serve.task_store import TaskConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,9 @@ def _get_scheduler() -> Scheduler:
 class EvaluateRequest(BaseModel):
     solution: Solution
     workload_uuids: Optional[List[str]] = None
+    task_id: Optional[str] = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$"
+    )
 
 
 class EvaluateResponse(BaseModel):
@@ -64,8 +68,15 @@ class WorkerInfo(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    instance_id: str
+    dataset_id: str
+    started_at: float
+    accepting: bool
     workers: List[WorkerInfo]
+    healthy_workers: int
+    total_workers: int
     queue_size: int
+    active_tasks: int
 
 
 # ── App & routes ──
@@ -99,6 +110,7 @@ async def root():
             {"method": "GET", "path": "/", "description": "Server info and endpoint discovery"},
             {"method": "GET", "path": "/docs", "description": "Interactive Swagger UI"},
             {"method": "GET", "path": "/health", "description": "Server health and worker status"},
+            {"method": "POST", "path": "/drain", "description": "Stop accepting new tasks"},
             {"method": "GET", "path": "/definitions", "description": "List all loaded definitions"},
             {
                 "method": "GET",
@@ -169,7 +181,12 @@ async def evaluate(req: EvaluateRequest):
     if req.solution.definition not in sched.trace_set.definitions:
         raise HTTPException(400, detail=f"Definition not found: {req.solution.definition}")
     renamed = req.solution.with_unique_name()
-    task_id = sched.submit(renamed, req.workload_uuids)
+    try:
+        task_id = sched.submit(renamed, req.workload_uuids, task_id=req.task_id)
+    except SchedulerDrainingError as e:
+        raise HTTPException(503, detail=str(e)) from e
+    except TaskConflictError as e:
+        raise HTTPException(409, detail=str(e)) from e
     return EvaluateResponse(task_id=task_id, normalized_solution_name=renamed.name)
 
 
@@ -210,7 +227,39 @@ async def get_task(task_id: str, timeout: float = Query(default=0, ge=0, le=3600
 async def health():
     sched = _get_scheduler()
     workers = [WorkerInfo(device=w.device, healthy=w.is_healthy) for w in sched.workers]
-    return HealthResponse(status="ok", workers=workers, queue_size=sched.queue_size)
+    healthy_workers = sum(worker.healthy for worker in workers)
+    if not sched.accepting:
+        status = "draining"
+    elif workers and healthy_workers == len(workers):
+        status = "ok"
+    elif healthy_workers:
+        status = "degraded"
+    else:
+        status = "unavailable"
+    return HealthResponse(
+        status=status,
+        instance_id=sched.instance_id,
+        dataset_id=sched.dataset_id,
+        started_at=sched.started_at,
+        accepting=sched.accepting,
+        workers=workers,
+        healthy_workers=healthy_workers,
+        total_workers=len(workers),
+        queue_size=sched.queue_size,
+        active_tasks=sched.active_tasks,
+    )
+
+
+@app.post("/drain")
+async def drain():
+    """Stop accepting tasks and let already admitted work finish."""
+    sched = _get_scheduler()
+    sched.drain()
+    return {
+        "status": "draining",
+        "active_tasks": sched.active_tasks,
+        "queue_size": sched.queue_size,
+    }
 
 
 @app.post("/shutdown")

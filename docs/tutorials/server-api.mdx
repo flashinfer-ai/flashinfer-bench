@@ -178,6 +178,7 @@ Request body fields:
 | --- | --- | --- | --- |
 | `solution` | object | Yes | Full [Solution](/docs/flashinfer-trace/solution) object to evaluate. |
 | `workload_uuids` | string[] | No | Optional subset of workload UUIDs. If omitted, the server evaluates all workloads for the definition. |
+| `task_id` | string | No | Client-supplied task identifier for idempotent retry. The same identifier may only be reused with an identical request. |
 
 Illustrative payload example:
 
@@ -231,6 +232,8 @@ Example response:
 **Errors**
 
 - `400`: `solution.definition` does not exist.
+- `409`: `task_id` already exists with a different request.
+- `503`: The server is draining and no longer accepts new tasks.
 
 ### `GET /tasks/{task_id}`
 
@@ -358,26 +361,68 @@ Response fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `status` | string | Overall server health status. |
+| `status` | string | `ok`, `degraded`, `draining`, or `unavailable`. |
+| `instance_id` | string | Identifier unique to this server process. A changed value means the process restarted. |
+| `dataset_id` | string | Digest of loaded definitions and workloads. Servers with different values are not routing-compatible. |
+| `started_at` | float | Process initialization time as Unix seconds. |
+| `accepting` | boolean | Whether the scheduler accepts new tasks. |
 | `workers` | object[] | Per-worker health information. |
+| `healthy_workers` | integer | Number of healthy GPU workers. |
+| `total_workers` | integer | Total number of configured GPU workers. |
 | `queue_size` | integer | Number of queued tasks waiting to run. |
+| `active_tasks` | integer | Number of pending or running tasks. |
 
 Example response:
 
 ```json
 {
   "status": "ok",
+  "instance_id": "6fd5a30c86b44a9aa929f9dffcb77861",
+  "dataset_id": "d8752b1558e68e4546689e3b8f52d9d75dcfdd79f0634dbd0d4cfc1205b0a80d",
+  "started_at": 1788049200.0,
+  "accepting": true,
   "workers": [
     {
       "device": "cuda:0",
       "healthy": true
     }
   ],
-  "queue_size": 0
+  "healthy_workers": 1,
+  "total_workers": 1,
+  "queue_size": 0,
+  "active_tasks": 0
 }
 ```
 
 This endpoint is intended for operational checks rather than task inspection.
+
+**Errors**
+
+No endpoint-specific error behavior beyond standard server failures.
+
+### `POST /drain` (Management)
+
+**Purpose**
+
+Stop accepting new tasks while allowing pending and running tasks to finish. Use this endpoint
+before planned maintenance or after receiving a spot-instance interruption notice.
+
+**Request**
+
+No request body.
+
+**Response**
+
+```json
+{
+  "status": "draining",
+  "active_tasks": 1,
+  "queue_size": 0
+}
+```
+
+After this call, `POST /evaluate` returns HTTP 503. The drain state lasts for the lifetime of the
+server process.
 
 **Errors**
 

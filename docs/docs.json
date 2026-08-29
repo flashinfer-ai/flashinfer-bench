@@ -30,6 +30,7 @@
               "tutorials/run-benchmark",
               "tutorials/cli",
               "tutorials/server-api",
+              "tutorials/server-router",
               "tutorials/bring-your-own-kernel"
             ]
           },

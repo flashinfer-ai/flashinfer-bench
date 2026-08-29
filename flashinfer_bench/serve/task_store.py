@@ -17,6 +17,10 @@ class TaskStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class TaskConflictError(ValueError):
+    """Raised when a task identifier is reused for a different request."""
+
+
 @dataclass
 class Task:
     """A single evaluation task for one solution."""
@@ -41,9 +45,19 @@ class TaskStore:
         self._ttl = ttl_seconds
         self._lock = threading.Lock()
 
-    def create_task(self, solution: Solution, workload_uuids: Optional[List[str]] = None) -> str:
-        """Create a single evaluation task. Returns task_id."""
-        task_id = uuid.uuid4().hex
+    def create_task(
+        self,
+        solution: Solution,
+        workload_uuids: Optional[List[str]] = None,
+        task_id: Optional[str] = None,
+    ) -> str:
+        """Create an evaluation task, or return an identical task created earlier.
+
+        Supplying ``task_id`` makes submission idempotent. This lets a router safely reconcile a
+        request after losing the server response. Reusing an identifier with a different payload
+        raises :class:`TaskConflictError`.
+        """
+        task_id = task_id or uuid.uuid4().hex
         task = Task(
             id=task_id,
             solution=solution,
@@ -51,17 +65,29 @@ class TaskStore:
             workload_uuids=workload_uuids,
         )
         with self._lock:
+            existing = self._tasks.get(task_id)
+            if existing is not None:
+                if (
+                    existing.solution.model_dump(mode="json") == solution.model_dump(mode="json")
+                    and existing.workload_uuids == workload_uuids
+                ):
+                    return task_id
+                raise TaskConflictError(
+                    f"Task ID already exists with a different request: {task_id}"
+                )
             self._tasks[task_id] = task
             self._events[task_id] = threading.Event()
         return task_id
 
     def get_task(self, task_id: str) -> Optional[Task]:
-        return self._tasks.get(task_id)
+        with self._lock:
+            return self._tasks.get(task_id)
 
     def mark_running(self, task_id: str) -> None:
-        task = self._tasks.get(task_id)
-        if task:
-            task.status = TaskStatus.RUNNING
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task:
+                task.status = TaskStatus.RUNNING
 
     def complete_task(self, task_id: str, traces: List[Trace]) -> None:
         with self._lock:
@@ -93,11 +119,20 @@ class TaskStore:
             event = self._events.get(task_id)
             if event and not event.is_set():
                 event.wait(timeout=remaining)
-        return all(
-            self._tasks[tid].status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
-            for tid in task_ids
-            if tid in self._tasks
-        )
+        with self._lock:
+            return all(
+                self._tasks[tid].status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
+                for tid in task_ids
+                if tid in self._tasks
+            )
+
+    def count_active(self) -> int:
+        """Return the number of pending or running tasks."""
+        with self._lock:
+            return sum(
+                task.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
+                for task in self._tasks.values()
+            )
 
     def cleanup(self) -> int:
         """Remove completed tasks older than TTL. Returns count removed."""

@@ -1,0 +1,156 @@
+---
+title: "Benchmark Server Router"
+description: "Distribute durable evaluation tasks across benchmark server nodes."
+---
+
+The benchmark server router gives clients one stable Hypertext Transfer Protocol (HTTP) address for
+several compute nodes. Each node runs a benchmark server and owns its local graphics processing
+units (GPUs). The router admits tasks into a durable queue, chooses a healthy compatible server, and
+preserves results when a node disappears.
+
+The router stores state in SQLite, an embedded transactional database. It is intended for one
+router process connected to many benchmark servers.
+
+## Install Server Dependencies
+
+```bash
+pip install 'flashinfer-bench[serve]'
+```
+
+## Start One Server Per Compute Node
+
+Every node must load the same trace set. Start a server on each node:
+
+```bash
+flashinfer-bench serve \
+  --local /data/flashinfer-trace \
+  --devices cuda:0 \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+The server health response includes a `dataset_id`. The router only combines nodes whose
+identifiers match, preventing a task from running against the wrong definitions or workloads.
+
+## Start The Router
+
+Give every node a stable name and URL:
+
+```bash
+flashinfer-bench router \
+  --backend node-a=http://10.0.0.11:8000 \
+  --backend node-b=http://10.0.0.12:8000 \
+  --state-db /var/lib/flashinfer-bench/router.db \
+  --host 0.0.0.0 \
+  --port 9000
+```
+
+The SQLite file contains submitted source code and task results. Store it on persistent local
+storage with access restricted to the router account. Do not place it on ephemeral instance
+storage if tasks must survive router replacement.
+
+Clients can now use port `9000` with the same evaluation flow documented in
+[Benchmark Server API](/docs/tutorials/server-api):
+
+```bash
+curl -s \
+  -X POST http://router.example:9000/evaluate \
+  -H 'Content-Type: application/json' \
+  -d @evaluation.json
+```
+
+## Scheduling And Backpressure
+
+By default, the router assigns at most one task to each healthy remote GPU worker. Later tasks stay
+in the durable router queue. This limit avoids placing a large volatile queue on a spot instance,
+which is a discounted cloud virtual machine that its provider may terminate with short notice.
+
+Use `--max-inflight-per-worker` to raise remote buffering. Use `--max-active-tasks` to bound the
+durable admission queue. The router returns HTTP 503 when that admission limit is full.
+
+Among nodes with a free slot, the router chooses the lowest utilization and rotates equal choices.
+Definition and workload read requests are forwarded to a healthy node.
+
+## Health And Readiness
+
+Check router process liveness independently of node availability:
+
+```bash
+curl -s http://router.example:9000/live
+```
+
+Check whether at least one node is ready and inspect task counts:
+
+```bash
+curl -s http://router.example:9000/health
+```
+
+`GET /health` returns HTTP 503 when no node can accept tasks. Already admitted tasks remain queued.
+`GET /backends` reports each node's health state, server-process identifier, capacity, failure
+count, and last error.
+
+The router probes nodes concurrently. One failed probe marks a node `suspect` and stops new routing
+to it. After `--failure-threshold` consecutive failures, unfinished assignments return to the
+durable queue for replay elsewhere.
+
+## Server Restarts
+
+Every benchmark server process creates a new `instance_id`. When the router sees that identifier
+change at an existing node address, it knows the old in-memory task store disappeared. It requeues
+unfinished tasks with their original public identifiers.
+
+A submission can include a client-generated `task_id` for retry after a lost client response:
+
+```json
+{
+  "task_id": "submission-2026-08-29-001",
+  "solution": {
+    "name": "my_solution"
+  }
+}
+```
+
+The abbreviated solution above is illustrative; a real request still needs every required
+`Solution` field. Repeating the same identifier and request returns the existing task. Reusing the
+identifier with different content returns HTTP 409.
+
+## Spot Interruption And Planned Maintenance
+
+When a node receives a spot-instance interruption notice, call its benchmark server directly:
+
+```bash
+curl -s -X POST http://10.0.0.11:8000/drain
+```
+
+The server immediately rejects new evaluations and finishes admitted work. The router observes the
+drain state on its next health probe and stops choosing that node. For planned maintenance, wait
+until `active_tasks` and `queue_size` in the node health response are both zero before stopping it.
+
+If the node disappears before work finishes, the ordinary consecutive-failure flow replays the
+unfinished logical task. A task may execute twice if the old node completes it immediately before
+becoming unreachable. The stable task identifier ensures the router exposes one logical result;
+the system does not claim exactly-once GPU execution.
+
+## Router Restart Recovery
+
+SQLite uses a write-ahead log, which records committed changes before they are merged into the main
+database file. After a router restart:
+
+- queued tasks remain queued;
+- assignments to the same server process are reconciled;
+- assignments to a restarted or missing server return to the queue; and
+- previously copied terminal results remain available until `--result-ttl` expires.
+
+The default result retention is 86,400 seconds. The default infrastructure retry limit is five
+attempts per task and can be changed with `--max-attempts`.
+
+## Deployment Boundary
+
+The router coordinates one process and many nodes. It does not create cloud instances, terminate
+them, or coordinate multiple simultaneously active router processes. A cloud autoscaler remains
+responsible for node lifecycle. A future shared database implementation is required before running
+several active router processes against the same task queue.
+
+Place the router and server management endpoints on a trusted control network. Use an ingress or
+service mesh to provide Transport Layer Security, authentication, request-size limits, and public
+network policy.

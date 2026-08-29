@@ -276,6 +276,44 @@ def serve(args: argparse.Namespace):
     uvicorn.run(app, host=args.host, port=args.port)
 
 
+def router(args: argparse.Namespace):
+    """Start the durable multi-node benchmark server router."""
+    try:
+        import uvicorn
+    except ImportError:
+        raise RuntimeError(
+            "uvicorn is required for the router command. "
+            "Install with: pip install flashinfer-bench[serve]"
+        )
+
+    from flashinfer_bench.serve.router import create_router_app, parse_backend
+
+    try:
+        backends = [parse_backend(value) for value in args.backend]
+    except ValueError as error:
+        raise RuntimeError(str(error)) from error
+
+    app = create_router_app(
+        backends,
+        state_db=args.state_db,
+        max_active_tasks=args.max_active_tasks,
+        health_interval=args.health_interval,
+        failure_threshold=args.failure_threshold,
+        request_timeout=args.request_timeout,
+        max_inflight_per_worker=args.max_inflight_per_worker,
+        dispatch_interval=args.dispatch_interval,
+        max_attempts=args.max_attempts,
+        result_ttl_seconds=args.result_ttl,
+    )
+    logger.info(
+        "Starting router on %s:%d for backends %s",
+        args.host,
+        args.port,
+        [backend.id for backend in backends],
+    )
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
 def run(args: argparse.Namespace):
     """Benchmark run: executes benchmarks and writes results."""
     if not args.local:
@@ -438,6 +476,65 @@ def cli():
         "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
     )
     serve_parser.set_defaults(func=serve)
+
+    router_parser = command_subparsers.add_parser(
+        "router", help="Route evaluations across benchmark server nodes."
+    )
+    router_parser.add_argument(
+        "--backend",
+        action="append",
+        required=True,
+        metavar="NAME=URL",
+        help="Benchmark server name and base URL. Repeat for every node.",
+    )
+    router_parser.add_argument(
+        "--state-db",
+        type=Path,
+        default=Path("flashinfer-bench-router.db"),
+        help="SQLite file for durable task state.",
+    )
+    router_parser.add_argument(
+        "--max-active-tasks", type=int, default=10_000, help="Admission queue limit."
+    )
+    router_parser.add_argument(
+        "--max-inflight-per-worker",
+        type=int,
+        default=1,
+        help="Maximum assigned tasks per healthy remote GPU worker.",
+    )
+    router_parser.add_argument(
+        "--health-interval", type=float, default=5.0, help="Seconds between server probes."
+    )
+    router_parser.add_argument(
+        "--failure-threshold",
+        type=int,
+        default=3,
+        help="Consecutive failed probes before unfinished tasks are replayed.",
+    )
+    router_parser.add_argument(
+        "--request-timeout", type=float, default=10.0, help="Server HTTP timeout in seconds."
+    )
+    router_parser.add_argument(
+        "--dispatch-interval",
+        type=float,
+        default=0.5,
+        help="Seconds between dispatch and reconciliation passes.",
+    )
+    router_parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=5,
+        help="Maximum infrastructure dispatch attempts per task.",
+    )
+    router_parser.add_argument(
+        "--result-ttl", type=int, default=86_400, help="Seconds to retain terminal task responses."
+    )
+    router_parser.add_argument("--host", type=str, default="0.0.0.0", help="Router host")
+    router_parser.add_argument("--port", type=int, default=9000, help="Router port")
+    router_parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
+    router_parser.set_defaults(func=router)
 
     run_parser = command_subparsers.add_parser("run", help="Execute a new benchmark run.")
     run_parser.add_argument(
