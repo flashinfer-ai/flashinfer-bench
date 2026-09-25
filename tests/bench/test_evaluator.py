@@ -1,3 +1,4 @@
+import math
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -247,6 +248,52 @@ class TestDefaultEvaluatorVR:
         )
 
         assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+
+    @pytest.mark.parametrize(
+        ("output_value", "reference_value", "expected_status"),
+        [
+            (float("-inf"), float("-inf"), None),
+            (0.0, float("-inf"), EvaluationStatus.INCORRECT_NUMERICAL),
+        ],
+        ids=["matching_infinity_passes", "finite_against_infinity_fails"],
+    )
+    def test_check_correctness_non_finite_vr(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        output_value,
+        reference_value,
+        expected_status,
+    ):
+        monkeypatch.setattr(torch.cuda, "synchronize", lambda *args, **kwargs: None)
+        definition = _simple_def()
+        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-4, rtol=1e-4)
+        device = "cpu"
+        inp = [torch.zeros(4)]
+        output = torch.tensor([output_value, 1.0, 2.0, 3.0])
+        reference = torch.tensor([reference_value, 1.0, 2.0, 3.0])
+        runnable = _make_vr_mock(output)
+
+        correctness, evaluation = DefaultEvaluator.check_correctness(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[reference]],
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert correctness is not None
+        if expected_status is None:
+            assert evaluation is None
+            assert correctness.max_absolute_error == 0.0
+            assert correctness.max_relative_error == 0.0
+        else:
+            assert evaluation is not None
+            assert evaluation.status == expected_status
+            assert math.isinf(correctness.max_absolute_error)
+            assert math.isinf(correctness.max_relative_error)
 
 
 # =============================================================================

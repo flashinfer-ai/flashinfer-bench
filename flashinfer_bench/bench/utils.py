@@ -99,26 +99,49 @@ def compute_error_stats(
     x = output.to(torch.float32)
     y = reference.to(torch.float32)
 
-    eps = 1e-8
-    abs_error = torch.abs(x - y)
-    rel_error = abs_error / (torch.abs(y) + eps)
-
-    total_elements = abs_error.numel()
+    total_elements = x.numel()
     if total_elements == 0:
         return 0.0, 0.0, False, 1.0
+
+    eps = 1e-8
+
+    # Finite pairs use the existing atol/rtol comparison. Same-sign infinities
+    # are exact matches. NaNs and all other non-finite combinations mismatch.
+    finite_pair_mask = torch.isfinite(x) & torch.isfinite(y)
+    matching_inf_mask = torch.isinf(x) & torch.isinf(y) & (x == y)
+    non_finite_mismatch_mask = ~(finite_pair_mask | matching_inf_mask)
+
+    # Avoid evaluating inf - inf and inf / inf, which would create NaNs and
+    # incorrectly make threshold comparisons return False.
+    abs_error = torch.zeros_like(x)
+    rel_error = torch.zeros_like(x)
+    if finite_pair_mask.any().item():
+        finite_abs_error = torch.abs(x[finite_pair_mask] - y[finite_pair_mask])
+        finite_rel_error = finite_abs_error / (torch.abs(y[finite_pair_mask]) + eps)
+        abs_error[finite_pair_mask] = finite_abs_error
+        rel_error[finite_pair_mask] = finite_rel_error
 
     required_matched_ratio = (
         cfg.required_matched_ratio if cfg.required_matched_ratio is not None else 1.0
     )
-    exceeds_tol_mask = (abs_error > cfg.atol) & (rel_error > cfg.rtol)
-    exceeds_count = float(exceeds_tol_mask.sum().item())
-    matched_ratio = 1.0 - (exceeds_count / float(total_elements))
+
+    finite_mismatch_mask = finite_pair_mask & (abs_error > cfg.atol) & (rel_error > cfg.rtol)
+    mismatch_mask = finite_mismatch_mask | non_finite_mismatch_mask
+    mismatch_count = float(mismatch_mask.sum().item())
+    matched_ratio = 1.0 - (mismatch_count / float(total_elements))
     matched_ratio = max(0.0, min(1.0, matched_ratio))
 
-    exceeds_tol = matched_ratio < required_matched_ratio
+    # Preserve the previous evaluator policy that non-finite numerical errors
+    # are always fatal, even when a relaxed matched ratio is configured.
+    has_non_finite_mismatch = bool(non_finite_mismatch_mask.any().item())
+    exceeds_tol = has_non_finite_mismatch or matched_ratio < required_matched_ratio
 
-    max_abs = float(abs_error.max().item())
-    max_rel = float(rel_error.max().item())
+    if has_non_finite_mismatch:
+        max_abs = float("inf")
+        max_rel = float("inf")
+    else:
+        max_abs = float(abs_error.max().item())
+        max_rel = float(rel_error.max().item())
 
     return max_abs, max_rel, exceeds_tol, matched_ratio
 
