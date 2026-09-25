@@ -33,12 +33,7 @@ from flashinfer_bench.tracing import (
     disable_tracing,
     enable_tracing,
 )
-
-try:
-    from ._version import __version__, __version_tuple__
-except Exception:
-    __version__ = "0.0.0.dev0"
-    __version_tuple__ = (0, 0, 0, "dev0")
+from flashinfer_bench.version import __version__, __version_tuple__
 
 __all__ = [
     # Benchmark
