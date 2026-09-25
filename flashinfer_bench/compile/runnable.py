@@ -50,6 +50,30 @@ class Runnable:
 
     _callable: Callable[..., Any]
     """The underlying callable function."""
+    _setup_callable: Optional[Callable[..., Any]]
+    """Optional one-shot per-workload setup hook. If a solution module exports a ``setup``
+    symbol with the same input signature as ``run``, the builder wires it here. The framework
+    invokes ``setup_for_workload(*args)`` once before the timing/correctness loop for each
+    workload; the returned dict is then passed as kwargs to every ``run`` call. Use this for
+    derived static state (CSR indptr, expert ids, workspace tensors, plan handles) that the
+    kernel needs but that does not change across timed iterations.
+
+    Contract: the returned state may depend on input METADATA — shapes, dtypes,
+    integer/bool tensors (lengths, indptr, indices, page tables) and scalars — but MUST NOT
+    depend on the VALUES of payload tensors: floating-point tensors with ndim >= 2
+    (q/kv/activation data), including packed-quantized weight representations stored in
+    integer dtypes (unpacking/dequantizing them in ``setup`` moves per-call work outside
+    the timed region and violates the contract even though the automated check cannot
+    mutate them). Anything value-dependent belongs in ``run``. The evaluator enforces the
+    floating-payload half mechanically by re-randomizing payload tensors after ``setup``
+    and re-checking ``run`` correctness against a fresh reference while reusing the stale
+    cached state; violations fail the evaluation. This closes the loophole where a solution computes its full result inside
+    ``setup`` (outside every timed region) and has ``run`` replay the cached answer.
+
+    Setup hooks are currently exercised by the DefaultEvaluator flow; evaluators that
+    never invoke ``setup_for_workload`` (e.g. the sampling / lowbit correctness
+    overrides) reject setup-hook solutions with a RuntimeError instead of silently
+    running ``run`` on default keyword values."""
     _cleaner: Optional[Callable[[], None]]
     """Optional cleanup function to release build artifacts and resources."""
 
@@ -58,6 +82,7 @@ class Runnable:
         callable: Callable[..., Any],
         metadata: RunnableMetadata,
         cleaner: Optional[Callable[[], None]] = None,
+        setup_callable: Optional[Callable[..., Any]] = None,
     ) -> None:
         """Constructor for the Runnable class.
 
@@ -69,10 +94,57 @@ class Runnable:
             The metadata for the runnable.
         cleaner : Optional[Callable[[], None]]
             The cleaner function for the runnable. It will clean up the build artifacts/resources.
+        setup_callable : Optional[Callable[..., Any]]
+            Optional per-workload setup hook. See class docstring on ``_setup_callable``.
         """
         self._callable = callable
+        self._setup_callable = setup_callable
+        self._workload_state: Optional[Dict[str, Any]] = None
         self.metadata = metadata
         self._cleaner = cleaner
+
+    @property
+    def has_setup_hook(self) -> bool:
+        """True when the solution module exported a per-workload ``setup`` hook."""
+        return self._setup_callable is not None
+
+    def setup_for_workload(self, *args: Any) -> None:
+        """Invoke the setup hook for the current workload and cache the returned state.
+
+        If no setup hook is defined, this clears any previously cached state. Should be
+        called by the evaluator once per workload before timing/correctness iterations.
+        """
+        if self._setup_callable is None:
+            self._workload_state = None
+            return
+        state = self._setup_callable(*args)
+        if state is None:
+            self._workload_state = {}
+        elif isinstance(state, dict):
+            self._workload_state = state
+        else:
+            raise TypeError(
+                f"setup() must return a dict (got {type(state).__name__}); the dict is "
+                "splatted as kwargs into run()."
+            )
+
+    def _state_kwargs(self) -> Dict[str, Any]:
+        """Return the cached setup state to splat into ``run``.
+
+        Fails loudly when a setup-hook solution is invoked before
+        ``setup_for_workload``: silently proceeding would execute ``run`` with
+        default keyword values (or crash with an opaque TypeError), and —
+        worse — would let a caller time ``run`` against state it never built.
+        Evaluators that do not invoke the setup hook therefore reject
+        setup-hook solutions instead of producing misleading results.
+        """
+        if self._setup_callable is not None and self._workload_state is None:
+            raise RuntimeError(
+                f"Solution '{self.metadata.solution_name}' defines a setup() hook but "
+                "setup_for_workload() was not called for this workload. Refusing to "
+                "run without the setup state — call setup_for_workload(*args) first."
+            )
+        return self._workload_state or {}
 
     def __call__(self, *args: Any) -> Any:
         """Execute the runnable with positional arguments.
@@ -92,7 +164,15 @@ class Runnable:
             The result of the underlying function. Single-element tuples are unpacked
             to scalar values.
         """
-        ret = self._callable(*args)
+        # Inlined _state_kwargs: __call__ sits inside timed measurement loops,
+        # so keep the fast path free of extra function-call overhead.
+        state = self._workload_state
+        if state is None and self._setup_callable is not None:
+            self._state_kwargs()  # raises with the explanatory message
+        if state:
+            ret = self._callable(*args, **state)
+        else:
+            ret = self._callable(*args)
         return self._revise_return_value(ret)
 
     def _revise_return_value(self, ret: Any) -> Any:
@@ -180,7 +260,11 @@ class Runnable:
         args_input = args[: len(self.metadata.definition.inputs)]
         args_output = args[len(self.metadata.definition.inputs) :]
 
-        result = self._callable(*args_input)
+        state = self._state_kwargs()
+        if state:
+            result = self._callable(*args_input, **state)
+        else:
+            result = self._callable(*args_input)
 
         if len(args_output) == 0:
             return
@@ -262,7 +346,11 @@ class Runnable:
 
         # Convert destination-passing style to value-returning style
         output_tensors = self._allocate_output_tensors(*args)
-        self._callable(*args, *output_tensors)
+        state = self._state_kwargs()
+        if state:
+            self._callable(*args, *output_tensors, **state)
+        else:
+            self._callable(*args, *output_tensors)
         return self._revise_return_value(tuple(output_tensors))
 
     def cleanup(self) -> None:

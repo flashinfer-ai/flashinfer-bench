@@ -344,5 +344,156 @@ class TestAllocateOutputTensors:
         assert outputs[1].dtype == torch.int32
 
 
+class TestSetupHook:
+    """Tests for the optional per-workload setup() hook (ab70330)."""
+
+    def test_no_setup_callable_keeps_state_none(self):
+        """If no setup_callable is provided, _workload_state stays None and __call__ goes the original path."""
+
+        def fn(a, b):
+            return a + b
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=fn, metadata=metadata)
+        assert r._setup_callable is None
+        assert r._workload_state is None
+
+        # setup_for_workload on a no-setup runnable is a no-op
+        r.setup_for_workload(1, 2)
+        assert r._workload_state is None
+
+        # __call__ ignores the (absent) state
+        assert r(1, 2) == 3
+
+    def test_setup_returns_dict_state_injected_as_kwargs(self):
+        """setup() returning a dict caches the state and run() receives it as kwargs."""
+        seen_kwargs = {}
+
+        def setup(a, b):
+            return {"derived": a * 10}
+
+        def run(a, b, *, derived):
+            seen_kwargs["derived"] = derived
+            return a + b + derived
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=run, metadata=metadata, setup_callable=setup)
+        r.setup_for_workload(2, 3)
+        assert r._workload_state == {"derived": 20}
+
+        result = r(2, 3)
+        assert result == 25
+        assert seen_kwargs == {"derived": 20}
+
+    def test_setup_returns_none_skips_kwargs_splat(self):
+        """setup() returning None caches an empty dict and run() is called without state kwargs."""
+
+        def setup(a):
+            return None
+
+        def run(a):
+            return a + 1
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=run, metadata=metadata, setup_callable=setup)
+        r.setup_for_workload(5)
+        assert r._workload_state == {}
+        assert r(5) == 6  # no kwargs splat
+
+    def test_setup_hook_call_before_setup_raises(self):
+        """A setup-hook runnable invoked before setup_for_workload must fail
+        loudly. Silently running would use default kwarg values — misleading
+        results, and an evaluator that skips setup could time run() against
+        state it never built (the item-1 gaming vector through a side door)."""
+
+        def setup(a):
+            return {"bias": 1}
+
+        def run(a, *, bias=0):  # default makes the silent path tempting
+            return a + bias
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=run, metadata=metadata, setup_callable=setup)
+        with pytest.raises(RuntimeError, match="setup_for_workload"):
+            r(1)
+
+        # After setup, the call works and sees the real state.
+        r.setup_for_workload(1)
+        assert r(1) == 2
+
+    def test_setup_returns_non_dict_raises_type_error(self):
+        """setup() returning a non-dict (e.g. tuple) should raise TypeError on setup_for_workload."""
+
+        def setup(a):
+            return (a, a * 2)  # not a dict
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=lambda *a: None, metadata=metadata, setup_callable=setup)
+        with pytest.raises(TypeError, match="setup\\(\\) must return a dict"):
+            r.setup_for_workload(1)
+
+    def test_setup_state_persists_across_calls(self):
+        """setup_for_workload is called once; subsequent __call__ all see the same state."""
+        setup_call_count = {"n": 0}
+
+        def setup(a):
+            setup_call_count["n"] += 1
+            return {"k": setup_call_count["n"]}
+
+        def run(a, *, k):
+            return a + k
+
+        metadata = RunnableMetadata(
+            build_type="python", definition_name="test", solution_name="test"
+        )
+        r = Runnable(callable=run, metadata=metadata, setup_callable=setup)
+
+        r.setup_for_workload(10)
+        assert r(10) == 11  # k=1 from setup
+        assert r(10) == 11  # state reused, no extra setup call
+        assert setup_call_count["n"] == 1
+
+        # Re-run setup_for_workload re-invokes setup
+        r.setup_for_workload(20)
+        assert setup_call_count["n"] == 2
+        assert r(20) == 22  # k=2 now
+
+    def test_setup_state_injected_in_dps_call(self):
+        """State kwargs are splatted into call_destination_passing for native DPS callables."""
+        definition = _make_definition()
+
+        def setup(A, B, C):
+            return {"scale": 10.0}
+
+        def dps_fn(A, B, C, *, scale):
+            C.copy_((A + B) * scale)
+
+        metadata = RunnableMetadata(
+            build_type="python",
+            definition_name="test_op",
+            solution_name="test",
+            destination_passing_style=True,
+            definition=definition,
+        )
+        r = Runnable(callable=dps_fn, metadata=metadata, setup_callable=setup)
+
+        A = torch.ones((3, 4), dtype=torch.float32)
+        B = torch.ones((3, 4), dtype=torch.float32) * 2
+        C = torch.zeros((3, 4), dtype=torch.float32)
+        r.setup_for_workload(A, B, C)
+        r.call_destination_passing(A, B, C)
+        assert torch.allclose(C, torch.ones((3, 4)) * 30.0)
+
+
 if __name__ == "__main__":
     pytest.main(sys.argv)

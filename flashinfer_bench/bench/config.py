@@ -25,6 +25,11 @@ class EvalConfig(BaseModel):
     """Absolute tolerance for numerical checks. `None` means inherit."""
     required_matched_ratio: Optional[float] = Field(default=None, gt=0, le=1)
     """Minimum fraction of elements that must be within tolerance. `None` means inherit."""
+    split_timing: Optional[bool] = Field(default=None)
+    """Opt-in to split timing (e2e + kernel_ms + kernel_gpu_ms). `None` means inherit."""
+    cold_l2_cache: Optional[bool] = Field(default=None)
+    """L2 policy for split timing. True selects cold L2; False selects warm L2;
+    `None` means inherit."""
     extra: Dict[str, Any] = Field(default_factory=dict)
     """Evaluator-specific parameters that do not belong in the shared schema."""
 
@@ -46,6 +51,27 @@ class ResolvedEvalConfig(BaseModel):
     """Minimum fraction of elements that must be within tolerance."""
     profile_baseline: bool = True
     """Whether to profile the reference implementation for baseline latency."""
+    split_timing: bool = False
+    """Opt-in: additionally collect e2e_ms + kernel_ms + kernel_gpu_ms. When
+    True, evaluators dispatch to ``time_runnable_split_timing`` and populate
+    ``Performance.e2e_ms`` / ``kernel_ms`` / ``kernel_gpu_ms`` alongside
+    ``latency_ms``, which keeps its single-metric semantics (full solution
+    call; for setup-hook solutions the setup runs inside the timed region) so
+    ``speedup_factor`` stays comparable across modes. Cost: four measurement
+    phases per trial instead of one (kernel_ms, kernel_gpu_ms, e2e_ms, and
+    the standard latency_ms), roughly 4x the single-metric measurement time
+    plus ~0.4s of inter-phase cool-downs per trial. When False, behavior is
+    unchanged from before split timing was introduced."""
+    cold_l2_cache: bool = True
+    """L2 policy shared by split-timing metrics. Defaults to cold L2, matching
+    FlashInfer's benchmark helpers. Set False for warm-cache measurements."""
+    split_phase_rotation: bool = True
+    """Rotate the three split-timing phases by trial index so each metric
+    occupies every slot of the sequence across trials, and the cross-trial mean
+    cannot inherit a fixed-position bias. Deterministic (a pure function of the
+    trial index), so runs stay reproducible. Set False to pin the legacy fixed
+    order (kernel, kernel_gpu, e2e) when comparing the two schedules. Has no
+    effect unless ``split_timing`` is True; ``latency_ms`` is never rotated."""
     extra: Dict[str, Any] = Field(default_factory=dict)
     """Evaluator-specific parameters after all config layers have been merged."""
 
@@ -85,6 +111,10 @@ class BenchmarkConfig(BaseModel):
     """CLI override for absolute tolerance. None means inherit from YAML / defaults."""
     required_matched_ratio: Optional[float] = Field(default=None, gt=0, le=1)
     """CLI override for required matched ratio. None means inherit from YAML / defaults."""
+    split_timing: Optional[bool] = Field(default=None)
+    """CLI override for split-timing opt-in. None means inherit from YAML / defaults (False)."""
+    cold_l2_cache: Optional[bool] = Field(default=None)
+    """CLI override for split-timing L2 policy. None means inherit from YAML / defaults."""
     # Deprecated: use op_type_config/definition_config extra instead. Kept as
     # top-level CLI-style overrides for the same reason as the other eval fields:
     # None means "not set at this layer"; non-None wins over YAML layer.extra.
@@ -156,6 +186,8 @@ class BenchmarkConfig(BaseModel):
             "rtol": self.rtol,
             "atol": self.atol,
             "required_matched_ratio": self.required_matched_ratio,
+            "split_timing": self.split_timing,
+            "cold_l2_cache": self.cold_l2_cache,
         }
         merged.update({k: v for k, v in top_level.items() if v is not None})
 

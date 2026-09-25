@@ -40,6 +40,51 @@ def test_correctness_performance_environment_validation():
         Environment(hardware="")
 
 
+def test_performance_split_fields_omitted_when_absent():
+    """Byte-stability of the no-opt-in write path: a Performance without split
+    timing serializes with exactly the pre-split-timing key set, so dataset
+    diffs / content hashes are stable and merge/export does not rewrite
+    historical traces. Absent keys round-trip back to None."""
+    p = Performance(latency_ms=1.0, reference_latency_ms=2.0, speedup_factor=2.0)
+    payload = json.loads(p.model_dump_json())
+    assert set(payload) == {"latency_ms", "reference_latency_ms", "speedup_factor"}
+
+    roundtrip = Performance.model_validate_json(p.model_dump_json())
+    assert roundtrip.e2e_ms is None
+    assert roundtrip.kernel_ms is None
+    assert roundtrip.kernel_gpu_ms is None
+
+    # Split-timing fields serialize when populated; a None kernel_gpu_ms is
+    # omitted while its explanatory status is kept.
+    p2 = Performance(
+        latency_ms=1.0,
+        reference_latency_ms=2.0,
+        speedup_factor=2.0,
+        e2e_ms=1.5,
+        kernel_ms=0.3,
+        kernel_gpu_ms=None,
+        kernel_ms_status="ok",
+        kernel_gpu_ms_status="no_cupti:RuntimeError",
+        l2_cache_mode="cold",
+    )
+    payload2 = json.loads(p2.model_dump_json())
+    assert payload2["e2e_ms"] == 1.5
+    assert "kernel_gpu_ms" not in payload2
+    assert payload2["kernel_gpu_ms_status"] == "no_cupti:RuntimeError"
+
+    # Legacy traces written by the pre-fix engine (0.0 sentinel) still parse.
+    legacy = Performance.model_validate(
+        {
+            "latency_ms": 1.0,
+            "reference_latency_ms": 2.0,
+            "speedup_factor": 2.0,
+            "kernel_gpu_ms": 0.0,
+            "kernel_gpu_ms_status": "no_cupti:ModuleNotFoundError",
+        }
+    )
+    assert legacy.kernel_gpu_ms == 0.0
+
+
 def test_correctness_with_inf_and_nan():
     c = Correctness(max_relative_error=float("inf"), max_absolute_error=float("nan"))
     assert math.isinf(c.max_relative_error)

@@ -127,7 +127,11 @@ class Builder(ABC):
         return package_name, build_path
 
     def _try_validate_signature(
-        self, callable: Callable, definition: Definition, solution: Solution
+        self,
+        callable: Callable,
+        definition: Definition,
+        solution: Solution,
+        allow_required_kwonly: bool = False,
     ) -> None:
         """Try to validate the signature of the callable. It only checks the number of
         parameters and the return type. If the signature is unavailable, it will skip all checks.
@@ -140,6 +144,12 @@ class Builder(ABC):
             The definition to validate against.
         solution : Solution
             The solution to validate against.
+        allow_required_kwonly : bool
+            Accept keyword-only parameters without defaults. Only set by builders that
+            wire a per-workload setup hook (Runnable.setup_for_workload splats the
+            setup() return dict as kwargs into run). Without a setup hook, required
+            keyword-only parameters can never be satisfied at call time, so validation
+            keeps rejecting them at build time exactly as before the hook existed.
 
         Raises
         ------
@@ -158,13 +168,20 @@ class Builder(ABC):
             len(definition.inputs) + len(definition.outputs) if dps else len(definition.inputs)
         )
 
-        # Validate against the actual call shape used by benchmark/apply runtime: a fixed number
-        # of positional arguments derived from the definition. This accepts extra optional
-        # parameters with defaults while still rejecting missing required or keyword-only
-        # parameters that cannot be satisfied by positional calling.
+        # Validate against the actual call shape used by benchmark/apply runtime: a fixed
+        # number of positional arguments derived from the definition.
         sample_args = [object() for _ in range(expected_nparam)]
+        kw_only_sample = (
+            {
+                name: object()
+                for name, p in signature.parameters.items()
+                if p.kind == inspect.Parameter.KEYWORD_ONLY
+            }
+            if allow_required_kwonly
+            else {}
+        )
         try:
-            signature.bind(*sample_args)
+            signature.bind(*sample_args, **kw_only_sample)
         except TypeError as e:
             style = "Destination-passing" if dps else "Value-returning"
             raise BuildError(

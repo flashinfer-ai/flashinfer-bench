@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import inspect
+import logging
 import shutil
 import sys
 from pathlib import Path
@@ -12,6 +14,8 @@ from flashinfer_bench.compile.builder import Builder, BuildError
 from flashinfer_bench.compile.runnable import Runnable, RunnableMetadata
 from flashinfer_bench.compile.utils import write_sources_to_path
 from flashinfer_bench.data import Definition, Solution, SupportedLanguages
+
+logger = logging.getLogger(__name__)
 
 
 class PythonBuilder(Builder):
@@ -138,6 +142,33 @@ class PythonBuilder(Builder):
             cleaner()
             raise BuildError(f"Entry symbol '{entry_symbol}' is not callable")
 
+        # Optional per-workload setup hook: if the module exports a top-level ``setup``
+        # symbol, the framework will invoke it once per workload before timed runs and
+        # splat its returned dict as kwargs into ``run``. Used for derived static state
+        # (CSR indptr, expert ids, workspace tensors, plan handles). The state must not
+        # depend on floating-point payload values — the evaluator enforces this by
+        # re-randomizing payload tensors and re-checking run() with the stale state
+        # (see Runnable._setup_callable for the full contract).
+        #
+        # Guard against name capture: a module may export a callable named ``setup``
+        # that was never meant as a hook (e.g. ``from setuptools import setup`` or a
+        # local helper). The hook contract requires the same positional signature as
+        # ``run``, so anything that cannot bind the definition's positional args is
+        # ignored (with a warning) instead of silently changing how an existing
+        # solution is invoked and timed.
+        setup_fn = getattr(mod, "setup", None)
+        if setup_fn is not None and not callable(setup_fn):
+            setup_fn = None
+        if setup_fn is not None and not self._setup_signature_matches(
+            setup_fn, definition, solution
+        ):
+            logger.warning(
+                "Module '%s' exports a callable 'setup' whose signature does not match "
+                "run's positional signature; ignoring it as a per-workload setup hook.",
+                module_name,
+            )
+            setup_fn = None
+
         metadata = RunnableMetadata(
             build_type="python",
             definition_name=definition.name,
@@ -147,6 +178,31 @@ class PythonBuilder(Builder):
             misc={"module_name": module_name, "entry_symbol": entry_symbol},
         )
 
-        self._try_validate_signature(fn, definition, solution)
+        # Required keyword-only params on run() are only satisfiable when a setup hook
+        # provides them; without one, keep pre-hook build-time strictness.
+        self._try_validate_signature(
+            fn, definition, solution, allow_required_kwonly=setup_fn is not None
+        )
 
-        return Runnable(callable=fn, metadata=metadata, cleaner=cleaner)
+        return Runnable(callable=fn, metadata=metadata, cleaner=cleaner, setup_callable=setup_fn)
+
+    @staticmethod
+    def _setup_signature_matches(
+        setup_fn: Callable[..., Any], definition: Definition, solution: Solution
+    ) -> bool:
+        """True when ``setup_fn`` can be called with the definition's positional args
+        (the same call shape ``run`` receives). Signature-less callables are accepted,
+        mirroring _try_validate_signature's skip-if-unavailable behavior."""
+        try:
+            signature = inspect.signature(setup_fn)
+        except (ValueError, TypeError):
+            return True
+        dps = solution.spec.destination_passing_style
+        expected_nparam = (
+            len(definition.inputs) + len(definition.outputs) if dps else len(definition.inputs)
+        )
+        try:
+            signature.bind(*[object() for _ in range(expected_nparam)])
+        except TypeError:
+            return False
+        return True

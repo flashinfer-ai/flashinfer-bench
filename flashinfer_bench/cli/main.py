@@ -296,6 +296,8 @@ def run(args: argparse.Namespace):
             "timeout_seconds": args.timeout,
             "required_matched_ratio": args.required_matched_ratio,
             "profile_baseline": args.profile_baseline,
+            "split_timing": args.split_timing,
+            "cold_l2_cache": args.cold_l2_cache,
         }
         cli_overrides = {k: v for k, v in raw_cli_overrides.items() if v is not None}
         config_path = getattr(args, "config", None)
@@ -506,6 +508,32 @@ def cli():
         "Useful when the reference is slow (e.g. large prefill workloads).",
     )
     run_parser.add_argument(
+        "--split-timing",
+        dest="split_timing",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable split timing: Performance additionally gains e2e_ms (serialized "
+        "wall-clock of setup + run) + kernel_ms (eager CUDA Event) + kernel_gpu_ms "
+        "(CUPTI activity sum). latency_ms / speedup_factor keep their single-metric "
+        "semantics. Pass --no-split-timing to disable it even when a config file "
+        "enables it; omitting both leaves the setting to the config layers. "
+        "Default: off.",
+    )
+    l2_cache_group = run_parser.add_mutually_exclusive_group()
+    l2_cache_group.add_argument(
+        "--cold-l2-cache",
+        dest="cold_l2_cache",
+        action="store_true",
+        default=None,
+        help="Flush L2 before each split-timing sample (default).",
+    )
+    l2_cache_group.add_argument(
+        "--warm-l2-cache",
+        dest="cold_l2_cache",
+        action="store_false",
+        help="Do not flush L2 between split-timing samples.",
+    )
+    run_parser.add_argument(
         "--local",
         type=Path,
         action="append",
@@ -607,3 +635,7 @@ def cli():
         args.func(args)
     else:
         parser.print_help()
+
+
+if __name__ == "__main__":
+    cli()

@@ -365,7 +365,56 @@ def test_validate_signature_dps_missing():
         )
 
 
-def test_validate_signature_dps_required_kwonly():
+def test_validate_signature_dps_required_kwonly_gated_on_setup_hook():
+    """Required keyword-only params are accepted ONLY for setup-hook solutions.
+
+    They map to dict keys returned by the ``setup()`` symbol, so with a setup hook
+    (allow_required_kwonly=True) they are satisfiable at call time. Without one,
+    validation keeps the pre-hook strictness — such a callable could never be
+    invoked and must fail at build time (COMPILE_ERROR), not first call
+    (RUNTIME_ERROR, which the runner retries)."""
+
+    def func_required_kwonly(A, B, out, *, scale):
+        pass
+
+    def func_multi_kwonly(A, B, out, *, scale, m_indptr):
+        pass
+
+    builder = _make_signature_builder()
+
+    # With a setup hook: accepted.
+    builder._try_validate_signature(
+        func_required_kwonly,
+        _make_dps_definition(),
+        _make_dps_solution(),
+        allow_required_kwonly=True,
+    )  # No raise
+    builder._try_validate_signature(
+        func_multi_kwonly, _make_dps_definition(), _make_dps_solution(), allow_required_kwonly=True
+    )  # No raise
+
+    # Without a setup hook: rejected at build time, exactly as before the hook existed.
+    with pytest.raises(BuildError):
+        builder._try_validate_signature(
+            func_required_kwonly, _make_dps_definition(), _make_dps_solution()
+        )
+
+
+def test_validate_signature_dps_kwonly_with_default_accepted():
+    """Keyword-only parameters with defaults are also accepted (degenerate case of the above)."""
+
+    def func(A, B, out, *, scale=1.0):
+        pass
+
+    _make_signature_builder()._try_validate_signature(
+        func, _make_dps_definition(), _make_dps_solution()
+    )  # No raise
+
+
+def test_validate_signature_kwonly_does_not_count_as_positional():
+    """Missing positional args still raise BuildError even when kw-only args exist."""
+
+    # Only 2 positional params but definition expects 3 (A, B, out) for DPS
     def func(A, B, *, out):
         pass
 

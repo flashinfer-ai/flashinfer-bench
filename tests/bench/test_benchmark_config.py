@@ -21,6 +21,7 @@ def test_benchmark_config_defaults_valid():
     assert resolved.iterations > 0
     assert resolved.num_trials > 0
     assert resolved.rtol > 0 and resolved.atol > 0
+    assert resolved.cold_l2_cache is True
 
 
 @pytest.mark.parametrize(
@@ -101,6 +102,41 @@ def test_cli_override_beats_yaml_op_type():
     definition = SimpleNamespace(op_type="moe", name="some_moe_def")
     resolved = cfg.resolve_eval_config(definition)
     assert resolved.required_matched_ratio == 0.9
+
+
+def test_l2_policy_respects_config_precedence():
+    definition = SimpleNamespace(op_type="moe", name="some_moe_def")
+    cfg = BenchmarkConfig(
+        cold_l2_cache=False, op_type_config={"moe": EvalConfig(cold_l2_cache=True)}
+    )
+    assert cfg.resolve_eval_config(definition).cold_l2_cache is False
+
+
+def test_split_timing_cli_can_disable_what_yaml_enabled():
+    """`--no-split-timing` must beat a config file that turned it on.
+
+    The CLI flag pair is store_true/store_false over a shared dest with a None
+    default, so the three states stay distinguishable: True (--split-timing),
+    False (--no-split-timing), None (neither flag → config layers decide).
+    Only None may fall through to the YAML layers.
+    """
+    definition = SimpleNamespace(op_type="moe", name="some_moe_def")
+    yaml_on = {"moe": EvalConfig(split_timing=True)}
+
+    # Neither flag given: YAML wins.
+    cfg = BenchmarkConfig(op_type_config=yaml_on)
+    assert cfg.resolve_eval_config(definition).split_timing is True
+
+    # --no-split-timing: explicit False overrides YAML.
+    cfg = BenchmarkConfig(split_timing=False, op_type_config=yaml_on)
+    assert cfg.resolve_eval_config(definition).split_timing is False
+
+    # --split-timing with nothing in YAML: explicit True still applies.
+    cfg = BenchmarkConfig(split_timing=True)
+    assert cfg.resolve_eval_config(definition).split_timing is True
+
+    # Nothing anywhere: off by default.
+    assert BenchmarkConfig().resolve_eval_config(definition).split_timing is False
 
 
 def test_yaml_op_type_applies_without_cli_override():
