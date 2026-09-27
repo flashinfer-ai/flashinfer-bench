@@ -599,6 +599,17 @@ def cli():
     )
     render_parser.set_defaults(func=_validate_render)
 
+    # --- onboarding ---
+    onboarding_parser = command_subparsers.add_parser(
+        "onboarding", help="Capture and review model definitions and workloads."
+    )
+    onboarding_subparsers = onboarding_parser.add_subparsers(
+        dest="onboarding_command", required=True, help="Onboarding stages"
+    )
+    from flashinfer_bench.onboarding.cli import add_cli_subcommands
+
+    add_cli_subcommands(onboarding_subparsers)
+
     args = parser.parse_args()
 
     cli_config_logging(args)

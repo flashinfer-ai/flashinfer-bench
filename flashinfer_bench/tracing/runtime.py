@@ -8,6 +8,7 @@ import os
 import signal
 import threading
 import uuid
+from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -29,6 +30,14 @@ from .presets import get_full_configs
 from .workload_entry import WorkloadEntry
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CollectResult:
+    """Outcome of validating and submitting one runtime capture."""
+
+    accepted: bool
+    reason: str | None = None
 
 
 class TracingRuntime:
@@ -177,7 +186,9 @@ class TracingRuntime:
         TracingRuntime._stack.pop()
         logger.info("TracingRuntime stopped")
 
-    def collect(self, def_name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]):
+    def collect(
+        self, def_name: str, args: Tuple[Any, ...], kwargs: Dict[str, Any]
+    ) -> CollectResult:
         """Record a workload for later serialization to disk.
 
         When an error occurs, it will print an error message and return to avoid
@@ -211,21 +222,25 @@ class TracingRuntime:
         - Tensor validation fails (wrong shape, dtype, etc.)
         - Axis inference fails
         """
-        logger.info(f"Tracing '{def_name}'")
+        logger.debug(f"Tracing '{def_name}'")
 
         tracing_config = self._config_registry.get(def_name)
         if tracing_config is None:
             logger.debug(f"Tracing config not configured for {def_name}, skipping")
-            return
+            return CollectResult(False, "tracing_not_configured")
 
         definition = self._trace_set.definitions.get(def_name, None)
         if definition is None:
             logger.error(f"Definition {def_name} not found")
-            return
+            return CollectResult(False, "definition_not_found")
 
         # Merge kwargs into args based on definition's input/output order
         if kwargs:
-            args = definition.merge_kwargs_to_args(args, kwargs)
+            try:
+                args = definition.merge_kwargs_to_args(args, kwargs)
+            except TypeError as exc:
+                logger.error(f"Error merging arguments for {def_name}: {exc}")
+                return CollectResult(False, f"argument_merge_failed: {exc}")
 
         # Determine calling convention and extract only inputs
         num_inputs = len(definition.inputs)
@@ -237,7 +252,11 @@ class TracingRuntime:
                 f"(value-returning) or {num_inputs + num_outputs} (destination-passing), "
                 f"got {len(args)}"
             )
-            return
+            return CollectResult(
+                False,
+                f"invalid_argument_count: expected {num_inputs} or "
+                f"{num_inputs + num_outputs}, got {len(args)}",
+            )
 
         input_names = list(definition.inputs.keys())
         input_values = list(args[:num_inputs])
@@ -247,7 +266,7 @@ class TracingRuntime:
             axes = definition.get_axes_values_from_inputs(input_values)
         except ValueError as e:
             logger.error(f"Error getting axis values for {def_name}: {e}")
-            return
+            return CollectResult(False, f"axis_inference_failed: {e}")
 
         # Get inputs to dump
         inputs_to_dump = tracing_config.get_inputs_to_dump(input_names, input_values)
@@ -260,7 +279,7 @@ class TracingRuntime:
                 )
             except ValueError as e:
                 logger.error(f"Error converting argument '{name}' to tensor for {def_name}: {e}")
-                return
+                return CollectResult(False, f"argument_conversion_failed: {name}: {e}")
 
         # Construct workload entry
         entry = WorkloadEntry(
@@ -281,6 +300,8 @@ class TracingRuntime:
                     filter_policy.submit(entry)
 
             self.order_counter += 1
+
+        return CollectResult(True)
 
     def _convert_arg_to_tensor(
         self, val: Union[int, float, bool, list, tuple, torch.Tensor], dtype: str
@@ -413,7 +434,7 @@ class TracingRuntime:
             num_selected_entries += len(selected_entries)
 
         # Log stats
-        logger.info(
+        logger.debug(
             f"Flush done. {num_selected_entries} entries selected, {num_dump_errors} dump errors"
         )
 

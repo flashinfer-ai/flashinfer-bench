@@ -30,6 +30,7 @@ class TracingConfig(BaseModel):
     - "dump_all": Dump all tensor inputs.
     - "dump_none": Dump no tensor inputs (only axes are recorded).
     - "dump_int": Dump only integer and boolean tensor inputs (e.g., indptrs, indices).
+    - "dump_structural": Dump integer tensors and numeric scalar arguments.
     """
 
     input_dump_policy_kwargs: Dict[str, Any] = Field(default_factory=dict)
