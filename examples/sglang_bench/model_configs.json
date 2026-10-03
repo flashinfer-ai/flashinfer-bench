@@ -240,6 +240,33 @@
                 "--attention-backend", "flashinfer"
             ]
         },
+        "llama-3.2-1b": {
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer"
+            ]
+        },
+        "llama-3.2-1b-ps64": {
+            "_comment": "Llama-3.2-1B page-size=64 variant for paged workload collection.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--page-size", "64"
+            ]
+        },
+        "llama-3.2-1b-ragged": {
+            "_comment": "Llama-3.2-1B ragged-prefill variant: disable radix cache, chunked prefill, and piecewise cuda graph so the initial prefill dispatches through BatchPrefillWithRaggedKVCacheWrapper.",
+            "server_flags": [
+                "--trust-remote-code",
+                "--attention-backend", "flashinfer",
+                "--disable-radix-cache",
+                "--disable-cuda-graph",
+                "--disable-piecewise-cuda-graph",
+                "--chunked-prefill-size", "100000",
+                "--mem-fraction-static", "0.9",
+                "--skip-server-warmup"
+            ]
+        },
         "llama-3.1-70b": {
             "server_flags": [
                 "--trust-remote-code",
