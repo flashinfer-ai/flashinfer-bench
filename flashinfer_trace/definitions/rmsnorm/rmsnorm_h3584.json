@@ -1,0 +1,49 @@
+{
+  "name": "rmsnorm_h3584",
+  "op_type": "rmsnorm",
+  "description": "Root Mean Square Normalization with hidden_size=3584. Captured from Qwen2.5-7B. Epsilon is fixed at 1e-6.",
+  "tags": [
+    "status:unverified",
+    "model:qwen2.5-7b",
+    "fi_api:flashinfer.norm.rmsnorm"
+  ],
+  "axes": {
+    "batch_size": {
+      "type": "var",
+      "description": "Total number of tokens."
+    },
+    "hidden_size": {
+      "type": "const",
+      "value": 3584,
+      "description": "Hidden dimension size."
+    }
+  },
+  "inputs": {
+    "hidden_states": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Input hidden states tensor."
+    },
+    "weight": {
+      "shape": [
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "RMSNorm weight parameter."
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "batch_size",
+        "hidden_size"
+      ],
+      "dtype": "bfloat16",
+      "description": "Normalized output tensor."
+    }
+  },
+  "reference": "import torch\n\n@torch.no_grad()\ndef run(hidden_states, weight):\n    batch_size, hidden_size = hidden_states.shape\n    # Check constants\n    assert hidden_size == 3584\n\n    EPS = 1e-6\n\n    x = hidden_states.to(torch.float32)\n    inv_rms = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + EPS)\n    y = (x * inv_rms) * weight.to(torch.float32)\n    return y.to(hidden_states.dtype)"
+}
