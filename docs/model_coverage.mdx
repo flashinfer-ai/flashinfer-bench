@@ -32,6 +32,7 @@ This document tracks which kernels are supported in FlashInfer-Bench for each mo
 | Qwen3 235B A22B | GQA + MoE | 🟡 Partial |
 | Qwen3 Next 80B A3B | GDN + GQA + MoE | 🟡 Partial |
 | Kimi K2 | MLA + MoE | 🟡 Partial |
+| Kimi K2.5 | MLA + MoE (INT4 experts) + MoonViT | 🟡 Partial |
 | Phi-4 14B | GQA + Dense | 🟡 Partial |
 | Llama 3.1 405B | GQA + Dense | 🟡 Partial |
 | Llama 4 Scout 17B-16E | GQA + MoE | 🟡 Partial |
@@ -494,6 +495,33 @@ Kimi K2 uses DeepSeek V3-style MLA with the same kv_lora_rank=512 and qk_rope_he
 | `top_p_sampling_from_probs_v160000` | sampling | ❌ |
 
 **Coverage**: 6 / 15 definitions present. RMSNorm definitions are shared with DeepSeek V3 (same hidden=7168 and sub-module dims). MoE EP=1 and EP=8 definitions added. All MLA defs require new h=8 variants; MoE EP=4 variant (e=96) and sampling (v=160000) still missing.
+
+---
+
+## Kimi K2.5
+
+**Architecture**: 61 decoder layers, DeepSeek V3-style MLA attention, sparse MoE FFN (384 total experts, top-8 routing). Multimodal (vision + text) via a MoonViT vision tower. Standard serving configuration: **TP=8** (per MoonshotAI deploy guide).
+
+Kimi K2.5's text backbone (`text_config.architectures=["DeepseekV3ForCausalLM"]`) reuses the exact MLA / RMSNorm / RoPE shapes of Kimi K2 (`h=8` at TP=8, `kv_lora_rank=512`, `qk_rope_head_dim=64`, `q_lora_rank=1536`). The vocab size is new (`163840` vs Kimi K2's `160000`) so three new sampling definitions are added. Routed MoE experts are INT4 group-quantized (`compressed-tensors`, `group_size=32`, `num_bits=4`) rather than FP8 block-scale.
+
+| Definition | Op Type | Status |
+|-----------|---------|:------:|
+| `rmsnorm_h7168` | rmsnorm | ✅ |
+| `fused_add_rmsnorm_h7168` | rmsnorm | ✅ |
+| `rmsnorm_h1536` | rmsnorm | ✅ |
+| `rmsnorm_h512` | rmsnorm | ✅ |
+| `mla_paged_prefill_causal_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_paged_decode_h8_ckv512_kpe64_ps1` | mla_paged TP=8 | 🟡 |
+| `mla_ragged_prefill_causal_h8_qk192_vo128` | mla_ragged | 🟡 |
+| `rope_with_cos_sin_cache_neox_style_d128_rd64` | rope | 🟡 |
+| `moe_int4_pack_quantized_ds_routing_topk8_ng1_kg1_e384_h7168_i2048` | moe EP=1 | ❌ |
+| `moe_int4_pack_quantized_ds_routing_topk8_ng1_kg1_e96_h7168_i2048` | moe EP=4 | ❌ |
+| `moe_int4_pack_quantized_ds_routing_topk8_ng1_kg1_e48_h7168_i2048` | moe EP=8 | ❌ |
+| `top_k_sampling_from_probs_v163840` | sampling | 🟡 |
+| `top_p_sampling_from_probs_v163840` | sampling | 🟡 |
+| `top_k_top_p_sampling_from_probs_v163840` | sampling | 🟡 |
+
+**Coverage**: 11 / 14 definitions present. RMSNorm, MLA, and RoPE definitions are shared with Kimi K2 / DeepSeek V3 (tagged `model:kimi-k2.5`). Three new sampling definitions added for `vocab_size=163840`. MoE kernels are blocked: FlashInfer has no public INT4 group-quantized MoE API (as of 0.6.x, `flashinfer.fused_moe` exposes only FP8 block-scale / FP4 / bf16 paths), and SGLang dispatches INT4 `compressed-tensors` MoE through its own Triton path. The vision tower uses `sglang.srt.layers.attention.vision.VisionAttention`, not FlashInfer, and is out of scope. New sampling defs and MLA-tag updates are published in `flashinfer-ai/flashinfer-trace` PR [#310](https://huggingface.co/datasets/flashinfer-ai/flashinfer-trace/discussions/310).
 
 ---
 
