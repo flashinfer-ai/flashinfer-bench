@@ -64,6 +64,7 @@ def main():
         base_url=base_url,
         reasoning_effort="high",
         use_ffi=False,
+        destination_passing_style=True,  # Set to False for value-returning style
     )
 
     total_definitions = len(all_definitions)

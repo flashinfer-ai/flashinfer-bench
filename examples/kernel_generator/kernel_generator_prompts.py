@@ -5,7 +5,60 @@ This file contains the prompts for baseline agent generation.
 from flashinfer_bench import FFI_PROMPT_SIMPLE, Definition, EvaluationStatus, Trace
 
 
-def _format_definition(definition: Definition) -> str:
+def _format_signature_requirements(
+    definition: Definition, destination_passing_style: bool = True
+) -> str:
+    """Generate a detailed description of the expected function signature."""
+    input_names = list(definition.inputs.keys())
+    output_names = list(definition.outputs.keys())
+
+    input_params = []
+    for name, spec in definition.inputs.items():
+        shape_str = "scalar" if spec.shape is None else f"[{', '.join(spec.shape)}]"
+        input_params.append(f"{name}: torch.Tensor  # shape {shape_str}, dtype {spec.dtype}")
+
+    output_params = []
+    for name, spec in definition.outputs.items():
+        shape_str = "scalar" if spec.shape is None else f"[{', '.join(spec.shape)}]"
+        output_params.append(f"{name}: torch.Tensor  # shape {shape_str}, dtype {spec.dtype}")
+
+    if destination_passing_style:
+        # Destination-passing style: inputs + outputs as parameters
+        all_params = input_params + output_params
+        params_str = ",\n    ".join(all_params)
+
+        return f"""Input Signature (Destination-Passing Style):
+The "run" function MUST accept ALL inputs and outputs as SEPARATE positional arguments.
+The outputs are pre-allocated tensors that should be written to in-place.
+
+Note:
+- Total number of parameters: {len(input_names) + len(output_names)} ({len(input_names)} inputs + {len(output_names)} outputs)
+- Input parameters (first {len(input_names)}): {', '.join(input_names)}
+- Output parameters (last {len(output_names)}): {', '.join(output_names)}
+- Do NOT accept a dict of inputs - each tensor is a separate argument
+- Do NOT return output tensors - write to the pre-allocated output tensors in-place"""
+    else:
+        # Value-returning style: only inputs as parameters, return outputs
+        params_str = ",\n    ".join(input_params)
+
+        if len(output_names) == 1:
+            return_type = "torch.Tensor"
+            return_desc = f"Returns: {output_names[0]} tensor"
+        else:
+            return_type = f"Tuple[{', '.join(['torch.Tensor'] * len(output_names))}]"
+            return_desc = f"Returns: tuple of ({', '.join(output_names)})"
+
+        return f"""Input Signature (Value-Returning Style):
+The "run" function accepts only input tensors and returns the output tensor(s).
+
+Note:
+- Total number of parameters: {len(input_names)} (inputs only)
+- Input parameters: {', '.join(input_names)}
+- Do NOT accept a dict of inputs - each tensor is a separate argument
+- MUST return the computed output tensor(s)"""
+
+
+def _format_definition(definition: Definition, destination_passing_style: bool = True) -> str:
     axes_str = "\nAxes:\n"
     for name, axis in definition.axes.items():
         if hasattr(axis, "value"):
@@ -39,10 +92,14 @@ def _format_definition(definition: Definition) -> str:
         for constraint in definition.constraints:
             constraints_str += f"  - {constraint}\n"
 
+    signature_str = (
+        "\n" + _format_signature_requirements(definition, destination_passing_style) + "\n"
+    )
+
     return f"""Name: {definition.name}
 Type: {definition.op_type}
 {axes_str}{inputs_str}{outputs_str}{constraints_str}
-
+{signature_str}
 Reference Implementation:
 {definition.reference}"""
 
@@ -89,18 +146,18 @@ The wrapper function MUST handle complete device management:
 - Raise clear errors if CUDA is not available for GPU tensors
 - Call the triton kernel with GPU tensors
 - Move results back to original device of input tensors
-- Handle both args and kwargs properly
 - Preserve original tensor devices and restore them for outputs
 
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
 - All code must be valid Python that passes ast.parse()
-
 - Expose a "run" entry point function that can be called to execute the kernel
-- Return only the code, no explanations or markdown formatting
 
-Generate complete, runnable code only - no framework will add device handling wrapper code.
+OUTPUT FORMAT:
+- Output ONLY Python/Triton code, no explanations or markdown formatting
+- The response should be directly executable as a Python module
+- First line must be an import statement or a comment (e.g., "import torch" or "# ...")
 
 Generate the implementation:"""
 
@@ -140,16 +197,18 @@ The wrapper function MUST handle complete device management:
 - Raise clear errors if CUDA is not available for GPU tensors
 - Call the triton kernel with GPU tensors
 - Move results back to original device of input tensors
-- Handle both args and kwargs properly
 - Preserve original tensor devices and restore them for outputs
 
 IMPORTANT: Use only valid Python/Triton syntax:
 - NO hexadecimal float literals (0x1.234p5) - use decimal equivalents
 - NO C/CUDA specific syntax - this is Python/Triton code
 - All code must be valid Python that passes ast.parse()
-
 - Expose a "run" entry point function that can be called to execute the kernel
-- Return only the improved code, no explanations or markdown formatting
+
+OUTPUT FORMAT:
+- Output ONLY Python/Triton code, no explanations or markdown formatting
+- The response should be directly executable as a Python module
+- First line must be an import statement or a comment (e.g., "import torch" or "# ...")
 
 Generate the corrected and optimized implementation:"""
 
@@ -163,8 +222,12 @@ Requirements:
 - Use PyTorch operations when appropriate, optimized for {target_gpu}
 - Include necessary imports
 - Implement the exact functionality described in the specification
-- Expose a "run" entry point function that can be called to execute the implementation
-- Return only the code, no explanations or markdown formatting
+- The function signature MUST match the specification above exactly
+
+OUTPUT FORMAT:
+- Output ONLY Python/Triton code, no explanations or markdown formatting
+- The response should be directly executable as a Python module
+- First line must be an import statement or a comment (e.g., "import torch" or "# ...")
 
 Generate the implementation:"""
 
@@ -181,6 +244,7 @@ Requirements:
 - Use the definition's tensor shapes, dtypes, and axes information to guide memory access patterns and optimization strategies
 - Optimize for {target_gpu} GPU characteristics (memory hierarchy, compute units, etc.)
 - For fixed axis values, optimize specifically for those constants rather than general cases
+- The "run" function signature MUST match the specification above exactly
 
 IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
 
@@ -202,8 +266,7 @@ IMPORTANT: Generate code in XML format with exactly 3 files with these strict na
 - Host function that launches kernels
 - Memory allocation and data transfer management
 - Device management and error handling
-- Entry point function named "run" that can be called to execute the implementation
-- Handle both args and kwargs properly
+- Entry point function named "run" with the exact signature specified above
 - Move CPU data to GPU, execute kernels, and return results to CPU
 </cpp_file>
 
@@ -216,6 +279,11 @@ Code Generation Guidelines:
 - Use appropriate grid and block dimensions for the problem size
 - Leverage constant memory for frequently accessed read-only data
 - Ensure proper CUDA stream synchronization and error handling
+
+CRITICAL OUTPUT FORMAT:
+- Output ONLY the XML-formatted code files
+- Do NOT include any explanatory text before or after the XML blocks
+- Do NOT start with phrases like "Here is the code" or end with explanations
 
 Generate the implementation:"""
 
@@ -236,6 +304,7 @@ Optimization Strategy:
    - Fix runtime errors like shape mismatches, memory access violations, kernel launch failures
    - Ensure numerical correctness matches the reference implementation
    - Verify proper CUDA memory management and synchronization
+   - CRITICAL: Ensure the "run" function signature matches the requirements above exactly
 
 2. OPTIMIZE PERFORMANCE: if the current kernel is functionally correct, focus on performance optimizations
    - Optimize memory access patterns and coalescing for {target_gpu}
@@ -250,7 +319,7 @@ Requirements for the optimized implementation:
 - Use proper CUDA syntax and modern features appropriate for {target_gpu}
 - Fix all identified issues from the feedback
 - Maintain or improve computational accuracy
-- Preserve the same function signatures and device handling as specified
+- The "run" function signature MUST match the specification above exactly
 - For fixed axis values, optimize specifically for those constants rather than general cases
 
 IMPORTANT: Generate code in XML format with exactly 3 files with these strict names:
@@ -273,8 +342,7 @@ IMPORTANT: Generate code in XML format with exactly 3 files with these strict na
 - Host function that launches kernels
 - Memory allocation and data transfer management
 - Device management and error handling
-- Entry point function named "run" that can be called to execute the implementation
-- Handle both args and kwargs properly
+- Entry point function named "run" with the exact signature specified above
 - Move CPU data to GPU, execute kernels, and return results to CPU
 </cpp_file>
 
@@ -319,14 +387,18 @@ Requirements:
 
 
 def get_prompt(
-    language: str, definition: Definition, target_gpu: str = "H100", use_ffi: bool = True
+    language: str,
+    definition: Definition,
+    target_gpu: str = "H100",
+    use_ffi: bool = True,
+    destination_passing_style: bool = True,
 ) -> str:
     prompts = {"triton": TRITON_PROMPT, "python": PYTHON_PROMPT, "cuda": CUDA_PROMPT}
 
     if language not in prompts:
         raise ValueError(f"Unsupported language: {language}")
 
-    definition_str = _format_definition(definition)
+    definition_str = _format_definition(definition, destination_passing_style)
     base_prompt = prompts[language].format(definition=definition_str, target_gpu=target_gpu)
 
     if language.lower() == "cuda":
@@ -338,18 +410,19 @@ def get_prompt(
 
 def get_optimization_prompt(
     language: str,
-    definition,
+    definition: Definition,
     trace: Trace,
     current_code: str,
     target_gpu: str = "H100",
     use_ffi: bool = True,
+    destination_passing_style: bool = True,
 ) -> str:
     optimization_prompts = {"triton": TRITON_OPTIMIZATION_PROMPT, "cuda": CUDA_OPTIMIZATION_PROMPT}
 
     if language not in optimization_prompts:
         raise ValueError(f"Unsupported language for optimization: {language}")
 
-    definition_str = _format_definition(definition)
+    definition_str = _format_definition(definition, destination_passing_style)
     trace_logs = _format_trace_logs(trace)
 
     base_prompt = optimization_prompts[language].format(
