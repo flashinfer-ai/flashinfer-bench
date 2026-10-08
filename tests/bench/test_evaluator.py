@@ -51,6 +51,10 @@ def _lowbit_def(n: int = 4) -> Definition:
     )
 
 
+def _cfg(definition: Definition, **kwargs):
+    return BenchmarkConfig(**kwargs).resolve_eval_config(definition)
+
+
 @pytest.fixture(autouse=True)
 def _patch_time_runnable(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(default_eval_module, "time_runnable", lambda *args, **kwargs: 1.0)
@@ -89,7 +93,7 @@ class TestDefaultEvaluatorDPS:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_pass_dps(self, tmp_path: Path):
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -110,11 +114,42 @@ class TestDefaultEvaluatorDPS:
         assert evaluation.status == EvaluationStatus.PASSED
         assert evaluation.correctness is not None
         assert evaluation.performance is not None
+        assert runnable.call_count == 3
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_rejects_stale_output_dps(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = True
+
+        def write_only_once(*args):
+            if runnable.call_count == 1:
+                args[-1].copy_(ref_tensor)
+
+        runnable.side_effect = write_only_once
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+        assert "did not overwrite a poisoned output" in evaluation.log
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_shape_error_dps(self, tmp_path: Path):
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -150,7 +185,7 @@ class TestDefaultEvaluatorDPS:
 
         monkeypatch.setattr(default_eval_module, "time_runnable", failing_timer)
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -177,12 +212,100 @@ class TestDefaultEvaluatorVR:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_pass_vr(self, tmp_path: Path):
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=2, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
+        second_inp = [torch.tensor([5.0, 6.0, 7.0, 8.0], device=dev)]
         ref_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)
-        runnable = _make_vr_mock(ref_tensor)
+        second_ref = torch.tensor([5.0, 6.0, 7.0, 8.0], device=dev)
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = False
+        runnable.side_effect = lambda *args: args[0].clone()
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp, second_inp],
+            ref_outputs=[[ref_tensor], [second_ref]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.PASSED
+        assert evaluation.correctness is not None
+        assert evaluation.performance is not None
+        assert runnable.call_count == 7
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_rejects_stale_output_vr(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        cached_output = ref_tensor.clone()
+        runnable = _make_vr_mock(cached_output)
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+        assert "did not overwrite a poisoned output" in evaluation.log
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_rejects_copied_cache_vr(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=2, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        first = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)
+        second = torch.tensor([5.0, 6.0, 7.0, 8.0], device=device)
+        first_original = first.clone()
+        cache = {}
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = False
+
+        def cached_clone(value):
+            cached = cache.setdefault(value.data_ptr(), value.clone())
+            return cached.clone()
+
+        runnable.side_effect = cached_clone
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[[first], [second]],
+            ref_outputs=[[first.clone()], [second.clone()]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+        assert "inputs changed at stable addresses" in evaluation.log
+        torch.testing.assert_close(first, first_original)
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_preserves_input_alias_vr(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = False
+        runnable.side_effect = lambda *args: args[0]
 
         evaluation = DefaultEvaluator.evaluate(
             definition=definition,
@@ -196,13 +319,45 @@ class TestDefaultEvaluatorVR:
         )
 
         assert evaluation.status == EvaluationStatus.PASSED
-        assert evaluation.correctness is not None
-        assert evaluation.performance is not None
+        torch.testing.assert_close(inp[0], ref_tensor)
+        assert runnable.call_count == 2
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_accepts_rewritten_noncontiguous_output_vr(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        backing = torch.empty(8, device=device)
+        output = backing[::2]
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = False
+
+        def rewrite_output(value):
+            output.copy_(value)
+            return output
+
+        runnable.side_effect = rewrite_output
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert not output.is_contiguous()
+        assert evaluation.status == EvaluationStatus.PASSED
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_shape_error_vr(self, tmp_path: Path):
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -227,7 +382,7 @@ class TestDefaultEvaluatorVR:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_numerical_error_vr(self, tmp_path: Path):
         definition = _simple_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -260,8 +415,8 @@ class TestSamplingEvaluatorDPS:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_detects_out_of_vocab_dps(self, tmp_path: Path):
         definition = _sampling_def()
-        cfg = BenchmarkConfig(
-            num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
+        cfg = _cfg(
+            definition, num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
         device = "cuda:0"
         dev = torch.device(device)
@@ -288,8 +443,8 @@ class TestSamplingEvaluatorDPS:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_sampling_runtime_error_dps(self, tmp_path: Path):
         definition = _sampling_def()
-        cfg = BenchmarkConfig(
-            num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
+        cfg = _cfg(
+            definition, num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
         device = "cuda:0"
         dev = torch.device(device)
@@ -321,8 +476,8 @@ class TestSamplingEvaluatorVR:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_detects_out_of_vocab_vr(self, tmp_path: Path):
         definition = _sampling_def()
-        cfg = BenchmarkConfig(
-            num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
+        cfg = _cfg(
+            definition, num_trials=1, warmup_runs=0, iterations=1, sampling_validation_trials=1
         )
         device = "cuda:0"
         dev = torch.device(device)
@@ -356,9 +511,39 @@ class TestLowBitEvaluatorDPS:
     """Tests for LowBitEvaluator with DPS style runnables."""
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_rejects_stale_output_dps(self, tmp_path: Path):
+        definition = _lowbit_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = True
+
+        def write_only_once(*args):
+            if runnable.call_count == 1:
+                args[-1].copy_(ref_tensor)
+
+        runnable.side_effect = write_only_once
+
+        evaluation = LowBitEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert evaluation.status == EvaluationStatus.INCORRECT_NUMERICAL
+        assert "did not overwrite a poisoned output" in evaluation.log
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_included_dps(self, tmp_path: Path):
         definition = _lowbit_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -384,7 +569,7 @@ class TestLowBitEvaluatorDPS:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_on_failure_dps(self, tmp_path: Path):
         definition = _lowbit_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -411,7 +596,8 @@ class TestLowBitEvaluatorDPS:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_uses_default_required_matched_ratio_dps(self, tmp_path: Path):
         definition = _lowbit_def(n=20)
-        cfg = BenchmarkConfig(
+        cfg = _cfg(
+            definition,
             num_trials=1,
             warmup_runs=0,
             iterations=1,
@@ -450,7 +636,7 @@ class TestLowBitEvaluatorVR:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_included_vr(self, tmp_path: Path):
         definition = _lowbit_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
@@ -476,7 +662,7 @@ class TestLowBitEvaluatorVR:
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_lowbit_matched_ratio_on_failure_vr(self, tmp_path: Path):
         definition = _lowbit_def()
-        cfg = BenchmarkConfig(num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1, atol=1e-6, rtol=1e-6)
         device = "cuda:0"
         dev = torch.device(device)
         inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=dev)]
