@@ -32,14 +32,14 @@ def _first_byte(tensor: torch.Tensor) -> int:
 
 def _poison_outputs(
     outputs: List[torch.Tensor], protected: List[Any]
-) -> List[Tuple[int, int, int]]:
+) -> List[Tuple[int, int, int | torch.Tensor]]:
     """Poison every element of each non-aliased output."""
     protected_storage = {
         (value.device, value.untyped_storage().data_ptr())
         for value in protected
         if isinstance(value, torch.Tensor)
     }
-    poisoned: List[Tuple[int, int, int]] = []
+    poisoned: List[Tuple[int, int, int | torch.Tensor]] = []
 
     with torch.no_grad():
         for index, output in enumerate(outputs):
@@ -59,7 +59,12 @@ def _poison_outputs(
                 first = output[(0,) * output.ndim].item()
                 output.fill_(not first if output.dtype == torch.bool else (0 if first != 0 else 1))
 
-            poisoned.append((index, output.untyped_storage().data_ptr(), _first_byte(output)))
+            poison = (
+                _first_byte(output)
+                if output.is_contiguous()
+                else output[(0,) * output.ndim].clone()
+            )
+            poisoned.append((index, output.untyped_storage().data_ptr(), poison))
 
     return poisoned
 
@@ -245,10 +250,12 @@ class Evaluator(ABC):
 
             for index, storage_ptr, poison in poisoned:
                 output = outputs[index]
-                if (
-                    output.untyped_storage().data_ptr() == storage_ptr
-                    and _first_byte(output) == poison
-                ):
+                poison_unchanged = (
+                    torch.equal(output[(0,) * output.ndim], poison)
+                    if isinstance(poison, torch.Tensor)
+                    else _first_byte(output) == poison
+                )
+                if output.untyped_storage().data_ptr() == storage_ptr and poison_unchanged:
                     return make_eval(
                         status=EvaluationStatus.INCORRECT_NUMERICAL,
                         device=device,

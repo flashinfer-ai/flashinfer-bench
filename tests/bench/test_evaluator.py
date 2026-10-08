@@ -323,6 +323,38 @@ class TestDefaultEvaluatorVR:
         assert runnable.call_count == 2
 
     @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
+    def test_evaluate_accepts_rewritten_noncontiguous_output_vr(self, tmp_path: Path):
+        definition = _simple_def()
+        cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
+        device = "cuda:0"
+        inp = [torch.tensor([1.0, 2.0, 3.0, 4.0], device=device)]
+        ref_tensor = inp[0].clone()
+        backing = torch.empty(8, device=device)
+        output = backing[::2]
+        runnable = MagicMock()
+        runnable.metadata.destination_passing_style = False
+
+        def rewrite_output(value):
+            output.copy_(value)
+            return output
+
+        runnable.side_effect = rewrite_output
+
+        evaluation = DefaultEvaluator.evaluate(
+            definition=definition,
+            sol_runnable=runnable,
+            inputs=[inp],
+            ref_outputs=[[ref_tensor]],
+            ref_mean_latency_ms=1.0,
+            cfg=cfg,
+            log_path=str(tmp_path / "log"),
+            device=device,
+        )
+
+        assert not output.is_contiguous()
+        assert evaluation.status == EvaluationStatus.PASSED
+
+    @pytest.mark.skipif(torch.cuda.device_count() == 0, reason="CUDA devices not available")
     def test_evaluate_shape_error_vr(self, tmp_path: Path):
         definition = _simple_def()
         cfg = _cfg(definition, num_trials=1, warmup_runs=0, iterations=1)
